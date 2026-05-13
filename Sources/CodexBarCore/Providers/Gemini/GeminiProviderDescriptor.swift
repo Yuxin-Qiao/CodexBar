@@ -22,6 +22,7 @@ public enum GeminiProviderDescriptor {
                 isPrimaryProvider: false,
                 usesAccountFallback: false,
                 dashboardURL: "https://gemini.google.com",
+                changelogURL: "https://github.com/google-gemini/gemini-cli/releases",
                 statusPageURL: nil,
                 statusLinkURL: "https://www.google.com/appsstatus/dashboard/products/npdyhgECDJ6tB66MxXyo/history",
                 statusWorkspaceProductID: "npdyhgECDJ6tB66MxXyo"),

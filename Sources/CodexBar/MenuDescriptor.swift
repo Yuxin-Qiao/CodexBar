@@ -32,6 +32,7 @@ struct MenuDescriptor {
         case refresh = "arrow.clockwise"
         case dashboard = "chart.bar"
         case statusPage = "waveform.path.ecg"
+        case changelog = "list.bullet.rectangle"
         case addAccount = "plus"
         case systemAccount = "person.crop.circle"
         case switchAccount = "key"
@@ -55,6 +56,7 @@ struct MenuDescriptor {
         case refreshAugmentSession
         case dashboard
         case statusPage
+        case changelog
         case addCodexAccount
         case requestCodexSystemPromotion(UUID)
         case addProviderAccount(UsageProvider)
@@ -422,6 +424,9 @@ struct MenuDescriptor {
         if metadata?.statusPageURL != nil || metadata?.statusLinkURL != nil {
             entries.append(.action("Status Page", .statusPage))
         }
+        if metadata?.changelogURL != nil {
+            entries.append(.action("Changelog", .changelog))
+        }
 
         if let statusLine = self.statusLine(for: provider, store: store) {
             entries.append(.text(statusLine, .secondary))
@@ -550,6 +555,7 @@ extension MenuDescriptor.MenuAction {
         case .refreshAugmentSession: MenuDescriptor.MenuActionSystemImage.refresh.rawValue
         case .dashboard: MenuDescriptor.MenuActionSystemImage.dashboard.rawValue
         case .statusPage: MenuDescriptor.MenuActionSystemImage.statusPage.rawValue
+        case .changelog: MenuDescriptor.MenuActionSystemImage.changelog.rawValue
         case .addCodexAccount, .addProviderAccount: MenuDescriptor.MenuActionSystemImage.addAccount.rawValue
         case .requestCodexSystemPromotion:
             nil

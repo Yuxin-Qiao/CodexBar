@@ -119,6 +119,16 @@ extension StatusItemController: StatusItemMenuPersistentActionDelegate {
         NSWorkspace.shared.open(url)
     }
 
+    @objc func openChangelog() {
+        let preferred = self.lastMenuProvider
+            ?? (self.store.isEnabled(.codex) ? .codex : self.store.enabledProviders().first)
+
+        let provider = preferred ?? .codex
+        let meta = self.store.metadata(for: provider)
+        guard let urlString = meta.changelogURL, let url = URL(string: urlString) else { return }
+        NSWorkspace.shared.open(url)
+    }
+
     @objc func openTerminalCommand(_ sender: NSMenuItem) {
         let command = sender.representedObject as? String ?? "claude"
         Self.openTerminal(command: command)
