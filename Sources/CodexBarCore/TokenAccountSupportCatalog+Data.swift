@@ -53,8 +53,8 @@ extension TokenAccountSupportCatalog {
             cookieName: nil),
         .factory: TokenAccountSupport(
             title: "Session tokens",
-            subtitle: "Store multiple Factory Cookie headers.",
-            placeholder: "Cookie: …",
+            subtitle: "Store multiple Factory Cookie or Authorization headers.",
+            placeholder: "Cookie: … or Authorization: Bearer …",
             injection: .cookieHeader,
             requiresManualCookieSource: true,
             cookieName: nil),
