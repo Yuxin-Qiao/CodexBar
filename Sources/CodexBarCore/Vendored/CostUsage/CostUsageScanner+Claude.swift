@@ -196,10 +196,10 @@ extension CostUsageScanner {
     }
 
     private static func claudeCanonicalRowKey(_ row: ClaudeUsageRow) -> String? {
-        guard let sessionId = row.sessionId, let messageId = row.messageId, let requestId = row.requestId else {
+        guard let messageId = row.messageId, let requestId = row.requestId else {
             return nil
         }
-        return "\(sessionId):\(messageId):\(requestId)"
+        return "\(messageId):\(requestId)"
     }
 
     private static func mergeClaudeRows(existing: [ClaudeUsageRow], delta: [ClaudeUsageRow]) -> [ClaudeUsageRow] {
