@@ -30,8 +30,6 @@ extension UsageMenuCardView.Model {
                 paceOnTop: true,
                 cardStyle: true)
         }
-
-        return metrics
     }
 
     private static func displayWindowBadge(for windowType: String) -> String {
