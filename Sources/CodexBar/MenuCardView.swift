@@ -697,6 +697,7 @@ extension UsageMenuCardView.Model {
         let hidePersonalInfo: Bool
         let weeklyPace: UsagePace?
         let quotaWarningThresholds: [QuotaWarningWindow: [Int]]
+        let workDaysPerWeek: Int?
         let now: Date
 
         init(
@@ -722,6 +723,7 @@ extension UsageMenuCardView.Model {
             hidePersonalInfo: Bool,
             weeklyPace: UsagePace? = nil,
             quotaWarningThresholds: [QuotaWarningWindow: [Int]] = [:],
+            workDaysPerWeek: Int? = nil,
             now: Date)
         {
             self.provider = provider
@@ -746,6 +748,7 @@ extension UsageMenuCardView.Model {
             self.hidePersonalInfo = hidePersonalInfo
             self.weeklyPace = weeklyPace
             self.quotaWarningThresholds = quotaWarningThresholds
+            self.workDaysPerWeek = workDaysPerWeek
             self.now = now
         }
     }
@@ -1383,9 +1386,11 @@ extension UsageMenuCardView.Model {
             detailRightText: paceDetail?.rightLabel,
             pacePercent: paceDetail?.pacePercent,
             paceOnTop: paceDetail?.paceOnTop ?? true,
-            warningMarkerPercents: Self.warningMarkerPercents(
+            warningMarkerPercents: (Self.warningMarkerPercents(
                 thresholds: input.quotaWarningThresholds[.weekly],
-                showUsed: input.usageBarsShowUsed))
+                showUsed: input.usageBarsShowUsed) + workDayMarkerPercents(
+                workDays: input.workDaysPerWeek,
+                windowMinutes: weekly.windowMinutes)).sorted())
     }
 
     private static func codexRateMetrics(
