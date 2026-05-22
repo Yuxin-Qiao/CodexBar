@@ -766,7 +766,8 @@ enum MiniMaxUsageParser {
             windowMinutes: available?.windowMinutes,
             usedPercent: usedPercent,
             resetsAt: resetsAt,
-            updatedAt: now)
+            updatedAt: now,
+            planPeriodEndsAt: nil)
     }
 
     static func parseCodingPlanRemains(
@@ -1278,7 +1279,8 @@ enum MiniMaxUsageParser {
             usedPercent: nil,
             resetsAt: nil,
             updatedAt: now,
-            services: services)
+            services: services,
+            planPeriodEndsAt: nil)
     }
 
     private static func parseResetsAtFromTimeRange(timeRange: String, windowType: String, now: Date) -> Date? {

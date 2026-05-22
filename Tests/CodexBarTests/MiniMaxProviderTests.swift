@@ -1051,3 +1051,130 @@ struct MiniMaxAPIRegionTests {
         #expect(origin.absoluteString == "https://api.minimaxi.com")
     }
 }
+
+struct MiniMaxPlanPeriodParserTests {
+    @Test
+    func `parseCodingPlanRemains does NOT derive planPeriodEndsAt from end_time`() throws {
+        // end_time represents the quota reset (5-hour window), NOT billing period end.
+        // planPeriodEndsAt should remain nil since no reliable billing-period source exists.
+        let json = """
+        {
+          "base_resp": { "status_code": 0 },
+          "data": {
+            "plan_name": "Max",
+            "model_remains": [
+              {
+                "model_name": "MiniMax-M1",
+                "current_interval_total_count": 100,
+                "current_interval_usage_count": 50,
+                "start_time": 1779019200,
+                "end_time": 1782086400,
+                "remains_time": 86400
+              }
+            ]
+          }
+        }
+        """
+
+        let now = try #require(ISO8601DateFormatter().date(from: "2026-05-17T12:00:00Z"))
+
+        let snapshot = try MiniMaxUsageParser.parseCodingPlanRemains(
+            data: Data(json.utf8),
+            now: now)
+
+        // end_time is quota reset; planPeriodEndsAt must stay nil without a true billing-period field
+        #expect(snapshot.planPeriodEndsAt == nil)
+    }
+
+    @Test
+    func `parseCodingPlanRemains does NOT use earliest endTime for planPeriodEndsAt`() throws {
+        // Even with multiple model_remains, end_time fields are quota resets.
+        // planPeriodEndsAt must remain nil since end_time represents quota, not billing.
+        let json = """
+        {
+          "base_resp": { "status_code": 0 },
+          "data": {
+            "plan_name": "Max",
+            "model_remains": [
+              {
+                "model_name": "MiniMax-M1",
+                "current_interval_total_count": 100,
+                "current_interval_usage_count": 50,
+                "start_time": 1779019200,
+                "end_time": 1782979200,
+                "remains_time": 86400
+              },
+              {
+                "model_name": "MiniMax-M2",
+                "current_interval_total_count": 50,
+                "current_interval_usage_count": 10,
+                "start_time": 1781404800,
+                "end_time": 1782086400,
+                "remains_time": 172800
+              }
+            ]
+          }
+        }
+        """
+
+        let now = try #require(ISO8601DateFormatter().date(from: "2026-05-17T12:00:00Z"))
+
+        let snapshot = try MiniMaxUsageParser.parseCodingPlanRemains(
+            data: Data(json.utf8),
+            now: now)
+
+        #expect(snapshot.planPeriodEndsAt == nil)
+    }
+
+    @Test
+    func `parseCodingPlanRemains leaves planPeriodEndsAt nil when end_time missing`() throws {
+        // end_time is absent from model_remains
+        let json = """
+        {
+          "base_resp": { "status_code": 0 },
+          "data": {
+            "plan_name": "Max",
+            "model_remains": [
+              {
+                "model_name": "MiniMax-M1",
+                "current_interval_total_count": 100,
+                "current_interval_usage_count": 50,
+                "start_time": 1779019200,
+                "remains_time": 86400
+              }
+            ]
+          }
+        }
+        """
+
+        let now = try #require(ISO8601DateFormatter().date(from: "2026-05-17T12:00:00Z"))
+
+        let snapshot = try MiniMaxUsageParser.parseCodingPlanRemains(
+            data: Data(json.utf8),
+            now: now)
+
+        #expect(snapshot.planPeriodEndsAt == nil)
+    }
+
+    @Test
+    func `withBillingSummary preserves planPeriodEndsAt`() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try #require(TimeZone(secondsFromGMT: 0))
+        let now = try #require(ISO8601DateFormatter().date(from: "2026-05-17T12:00:00Z"))
+        let planDate = try #require(calendar.date(from: DateComponents(year: 2026, month: 6, day: 22)))
+
+        let original = MiniMaxUsageSnapshot(
+            planName: "Max",
+            availablePrompts: 100,
+            currentPrompts: 50,
+            remainingPrompts: 50,
+            windowMinutes: nil,
+            usedPercent: nil,
+            resetsAt: nil,
+            updatedAt: now,
+            planPeriodEndsAt: planDate)
+
+        let withBilling = original.withBillingSummary(nil)
+        #expect(withBilling.planPeriodEndsAt == planDate)
+    }
+}

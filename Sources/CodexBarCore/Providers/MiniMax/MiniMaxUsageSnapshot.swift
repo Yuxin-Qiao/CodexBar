@@ -11,6 +11,10 @@ public struct MiniMaxUsageSnapshot: Sendable {
     public let updatedAt: Date
     public let services: [MiniMaxServiceUsage]?
     public let billingSummary: MiniMaxBillingSummary?
+    /// The end of the current billing period for the MiniMax Token Plan subscription.
+    /// Derived from `MiniMaxModelRemains.endTime` — NOT the quota reset time.
+    /// Use this for "Plan period ends: Jun 22, 2026" display.
+    public let planPeriodEndsAt: Date?
 
     public var primaryService: MiniMaxServiceUsage? {
         // Priority: "Text Generation" > first service
@@ -55,7 +59,8 @@ public struct MiniMaxUsageSnapshot: Sendable {
         resetsAt: Date?,
         updatedAt: Date,
         services: [MiniMaxServiceUsage]? = nil,
-        billingSummary: MiniMaxBillingSummary? = nil)
+        billingSummary: MiniMaxBillingSummary? = nil,
+        planPeriodEndsAt: Date? = nil)
     {
         self.planName = planName
         self.availablePrompts = availablePrompts
@@ -67,6 +72,7 @@ public struct MiniMaxUsageSnapshot: Sendable {
         self.updatedAt = updatedAt
         self.services = services
         self.billingSummary = billingSummary
+        self.planPeriodEndsAt = planPeriodEndsAt
     }
 
     public func withBillingSummary(_ billingSummary: MiniMaxBillingSummary?) -> MiniMaxUsageSnapshot {
@@ -80,7 +86,8 @@ public struct MiniMaxUsageSnapshot: Sendable {
             resetsAt: self.resetsAt,
             updatedAt: self.updatedAt,
             services: self.services,
-            billingSummary: billingSummary)
+            billingSummary: billingSummary,
+            planPeriodEndsAt: self.planPeriodEndsAt)
     }
 }
 
