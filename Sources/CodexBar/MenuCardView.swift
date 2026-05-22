@@ -1386,11 +1386,7 @@ extension UsageMenuCardView.Model {
             detailRightText: paceDetail?.rightLabel,
             pacePercent: paceDetail?.pacePercent,
             paceOnTop: paceDetail?.paceOnTop ?? true,
-            warningMarkerPercents: (Self.warningMarkerPercents(
-                thresholds: input.quotaWarningThresholds[.weekly],
-                showUsed: input.usageBarsShowUsed) + workDayMarkerPercents(
-                workDays: input.workDaysPerWeek,
-                windowMinutes: weekly.windowMinutes)).sorted())
+            warningMarkerPercents: Self.weeklyMarkerPercents(input: input, windowMinutes: weekly.windowMinutes))
     }
 
     private static func codexRateMetrics(
@@ -1436,9 +1432,10 @@ extension UsageMenuCardView.Model {
                 detailRightText: paceDetail?.rightLabel,
                 pacePercent: paceDetail?.pacePercent,
                 paceOnTop: paceDetail?.paceOnTop ?? true,
-                warningMarkerPercents: Self.warningMarkerPercents(
-                    thresholds: input.quotaWarningThresholds[lane.quotaWarningWindow],
-                    showUsed: input.usageBarsShowUsed))
+                warningMarkerPercents: Self.codexLaneMarkerPercents(
+                    input: input,
+                    lane: lane,
+                    windowMinutes: window.windowMinutes))
         }
     }
 
