@@ -132,4 +132,12 @@ extension UsageMenuCardView.Model {
             pacePercent: pacePercent,
             paceOnTop: paceOnTop)
     }
+
+    static func highUsageSuggestions(input: Input) -> [HighUsageSuggestion] {
+        if let primary = input.snapshot?.primary {
+            let provider = HighUsageSuggestionProvider.usedPercent(primary.usedPercent)
+            return provider.suggestions()
+        }
+        return []
+    }
 }

@@ -111,6 +111,7 @@ struct UsageMenuCardView: View {
         let creditsHintCopyText: String?
         let providerCost: ProviderCostSection?
         let tokenUsage: TokenUsageSection?
+        let suggestions: [HighUsageSuggestion]?
         let placeholder: String?
         let progressColor: Color
     }
@@ -130,7 +131,11 @@ struct UsageMenuCardView: View {
         VStack(alignment: .leading, spacing: 6) {
             UsageMenuCardHeaderView(model: self.model)
 
-            if self.hasDetails {
+            if self.model.hasUsageContent ||
+                self.model.tokenUsage != nil ||
+                self.model.providerCost != nil ||
+                self.model.suggestions != nil
+            {
                 Divider()
             }
 
@@ -216,6 +221,9 @@ struct UsageMenuCardView: View {
                             }
                         }
                     }
+                    if let suggestions = self.model.suggestions, !suggestions.isEmpty {
+                        HighUsageSuggestionSection(suggestions: suggestions)
+                    }
                 }
                 .padding(.bottom, self.model.creditsText == nil ? 6 : 0)
             }
@@ -224,12 +232,6 @@ struct UsageMenuCardView: View {
         .padding(.top, 2)
         .padding(.bottom, 2)
         .frame(width: self.width, alignment: .leading)
-    }
-
-    private var hasDetails: Bool {
-        self.model.hasUsageContent ||
-            self.model.tokenUsage != nil ||
-            self.model.providerCost != nil
     }
 }
 
@@ -813,6 +815,7 @@ extension UsageMenuCardView.Model {
             creditsHintCopyText: redacted.creditsHintCopyText,
             providerCost: providerCost,
             tokenUsage: tokenUsage,
+            suggestions: UsageMenuCardView.Model.highUsageSuggestions(input: input),
             placeholder: placeholder,
             progressColor: Self.progressColor(for: input.provider))
     }
