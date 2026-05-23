@@ -67,33 +67,33 @@ public struct CodexResetAnnouncementParser: Sendable {
         from texts: [String],
         sourceName: String,
         sourceURL: String? = nil,
-        observedAt: Date = Date()
-    ) -> [CodexResetAnnouncement] {
+        observedAt: Date = Date()) -> [CodexResetAnnouncement]
+    {
         texts.compactMap { text in
-            switch parse(text) {
-            case .upcoming(let confidence):
-                return CodexResetAnnouncement(
+            switch self.parse(text) {
+            case let .upcoming(confidence):
+                CodexResetAnnouncement(
                     sourceName: sourceName,
                     sourceURL: sourceURL,
                     observedAt: observedAt,
                     status: .upcoming,
                     confidence: confidence)
-            case .completed(let confidence):
-                return CodexResetAnnouncement(
+            case let .completed(confidence):
+                CodexResetAnnouncement(
                     sourceName: sourceName,
                     sourceURL: sourceURL,
                     observedAt: observedAt,
                     status: .completed,
                     confidence: confidence)
-            case .ambiguous(let confidence):
-                return CodexResetAnnouncement(
+            case let .ambiguous(confidence):
+                CodexResetAnnouncement(
                     sourceName: sourceName,
                     sourceURL: sourceURL,
                     observedAt: observedAt,
                     status: .ambiguous,
                     confidence: confidence)
             case .none:
-                return nil
+                nil
             }
         }
     }
@@ -108,7 +108,7 @@ public struct CodexResetAnnouncementParser: Sendable {
             "i have reset usage limits",
             "usage limits have been reset",
             "limits have been reset",
-            "limits are back to normal"
+            "limits are back to normal",
         ]
         return patterns.contains { Self.containsWithWordBoundaries(text: text, phrase: $0) }
     }
@@ -121,7 +121,7 @@ public struct CodexResetAnnouncementParser: Sendable {
             "will reset usage limits",
             "i plan to reset usage limits",
             "i'm resetting usage limits",
-            "resetting usage limits"
+            "resetting usage limits",
         ]
         return patterns.contains { Self.containsWithWordBoundaries(text: text, phrase: $0) }
     }
@@ -133,7 +133,7 @@ public struct CodexResetAnnouncementParser: Sendable {
             "usage consumption waived",
             "limits are waived",
             "usage limits are waived",
-            "consumption has been waived"
+            "consumption has been waived",
         ]
         return patterns.contains { Self.containsWithWordBoundaries(text: text, phrase: $0) }
     }
@@ -156,7 +156,7 @@ public struct CodexResetAnnouncementParser: Sendable {
             let charBeforeOK = start == text.startIndex || !isWordChar(text[text.index(before: start)])
             let charAfterOK = end == text.endIndex || !isWordChar(text[end])
 
-            if charBeforeOK && charAfterOK {
+            if charBeforeOK, charAfterOK {
                 return true
             }
             searchStart = range.upperBound
