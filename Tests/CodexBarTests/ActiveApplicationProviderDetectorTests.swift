@@ -1,5 +1,5 @@
-@testable import CodexBar
 import XCTest
+@testable import CodexBar
 
 @MainActor
 final class ActiveApplicationProviderDetectorTests: XCTestCase {

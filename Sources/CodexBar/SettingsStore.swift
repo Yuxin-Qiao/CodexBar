@@ -381,7 +381,6 @@ extension SettingsStore {
         let selectedMenuProviderRaw = userDefaults.string(forKey: "selectedMenuProvider")
         let providerDetectionCompleted = userDefaults.object(forKey: "providerDetectionCompleted") as? Bool ?? false
         let appLanguageRaw = userDefaults.string(forKey: "appLanguage")
-        let showActiveProviderEnabled = userDefaults.object(forKey: "showActiveProviderEnabled") as? Bool ?? false
 
         return SettingsDefaultsState(
             refreshFrequency: refreshFrequency,
@@ -433,7 +432,7 @@ extension SettingsStore {
             selectedMenuProviderRaw: selectedMenuProviderRaw,
             providerDetectionCompleted: providerDetectionCompleted,
             appLanguageRaw: appLanguageRaw,
-            showActiveProviderEnabled: showActiveProviderEnabled)
+            showActiveProviderEnabled: userDefaults.object(forKey: "showActiveProviderEnabled") as? Bool ?? false)
     }
 
     private static func loadMenuBarMetricPreferences(userDefaults: UserDefaults) -> [String: String] {

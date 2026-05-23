@@ -170,6 +170,7 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
 
     var activeApplicationDetector: ActiveApplicationProviderDetector?
     private var activeApplicationDetectorCancellable: AnyCancellable?
+    var activeApplicationCurrentProvider: UsageProvider?
 
     private static func makeStatusItem(statusBar: NSStatusBar) -> NSStatusItem {
         let item = statusBar.statusItem(withLength: NSStatusItem.variableLength)
@@ -324,6 +325,27 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
         self.refreshActiveApplicationDetectorLifecycle()
     }
 
+    private func refreshActiveApplicationDetectorLifecycle() {
+        self.activeApplicationDetectorCancellable?.cancel()
+        self.activeApplicationDetectorCancellable = nil
+        self.activeApplicationDetector = nil
+        self.activeApplicationCurrentProvider = nil
+        guard self.shouldMergeIcons, self.settings.showActiveProviderEnabled else { return }
+        let detector = ActiveApplicationProviderDetector(observeApplicationChanges: true)
+        self.activeApplicationDetector = detector
+        self.activeApplicationDetectorCancellable = detector.$currentProvider
+            .sink { [weak self] provider in
+                guard let self, self.activeApplicationDetector != nil else { return }
+                self.activeApplicationCurrentProvider = provider
+                self.updateIcons()
+            }
+        detector.updateFromFrontmostApplication()
+        if let initialProvider = detector.currentProvider {
+            self.activeApplicationCurrentProvider = initialProvider
+            self.updateIcons()
+        }
+    }
+
     convenience init(
         store: UsageStore,
         settings: SettingsStore,
@@ -353,34 +375,6 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
         self.observeSettingsChanges()
         self.observeUpdaterChanges()
         self.observeManagedCodexCoordinatorChanges()
-    }
-
-    private func observeActiveApplicationDetectorChanges() {
-        guard let detector = self.activeApplicationDetector else { return }
-        withObservationTracking {
-            _ = detector.currentProvider
-        } onChange: { [weak self] in
-            Task { @MainActor [weak self] in
-                guard let self, self.activeApplicationDetector != nil else { return }
-                self.observeActiveApplicationDetectorChanges()
-                self.updateIcons()
-            }
-        }
-    }
-
-    private func refreshActiveApplicationDetectorLifecycle() {
-        self.activeApplicationDetectorCancellable?.cancel()
-        self.activeApplicationDetectorCancellable = nil
-        self.activeApplicationDetector = nil
-        guard self.shouldMergeIcons, self.settings.showActiveProviderEnabled else { return }
-        let detector = ActiveApplicationProviderDetector(observeApplicationChanges: true)
-        detector.updateFromFrontmostApplication()
-        self.activeApplicationDetector = detector
-        self.activeApplicationDetectorCancellable = detector.objectWillChange
-            .sink { [weak self] _ in
-                guard let self, self.activeApplicationDetector != nil else { return }
-                self.updateIcons()
-            }
     }
 
     private func observeStoreChanges() {

@@ -87,8 +87,8 @@ final class ActiveApplicationProviderDetector: ObservableObject {
         self.observer = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
             object: nil,
-            queue: .main
-        ) { [weak self] notification in
+            queue: .main)
+        { [weak self] notification in
             guard let self else { return }
             let bundleID = (notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?
                 .bundleIdentifier

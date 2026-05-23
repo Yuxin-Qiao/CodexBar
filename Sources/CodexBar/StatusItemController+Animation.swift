@@ -895,7 +895,7 @@ extension StatusItemController {
     private func primaryProviderForUnifiedIcon() -> UsageProvider {
         if self.shouldMergeIcons,
            self.settings.showActiveProviderEnabled,
-           let activeProvider = self.activeApplicationDetector?.currentProvider,
+           let activeProvider = self.activeApplicationCurrentProvider,
            self.store.enabledProvidersForDisplay().contains(activeProvider)
         {
             return activeProvider
