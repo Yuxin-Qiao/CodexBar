@@ -29,6 +29,17 @@ extension UsageMenuCardView.Model {
             self.placeholder != nil
     }
 
+    var hasSuggestions: Bool {
+        self.suggestions?.isEmpty == false
+    }
+
+    var hasDetails: Bool {
+        self.hasUsageContent ||
+            self.tokenUsage != nil ||
+            self.providerCost != nil ||
+            self.hasSuggestions
+    }
+
     static func progressColor(for provider: UsageProvider) -> Color {
         if provider == .elevenlabs {
             return Color(nsColor: .labelColor)

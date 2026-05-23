@@ -131,11 +131,7 @@ struct UsageMenuCardView: View {
         VStack(alignment: .leading, spacing: 6) {
             UsageMenuCardHeaderView(model: self.model)
 
-            if self.model.hasUsageContent ||
-                self.model.tokenUsage != nil ||
-                self.model.providerCost != nil ||
-                self.model.suggestions != nil
-            {
+            if self.model.hasDetails {
                 Divider()
             }
 
