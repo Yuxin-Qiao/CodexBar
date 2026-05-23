@@ -1,5 +1,6 @@
 import AppKit
 import CodexBarCore
+import Combine
 import Observation
 import QuartzCore
 
@@ -133,6 +134,7 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
     private var lastConfigRevision: Int
     private var lastProviderOrder: [UsageProvider]
     private var lastMergeIcons: Bool
+    private var lastShowActiveProviderEnabled: Bool
     private var lastSwitcherShowsIcons: Bool
     private var lastObservedUsageBarsShowUsed: Bool
     /// Tracks which `usageBarsShowUsed` mode the provider switcher was built with.
@@ -165,6 +167,9 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
         get { self.settings.selectedMenuProvider }
         set { self.settings.selectedMenuProvider = newValue }
     }
+
+    var activeApplicationDetector: ActiveApplicationProviderDetector?
+    private var activeApplicationDetectorCancellable: AnyCancellable?
 
     private static func makeStatusItem(statusBar: NSStatusBar) -> NSStatusItem {
         let item = statusBar.statusItem(withLength: NSStatusItem.variableLength)
@@ -277,6 +282,7 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
         self.lastProviderOrder = settings.providerOrder
         self.lastMergeIcons = settings.mergeIcons
         self.lastSwitcherShowsIcons = settings.switcherShowsIcons
+        self.lastShowActiveProviderEnabled = settings.showActiveProviderEnabled
         self.lastObservedUsageBarsShowUsed = settings.usageBarsShowUsed
         self.lastSwitcherUsageBarsShowUsed = settings.usageBarsShowUsed
         self.statusBar = statusBar
@@ -315,6 +321,7 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
             selector: #selector(self.handleScreenParametersDidChange(_:)),
             name: NSApplication.didChangeScreenParametersNotification,
             object: nil)
+        self.refreshActiveApplicationDetectorLifecycle()
     }
 
     convenience init(
@@ -346,6 +353,34 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
         self.observeSettingsChanges()
         self.observeUpdaterChanges()
         self.observeManagedCodexCoordinatorChanges()
+    }
+
+    private func observeActiveApplicationDetectorChanges() {
+        guard let detector = self.activeApplicationDetector else { return }
+        withObservationTracking {
+            _ = detector.currentProvider
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, self.activeApplicationDetector != nil else { return }
+                self.observeActiveApplicationDetectorChanges()
+                self.updateIcons()
+            }
+        }
+    }
+
+    private func refreshActiveApplicationDetectorLifecycle() {
+        self.activeApplicationDetectorCancellable?.cancel()
+        self.activeApplicationDetectorCancellable = nil
+        self.activeApplicationDetector = nil
+        guard self.shouldMergeIcons, self.settings.showActiveProviderEnabled else { return }
+        let detector = ActiveApplicationProviderDetector(observeApplicationChanges: true)
+        detector.updateFromFrontmostApplication()
+        self.activeApplicationDetector = detector
+        self.activeApplicationDetectorCancellable = detector.objectWillChange
+            .sink { [weak self] _ in
+                guard let self, self.activeApplicationDetector != nil else { return }
+                self.updateIcons()
+            }
     }
 
     private func observeStoreChanges() {
@@ -563,6 +598,12 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
         if mergeIcons != self.lastMergeIcons {
             self.lastMergeIcons = mergeIcons
             shouldRefresh = true
+            self.refreshActiveApplicationDetectorLifecycle()
+        }
+        let showActiveProvider = self.settings.showActiveProviderEnabled
+        if showActiveProvider != self.lastShowActiveProviderEnabled {
+            self.lastShowActiveProviderEnabled = showActiveProvider
+            self.refreshActiveApplicationDetectorLifecycle()
         }
         let showsIcons = self.settings.switcherShowsIcons
         if showsIcons != self.lastSwitcherShowsIcons {

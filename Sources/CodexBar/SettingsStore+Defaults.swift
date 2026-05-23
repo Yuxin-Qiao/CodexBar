@@ -658,6 +658,14 @@ extension SettingsStore {
         }
     }
 
+    var showActiveProviderEnabled: Bool {
+        get { self.defaultsState.showActiveProviderEnabled }
+        set {
+            self.defaultsState.showActiveProviderEnabled = newValue
+            self.userDefaults.set(newValue, forKey: "showActiveProviderEnabled")
+        }
+    }
+
     var debugLoadingPattern: LoadingPattern? {
         get { self.debugLoadingPatternRaw.flatMap(LoadingPattern.init(rawValue:)) }
         set { self.debugLoadingPatternRaw = newValue?.rawValue }

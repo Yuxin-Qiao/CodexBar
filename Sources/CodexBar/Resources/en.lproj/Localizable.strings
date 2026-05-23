@@ -473,6 +473,8 @@
 "switcher_shows_icons_subtitle" = "Show provider icons in the switcher (otherwise show a weekly progress line).";
 "show_most_used_provider_title" = "Show most-used provider";
 "show_most_used_provider_subtitle" = "Menu bar auto-shows the provider closest to its rate limit.";
+"show_active_provider_title" = "Show active provider";
+"show_active_provider_subtitle" = "Menu bar auto-shows the provider associated with the focused app when possible.";
 "menu_bar_shows_percent_title" = "Menu bar shows percent";
 "menu_bar_shows_percent_subtitle" = "Replace critter bars with provider branding icons and a percentage.";
 "display_mode_title" = "Display mode";

@@ -38,6 +38,12 @@ struct DisplayPane: View {
                         .disabled(!self.settings.mergeIcons)
                         .opacity(self.settings.mergeIcons ? 1 : 0.5)
                     PreferenceToggleRow(
+                        title: L("show_active_provider_title"),
+                        subtitle: L("show_active_provider_subtitle"),
+                        binding: self.$settings.showActiveProviderEnabled)
+                        .disabled(!self.settings.mergeIcons)
+                        .opacity(self.settings.mergeIcons ? 1 : 0.5)
+                    PreferenceToggleRow(
                         title: L("menu_bar_shows_percent_title"),
                         subtitle: L("menu_bar_shows_percent_subtitle"),
                         binding: self.$settings.menuBarShowsBrandIconWithPercent)
