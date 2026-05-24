@@ -46,6 +46,42 @@ public struct ProviderSubscriptionSnapshot: Codable, Sendable, Equatable {
         self.updatedAt = updatedAt
     }
 
+    enum CodingKeys: String, CodingKey {
+        case provider
+        case planName
+        case status
+        case subscriptionRenewsAt
+        case subscriptionExpiresAt
+        case source
+        case confidence
+        case updatedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.provider = try container.decode(UsageProvider.self, forKey: .provider)
+        self.planName = try Self.normalized(container.decodeIfPresent(String.self, forKey: .planName))
+        self.status = try container.decode(ProviderSubscriptionStatus.self, forKey: .status)
+        self.subscriptionRenewsAt = try Self.decodeDateIfPresent(container, forKey: .subscriptionRenewsAt)
+        self.subscriptionExpiresAt = try Self.decodeDateIfPresent(container, forKey: .subscriptionExpiresAt)
+        self.source = try container.decodeIfPresent(ProviderSubscriptionSource.self, forKey: .source) ?? .manual
+        self.confidence = try container
+            .decodeIfPresent(ProviderSubscriptionConfidence.self, forKey: .confidence) ?? .manual
+        self.updatedAt = try Self.decodeDate(container, forKey: .updatedAt)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.provider, forKey: .provider)
+        try container.encodeIfPresent(self.planName, forKey: .planName)
+        try container.encode(self.status, forKey: .status)
+        try Self.encodeDateIfPresent(self.subscriptionRenewsAt, to: &container, forKey: .subscriptionRenewsAt)
+        try Self.encodeDateIfPresent(self.subscriptionExpiresAt, to: &container, forKey: .subscriptionExpiresAt)
+        try container.encode(self.source, forKey: .source)
+        try container.encode(self.confidence, forKey: .confidence)
+        try Self.encodeDate(self.updatedAt, to: &container, forKey: .updatedAt)
+    }
+
     public var hasDisplayableDate: Bool {
         self.subscriptionRenewsAt != nil || self.subscriptionExpiresAt != nil
     }
@@ -67,6 +103,70 @@ public struct ProviderSubscriptionSnapshot: Codable, Sendable, Equatable {
         let trimmed = planName.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
+
+    private static func decodeDateIfPresent(
+        _ container: KeyedDecodingContainer<CodingKeys>,
+        forKey key: CodingKeys) throws -> Date?
+    {
+        guard container.contains(key) else { return nil }
+        if try container.decodeNil(forKey: key) { return nil }
+        return try self.decodeDate(container, forKey: key)
+    }
+
+    private static func decodeDate(
+        _ container: KeyedDecodingContainer<CodingKeys>,
+        forKey key: CodingKeys) throws -> Date
+    {
+        if let rawString = try? container.decodeIfPresent(String.self, forKey: key),
+           let parsed = parseDateString(rawString)
+        {
+            return parsed
+        }
+        if let unixSeconds = try? container.decodeIfPresent(Double.self, forKey: key) {
+            return Date(timeIntervalSince1970: unixSeconds)
+        }
+        throw DecodingError.dataCorruptedError(
+            forKey: key,
+            in: container,
+            debugDescription: "Expected ISO-8601 date string or unix-seconds number")
+    }
+
+    private static func parseDateString(_ value: String) -> Date? {
+        let withFractionalSeconds = ISO8601DateFormatter()
+        withFractionalSeconds.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = withFractionalSeconds.date(from: value) {
+            return date
+        }
+        let standard = ISO8601DateFormatter()
+        standard.formatOptions = [.withInternetDateTime]
+        return standard.date(from: value)
+    }
+
+    private static func encodeDate(
+        _ value: Date,
+        to container: inout KeyedEncodingContainer<CodingKeys>,
+        forKey key: CodingKeys) throws
+    {
+        try container.encode(self.iso8601String(from: value), forKey: key)
+    }
+
+    private static func encodeDateIfPresent(
+        _ value: Date?,
+        to container: inout KeyedEncodingContainer<CodingKeys>,
+        forKey key: CodingKeys) throws
+    {
+        guard let value else {
+            try container.encodeNil(forKey: key)
+            return
+        }
+        try self.encodeDate(value, to: &container, forKey: key)
+    }
+
+    private static func iso8601String(from date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.string(from: date)
+    }
 }
 
 public enum ProviderSubscriptionFormatter {
@@ -87,13 +187,13 @@ public enum ProviderSubscriptionFormatter {
     }
 
     private static func renewsLine(date: Date, now: Date, calendar: Calendar) -> String {
-        let dayDelta = self.dayDelta(from: now, to: date, calendar: calendar)
+        let dayDelta = dayDelta(from: now, to: date, calendar: calendar)
         if dayDelta == 0 { return "Renews today" }
         return "Renews \(date.formatted(date: .abbreviated, time: .omitted))"
     }
 
     private static func expiresLine(date: Date, now: Date, calendar: Calendar) -> String {
-        let dayDelta = self.dayDelta(from: now, to: date, calendar: calendar)
+        let dayDelta = dayDelta(from: now, to: date, calendar: calendar)
         if dayDelta < 0 {
             return "Expired \(date.formatted(date: .abbreviated, time: .omitted))"
         }
