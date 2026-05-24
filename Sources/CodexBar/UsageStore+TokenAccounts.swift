@@ -1185,6 +1185,7 @@ extension UsageStore {
             guard self.isCurrentProviderRefreshGeneration(.codex, generation: generation) else { return }
             self.recordCodexHistoricalSampleIfNeeded(snapshot: snapshot)
         case let .failure(error):
+            self.handleProviderSubscriptionReminders(provider: .codex)
             guard let message = self.tokenAccountErrorMessage(error) else {
                 self.errors[.codex] = nil
                 return
@@ -1244,6 +1245,7 @@ extension UsageStore {
                 account: account)
         case let .failure(error):
             await MainActor.run {
+                self.handleProviderSubscriptionReminders(provider: provider)
                 guard let message = self.tokenAccountErrorMessage(error) else {
                     self.errors[provider] = nil
                     return

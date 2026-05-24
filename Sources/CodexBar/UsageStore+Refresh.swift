@@ -327,6 +327,9 @@ extension UsageStore {
             if context.shouldConsumeClaudeKeychainFingerprint {
                 _ = await Self.consumeClaudeKeychainFingerprintChangeWithoutPrompt()
             }
+            await MainActor.run {
+                self.handleProviderSubscriptionReminders(provider: provider)
+            }
             await self.handleProviderFetchFailure(
                 provider: provider,
                 error: error,

@@ -389,7 +389,7 @@ struct MenuDescriptor {
         let snapshot = store.snapshot(for: provider)
         let metadata = store.metadata(for: provider)
         let subscription = settings.providerSubscriptionSnapshot(for: provider)
-        let fallbackAccount = metadata.usesAccountFallback ? account : AccountInfo()
+        let fallbackAccount = metadata.usesAccountFallback ? account : AccountInfo(email: nil, plan: nil)
         let entries = Self.accountEntries(
             provider: provider,
             snapshot: snapshot,

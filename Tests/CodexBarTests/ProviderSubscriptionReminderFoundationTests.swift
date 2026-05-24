@@ -37,6 +37,78 @@ struct ProviderSubscriptionReminderFoundationTests {
     }
 
     @Test
+    func `documented ISO-8601 subscription dates decode from config JSON`() throws {
+        let json = """
+        {
+          "version": 1,
+          "providers": [
+            {
+              "id": "minimax",
+              "subscriptionSnapshot": {
+                "provider": "minimax",
+                "planName": "Monthly",
+                "status": "active",
+                "subscriptionRenewsAt": "2026-06-24T00:00:00Z",
+                "subscriptionExpiresAt": null,
+                "source": "manual",
+                "confidence": "manual",
+                "updatedAt": "2026-05-24T00:00:00Z"
+              }
+            }
+          ]
+        }
+        """
+        let decoded = try JSONDecoder().decode(CodexBarConfig.self, from: Data(json.utf8))
+        let snapshot = try #require(decoded.providerConfig(for: .minimax)?.subscriptionSnapshot)
+
+        #expect(snapshot.subscriptionRenewsAt != nil)
+        #expect(snapshot.updatedAt != Date(timeIntervalSince1970: 0))
+    }
+
+    @Test
+    func `manual subscription reminders still evaluate on token account failure`() async throws {
+        let suite = "ProviderSubscriptionReminderFoundationTests-failure-reminder-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        let settings = SettingsStore(
+            userDefaults: defaults,
+            configStore: testConfigStore(suiteName: suite),
+            zaiTokenStore: NoopZaiTokenStore(),
+            syntheticTokenStore: NoopSyntheticTokenStore())
+        settings.statusChecksEnabled = false
+
+        let expiresToday = Date()
+        settings.setProviderSubscriptionSnapshot(
+            provider: .minimax,
+            snapshot: ProviderSubscriptionSnapshot(
+                provider: .minimax,
+                planName: "Monthly",
+                status: .canceled,
+                subscriptionRenewsAt: nil,
+                subscriptionExpiresAt: expiresToday,
+                updatedAt: Date()))
+
+        let notifier = SubscriptionReminderNotifierSpy()
+        let store = UsageStore(
+            fetcher: UsageFetcher(),
+            browserDetection: BrowserDetection(cacheTTL: 0),
+            settings: settings,
+            sessionQuotaNotifier: notifier,
+            startupBehavior: .testing)
+
+        let outcome = ProviderFetchOutcome(
+            result: .failure(ProviderFetchError.noAvailableStrategy(.minimax)),
+            attempts: [])
+        await store.applySelectedOutcome(
+            outcome,
+            provider: .minimax,
+            account: nil,
+            fallbackSnapshot: nil)
+
+        #expect(notifier.reminders.contains(where: { $0.provider == .minimax && $0.event.type == .expiresToday }))
+    }
+
+    @Test
     func `subscription formatter handles renews expires and expired states`() throws {
         let calendar = Calendar(identifier: .gregorian)
         let now = Date(timeIntervalSince1970: 1_720_000_000)
@@ -174,5 +246,28 @@ struct ProviderSubscriptionReminderFoundationTests {
                 return nil
             }
         }
+    }
+}
+
+@MainActor
+private final class SubscriptionReminderNotifierSpy: SessionQuotaNotifying {
+    private(set) var transitions: [(transition: SessionQuotaTransition, provider: UsageProvider)] = []
+    private(set) var quotaWarnings: [(event: QuotaWarningEvent, provider: UsageProvider, soundEnabled: Bool)] = []
+    private(set) var reminders: [(provider: UsageProvider, event: ProviderSubscriptionReminderEvent)] = []
+
+    func post(transition: SessionQuotaTransition, provider: UsageProvider, badge _: NSNumber?) {
+        self.transitions.append((transition, provider))
+    }
+
+    func postQuotaWarning(event: QuotaWarningEvent, provider: UsageProvider, soundEnabled: Bool) {
+        self.quotaWarnings.append((event, provider, soundEnabled))
+    }
+
+    func postProviderSubscriptionReminder(
+        provider: UsageProvider,
+        event: ProviderSubscriptionReminderEvent,
+        badge _: NSNumber?)
+    {
+        self.reminders.append((provider, event))
     }
 }
