@@ -2,6 +2,9 @@
 
 ## 0.30.2 — Unreleased
 
+### Changed
+- Tests: document and audit that routine validation must not trigger macOS Keychain prompts.
+
 ### Added
 - Codex: show Codex Spark model-specific usage as an optional extra quota lane (#1195, fixes #1177). Thanks @LeoLin990405!
 
