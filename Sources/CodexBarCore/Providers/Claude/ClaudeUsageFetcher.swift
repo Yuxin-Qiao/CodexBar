@@ -1049,19 +1049,11 @@ extension ClaudeUsageFetcher {
     private static func oauthExtraRateWindows(from usage: OAuthUsageResponse) -> [NamedRateWindow] {
         let definitions: [(id: String, title: String, window: OAuthUsageWindow?, sourceKey: String?)] = [
             (
-                id: "claude-design",
-                title: "Designs",
-                window: usage.sevenDayDesign,
-                sourceKey: usage.sevenDayDesignSourceKey),
-            (
                 id: "claude-routines",
                 title: "Daily Routines",
                 window: usage.sevenDayRoutines,
                 sourceKey: usage.sevenDayRoutinesSourceKey),
         ]
-        if let designKey = usage.sevenDayDesignSourceKey {
-            Self.log.debug("Claude OAuth extra usage key matched: design=\(designKey)")
-        }
         if let routinesKey = usage.sevenDayRoutinesSourceKey {
             Self.log.debug("Claude OAuth extra usage key matched: routines=\(routinesKey)")
         }

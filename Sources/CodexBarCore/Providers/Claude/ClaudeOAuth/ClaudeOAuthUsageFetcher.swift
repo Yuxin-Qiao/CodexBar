@@ -144,9 +144,7 @@ struct OAuthUsageResponse: Decodable {
     let sevenDayOAuthApps: OAuthUsageWindow?
     let sevenDayOpus: OAuthUsageWindow?
     let sevenDaySonnet: OAuthUsageWindow?
-    let sevenDayDesign: OAuthUsageWindow?
     let sevenDayRoutines: OAuthUsageWindow?
-    let sevenDayDesignSourceKey: String?
     let sevenDayRoutinesSourceKey: String?
     let iguanaNecktie: OAuthUsageWindow?
     let extraUsage: OAuthExtraUsage?
@@ -158,17 +156,6 @@ struct OAuthUsageResponse: Decodable {
         self.sevenDayOAuthApps = Self.decodeWindow(in: container, keys: ["seven_day_oauth_apps"])
         self.sevenDayOpus = Self.decodeWindow(in: container, keys: ["seven_day_opus"])
         self.sevenDaySonnet = Self.decodeWindow(in: container, keys: ["seven_day_sonnet"])
-        let design = Self.decodeWindowWithSource(in: container, keys: [
-            "seven_day_design",
-            "seven_day_claude_design",
-            "claude_design",
-            "design",
-            "seven_day_omelette",
-            "omelette",
-            "omelette_promotional",
-        ])
-        self.sevenDayDesign = design.window
-        self.sevenDayDesignSourceKey = design.sourceKey
         let routines = Self.decodeWindowWithSource(in: container, keys: [
             "seven_day_routines",
             "seven_day_claude_routines",

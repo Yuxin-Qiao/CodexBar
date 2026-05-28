@@ -98,7 +98,7 @@ struct ClaudeOAuthTests {
     }
 
     @Test
-    func `maps O auth design and routines usage windows`() throws {
+    func `ignores merged O auth design usage window`() throws {
         let json = """
         {
           "five_hour": { "utilization": 12.5, "resets_at": "2025-12-25T12:00:00.000Z" },
@@ -107,15 +107,14 @@ struct ClaudeOAuthTests {
         }
         """
         let snap = try ClaudeUsageFetcher._mapOAuthUsageForTesting(Data(json.utf8))
-        #expect(snap.extraRateWindows.count == 2)
-        #expect(snap.extraRateWindows.first(where: { $0.id == "claude-design" })?.title == "Designs")
-        #expect(snap.extraRateWindows.first(where: { $0.id == "claude-design" })?.window.usedPercent == 44)
+        #expect(snap.extraRateWindows.count == 1)
+        #expect(snap.extraRateWindows.contains { $0.id == "claude-design" } == false)
         #expect(snap.extraRateWindows.first(where: { $0.id == "claude-routines" })?.title == "Daily Routines")
         #expect(snap.extraRateWindows.first(where: { $0.id == "claude-routines" })?.window.usedPercent == 18)
     }
 
     @Test
-    func `maps O auth omelette and cowork usage windows`() throws {
+    func `ignores merged O auth omelette usage window`() throws {
         let json = """
         {
           "five_hour": { "utilization": 12.5, "resets_at": "2025-12-25T12:00:00.000Z" },
@@ -124,8 +123,8 @@ struct ClaudeOAuthTests {
         }
         """
         let snap = try ClaudeUsageFetcher._mapOAuthUsageForTesting(Data(json.utf8))
-        #expect(snap.extraRateWindows.count == 2)
-        #expect(snap.extraRateWindows.first(where: { $0.id == "claude-design" })?.window.usedPercent == 29)
+        #expect(snap.extraRateWindows.count == 1)
+        #expect(snap.extraRateWindows.contains { $0.id == "claude-design" } == false)
         #expect(snap.extraRateWindows.first(where: { $0.id == "claude-routines" })?.window.usedPercent == 9)
     }
 
@@ -140,10 +139,11 @@ struct ClaudeOAuthTests {
         """
         let snap = try ClaudeUsageFetcher._mapOAuthUsageForTesting(Data(json.utf8))
         #expect(snap.extraRateWindows.first(where: { $0.id == "claude-routines" })?.window.usedPercent == 0)
+        #expect(snap.extraRateWindows.contains { $0.id == "claude-design" } == false)
     }
 
     @Test
-    func `prefers populated alias over null alias in mixed payload`() throws {
+    func `prefers populated routines alias over null alias in mixed payload`() throws {
         let json = """
         {
           "five_hour": { "utilization": 12.5, "resets_at": "2025-12-25T12:00:00.000Z" },
@@ -154,7 +154,7 @@ struct ClaudeOAuthTests {
         }
         """
         let snap = try ClaudeUsageFetcher._mapOAuthUsageForTesting(Data(json.utf8))
-        #expect(snap.extraRateWindows.first(where: { $0.id == "claude-design" })?.window.usedPercent == 37)
+        #expect(snap.extraRateWindows.contains { $0.id == "claude-design" } == false)
         #expect(snap.extraRateWindows.first(where: { $0.id == "claude-routines" })?.window.usedPercent == 14)
     }
 
