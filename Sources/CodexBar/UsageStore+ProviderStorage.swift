@@ -29,6 +29,14 @@ extension UsageStore {
     }
 
     func refreshStorageFootprintsForOverview() {
+        // This method is called during menu rebuilds; keep it cheap to avoid
+        // repeated main-thread file reads when users rapidly switch providers.
+        if self.storageRefreshTask != nil { return }
+        if let lastStorageRefreshAt,
+           Date().timeIntervalSince(lastStorageRefreshAt) < Self.automaticStorageRefreshInterval
+        {
+            return
+        }
         self.scheduleStorageFootprintRefresh(for: self.enabledProvidersForDisplay())
     }
 
