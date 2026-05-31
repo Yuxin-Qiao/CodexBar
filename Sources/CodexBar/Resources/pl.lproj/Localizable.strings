@@ -428,19 +428,19 @@
 "session_depleted_notification_body" = "Pozostało 0%. Powiadomimy, gdy limit będzie ponownie dostępny.";
 "session_restored_notification_title" = "Przywrócono limit sesji (%@)";
 "session_restored_notification_body" = "Limit sesji jest ponownie dostępny.";
-"quota_warning_warn_at" = "Warn at";
-"quota_warning_global_threshold_subtitle" = "Remaining percentages for session and weekly windows unless a provider overrides them.";
-"quota_warning_sound" = "Play notification sound";
-"quota_warning_provider_inherits" = "Uses the global quota warning settings unless a window is customized here.";
-"quota_warning_customize_thresholds" = "Customize %@ thresholds";
-"quota_warning_enable_warnings" = "Enable %@ warnings";
-"quota_warning_window_warn_at" = "%@ warn at";
-"quota_warning_off" = "Off";
-"quota_warning_inherited" = "Inherited: %@";
-"quota_warning_depleted_only" = "depleted only";
-"quota_warning_upper" = "Upper";
-"quota_warning_lower" = "Lower";
-"apply" = "Apply";
+"quota_warning_warn_at" = "Ostrzegaj przy";
+"quota_warning_global_threshold_subtitle" = "Procent pozostałego limitu dla okien sesji i tygodnia, chyba że dostawca ma nadpisanie.";
+"quota_warning_sound" = "Odtwarzaj dźwięk powiadomienia";
+"quota_warning_provider_inherits" = "Używa globalnych ustawień ostrzeżeń limitu, chyba że to okno jest tutaj dostosowane.";
+"quota_warning_customize_thresholds" = "Dostosuj progi dla %@";
+"quota_warning_enable_warnings" = "Włącz ostrzeżenia dla %@";
+"quota_warning_window_warn_at" = "%@ — ostrzegaj przy";
+"quota_warning_off" = "Wyłączone";
+"quota_warning_inherited" = "Dziedziczone: %@";
+"quota_warning_depleted_only" = "tylko wyczerpanie";
+"quota_warning_upper" = "Górny";
+"quota_warning_lower" = "Dolny";
+"apply" = "Zastosuj";
 "quit_app" = "Zakończ aplikację";
 
 /* Tab titles */
@@ -543,7 +543,7 @@
 "link_website" = "Website";
 "link_twitter" = "Twitter";
 "link_email" = "Email";
-"check_updates_auto" = "Check for updates automatically";
+"check_updates_auto" = "Sprawdzaj aktualizacje automatycznie";
 "update_channel" = "Kanał aktualizacji";
 "check_for_updates" = "Sprawdź aktualizacje…";
 "updates_unavailable" = "Aktualizacje niedostępne w tej wersji.";
@@ -551,7 +551,7 @@
 
 /* Debug Pane */
 "section_logging" = "Logowanie";
-"enable_file_logging" = "Enable file logging";
+"enable_file_logging" = "Włącz logowanie do pliku";
 "enable_file_logging_subtitle" = "Write logs to %@ for debugging.";
 "verbosity_title" = "Verbosity";
 "verbosity_subtitle" = "Controls how much detail is logged.";
@@ -571,9 +571,9 @@
 "load_parse_dump" = "Load parse dump";
 "rerun_provider_autodetect" = "Re-run provider autodetect";
 "loading" = "Loading…";
-"no_log_yet_fetch" = "No log yet. Fetch to load.";
+"no_log_yet_fetch" = "Brak logu. Pobierz, aby wczytać.";
 "section_fetch_strategy" = "Strategia pobierania";
-"fetch_strategy_caption" = "Last fetch pipeline decisions and errors for a provider.";
+"fetch_strategy_caption" = "Ostatnie decyzje i błędy potoku pobierania dla dostawcy.";
 "section_openai_cookies" = "Ciasteczka OpenAI";
 "openai_cookies_caption" = "Logi importu ciasteczek + zrzutu WebKit z ostatniej próby odczytu ciasteczek OpenAI.";
 "no_log_yet" = "Brak logu. Zaktualizuj ciasteczka OpenAI w Dostawcy → Codex, aby uruchomić import.";
@@ -591,9 +591,9 @@
 "keep_cli_sessions_alive_subtitle" = "Skip teardown between probes (debug-only).";
 "reset_cli_sessions" = "Reset CLI sessions";
 "section_error_simulation" = "Symulacja błędów";
-"error_simulation_caption" = "Inject a fake error message into the menu card for layout testing.";
-"set_menu_error" = "Set menu error";
-"clear_menu_error" = "Clear menu error";
+"error_simulation_caption" = "Wstrzykuje fałszywy komunikat błędu do karty menu na potrzeby testów układu.";
+"set_menu_error" = "Ustaw błąd menu";
+"clear_menu_error" = "Wyczyść błąd menu";
 "set_cost_error" = "Set cost error";
 "clear_cost_error" = "Clear cost error";
 "section_cli_paths" = "CLI paths";
@@ -602,9 +602,9 @@
 "claude_binary" = "Claude binary";
 "effective_path" = "Effective PATH";
 "unavailable" = "Unavailable";
-"login_shell_path" = "Login shell PATH (startup capture)";
+"login_shell_path" = "PATH powłoki logowania (przechwycony przy starcie)";
 "cleared" = "Cleared.";
-"no_fetch_attempts" = "No fetch attempts yet.";
+"no_fetch_attempts" = "Brak prób pobrania.";
 "macOS Tahoe can block menu bar apps in System Settings → Menu Bar → Allow in the Menu Bar. CodexBar is running, but macOS may be hiding its icon. Open Menu Bar settings and turn CodexBar on." = "macOS Tahoe can block menu bar apps in System Settings → Menu Bar → Allow in the Menu Bar. CodexBar is running, but macOS may be hiding its icon. Open Menu Bar settings and turn CodexBar on.";
 
 /* Metric preferences */
@@ -624,12 +624,12 @@
 "display_mode_both_desc" = "Show both percentage and pace (e.g. 45% · +5%)";
 
 /* Provider status */
-"status_operational" = "Operational";
-"status_partial_outage" = "Partial outage";
-"status_major_outage" = "Major outage";
-"status_critical_issue" = "Critical issue";
-"status_maintenance" = "Maintenance";
-"status_unknown" = "Status unknown";
+"status_operational" = "Operacyjne";
+"status_partial_outage" = "Częściowa awaria";
+"status_major_outage" = "Poważna awaria";
+"status_critical_issue" = "Krytyczny problem";
+"status_maintenance" = "Prace serwisowe";
+"status_unknown" = "Nieznany status";
 
 /* Refresh frequency */
 "refresh_manual" = "Ręcznie";
@@ -650,9 +650,9 @@
 "z.ai API token not found. Set apiKey in ~/.codexbar/config.json or Z_AI_API_KEY." = "z.ai API token not found. Set apiKey in ~/.codexbar/config.json or Z_AI_API_KEY.";
 "Missing DeepSeek API key." = "Missing DeepSeek API key.";
 "%@ is unavailable in the current environment." = "%@ is unavailable in the current environment.";
-"All Systems Operational" = "All Systems Operational";
-"Last 30 days" = "Last 30 days";
-"Last 30 days:" = "Last 30 days:";
+"All Systems Operational" = "Wszystkie systemy działają";
+"Last 30 days" = "Ostatnie 30 dni";
+"Last 30 days:" = "Ostatnie 30 dni:";
 "This month" = "This month";
 "Store multiple OpenAI API keys." = "Store multiple OpenAI API keys.";
 "Admin API key" = "Admin API key";
@@ -729,7 +729,7 @@
 "No %@ utilization data yet." = "No %@ utilization data yet.";
 "%@: %@%% used" = "%@: %@%% used";
 "%dd" = "%dd";
-"today" = "today";
+"today" = "dzisiaj";
 "just now" = "just now";
 "On pace" = "On pace";
 "Runs out now" = "Runs out now";
@@ -769,7 +769,7 @@
 "Copy error" = "Copy error";
 "Copy path" = "Copy path";
 "Extra usage spent" = "Extra usage spent";
-"Credits remaining" = "Credits remaining";
+"Credits remaining" = "Pozostałe kredyty";
 "Using CLI fallback" = "Using CLI fallback";
 "Balance updates in near-real time (up to 5 min lag)" = "Balance updates in near-real time (up to 5 min lag)";
 "Daily billing data finalizes at 07:00 UTC" = "Daily billing data finalizes at 07:00 UTC";
@@ -792,8 +792,8 @@
 "Extra usage" = "Extra usage";
 "Quota usage" = "Quota usage";
 "%.0f%% used" = "%.0f%% used";
-"Usage history (today)" = "Usage history (today)";
-"Usage history (%d days)" = "Usage history (%d days)";
+"Usage history (today)" = "Historia użycia (dzisiaj)";
+"Usage history (%d days)" = "Historia użycia (%d dni)";
 "%d percent remaining" = "%d percent remaining";
 "Unknown" = "Unknown";
 "stale data" = "stale data";
