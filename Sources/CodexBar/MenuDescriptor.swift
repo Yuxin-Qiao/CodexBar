@@ -462,17 +462,22 @@ struct MenuDescriptor {
             }
         }
 
-        if metadata.usesAccountFallback {
-            if emailText?.isEmpty ?? true, let fallbackEmail = fallback.email, !fallbackEmail.isEmpty {
-                let redacted = PersonalInfoRedactor.redactEmail(fallbackEmail, isEnabled: hidePersonalInfo)
-                entries.append(.text("\(L("Account")): \(redacted)", .secondary))
-            }
-            if loginMethodText?.isEmpty ?? true, let fallbackPlan = fallback.plan, !fallbackPlan.isEmpty {
-                entries.append(
-                    .text(
-                        "\(L("Plan")): \(AccountFormatter.plan(fallbackPlan, provider: provider))",
-                        .secondary))
-            }
+        if let subscription,
+           let subscriptionLine = ProviderSubscriptionFormatter.menuLine(from: subscription),
+           !subscriptionLine.isEmpty
+        {
+            entries.append(.text("Subscription: \(subscriptionLine)", .secondary))
+        }
+
+        if emailText?.isEmpty ?? true, let fallbackEmail = fallback.email, !fallbackEmail.isEmpty {
+            let redacted = PersonalInfoRedactor.redactEmail(fallbackEmail, isEnabled: hidePersonalInfo)
+            entries.append(.text("\(L("Account")): \(redacted)", .secondary))
+        }
+        if loginMethodText?.isEmpty ?? true, let fallbackPlan = fallback.plan, !fallbackPlan.isEmpty {
+            entries.append(
+                .text(
+                    "\(L("Plan")): \(AccountFormatter.plan(fallbackPlan, provider: provider))",
+                    .secondary))
         }
 
         if let subscription,
