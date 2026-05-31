@@ -73,8 +73,10 @@ private func localizedBundle() -> Bundle {
         }
     } else {
         // System mode: follow macOS language preferences
-        if let preferred = resourceBundle.preferredLocalizations.first,
-           let bundle = lprojBundle(named: preferred, in: resourceBundle)
+        if let preferred = preferredSystemLocalization(
+            availableLocalizations: resourceBundle.localizations,
+            preferredLanguages: Locale.preferredLanguages),
+            let bundle = lprojBundle(named: preferred, in: resourceBundle)
         {
             return bundle
         }
@@ -89,7 +91,7 @@ private func localizedBundle() -> Bundle {
 }
 
 private func lprojBundle(named language: String, in resourceBundle: Bundle) -> Bundle? {
-    let candidates = [language, language.lowercased()]
+    let candidates = localizationCandidates(for: language)
     for candidate in candidates where !candidate.isEmpty {
         if let path = resourceBundle.path(forResource: candidate, ofType: "lproj"),
            let bundle = Bundle(path: path)
@@ -98,6 +100,40 @@ private func lprojBundle(named language: String, in resourceBundle: Bundle) -> B
         }
     }
     return nil
+}
+
+func preferredSystemLocalization(
+    availableLocalizations: [String],
+    preferredLanguages: [String]) -> String?
+{
+    Bundle.preferredLocalizations(
+        from: availableLocalizations,
+        forPreferences: preferredLanguages).first
+}
+
+func localizationCandidates(for language: String) -> [String] {
+    var candidates: [String] = []
+    var seen: Set<String> = []
+
+    func append(_ candidate: String) {
+        let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !seen.contains(trimmed) else { return }
+        candidates.append(trimmed)
+        seen.insert(trimmed)
+    }
+
+    let canonical = language.replacingOccurrences(of: "_", with: "-")
+    append(canonical)
+    append(canonical.lowercased())
+
+    var parts = canonical.split(separator: "-").map(String.init)
+    while parts.count > 1 {
+        parts.removeLast()
+        append(parts.joined(separator: "-"))
+        append(parts.joined(separator: "-").lowercased())
+    }
+
+    return candidates
 }
 
 func L(_ key: String) -> String {

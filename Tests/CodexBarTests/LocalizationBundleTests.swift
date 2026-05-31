@@ -60,6 +60,24 @@ struct LocalizationBundleTests {
         #expect(message.contains("@openai/codex@latest"))
     }
 
+    @Test
+    func `language candidate expansion supports system locale variants`() {
+        let candidates = localizationCandidates(for: "zh-Hans-CN")
+
+        #expect(candidates.contains("zh-Hans-CN"))
+        #expect(candidates.contains("zh-Hans"))
+        #expect(candidates.contains("zh"))
+    }
+
+    @Test
+    func `system localization selection prefers non english first language`() {
+        let preferred = preferredSystemLocalization(
+            availableLocalizations: ["en", "zh-Hans", "es"],
+            preferredLanguages: ["zh-Hans-CN", "en-CN"])
+
+        #expect(preferred == "zh-Hans")
+    }
+
     private static func makeAppBundleFixture(
         includeLocalizationBundle: Bool,
         includeMainLocalization: Bool = false,
