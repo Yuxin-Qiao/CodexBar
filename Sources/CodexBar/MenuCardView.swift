@@ -110,6 +110,7 @@ struct UsageMenuCardView: View {
         let subtitleText: String
         let subtitleStyle: SubtitleStyle
         let planText: String?
+        let subscriptionText: String?
         let metrics: [Metric]
         let usageNotes: [String]
         let openAIAPIUsage: OpenAIAPIUsageSnapshot?
@@ -287,6 +288,13 @@ private struct UsageMenuCardHeaderView: View {
                         .foregroundStyle(MenuHighlightStyle.secondary(self.isHighlighted))
                         .lineLimit(1)
                 }
+            }
+            if let subscriptionText = self.model.subscriptionText {
+                Text(subscriptionText)
+                    .font(.footnote)
+                    .foregroundStyle(MenuHighlightStyle.secondary(self.isHighlighted))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
         }
     }
@@ -720,6 +728,7 @@ extension UsageMenuCardView.Model {
         let kiloAutoMode: Bool
         let hidePersonalInfo: Bool
         let weeklyPace: UsagePace?
+        let subscriptionText: String?
         let quotaWarningThresholds: [QuotaWarningWindow: [Int]]
         let workDaysPerWeek: Int?
         let now: Date
@@ -746,6 +755,7 @@ extension UsageMenuCardView.Model {
             kiloAutoMode: Bool = false,
             hidePersonalInfo: Bool,
             weeklyPace: UsagePace? = nil,
+            subscriptionText: String? = nil,
             quotaWarningThresholds: [QuotaWarningWindow: [Int]] = [:],
             workDaysPerWeek: Int? = nil,
             now: Date)
@@ -771,6 +781,7 @@ extension UsageMenuCardView.Model {
             self.kiloAutoMode = kiloAutoMode
             self.hidePersonalInfo = hidePersonalInfo
             self.weeklyPace = weeklyPace
+            self.subscriptionText = subscriptionText
             self.quotaWarningThresholds = quotaWarningThresholds
             self.workDaysPerWeek = workDaysPerWeek
             self.now = now
@@ -828,6 +839,7 @@ extension UsageMenuCardView.Model {
             subtitleText: redacted.subtitleText,
             subtitleStyle: subtitle.style,
             planText: planText,
+            subscriptionText: input.subscriptionText,
             metrics: metrics,
             usageNotes: usageNotes,
             openAIAPIUsage: openAIAPIUsage,
