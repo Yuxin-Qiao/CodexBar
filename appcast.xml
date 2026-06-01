@@ -3,6 +3,27 @@
     <channel>
         <title>CodexBar</title>
         <item>
+            <title>0.32.2</title>
+            <pubDate>Mon, 01 Jun 2026 04:43:41 +0100</pubDate>
+            <link>https://raw.githubusercontent.com/steipete/CodexBar/main/appcast.xml</link>
+            <sparkle:version>77</sparkle:version>
+            <sparkle:shortVersionString>0.32.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h2>CodexBar 0.32.2</h2>
+<h3>Added</h3>
+<ul>
+<li>QA: document the live CodexBar e2e flow and add a redacted provider-matrix helper for packaged CLI smoke tests.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Menu bar: add breathing room to compact Codex account rows so the provider, account, status, and plan labels no longer hug the row edges.</li>
+<li>Performance: make Codex token-cost scanning faster and more memory-efficient on large local session corpora.</li>
+</ul>
+<p><a href="https://github.com/steipete/CodexBar/blob/main/CHANGELOG.md">View full changelog</a></p>
+]]></description>
+            <enclosure url="https://github.com/steipete/CodexBar/releases/download/v0.32.2/CodexBar-macos-universal-0.32.2.zip" length="45070301" type="application/octet-stream" sparkle:edSignature="pvj2uObMV/TgTZFYmi6hGfRRZR5gcz/7cV68N3apvRy4CvZSekdF6ip7lZa6ZwDdS2XEy9X+jLt1j8fcuLzNCg=="/>
+        </item>
+        <item>
             <title>0.32.1</title>
             <pubDate>Sun, 31 May 2026 19:10:18 +0100</pubDate>
             <link>https://raw.githubusercontent.com/steipete/CodexBar/main/appcast.xml</link>
@@ -50,39 +71,6 @@
 <p><a href="https://github.com/steipete/CodexBar/blob/main/CHANGELOG.md">View full changelog</a></p>
 ]]></description>
             <enclosure url="https://github.com/steipete/CodexBar/releases/download/v0.32.0/CodexBar-macos-universal-0.32.0.zip" length="44910982" type="application/octet-stream" sparkle:edSignature="rEI6szOvF41zAFko3JdaU7aDcXnHjUNQWfRZLxJMeZJISsCHXnma4JdBdpDQF8FHiLybwb6YKGqzzQiDuy6/Bw=="/>
-        </item>
-        <item>
-            <title>0.31.0</title>
-            <pubDate>Thu, 28 May 2026 23:11:46 +0100</pubDate>
-            <link>https://raw.githubusercontent.com/steipete/CodexBar/main/appcast.xml</link>
-            <sparkle:version>73</sparkle:version>
-            <sparkle:shortVersionString>0.31.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <description><![CDATA[<h2>CodexBar 0.31.0</h2>
-<h3>Changed</h3>
-<ul>
-<li>Docs: update the Homebrew install command to use the official <code>codexbar</code> cask now that it supports Intel Macs (#1189). Thanks @SSakutaro!</li>
-<li>Tests: document and audit that routine validation must not trigger macOS Keychain prompts.</li>
-<li>Localization: localize popup panels and provider settings UI across supported languages (#1181). Thanks @jack24254029!</li>
-<li>Localization: complete Brazilian Portuguese coverage so pt-BR no longer falls back to English for new UI strings (#1188). Thanks @ManuzimFerreira!</li>
-</ul>
-<h3>Added</h3>
-<ul>
-<li>AWS Bedrock: support resolving usage and cost-history credentials from a named AWS profile via the AWS CLI (#1190). Thanks @oleksandr-soldatov!</li>
-<li>Codex: show Codex Spark model-specific usage as an optional extra quota lane (#1195, fixes #1177). Thanks @LeoLin990405!</li>
-<li>Localization: add Swedish as a selectable app language (#1186). Thanks @yeager!</li>
-</ul>
-<h3>Fixed</h3>
-<ul>
-<li>Cost history: make token-cost JSONL scans cancellation-aware so quitting, forced refreshes, and account switches can stop stale scans sooner.</li>
-<li>Codex: show Spark 5-hour and weekly usage as separate quota lanes in Codex breakdowns (#1201).</li>
-<li>Codex: show captured <code>codex login</code> output when managed Add Account fails so users can recover from account-selection or OAuth failures (#1199). Thanks @chapati23!</li>
-<li>Claude: hide the obsolete Design quota lane now that Claude Design shares the main Claude usage limit (#1197).</li>
-<li>Menu bar: coalesce visible-menu rebuilds and reduce hover highlight work so the dropdown stays responsive on macOS 26.5 (#1196).</li>
-</ul>
-<p><a href="https://github.com/steipete/CodexBar/blob/main/CHANGELOG.md">View full changelog</a></p>
-]]></description>
-            <enclosure url="https://github.com/steipete/CodexBar/releases/download/v0.31.0/CodexBar-macos-universal-0.31.0.zip" length="44654410" type="application/octet-stream" sparkle:edSignature="5QrkHnDb0Rc90o8qybk6S0p7TseVZiQ1zDaoLCmEQyUfODN/oqRfnDvPVKcYOLHa9P5NzMM5alxnkrMp9dbEBQ=="/>
         </item>
         <item>
             <title>0.14.0</title>
