@@ -98,4 +98,61 @@ struct MiniMaxMenuCardModelPlanTests {
 
         #expect(model.planText == nil)
     }
+
+    @Test
+    func `minimax quota rows include configured warning markers`() throws {
+        let now = Date()
+        let minimax = MiniMaxUsageSnapshot(
+            planName: "TokenPlanPlus-年度会员",
+            availablePrompts: nil,
+            currentPrompts: nil,
+            remainingPrompts: nil,
+            windowMinutes: nil,
+            usedPercent: nil,
+            resetsAt: nil,
+            updatedAt: now,
+            services: [
+                MiniMaxServiceUsage(
+                    serviceType: "text-generation",
+                    windowType: "5 hours",
+                    timeRange: "15:00-20:00(UTC+8)",
+                    usage: 31,
+                    limit: 100,
+                    percent: 31,
+                    resetsAt: now.addingTimeInterval(3600),
+                    resetDescription: "Resets in 1 hour"),
+                MiniMaxServiceUsage(
+                    serviceType: "text-generation",
+                    windowType: "Weekly",
+                    timeRange: "06/01 00:00 - 06/08 00:00(UTC+8)",
+                    usage: 4,
+                    limit: 100,
+                    percent: 4,
+                    resetsAt: now.addingTimeInterval(6 * 24 * 3600),
+                    resetDescription: "Resets in 6 days"),
+            ])
+        let metadata = try #require(ProviderDefaults.metadata[.minimax])
+        let model = UsageMenuCardView.Model.make(.init(
+            provider: .minimax,
+            metadata: metadata,
+            snapshot: minimax.toUsageSnapshot(),
+            credits: nil,
+            creditsError: nil,
+            dashboard: nil,
+            dashboardError: nil,
+            tokenSnapshot: nil,
+            tokenError: nil,
+            account: AccountInfo(email: nil, plan: nil),
+            isRefreshing: false,
+            lastError: nil,
+            usageBarsShowUsed: true,
+            resetTimeDisplayStyle: .countdown,
+            tokenCostUsageEnabled: false,
+            showOptionalCreditsAndExtraUsage: true,
+            hidePersonalInfo: false,
+            quotaWarningThresholds: [.session: [50, 20], .weekly: [50, 20]],
+            now: now))
+
+        #expect(model.metrics.map(\.warningMarkerPercents) == [[50, 80], [50, 80]])
+    }
 }

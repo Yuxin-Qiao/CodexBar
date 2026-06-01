@@ -845,8 +845,10 @@ extension UsageMenuCardView.Model {
     }
 
     private static func usageNotes(input: Input) -> [String] {
+        let subscriptionNotes = self.subscriptionMetadataNotes(snapshot: input.snapshot)
+
         if input.provider == .kiro {
-            return kiroUsageNotes(input: input)
+            return kiroUsageNotes(input: input) + subscriptionNotes
         }
 
         if input.provider == .kilo {
@@ -860,24 +862,24 @@ extension UsageMenuCardView.Model {
             {
                 notes.append(L("Using CLI fallback"))
             }
-            return notes
+            return notes + subscriptionNotes
         }
 
         if input.provider == .mimo, input.snapshot != nil {
             return [
                 L("Balance updates in near-real time (up to 5 min lag)"),
                 L("Daily billing data finalizes at 07:00 UTC"),
-            ]
+            ] + subscriptionNotes
         }
 
         if let notes = apiProviderUsageNotes(input: input) {
-            return notes
+            return notes + subscriptionNotes
         }
 
         guard input.provider == .openrouter,
               let openRouter = input.snapshot?.openRouterUsage
         else {
-            return []
+            return subscriptionNotes
         }
 
         var notes = Self.openRouterSpendNotes(openRouter)
@@ -889,7 +891,26 @@ extension UsageMenuCardView.Model {
         case .unavailable:
             notes.append(L("API key limit unavailable right now"))
         }
-        return notes
+        return notes + subscriptionNotes
+    }
+
+    private static func subscriptionMetadataNotes(snapshot: UsageSnapshot?) -> [String] {
+        guard let snapshot else { return [] }
+        if let renewsAt = snapshot.subscriptionRenewsAt {
+            return [String(format: L("Renews: %@"), self.subscriptionDateString(renewsAt))]
+        }
+        if let expiresAt = snapshot.subscriptionExpiresAt {
+            return [String(format: L("Plan expires: %@"), self.subscriptionDateString(expiresAt))]
+        }
+        return []
+    }
+
+    private static func subscriptionDateString(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        formatter.timeZone = .current
+        formatter.setLocalizedDateFormatFromTemplate("MMM d, yyyy")
+        return formatter.string(from: date)
     }
 
     private static func openRouterSpendNotes(_ usage: OpenRouterUsageSnapshot) -> [String] {
@@ -952,12 +973,30 @@ extension UsageMenuCardView.Model {
     }
 
     private static func planDisplay(_ text: String, for provider: UsageProvider) -> String {
+        if provider == .minimax {
+            return self.miniMaxPlanDisplay(text)
+        }
         let cleaned = if provider == .codex {
             CodexPlanFormatting.displayName(text) ?? UsageFormatter.cleanPlanName(text)
         } else {
             UsageFormatter.cleanPlanName(text)
         }
         return cleaned.isEmpty ? text : cleaned
+    }
+
+    private static func miniMaxPlanDisplay(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = trimmed.lowercased()
+        if normalized.contains("tokenplanplus") || normalized.contains("token plan plus") {
+            return "Plus"
+        }
+        if normalized.contains("tokenplanmax") || normalized.contains("token plan max") {
+            return "Max"
+        }
+        if normalized.contains("tokenplanultra") || normalized.contains("token plan ultra") {
+            return "Ultra"
+        }
+        return trimmed
     }
 
     private static func kiloLoginPass(snapshot: UsageSnapshot?) -> String? {

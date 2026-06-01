@@ -11,6 +11,9 @@ public struct MiniMaxUsageSnapshot: Sendable {
     public let updatedAt: Date
     public let services: [MiniMaxServiceUsage]?
     public let billingSummary: MiniMaxBillingSummary?
+    public let pointsBalance: Double?
+    public let subscriptionExpiresAt: Date?
+    public let subscriptionRenewsAt: Date?
 
     public var primaryService: MiniMaxServiceUsage? {
         // Priority: "Text Generation" > first service
@@ -55,7 +58,10 @@ public struct MiniMaxUsageSnapshot: Sendable {
         resetsAt: Date?,
         updatedAt: Date,
         services: [MiniMaxServiceUsage]? = nil,
-        billingSummary: MiniMaxBillingSummary? = nil)
+        billingSummary: MiniMaxBillingSummary? = nil,
+        pointsBalance: Double? = nil,
+        subscriptionExpiresAt: Date? = nil,
+        subscriptionRenewsAt: Date? = nil)
     {
         self.planName = planName
         self.availablePrompts = availablePrompts
@@ -67,6 +73,9 @@ public struct MiniMaxUsageSnapshot: Sendable {
         self.updatedAt = updatedAt
         self.services = services
         self.billingSummary = billingSummary
+        self.pointsBalance = pointsBalance
+        self.subscriptionExpiresAt = subscriptionExpiresAt
+        self.subscriptionRenewsAt = subscriptionRenewsAt
     }
 
     public func withBillingSummary(_ billingSummary: MiniMaxBillingSummary?) -> MiniMaxUsageSnapshot {
@@ -80,7 +89,10 @@ public struct MiniMaxUsageSnapshot: Sendable {
             resetsAt: self.resetsAt,
             updatedAt: self.updatedAt,
             services: self.services,
-            billingSummary: billingSummary)
+            billingSummary: billingSummary,
+            pointsBalance: self.pointsBalance,
+            subscriptionExpiresAt: self.subscriptionExpiresAt,
+            subscriptionRenewsAt: self.subscriptionRenewsAt)
     }
 }
 
@@ -104,8 +116,10 @@ extension MiniMaxUsageSnapshot {
                 primary: primaryWindow,
                 secondary: secondaryWindow,
                 tertiary: tertiaryWindow,
-                providerCost: nil,
+                providerCost: self.pointsBalanceSnapshot(),
                 minimaxUsage: self,
+                subscriptionExpiresAt: self.subscriptionExpiresAt,
+                subscriptionRenewsAt: self.subscriptionRenewsAt,
                 updatedAt: self.updatedAt,
                 identity: identity)
         }
@@ -131,8 +145,10 @@ extension MiniMaxUsageSnapshot {
             primary: primary,
             secondary: nil,
             tertiary: nil,
-            providerCost: nil,
+            providerCost: self.pointsBalanceSnapshot(),
             minimaxUsage: self,
+            subscriptionExpiresAt: self.subscriptionExpiresAt,
+            subscriptionRenewsAt: self.subscriptionRenewsAt,
             updatedAt: self.updatedAt,
             identity: identity)
     }
@@ -178,6 +194,9 @@ extension MiniMaxUsageSnapshot {
         if windowType == "today" {
             return 24 * 60
         }
+        if windowType == "weekly" {
+            return 7 * 24 * 60
+        }
 
         // Handle time duration formats like "5 hours", "30 minutes", etc.
         let components = windowType.split(separator: " ")
@@ -196,5 +215,15 @@ extension MiniMaxUsageSnapshot {
         default:
             return nil
         }
+    }
+
+    private func pointsBalanceSnapshot() -> ProviderCostSnapshot? {
+        guard let pointsBalance, pointsBalance >= 0 else { return nil }
+        return ProviderCostSnapshot(
+            used: pointsBalance,
+            limit: 0,
+            currencyCode: "Points",
+            period: "MiniMax points balance",
+            updatedAt: self.updatedAt)
     }
 }
