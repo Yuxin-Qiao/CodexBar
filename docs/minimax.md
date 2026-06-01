@@ -1,23 +1,24 @@
 ---
-summary: "MiniMax provider data sources: Coding Plan tokens, browser cookies, and web-session parsing."
+summary: "MiniMax provider data sources: Token Plan keys, browser cookies, and web-session parsing."
 read_when:
   - Debugging MiniMax usage parsing
-  - Updating MiniMax cookie handling or coding plan scraping
+  - Updating MiniMax cookie handling or token plan scraping
   - Adjusting MiniMax provider UI/menu behavior
 ---
 
 # MiniMax provider
 
-MiniMax supports Coding Plan API tokens or web sessions. Web-session mode uses MiniMax browser/session state and
+MiniMax supports Token Plan (M3) keys or web sessions. Web-session mode uses MiniMax browser/session state and
 falls back across the provider's supported web requests when needed.
 
 ## Data sources
 
-1) **Coding Plan API token**
+1) **Token Plan (M3) subscription key or pay-as-you-go API key**
    - Set in Preferences → Providers → MiniMax (stored in `~/.codexbar/config.json`), `MINIMAX_CODING_API_KEY`,
      or `MINIMAX_API_KEY`.
+   - `MINIMAX_CODING_API_KEY` is a legacy variable name retained for backward compatibility with existing setups.
    - When both environment variables are present, `MINIMAX_CODING_API_KEY` wins so a standard `sk-api-*` key does
-     not mask a coding-plan `sk-cp-*` key.
+     not mask a token-plan `sk-cp-*` style key.
    - Auto mode can fall back to the web/cookie path when API-token credentials are rejected or the global endpoint
      returns 404.
 
@@ -41,19 +42,18 @@ falls back across the provider's supported web requests when needed.
   - `MINIMAX_REMAINS_URL=...` (full URL override)
 
 ## Cookie capture (optional override)
-- Open the Coding Plan page and DevTools → Network.
+- Open the Token Plan page and DevTools → Network.
 - Select the request to `/v1/api/openplatform/coding_plan/remains`.
 - Copy the `Cookie` request header (or use “Copy as cURL” and paste the whole line).
 - Paste into Preferences → Providers → MiniMax only if automatic import fails.
 
 ## Snapshot mapping
-- Primary usage, reset timing, and plan/tier are derived from Coding Plan response fields or page text.
-- Web-session billing history, when available, is mapped into the shared inline usage dashboard:
-  - 30-day token trend.
-  - Top model and top method breakdowns.
-  - Summary rows for recent billing-history totals.
+- Primary usage, reset timing, and plan/tier are derived from current MiniMax response fields/page text.
+- MiniMax's current dashboard may expose 5-hour, weekly, and Token Plan credit-balance surfaces; this document describes
+  what may be visible, but this PR does not change parser or fetch behavior.
+- Web-session billing/usage history, when available, is mapped into the shared inline usage dashboard.
 
-If the billing-history endpoint is unavailable but normal Coding Plan quota data is present, CodexBar still shows the
+If the billing-history endpoint is unavailable but normal quota data is present, CodexBar still shows the
 quota card and omits the chart instead of treating the whole provider as failed.
 
 ## Key files

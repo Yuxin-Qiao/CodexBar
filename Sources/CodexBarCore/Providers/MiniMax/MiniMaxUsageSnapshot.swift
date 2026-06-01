@@ -1,7 +1,10 @@
 import Foundation
 
-public struct MiniMaxUsageSnapshot: Sendable {
+public struct MiniMaxUsageSnapshot: Codable, Sendable {
     public let planName: String?
+    public let planTier: String?
+    public let planExpiresAt: Date?
+    public let creditTotal: Int?
     public let availablePrompts: Int?
     public let currentPrompts: Int?
     public let remainingPrompts: Int?
@@ -47,6 +50,9 @@ public struct MiniMaxUsageSnapshot: Sendable {
 
     public init(
         planName: String?,
+        planTier: String? = nil,
+        planExpiresAt: Date? = nil,
+        creditTotal: Int? = nil,
         availablePrompts: Int?,
         currentPrompts: Int?,
         remainingPrompts: Int?,
@@ -58,6 +64,9 @@ public struct MiniMaxUsageSnapshot: Sendable {
         billingSummary: MiniMaxBillingSummary? = nil)
     {
         self.planName = planName
+        self.planTier = planTier
+        self.planExpiresAt = planExpiresAt
+        self.creditTotal = creditTotal
         self.availablePrompts = availablePrompts
         self.currentPrompts = currentPrompts
         self.remainingPrompts = remainingPrompts
@@ -72,6 +81,9 @@ public struct MiniMaxUsageSnapshot: Sendable {
     public func withBillingSummary(_ billingSummary: MiniMaxBillingSummary?) -> MiniMaxUsageSnapshot {
         MiniMaxUsageSnapshot(
             planName: self.planName,
+            planTier: self.planTier,
+            planExpiresAt: self.planExpiresAt,
+            creditTotal: self.creditTotal,
             availablePrompts: self.availablePrompts,
             currentPrompts: self.currentPrompts,
             remainingPrompts: self.remainingPrompts,

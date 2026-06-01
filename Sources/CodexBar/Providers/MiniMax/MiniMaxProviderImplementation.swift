@@ -64,7 +64,7 @@ struct MiniMaxProviderImplementation: ProviderImplementation {
             ProviderCookieSourceUI.subtitle(
                 source: context.settings.minimaxCookieSource,
                 keychainDisabled: context.settings.debugDisableKeychainAccess,
-                auto: "Automatic imports browser cookies and local storage tokens.",
+                auto: "Automatic imports your browser session (after MiniMax web login) and local storage tokens.",
                 manual: "Paste a Cookie header or cURL capture from the Token Plan page.",
                 off: "MiniMax cookies are disabled.")
         }
@@ -82,7 +82,7 @@ struct MiniMaxProviderImplementation: ProviderImplementation {
             ProviderSettingsPickerDescriptor(
                 id: "minimax-cookie-source",
                 title: "Cookie source",
-                subtitle: "Automatic imports browser cookies and local storage tokens.",
+                subtitle: "Automatic reuses your MiniMax web-login session from supported browsers.",
                 dynamicSubtitle: cookieSubtitle,
                 binding: cookieBinding,
                 options: cookieOptions,
@@ -114,10 +114,11 @@ struct MiniMaxProviderImplementation: ProviderImplementation {
         return [
             ProviderSettingsFieldDescriptor(
                 id: "minimax-api-token",
-                title: "API token",
-                subtitle: "Stored in ~/.codexbar/config.json. Paste your MiniMax API key.",
+                title: "MiniMax key (optional)",
+                subtitle: "Stored in ~/.codexbar/config.json. Paste a Token Plan subscription key "
+                    + "or pay-as-you-go API key, or leave empty to reuse a MiniMax web-login session.",
                 kind: .secure,
-                placeholder: "Paste API token…",
+                placeholder: "Paste MiniMax key…",
                 binding: context.stringBinding(\.minimaxAPIToken),
                 actions: [
                     ProviderSettingsActionDescriptor(

@@ -35,7 +35,7 @@ headers, source selection, provider ordering, and token accounts are stored in `
 | Droid/Factory | Web cookies → stored tokens → local storage → WorkOS cookies (`web`). |
 | z.ai | API token from config/env → quota API (`api`). |
 | Manus | Browser `session_id` cookie (auto/manual/env) → credits API (`web`). |
-| MiniMax | Manual/browser session via Coding Plan web path (`web`), or Coding Plan API token (`api`). |
+| MiniMax | Token Plan subscription/API key (`api`) or web session from configured/manual/browser sources (`web`), including existing browser login sessions. |
 | Kimi | Auth token from `kimi-auth` cookie/manual token/env → usage API (`web`). |
 | Kilo | API token from config/env → usage API (`api`); auto falls back to CLI session auth (`cli`). |
 | Copilot | Device-flow/env/config token → `copilot_internal` API (`api`). |
@@ -114,9 +114,9 @@ headers, source selection, provider ordering, and token accounts are stored in `
 - Status: none yet.
 
 ## MiniMax
-- Coding Plan API token or web session from configured/manual/browser sources.
+- Token Plan subscription/API key or web session from configured/manual/browser sources (including existing browser login sessions).
 - Supports global and China mainland hosts via provider region settings and environment overrides.
-- Web-session billing history can render 30-day token charts plus top model/method breakdowns when MiniMax exposes it.
+- Web-session billing/usage history is shown when MiniMax exposes it.
 - Status: none yet.
 - Details: `docs/minimax.md`.
 

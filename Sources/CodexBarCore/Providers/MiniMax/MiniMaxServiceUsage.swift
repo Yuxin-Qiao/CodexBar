@@ -12,7 +12,7 @@ import Foundation
 /// This struct encapsulates all the relevant details about how much of a particular
 /// MiniMax service has been used within its quota window, including reset timing
 /// and localized display strings.
-public struct MiniMaxServiceUsage: Sendable {
+public struct MiniMaxServiceUsage: Codable, Sendable {
     /// The service identifier (e.g., "text-generation", "text-to-speech", "image")
     public let serviceType: String
 

@@ -843,6 +843,23 @@ extension UsageMenuCardView.Model {
                 L("Daily billing data finalizes at 07:00 UTC"),
             ]
         }
+        if input.provider == .minimax, let usage = input.snapshot?.minimaxUsage {
+            var notes = Self.apiProviderUsageNotes(input: input) ?? []
+            if let tier = usage.planTier?.trimmingCharacters(in: .whitespacesAndNewlines), !tier.isEmpty {
+                notes.append("Tier: \(tier)")
+            }
+            if let expiresAt = usage.planExpiresAt {
+                let formatter = DateFormatter()
+                formatter.locale = Locale(identifier: "en_US_POSIX")
+                formatter.timeZone = .current
+                formatter.dateFormat = "yyyy-MM-dd"
+                notes.append("Expires: \(formatter.string(from: expiresAt))")
+            }
+            if let total = usage.creditTotal, total > 0 {
+                notes.append("Credits: \(total.formatted())")
+            }
+            return notes
+        }
 
         if let notes = apiProviderUsageNotes(input: input) {
             return notes

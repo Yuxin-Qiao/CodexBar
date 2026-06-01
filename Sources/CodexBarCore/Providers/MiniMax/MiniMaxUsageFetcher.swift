@@ -535,100 +535,6 @@ struct MiniMaxCodingPlanPayload: Decodable {
     }
 }
 
-struct MiniMaxCodingPlanData: Decodable {
-    let baseResp: MiniMaxBaseResponse?
-    let currentSubscribeTitle: String?
-    let planName: String?
-    let comboTitle: String?
-    let currentPlanTitle: String?
-    let currentComboCard: MiniMaxComboCard?
-    let modelRemains: [MiniMaxModelRemains]
-
-    private enum CodingKeys: String, CodingKey {
-        case baseResp = "base_resp"
-        case currentSubscribeTitle = "current_subscribe_title"
-        case planName = "plan_name"
-        case comboTitle = "combo_title"
-        case currentPlanTitle = "current_plan_title"
-        case currentComboCard = "current_combo_card"
-        case modelRemains = "model_remains"
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.baseResp = try container.decodeIfPresent(MiniMaxBaseResponse.self, forKey: .baseResp)
-        self.currentSubscribeTitle = try container.decodeIfPresent(String.self, forKey: .currentSubscribeTitle)
-        self.planName = try container.decodeIfPresent(String.self, forKey: .planName)
-        self.comboTitle = try container.decodeIfPresent(String.self, forKey: .comboTitle)
-        self.currentPlanTitle = try container.decodeIfPresent(String.self, forKey: .currentPlanTitle)
-        self.currentComboCard = try container.decodeIfPresent(MiniMaxComboCard.self, forKey: .currentComboCard)
-        self.modelRemains = try (container.decodeIfPresent([MiniMaxModelRemains].self, forKey: .modelRemains)) ?? []
-    }
-}
-
-struct MiniMaxComboCard: Decodable {
-    let title: String?
-}
-
-struct MiniMaxModelRemains: Decodable {
-    let modelName: String?
-    let currentIntervalTotalCount: Int?
-    let currentIntervalUsageCount: Int?
-    let startTime: Int?
-    let endTime: Int?
-    let remainsTime: Int?
-    let currentWeeklyTotalCount: Int?
-    let currentWeeklyUsageCount: Int?
-    let weeklyStartTime: Int?
-    let weeklyEndTime: Int?
-    let weeklyRemainsTime: Int?
-
-    private enum CodingKeys: String, CodingKey {
-        case modelName = "model_name"
-        case currentIntervalTotalCount = "current_interval_total_count"
-        case currentIntervalUsageCount = "current_interval_usage_count"
-        case startTime = "start_time"
-        case endTime = "end_time"
-        case remainsTime = "remains_time"
-        case currentWeeklyTotalCount = "current_weekly_total_count"
-        case currentWeeklyUsageCount = "current_weekly_usage_count"
-        case weeklyStartTime = "weekly_start_time"
-        case weeklyEndTime = "weekly_end_time"
-        case weeklyRemainsTime = "weekly_remains_time"
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.modelName = try container.decodeIfPresent(String.self, forKey: .modelName)
-        self.currentIntervalTotalCount = MiniMaxDecoding.decodeInt(container, forKey: .currentIntervalTotalCount)
-        self.currentIntervalUsageCount = MiniMaxDecoding.decodeInt(container, forKey: .currentIntervalUsageCount)
-        self.startTime = MiniMaxDecoding.decodeInt(container, forKey: .startTime)
-        self.endTime = MiniMaxDecoding.decodeInt(container, forKey: .endTime)
-        self.remainsTime = MiniMaxDecoding.decodeInt(container, forKey: .remainsTime)
-        self.currentWeeklyTotalCount = MiniMaxDecoding.decodeInt(container, forKey: .currentWeeklyTotalCount)
-        self.currentWeeklyUsageCount = MiniMaxDecoding.decodeInt(container, forKey: .currentWeeklyUsageCount)
-        self.weeklyStartTime = MiniMaxDecoding.decodeInt(container, forKey: .weeklyStartTime)
-        self.weeklyEndTime = MiniMaxDecoding.decodeInt(container, forKey: .weeklyEndTime)
-        self.weeklyRemainsTime = MiniMaxDecoding.decodeInt(container, forKey: .weeklyRemainsTime)
-    }
-}
-
-struct MiniMaxBaseResponse: Decodable {
-    let statusCode: Int?
-    let statusMessage: String?
-
-    private enum CodingKeys: String, CodingKey {
-        case statusCode = "status_code"
-        case statusMessage = "status_msg"
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.statusCode = MiniMaxDecoding.decodeInt(container, forKey: .statusCode)
-        self.statusMessage = try container.decodeIfPresent(String.self, forKey: .statusMessage)
-    }
-}
-
 // MARK: - Multi-Service API Response Structures
 
 struct MiniMaxMultiServicePayload: Decodable {
@@ -787,10 +693,12 @@ enum MiniMaxUsageParser {
             throw MiniMaxUsageError.parseFailed("Missing coding plan data.")
         }
 
+        let primary = self.primaryModelRemains(from: payload.data.modelRemains)
+
         // Convert model_remains to services array for multi-service UI display
         var services: [MiniMaxServiceUsage] = []
         for item in payload.data.modelRemains {
-            guard let modelName = item.modelName else { continue }
+            let modelName = item.modelName ?? "general"
             let serviceTypeIdentifier = self.mapModelNameToServiceType(modelName: modelName)
 
             if let intervalService = self.makeServiceUsage(
@@ -799,6 +707,7 @@ enum MiniMaxUsageParser {
                     windowTypeOverride: nil,
                     total: item.currentIntervalTotalCount,
                     remaining: item.currentIntervalUsageCount,
+                    remainingPercent: item.currentIntervalRemainingPercent,
                     start: item.startTime,
                     end: item.endTime,
                     remainsTime: item.remainsTime),
@@ -815,6 +724,7 @@ enum MiniMaxUsageParser {
                        windowTypeOverride: "Weekly",
                        total: item.currentWeeklyTotalCount,
                        remaining: item.currentWeeklyUsageCount,
+                       remainingPercent: item.currentWeeklyRemainingPercent,
                        start: item.weeklyStartTime,
                        end: item.weeklyEndTime,
                        remainsTime: item.weeklyRemainsTime),
@@ -824,34 +734,71 @@ enum MiniMaxUsageParser {
             }
         }
 
-        // Use first service for backward compatibility fields
-        let first = payload.data.modelRemains.first
-        let total = first?.currentIntervalTotalCount
-        let remaining = first?.currentIntervalUsageCount
-        let usedPercent = self.usedPercent(total: total, remaining: remaining)
+        if let credit = payload.data.tokenPlanCredit,
+           let total = credit.total ?? credit.used.map({ used in
+               let rem = credit.remaining ?? 0
+               return used + rem
+           })
+        {
+            let used = credit.used ?? max(0, total - (credit.remaining ?? 0))
+            let percent = total > 0 ? Double(used) / Double(total) * 100.0 : 0
+            services.append(
+                MiniMaxServiceUsage(
+                    serviceType: "credits",
+                    windowType: "Balance",
+                    timeRange: "Token Plan credits",
+                    usage: max(0, used),
+                    limit: max(0, total),
+                    percent: min(100.0, max(0.0, percent)),
+                    resetsAt: nil,
+                    resetDescription: "Credits balance"))
+        }
+
+        let total = primary?.currentIntervalTotalCount
+        let remaining = primary?.currentIntervalUsageCount
+        let usedPercent = self.usedPercent(
+            total: total,
+            remaining: remaining,
+            remainingPercent: primary?.currentIntervalRemainingPercent)
 
         let windowMinutes = self.windowMinutes(
-            start: self.dateFromEpoch(first?.startTime),
-            end: self.dateFromEpoch(first?.endTime))
+            start: self.dateFromEpoch(primary?.startTime),
+            end: self.dateFromEpoch(primary?.endTime))
 
         let resetsAt = self.resetsAt(
-            end: self.dateFromEpoch(first?.endTime),
-            remains: first?.remainsTime,
+            end: self.dateFromEpoch(primary?.endTime),
+            remains: primary?.remainsTime,
             now: now)
 
         let planName = self.parsePlanName(data: payload.data)
+        let planTier = self.parsePlanTier(data: payload.data)
+        let planExpiresAt = payload.data.cycleResourcePackage?.expiresAt
+        let creditTotal = payload.data.cycleResourcePackage?.creditTotal ?? payload.data.tokenPlanCredit?.total
 
         let currentPrompts: Int? = if let total, let remaining {
             max(0, total - remaining)
+        } else if let usedPercent {
+            Int(usedPercent.rounded())
+        } else {
+            nil
+        }
+
+        let remainingPrompts: Int? = if let remaining {
+            remaining
+        } else if let usedPercent {
+            max(0, Int((100 - usedPercent).rounded()))
         } else {
             nil
         }
 
         return MiniMaxUsageSnapshot(
             planName: planName,
+            planTier: planTier,
+            planExpiresAt: planExpiresAt,
+            creditTotal: creditTotal,
             availablePrompts: total,
             currentPrompts: currentPrompts,
-            remainingPrompts: remaining,
+            remainingPrompts: remainingPrompts,
             windowMinutes: windowMinutes,
             usedPercent: usedPercent,
             resetsAt: resetsAt,
@@ -859,7 +806,10 @@ enum MiniMaxUsageParser {
             services: services.isEmpty ? nil : services)
     }
 
-    private static func usedPercent(total: Int?, remaining: Int?) -> Double? {
+    private static func usedPercent(total: Int?, remaining: Int?, remainingPercent: Double? = nil) -> Double? {
+        if let remainingPercent {
+            return min(100, max(0, 100 - remainingPercent))
+        }
         guard let total, total > 0, let remaining else { return nil }
         let used = max(0, total - remaining)
         let percent = Double(used) / Double(total) * 100
@@ -888,12 +838,14 @@ enum MiniMaxUsageParser {
             return end
         }
         guard let remains, remains > 0 else { return nil }
-        let seconds: TimeInterval = remains > 1_000_000 ? TimeInterval(remains) / 1000 : TimeInterval(remains)
+        // Token Plan remains_time fields are milliseconds until reset.
+        let seconds: TimeInterval = remains >= 1000 ? TimeInterval(remains) / 1000 : TimeInterval(remains)
         return now.addingTimeInterval(seconds)
     }
 
     private static func parsePlanName(data: MiniMaxCodingPlanData) -> String? {
         let candidates = [
+            data.cycleResourcePackage?.title,
             data.currentSubscribeTitle,
             data.planName,
             data.comboTitle,
@@ -905,6 +857,16 @@ enum MiniMaxUsageParser {
             let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty { return trimmed }
         }
+        return nil
+    }
+
+    private static func parsePlanTier(data: MiniMaxCodingPlanData) -> String? {
+        let tier = data.cycleResourcePackage?.tier?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let tier, !tier.isEmpty { return tier }
+        guard let planName = self.parsePlanName(data: data)?.lowercased() else { return nil }
+        if planName.contains("plus") { return "Plus" }
+        if planName.contains("pro") { return "Pro" }
+        if planName.contains("max") { return "Max" }
         return nil
     }
 
@@ -983,6 +945,12 @@ enum MiniMaxUsageParser {
         }
         if normalized["current_combo_card"] == nil, let value = normalized["currentComboCard"] {
             normalized["current_combo_card"] = value
+        }
+        if normalized["token_plan_credit"] == nil, let value = normalized["tokenPlanCredit"] {
+            normalized["token_plan_credit"] = value
+        }
+        if normalized["cycle_resource_package"] == nil, let value = normalized["cycleResourcePackage"] {
+            normalized["cycle_resource_package"] = value
         }
         if normalized["base_resp"] == nil, let value = normalized["baseResp"] {
             normalized["base_resp"] = value
@@ -1388,15 +1356,21 @@ enum MiniMaxUsageParser {
         let windowTypeOverride: String?
         let total: Int?
         let remaining: Int?
+        let remainingPercent: Double?
         let start: Int?
         let end: Int?
         let remainsTime: Int?
     }
 
     private static func makeServiceUsage(_ input: ServiceUsageInput, now: Date) -> MiniMaxServiceUsage? {
-        guard let total = input.total, total > 0, let remaining = input.remaining else { return nil }
+        var total = input.total
+        var remaining = input.remaining
+        if total == nil || remaining == nil, let remainingPercent = input.remainingPercent {
+            total = 100
+            remaining = Int(max(0, min(100, remainingPercent)).rounded())
+        }
+        guard let total, total > 0, let remaining else { return nil }
         let used = max(0, total - remaining)
-        if used == 0, total == 0 { return nil }
 
         let startTime = self.dateFromEpoch(input.start)
         let endTime = self.dateFromEpoch(input.end)
@@ -1466,7 +1440,20 @@ enum MiniMaxUsageParser {
 
     private static func isTextGenerationModelName(_ modelName: String) -> Bool {
         let lower = modelName.lowercased()
-        return lower.contains("minimax-m") || lower.hasPrefix("m2.")
+        return lower == "general" || lower.contains("minimax-m") || lower.hasPrefix("m2.")
+    }
+
+    private static func primaryModelRemains(from remains: [MiniMaxModelRemains]) -> MiniMaxModelRemains? {
+        if let general = remains.first(where: { $0.modelName?.lowercased() == "general" }) {
+            return general
+        }
+        if let text = remains.first(where: { model in
+            guard let name = model.modelName else { return false }
+            return self.isTextGenerationModelName(name)
+        }) {
+            return text
+        }
+        return remains.first
     }
 
     private static func formatMiniMaxDateTimeRange(startTime: Date?, endTime: Date?) -> String? {

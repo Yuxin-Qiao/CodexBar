@@ -1,6 +1,6 @@
 import Foundation
 
-public struct MiniMaxBillingSummary: Sendable {
+public struct MiniMaxBillingSummary: Codable, Sendable {
     public let todayTokens: Int
     public let last30DaysTokens: Int
     public let todayCash: Double?
@@ -31,7 +31,7 @@ public struct MiniMaxBillingSummary: Sendable {
     }
 }
 
-public struct MiniMaxBillingDay: Sendable, Equatable {
+public struct MiniMaxBillingDay: Codable, Sendable, Equatable {
     public let day: String
     public let tokens: Int
     public let cash: Double?
@@ -43,7 +43,7 @@ public struct MiniMaxBillingDay: Sendable, Equatable {
     }
 }
 
-public struct MiniMaxBillingBreakdown: Sendable, Equatable {
+public struct MiniMaxBillingBreakdown: Codable, Sendable, Equatable {
     public let name: String
     public let tokens: Int
     public let cash: Double?
