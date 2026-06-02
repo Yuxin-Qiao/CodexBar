@@ -273,6 +273,58 @@ struct MiniMaxTokenPlanChangeTests {
     }
 
     @Test
+    func `combo metadata rejects non https host override before sending credentials`() async throws {
+        let transport = ProviderHTTPTransportStub { request in
+            Issue.record("Unexpected request to \(request.url?.absoluteString ?? "<nil>")")
+            return Self.httpResponse(
+                url: URL(string: "https://unused.example")!,
+                body: "{}",
+                contentType: "application/json")
+        }
+
+        await #expect(throws: MiniMaxUsageError.self) {
+            try await MiniMaxSubscriptionMetadataFetcher.fetch(
+                cookieHeader: "_token=secret",
+                groupID: "2013894056999916075",
+                region: .chinaMainland,
+                environment: [MiniMaxSettingsReader.hostKey: "http://metadata.test"],
+                transport: transport)
+        }
+
+        let requests = await transport.requests()
+        #expect(requests.isEmpty)
+    }
+
+    @Test
+    func `web usage fetch preserves combo metadata cancellation`() async throws {
+        let now = Date(timeIntervalSince1970: 1_780_282_340)
+        let transport = ProviderHTTPTransportStub { request in
+            let url = try #require(request.url)
+            if url.path.contains("coding-plan") {
+                return Self.httpResponse(
+                    url: url,
+                    body: "<html><main>Coding Plan</main></html>",
+                    contentType: "text/html")
+            }
+            if url.path.contains("coding_plan/remains") {
+                return Self.httpResponse(url: url, body: Self.percentBasedRemainsJSON, contentType: "application/json")
+            }
+            throw CancellationError()
+        }
+
+        await #expect(throws: CancellationError.self) {
+            try await MiniMaxUsageFetcher.fetchUsage(
+                cookieHeader: "_token=abc",
+                groupID: "2013894056999916075",
+                region: .chinaMainland,
+                environment: [:],
+                includeBillingHistory: false,
+                session: transport,
+                now: now)
+        }
+    }
+
+    @Test
     func `combo metadata failure does not block quota rendering`() async throws {
         let now = Date(timeIntervalSince1970: 1_780_282_340)
         let transport = ProviderHTTPTransportStub { request in
