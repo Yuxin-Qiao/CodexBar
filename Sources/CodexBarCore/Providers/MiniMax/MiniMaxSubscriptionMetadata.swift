@@ -19,7 +19,7 @@ enum MiniMaxSubscriptionMetadataFetcher {
         environment: [String: String],
         transport: any ProviderHTTPTransport) async throws -> MiniMaxSubscriptionMetadata
     {
-        let url = self.resolveComboURL(region: region, environment: environment)
+        let url = try self.resolveComboURL(region: region, environment: environment)
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
@@ -58,9 +58,12 @@ enum MiniMaxSubscriptionMetadataFetcher {
             subscriptionRenewsAt: subscriptionRenewsAt)
     }
 
-    static func resolveComboURL(region: MiniMaxAPIRegion, environment: [String: String]) -> URL {
+    static func resolveComboURL(region: MiniMaxAPIRegion, environment: [String: String]) throws -> URL {
         let host = MiniMaxSettingsReader.hostOverride(environment: environment) ?? self.defaultWebHost(region: region)
         var components = URLComponents(string: host.hasPrefix("http") ? host : "https://\(host)")!
+        guard components.scheme?.lowercased() == "https" else {
+            throw MiniMaxUsageError.apiError("MiniMax combo metadata host must use HTTPS.")
+        }
         components.path = "/" + Self.comboPath
         components.queryItems = [
             URLQueryItem(name: "biz_line", value: "2"),
@@ -236,7 +239,7 @@ extension MiniMaxUsageFetcher {
     static func attachingSubscriptionMetadataIfAvailable(
         to snapshot: MiniMaxUsageSnapshot,
         context: WebFetchContext,
-        groupID: String?) async -> MiniMaxUsageSnapshot
+        groupID: String?) async throws -> MiniMaxUsageSnapshot
     {
         let resolvedGroupID = groupID ?? MiniMaxCookieHeader.override(from: context.cookie)?.groupID
         guard resolvedGroupID?.isEmpty == false else { return snapshot }
@@ -248,6 +251,10 @@ extension MiniMaxUsageFetcher {
                 environment: context.environment,
                 transport: context.transport)
             return snapshot.withSubscriptionMetadata(metadata)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as URLError where error.code == .cancelled {
+            throw CancellationError()
         } catch {
             Self.log.debug("MiniMax subscription metadata unavailable: \(error.localizedDescription)")
             return snapshot
