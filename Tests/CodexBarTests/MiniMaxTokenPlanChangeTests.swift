@@ -18,7 +18,8 @@ struct MiniMaxTokenPlanChangeTests {
         #expect(snapshot.remainingPrompts == nil)
         #expect(snapshot.usedPercent == 4)
         #expect(services.count == 2)
-        #expect(services[0].displayName == "Text Generation")
+        #expect(services[0].serviceType == "general")
+        #expect(services[0].displayName == "General")
         #expect(services[0].windowType == "5 hours")
         #expect(services[0].usage == 4)
         #expect(services[0].limit == 100)
@@ -121,10 +122,80 @@ struct MiniMaxTokenPlanChangeTests {
 
         #expect(snapshot.planName == "Plus")
         #expect(snapshot.toUsageSnapshot().identity?.loginMethod == "Plus")
-        #expect(services.map(\.displayName) == ["Text Generation", "Text Generation"])
+        #expect(services.map(\.serviceType) == ["general", "general"])
+        #expect(services.map(\.displayName) == ["General", "General"])
         #expect(snapshot.toUsageSnapshot().primary?.usedPercent == 4)
         #expect(snapshot.toUsageSnapshot().secondary?.usedPercent == 1)
         #expect(snapshot.toUsageSnapshot().tertiary == nil)
+    }
+
+    @Test
+    func `plus token plan renders boosted interval and unlimited weekly lane`() throws {
+        let now = Date(timeIntervalSince1970: 1_780_347_620)
+        let json = """
+        {
+          "model_remains": [
+            {
+              "start_time": 1780347600000,
+              "end_time": 1780365600000,
+              "remains_time": 4650822,
+              "current_interval_total_count": 0,
+              "current_interval_usage_count": 0,
+              "model_name": "general",
+              "current_weekly_total_count": 0,
+              "current_weekly_usage_count": 0,
+              "weekly_start_time": 1780243200000,
+              "weekly_end_time": 1780848000000,
+              "weekly_remains_time": 487050822,
+              "current_interval_status": 1,
+              "current_interval_remaining_percent": 99,
+              "current_weekly_status": 3,
+              "current_weekly_remaining_percent": 100,
+              "interval_boost_permill": 2000,
+              "weekly_boost_permill": 2000
+            },
+            {
+              "start_time": 1780329600000,
+              "end_time": 1780416000000,
+              "remains_time": 55050822,
+              "current_interval_total_count": 0,
+              "current_interval_usage_count": 0,
+              "model_name": "video",
+              "current_weekly_total_count": 0,
+              "current_weekly_usage_count": 0,
+              "weekly_start_time": 1780243200000,
+              "weekly_end_time": 1780848000000,
+              "weekly_remains_time": 487050822,
+              "current_interval_status": 3,
+              "current_interval_remaining_percent": 100,
+              "current_weekly_status": 3,
+              "current_weekly_remaining_percent": 100
+            }
+          ],
+          "base_resp": { "status_code": 0, "status_msg": "success" }
+        }
+        """
+
+        let snapshot = try MiniMaxUsageParser.parseCodingPlanRemains(data: Data(json.utf8), now: now)
+        let services = try #require(snapshot.services)
+
+        #expect(services.count == 2)
+        #expect(services[0].serviceType == "general")
+        #expect(services[0].displayName == "General")
+        #expect(services[0].windowType == "5 hours")
+        #expect(services[0].usage == 2)
+        #expect(services[0].limit == 200)
+        #expect(services[0].percent == 2)
+        #expect(services[0].isUnlimited == false)
+        #expect(services[1].serviceType == "general")
+        #expect(services[1].displayName == "General")
+        #expect(services[1].windowType == "Weekly")
+        #expect(services[1].usage == 0)
+        #expect(services[1].limit == 0)
+        #expect(services[1].percent == 0)
+        #expect(services[1].isUnlimited)
+        #expect(snapshot.toUsageSnapshot().primary?.usedPercent == 2)
+        #expect(snapshot.toUsageSnapshot().secondary?.resetDescription == "Unlimited")
     }
 
     @Test

@@ -4,18 +4,22 @@ import Foundation
 extension UsageMenuCardView.Model {
     static func minimaxMetrics(services: [MiniMaxServiceUsage], input: Input) -> [Metric] {
         let percentStyle: PercentStyle = .used
-        let textGenerationCount = services.count { $0.displayName == "Text Generation" }
+        let displayNameCounts = Dictionary(grouping: services.map(\.displayName), by: { $0 }).mapValues(\.count)
 
         return services.enumerated().map { index, service in
             let used = service.usage
             let displayPercent = min(100, max(0, service.percent))
-            let usageLabel = String(
-                format: L("minimax_usage_amount_format"),
-                used.formatted(),
-                service.limit.formatted())
+            let usageLabel = if service.isUnlimited {
+                nil as String?
+            } else {
+                String(
+                    format: L("minimax_usage_amount_format"),
+                    used.formatted(),
+                    service.limit.formatted())
+            }
             let localizedName = Self.localizedMiniMaxServiceName(service.displayName)
-            let title = if localizedName == L("minimax_service_text_generation"), textGenerationCount > 1 {
-                "\(L("minimax_service_text_generation")) · \(Self.displayWindowBadge(for: service.windowType))"
+            let title = if (displayNameCounts[service.displayName] ?? 0) > 1 {
+                "\(localizedName) · \(Self.displayWindowBadge(for: service.windowType))"
             } else {
                 localizedName
             }
@@ -25,13 +29,16 @@ extension UsageMenuCardView.Model {
                 title: title,
                 percent: displayPercent,
                 percentStyle: percentStyle,
+                statusText: service.isUnlimited ? "∞ Unlimited" : nil,
                 resetText: Self.localizedMiniMaxResetDescription(service.resetDescription),
                 detailText: nil,
                 detailLeftText: usageLabel,
                 detailRightText: nil,
                 pacePercent: nil,
                 paceOnTop: true,
-                warningMarkerPercents: Self.miniMaxWarningMarkerPercents(service: service, input: input),
+                warningMarkerPercents: service.isUnlimited
+                    ? []
+                    : Self.miniMaxWarningMarkerPercents(service: service, input: input),
                 cardStyle: false)
         }
     }
