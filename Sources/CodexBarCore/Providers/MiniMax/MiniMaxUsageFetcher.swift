@@ -678,65 +678,6 @@ struct MiniMaxComboCard: Decodable {
     let title: String?
 }
 
-struct MiniMaxModelRemains: Decodable {
-    let modelName: String?
-    let currentIntervalTotalCount: Int?
-    let currentIntervalUsageCount: Int?
-    let startTime: Int?
-    let endTime: Int?
-    let remainsTime: Int?
-    let currentIntervalRemainingPercent: Double?
-    let currentIntervalStatus: Int?
-    let currentWeeklyTotalCount: Int?
-    let currentWeeklyUsageCount: Int?
-    let weeklyStartTime: Int?
-    let weeklyEndTime: Int?
-    let weeklyRemainsTime: Int?
-    let currentWeeklyRemainingPercent: Double?
-    let currentWeeklyStatus: Int?
-
-    private enum CodingKeys: String, CodingKey {
-        case modelName = "model_name"
-        case currentIntervalTotalCount = "current_interval_total_count"
-        case currentIntervalUsageCount = "current_interval_usage_count"
-        case startTime = "start_time"
-        case endTime = "end_time"
-        case remainsTime = "remains_time"
-        case currentIntervalRemainingPercent = "current_interval_remaining_percent"
-        case currentIntervalStatus = "current_interval_status"
-        case currentWeeklyTotalCount = "current_weekly_total_count"
-        case currentWeeklyUsageCount = "current_weekly_usage_count"
-        case weeklyStartTime = "weekly_start_time"
-        case weeklyEndTime = "weekly_end_time"
-        case weeklyRemainsTime = "weekly_remains_time"
-        case currentWeeklyRemainingPercent = "current_weekly_remaining_percent"
-        case currentWeeklyStatus = "current_weekly_status"
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.modelName = try container.decodeIfPresent(String.self, forKey: .modelName)
-        self.currentIntervalTotalCount = MiniMaxDecoding.decodeInt(container, forKey: .currentIntervalTotalCount)
-        self.currentIntervalUsageCount = MiniMaxDecoding.decodeInt(container, forKey: .currentIntervalUsageCount)
-        self.startTime = MiniMaxDecoding.decodeInt(container, forKey: .startTime)
-        self.endTime = MiniMaxDecoding.decodeInt(container, forKey: .endTime)
-        self.remainsTime = MiniMaxDecoding.decodeInt(container, forKey: .remainsTime)
-        self.currentIntervalRemainingPercent = MiniMaxDecoding.decodeDouble(
-            container,
-            forKey: .currentIntervalRemainingPercent)
-        self.currentIntervalStatus = MiniMaxDecoding.decodeInt(container, forKey: .currentIntervalStatus)
-        self.currentWeeklyTotalCount = MiniMaxDecoding.decodeInt(container, forKey: .currentWeeklyTotalCount)
-        self.currentWeeklyUsageCount = MiniMaxDecoding.decodeInt(container, forKey: .currentWeeklyUsageCount)
-        self.weeklyStartTime = MiniMaxDecoding.decodeInt(container, forKey: .weeklyStartTime)
-        self.weeklyEndTime = MiniMaxDecoding.decodeInt(container, forKey: .weeklyEndTime)
-        self.weeklyRemainsTime = MiniMaxDecoding.decodeInt(container, forKey: .weeklyRemainsTime)
-        self.currentWeeklyRemainingPercent = MiniMaxDecoding.decodeDouble(
-            container,
-            forKey: .currentWeeklyRemainingPercent)
-        self.currentWeeklyStatus = MiniMaxDecoding.decodeInt(container, forKey: .currentWeeklyStatus)
-    }
-}
-
 struct MiniMaxBaseResponse: Decodable {
     let statusCode: Int?
     let statusMessage: String?
@@ -936,7 +877,8 @@ enum MiniMaxUsageParser {
                     status: item.currentIntervalStatus,
                     start: item.startTime,
                     end: item.endTime,
-                    remainsTime: item.remainsTime),
+                    remainsTime: item.remainsTime,
+                    boostPermille: item.intervalBoostPermille),
                 now: now)
             {
                 services.append(intervalService)
@@ -954,7 +896,8 @@ enum MiniMaxUsageParser {
                        status: item.currentWeeklyStatus,
                        start: item.weeklyStartTime,
                        end: item.weeklyEndTime,
-                       remainsTime: item.weeklyRemainsTime),
+                       remainsTime: item.weeklyRemainsTime,
+                       boostPermille: item.weeklyBoostPermille),
                    now: now)
             {
                 services.append(weeklyService)
@@ -1059,11 +1002,17 @@ enum MiniMaxUsageParser {
         let hasTextGeneration = data.modelRemains.contains { $0.modelName.map(self.isTextGenerationModelName) ?? false }
         let hasUnavailableVideo = data.modelRemains.contains { item in
             item.modelName?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "video" &&
-                self.isUnavailableQuotaPlaceholder(
+                self.isUnavailableQuotaPlaceholder(ServiceUsageInput(
+                    serviceType: "Text to Video",
+                    windowTypeOverride: nil,
                     total: item.currentIntervalTotalCount,
                     remaining: item.currentIntervalUsageCount,
                     remainingPercent: item.currentIntervalRemainingPercent,
-                    status: item.currentIntervalStatus)
+                    status: item.currentIntervalStatus,
+                    start: nil,
+                    end: nil,
+                    remainsTime: nil,
+                    boostPermille: nil))
         }
         return hasTextGeneration && hasUnavailableVideo ? "Plus" : nil
     }
@@ -1557,6 +1506,7 @@ enum MiniMaxUsageParser {
         let start: Int?
         let end: Int?
         let remainsTime: Int?
+        let boostPermille: Int?
     }
 
     private static func makeServiceUsage(_ input: ServiceUsageInput, now: Date) -> MiniMaxServiceUsage? {
@@ -1572,19 +1522,28 @@ enum MiniMaxUsageParser {
             timeRange = weeklyRange
         }
 
-        let resetsAt = self.resetsAt(end: endTime, remains: input.remainsTime, now: now)
-        let resetDescription = self.resetDescription(
-            for: windowType,
-            timeRange: timeRange,
-            now: now,
-            resetsAt: resetsAt)
-
+        let isUnlimited = self.isUnlimitedQuotaWindow(input, windowType: windowType)
+        let resetsAt = isUnlimited ? nil : self.resetsAt(end: endTime, remains: input.remainsTime, now: now)
+        let resetDescription = if isUnlimited {
+            "Unlimited"
+        } else {
+            self.resetDescription(
+                for: windowType,
+                timeRange: timeRange,
+                now: now,
+                resetsAt: resetsAt)
+        }
         let limit: Int
         let usage: Int
         let percent: Double
-        if let remainingPercent = input.remainingPercent {
-            percent = self.usedPercent(remainingPercent: remainingPercent)
-            limit = 100
+        if isUnlimited {
+            percent = 0
+            limit = 0
+            usage = 0
+        } else if let remainingPercent = input.remainingPercent {
+            let quotaLimit = self.percentQuotaLimit(boostPermille: input.boostPermille)
+            percent = self.usedPercent(remainingPercent: remainingPercent) * (Double(quotaLimit) / 100.0)
+            limit = quotaLimit
             usage = Int(percent.rounded())
         } else {
             guard let total = input.total, total > 0, let remaining = input.remaining else { return nil }
@@ -1601,40 +1560,51 @@ enum MiniMaxUsageParser {
             usage: usage,
             limit: limit,
             percent: min(100.0, max(0.0, percent)),
+            isUnlimited: isUnlimited,
             resetsAt: resetsAt,
             resetDescription: resetDescription)
+    }
+
+    private static func percentQuotaLimit(boostPermille: Int?) -> Int {
+        guard let boostPermille, boostPermille > 0 else { return 100 }
+        return max(1, Int((Double(boostPermille) / 10.0).rounded()))
     }
 
     private static func shouldRenderQuotaWindow(_ input: ServiceUsageInput) -> Bool {
         // MiniMax Token Plan returns status 3 for quota lanes that exist in the schema but are not included in
         // the current subscription, for example Plus accounts receiving a video lane with 100% remaining and 0 count.
-        !self.isUnavailableQuotaPlaceholder(
-            total: input.total,
-            remaining: input.remaining,
-            remainingPercent: input.remainingPercent,
-            status: input.status)
+        !self.isUnavailableQuotaPlaceholder(input)
     }
 
-    private static func isUnavailableQuotaPlaceholder(
-        total: Int?,
-        remaining: Int?,
-        remainingPercent: Double?,
-        status: Int?)
-        -> Bool
-    {
-        status == 3 && (total ?? 0) == 0 && (remaining ?? 0) == 0 && (remainingPercent.map { $0 >= 100 } ?? false)
+    private static func isUnavailableQuotaPlaceholder(_ input: ServiceUsageInput) -> Bool {
+        if let windowType = input.windowTypeOverride, self.isUnlimitedQuotaWindow(input, windowType: windowType) {
+            return false
+        }
+        return input.status == 3 &&
+            (input.total ?? 0) == 0 &&
+            (input.remaining ?? 0) == 0 &&
+            (input.remainingPercent.map { $0 >= 100 } ?? false)
+    }
+
+    private static func isUnlimitedQuotaWindow(_ input: ServiceUsageInput, windowType: String) -> Bool {
+        let normalizedService = input.serviceType.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let normalizedWindow = windowType.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let unlimitedServices = ["text generation", "general"]
+        return input.status == 3 &&
+            unlimitedServices.contains(normalizedService) &&
+            normalizedWindow == "weekly" &&
+            (input.remainingPercent.map { $0 >= 100 } ?? false)
     }
 
     private static func mapModelNameToServiceType(modelName: String) -> String {
-        // Text Generation (文本生成): M2.7, M2.7-highspeed, MiniMax-M*, etc.
-        if self.isTextGenerationModelName(modelName) {
-            return "Text Generation"
+        let lower = modelName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if lower == "general" || lower == "video" {
+            return lower
         }
 
-        let lower = modelName.lowercased()
-
-        if lower == "video" {
-            return "Text to Video"
+        // Legacy text model names are separate from Token Plan's `general` bucket.
+        if self.isTextGenerationModelName(modelName) {
+            return "Text Generation"
         }
 
         // Text to Speech (语音合成): speech-hd, Speech 2.8, etc.
