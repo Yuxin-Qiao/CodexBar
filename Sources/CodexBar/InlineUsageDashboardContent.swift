@@ -69,6 +69,17 @@ extension UsageMenuCardView.Model {
             ]
         }
 
+        if input.provider == .deepseek,
+           input.showOptionalCreditsAndExtraUsage,
+           let hint = input.snapshot?.deepseekSummaryError?.userHint
+        {
+            // The optional usage summary failed (e.g. platform.deepseek.com
+            // rejected the API key). Surface a short hint so users can tell
+            // why the dashboard is missing instead of seeing it silently
+            // disappear. See #1166 follow-up.
+            return [hint]
+        }
+
         if input.provider == .ollama,
            input.snapshot?.identity?.loginMethod == "API key"
         {

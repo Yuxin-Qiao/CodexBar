@@ -38,6 +38,12 @@ public struct DeepSeekUsageSnapshot: Sendable {
     public let grantedBalance: Double
     public let toppedUpBalance: Double
     public let usageSummary: DeepSeekUsageSummary?
+    /// Why the optional usage summary could not be populated. `nil` when the
+    /// summary either succeeded or was not requested. Set when the summary
+    /// fetch threw (e.g. the platform endpoints require a web session cookie
+    /// the API key cannot satisfy); the UI should surface a hint instead of
+    /// silently hiding the dashboard.
+    public let summaryFailure: DeepSeekUsageError?
     public let updatedAt: Date
 
     public init(
@@ -47,6 +53,7 @@ public struct DeepSeekUsageSnapshot: Sendable {
         grantedBalance: Double,
         toppedUpBalance: Double,
         usageSummary: DeepSeekUsageSummary? = nil,
+        summaryFailure: DeepSeekUsageError? = nil,
         updatedAt: Date)
     {
         self.isAvailable = isAvailable
@@ -55,6 +62,7 @@ public struct DeepSeekUsageSnapshot: Sendable {
         self.grantedBalance = grantedBalance
         self.toppedUpBalance = toppedUpBalance
         self.usageSummary = usageSummary
+        self.summaryFailure = summaryFailure
         self.updatedAt = updatedAt
     }
 
@@ -94,6 +102,7 @@ public struct DeepSeekUsageSnapshot: Sendable {
             tertiary: nil,
             providerCost: nil,
             deepseekUsage: self.usageSummary,
+            deepseekSummaryError: self.summaryFailure,
             updatedAt: self.updatedAt,
             identity: identity)
     }
@@ -106,6 +115,10 @@ public enum DeepSeekUsageError: LocalizedError, Sendable {
     case networkError(String)
     case apiError(String)
     case parseFailed(String)
+    /// The platform.deepseek.com usage endpoints require a web session cookie,
+    /// not an API key. Raised when the server returns 200 OK with an
+    /// application-level auth error code (e.g. 40003 "invalid token").
+    case sessionCookieRequired(endpoint: String, message: String)
 
     public var errorDescription: String? {
         switch self {
@@ -117,6 +130,32 @@ public enum DeepSeekUsageError: LocalizedError, Sendable {
             "DeepSeek API error: \(message)"
         case let .parseFailed(message):
             "Failed to parse DeepSeek response: \(message)"
+        case let .sessionCookieRequired(endpoint, message):
+            "DeepSeek \(endpoint) needs a web session: \(message)"
+        }
+    }
+
+    /// Whether this error means the user's API key works for balance but
+    /// the platform usage endpoints require a separate authentication path.
+    public var isSessionCookieRequired: Bool {
+        if case .sessionCookieRequired = self { return true }
+        return false
+    }
+
+    /// Short, user-facing hint to surface in the menu when the optional
+    /// usage dashboard cannot be loaded. `nil` for errors that the UI
+    /// should not advertise to end users (e.g. `.missingCredentials` is
+    /// already shown by the provider pane).
+    public var userHint: String? {
+        switch self {
+        case .sessionCookieRequired:
+            "Sign in to platform.deepseek.com to enable usage stats."
+        case .networkError, .apiError:
+            "DeepSeek usage stats temporarily unavailable."
+        case .parseFailed:
+            "DeepSeek usage stats unavailable — server response changed."
+        case .missingCredentials:
+            nil
         }
     }
 }
@@ -205,7 +244,7 @@ public struct DeepSeekUsageFetcher: Sendable {
         }
 
         if let summaryTask {
-            let summary = try await self.completedOptionalUsageSummary(
+            let (summary, failure) = try await self.completedOptionalUsageSummary(
                 from: summaryTask,
                 joinGrace: optionalSummaryJoinGrace)
             if let summary {
@@ -216,6 +255,17 @@ public struct DeepSeekUsageFetcher: Sendable {
                     grantedBalance: snapshot.grantedBalance,
                     toppedUpBalance: snapshot.toppedUpBalance,
                     usageSummary: summary,
+                    summaryFailure: nil,
+                    updatedAt: snapshot.updatedAt)
+            } else if let failure {
+                snapshot = DeepSeekUsageSnapshot(
+                    isAvailable: snapshot.isAvailable,
+                    currency: snapshot.currency,
+                    totalBalance: snapshot.totalBalance,
+                    grantedBalance: snapshot.grantedBalance,
+                    toppedUpBalance: snapshot.toppedUpBalance,
+                    usageSummary: nil,
+                    summaryFailure: failure,
                     updatedAt: snapshot.updatedAt)
             }
         }
@@ -242,23 +292,33 @@ public struct DeepSeekUsageFetcher: Sendable {
 
     private static func completedOptionalUsageSummary(
         from task: Task<DeepSeekUsageSummary, Error>,
-        joinGrace: Duration) async throws -> DeepSeekUsageSummary?
+        joinGrace: Duration) async throws -> (DeepSeekUsageSummary?, DeepSeekUsageError?)
     {
         try await withTaskCancellationHandler {
             do {
-                return try await withThrowingTaskGroup(of: DeepSeekUsageSummary?.self) { group in
+                return try await withThrowingTaskGroup(of: (DeepSeekUsageSummary?, DeepSeekUsageError?).self) { group in
                     group.addTask {
-                        try await task.value
+                        do {
+                            let summary = try await task.value
+                            return (summary, nil)
+                        } catch let error as DeepSeekUsageError {
+                            return (nil, error)
+                        } catch {
+                            return (nil, .networkError(error.localizedDescription))
+                        }
                     }
                     group.addTask {
                         if joinGrace > .zero {
                             try await Task.sleep(for: joinGrace)
                         }
-                        return nil
+                        return (nil, nil)
                     }
 
-                    let result = try await group.next().flatMap(\.self)
-                    if result == nil {
+                    guard let result = try await group.next() else {
+                        return (nil, nil)
+                    }
+                    if result.0 == nil, result.1 == nil {
+                        // Grace expired first; cancel the in-flight task.
                         task.cancel()
                     }
                     group.cancelAll()
@@ -269,7 +329,7 @@ public struct DeepSeekUsageFetcher: Sendable {
                 if Task.isCancelled {
                     throw error
                 }
-                return nil
+                return (nil, .networkError(error.localizedDescription))
             }
         } onCancel: {
             task.cancel()
@@ -336,6 +396,7 @@ public struct DeepSeekUsageFetcher: Sendable {
             }
             throw DeepSeekUsageError.apiError("HTTP \(response.statusCode)")
         }
+        try self.throwIfApplicationError(data: data, endpoint: "amount")
 
         return data
     }
@@ -366,8 +427,50 @@ public struct DeepSeekUsageFetcher: Sendable {
             }
             throw DeepSeekUsageError.apiError("HTTP \(response.statusCode)")
         }
+        try self.throwIfApplicationError(data: data, endpoint: "cost")
 
         return data
+    }
+
+    /// platform.deepseek.com returns HTTP 200 with an application-level error
+    /// when the bearer token is rejected (e.g. `{"code":40003,"msg":"Authorization
+    /// Failed (invalid token)","data":null}`). Inspect the body and surface
+    /// a typed error so callers can distinguish "needs session cookie" from
+    /// a real network / parse failure.
+    static func _throwIfApplicationErrorForTesting(data: Data, endpoint: String) throws {
+        try self.throwIfApplicationError(data: data, endpoint: endpoint)
+    }
+
+    private static func throwIfApplicationError(data: Data, endpoint: String) throws {
+        guard let object = try? JSONSerialization.jsonObject(with: data),
+              let json = object as? [String: Any]
+        else {
+            // Body is not a top-level object — let the typed parser fail with
+            // its own descriptive error.
+            return
+        }
+        // Only treat as app-level error if `code` is present and non-zero.
+        // Many success responses (per DeepSeekUsageCostParser fixtures) include
+        // `code: 0` explicitly, so absence is also "ok, no app-level error".
+        guard let codeRaw = json["code"], let code = codeRaw as? Int, code != 0 else {
+            return
+        }
+        let message = (json["msg"] as? String) ?? "no message"
+        // DeepSeek web console uses 40003 for invalid/expired bearer tokens;
+        // the platform usage endpoints require a session cookie set by the
+        // browser login, which an API key cannot satisfy.
+        if code == 40003
+            || message.lowercased().contains("invalid token")
+            || message.lowercased().contains("authorization failed")
+            || message.lowercased().contains("unauthorized")
+        {
+            Self.log.warning("DeepSeek \(endpoint) rejected API key (code=\(code)): \(message)")
+            throw DeepSeekUsageError.sessionCookieRequired(
+                endpoint: endpoint,
+                message: "Sign in to platform.deepseek.com to enable usage stats (server: \(message))")
+        }
+        Self.log.error("DeepSeek \(endpoint) app-level error code=\(code): \(message)")
+        throw DeepSeekUsageError.apiError("DeepSeek \(endpoint) returned code \(code): \(message)")
     }
 
     static func _parseUsageSummaryForTesting(

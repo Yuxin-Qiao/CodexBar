@@ -524,4 +524,202 @@ struct DeepSeekUsageFetcherTests {
         calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
         return calendar.date(from: DateComponents(year: year, month: month, day: day))
     }
+
+    // MARK: - Application-level error detection (regression for #1166 silent failure)
+
+    @Test
+    func `app-level 40003 invalid token raises sessionCookieRequired`() {
+        let body = #"{"code":40003,"msg":"Authorization Failed (invalid token)","data":null}"#
+
+        do {
+            try DeepSeekUsageFetcher._throwIfApplicationErrorForTesting(
+                data: Data(body.utf8),
+                endpoint: "amount")
+            Issue.record("Expected sessionCookieRequired")
+        } catch let error as DeepSeekUsageError {
+            guard case let .sessionCookieRequired(endpoint, message) = error else {
+                Issue.record("Wrong error case: \(error)")
+                return
+            }
+            #expect(endpoint == "amount")
+            #expect(message.contains("invalid token"))
+            #expect(error.isSessionCookieRequired)
+            #expect(error.userHint?.contains("Sign in to platform.deepseek.com") == true)
+        } catch {
+            Issue.record("Wrong error type: \(error)")
+        }
+    }
+
+    @Test
+    func `app-level 0 success body does not raise`() throws {
+        let body = #"{"code":0,"msg":"","data":{"biz_code":0}}"#
+        try DeepSeekUsageFetcher._throwIfApplicationErrorForTesting(
+            data: Data(body.utf8),
+            endpoint: "amount")
+    }
+
+    @Test
+    func `app-level body without code field does not raise`() throws {
+        // Real parser fixtures don't always set top-level `code`; we should
+        // not raise here and let the typed parser deal with the body.
+        let body = #"{"data":{"biz_data":{}}}"#
+        try DeepSeekUsageFetcher._throwIfApplicationErrorForTesting(
+            data: Data(body.utf8),
+            endpoint: "cost")
+    }
+
+    @Test
+    func `non-JSON body does not raise`() throws {
+        // WAF or HTML error pages must not be misclassified as DeepSeek app errors.
+        let body = "<!DOCTYPE html><html>blocked</html>"
+        try DeepSeekUsageFetcher._throwIfApplicationErrorForTesting(
+            data: Data(body.utf8),
+            endpoint: "amount")
+    }
+
+    @Test
+    func `unrelated app-level non-zero code raises generic apiError`() {
+        let body = #"{"code":50000,"msg":"server error","data":null}"#
+
+        do {
+            try DeepSeekUsageFetcher._throwIfApplicationErrorForTesting(
+                data: Data(body.utf8),
+                endpoint: "cost")
+            Issue.record("Expected apiError")
+        } catch let error as DeepSeekUsageError {
+            guard case let .apiError(message) = error else {
+                Issue.record("Wrong error case: \(error)")
+                return
+            }
+            #expect(message.contains("50000"))
+            #expect(message.contains("server error"))
+        } catch {
+            Issue.record("Wrong error type: \(error)")
+        }
+    }
+
+    @Test
+    func `summary failure is captured on snapshot when optional fetch throws`() async throws {
+        // When the optional usage summary throws, balance must still come back,
+        // and the failure must be recorded on the snapshot so the UI can show
+        // a hint (e.g. "Sign in to platform.deepseek.com") instead of
+        // silently hiding the dashboard.
+        let snapshot = try await DeepSeekUsageFetcher._fetchUsageForTesting(
+            apiKey: "test-key",
+            includeOptionalUsage: true,
+            optionalSummaryJoinGrace: .seconds(2),
+            fetchBalanceData: { _ in
+                Data(Self.sampleBalanceJSON.utf8)
+            },
+            fetchSummary: { _ in
+                throw DeepSeekUsageError.sessionCookieRequired(
+                    endpoint: "amount",
+                    message: "Sign in to platform.deepseek.com (server: invalid token)")
+            })
+
+        #expect(snapshot.totalBalance == 50.0)
+        #expect(snapshot.usageSummary == nil)
+        #expect(snapshot.summaryFailure?.isSessionCookieRequired == true)
+        #expect(snapshot.summaryFailure?.userHint?.contains("Sign in to platform.deepseek.com") == true)
+
+        // toUsageSnapshot should propagate the failure.
+        let usage = snapshot.toUsageSnapshot()
+        #expect(usage.deepseekSummaryError?.isSessionCookieRequired == true)
+    }
+
+    @Test
+    func `integration platform 40003 raises sessionCookieRequired via URL stub`() async throws {
+        // The platform.deepseek.com endpoints return HTTP 200 with an app-level
+        // error body. The fetcher must surface that as sessionCookieRequired so
+        // the UI can show a hint instead of silently hiding the dashboard.
+        DeepSeekAppErrorStubURLProtocol.handler = { request in
+            guard let url = request.url, url.host == "platform.deepseek.com" else {
+                throw URLError(.unsupportedURL)
+            }
+            let body = #"{"code":40003,"msg":"Authorization Failed (invalid token)","data":null}"#
+            let response = HTTPURLResponse(
+                url: url,
+                statusCode: 200,
+                httpVersion: "HTTP/1.1",
+                headerFields: ["Content-Type": "application/json"])!
+            return (response, Data(body.utf8))
+        }
+        let registered = URLProtocol.registerClass(DeepSeekAppErrorStubURLProtocol.self)
+        defer {
+            if registered {
+                URLProtocol.unregisterClass(DeepSeekAppErrorStubURLProtocol.self)
+            }
+            DeepSeekAppErrorStubURLProtocol.handler = nil
+        }
+
+        do {
+            _ = try await DeepSeekUsageFetcher.fetchUsageSummary(apiKey: "test-key")
+            Issue.record("Expected sessionCookieRequired")
+        } catch let error as DeepSeekUsageError {
+            guard case let .sessionCookieRequired(endpoint, _) = error else {
+                Issue.record("Wrong error: \(error)")
+                return
+            }
+            #expect(endpoint == "amount")
+        } catch {
+            Issue.record("Wrong error type: \(error)")
+        }
+    }
+
+    /// Live-network smoke test against the real DeepSeek endpoints. Only runs
+    /// when `DEEPSEEK_LIVE_TEST_KEY` is set in the environment, so the regular
+    /// `swift test` run does not hit production. Confirms the fetcher raises
+    /// `sessionCookieRequired` with the real platform error response.
+    @Test
+    func `live platform endpoint raises sessionCookieRequired for bearer-only key`() async throws {
+        guard let key = ProcessInfo.processInfo.environment["DEEPSEEK_LIVE_TEST_KEY"],
+              !key.isEmpty
+        else {
+            // Skip silently — the regular test run has no live key.
+            return
+        }
+
+        do {
+            _ = try await DeepSeekUsageFetcher.fetchUsageSummary(apiKey: key)
+            Issue.record("Expected sessionCookieRequired against live platform endpoint")
+        } catch let error as DeepSeekUsageError {
+            guard case let .sessionCookieRequired(endpoint, message) = error else {
+                Issue.record("Wrong error: \(error)")
+                return
+            }
+            #expect(endpoint == "amount")
+            #expect(message.contains("platform.deepseek.com"))
+        } catch {
+            Issue.record("Wrong error type: \(error)")
+        }
+    }
+}
+
+private final class DeepSeekAppErrorStubURLProtocol: URLProtocol {
+    nonisolated(unsafe) static var handler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?
+
+    override static func canInit(with request: URLRequest) -> Bool {
+        request.url?.host == "platform.deepseek.com"
+    }
+
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        guard let handler = Self.handler else {
+            self.client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
+            return
+        }
+        do {
+            let (response, data) = try handler(self.request)
+            self.client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            self.client?.urlProtocol(self, didLoad: data)
+            self.client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            self.client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {}
 }

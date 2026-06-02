@@ -37,6 +37,22 @@ struct MenuCardDeepSeekTests {
             .toUsageSnapshot()
     }
 
+    private static func makeSnapshotWithFailure(
+        now: Date,
+        failure: DeepSeekUsageError) -> UsageSnapshot
+    {
+        DeepSeekUsageSnapshot(
+            isAvailable: true,
+            currency: "USD",
+            totalBalance: 9.32,
+            grantedBalance: 0,
+            toppedUpBalance: 9.32,
+            usageSummary: nil,
+            summaryFailure: failure,
+            updatedAt: now)
+            .toUsageSnapshot()
+    }
+
     @Test
     func `model shows balance as status text instead of percentage detail`() throws {
         let now = Date()
@@ -142,5 +158,78 @@ struct MenuCardDeepSeekTests {
 
         #expect(model.inlineUsageDashboard?.accessibilityLabel == "DeepSeek 30 day token usage trend")
         #expect(model.usageNotes.contains { $0.contains("Today:") })
+    }
+
+    @Test
+    func `model shows session cookie hint when summary fetch failed`() throws {
+        // Regression: when platform.deepseek.com rejects the API key (40003),
+        // the snapshot carries summaryFailure. The UI must surface a hint
+        // instead of silently hiding the dashboard.
+        let now = Date()
+        let metadata = try #require(ProviderDefaults.metadata[.deepseek])
+        let snapshot = Self.makeSnapshotWithFailure(
+            now: now,
+            failure: .sessionCookieRequired(
+                endpoint: "amount",
+                message: "Sign in to platform.deepseek.com (server: invalid token)"))
+
+        let model = UsageMenuCardView.Model.make(.init(
+            provider: .deepseek,
+            metadata: metadata,
+            snapshot: snapshot,
+            credits: nil,
+            creditsError: nil,
+            dashboard: nil,
+            dashboardError: nil,
+            tokenSnapshot: nil,
+            tokenError: nil,
+            account: AccountInfo(email: nil, plan: nil),
+            isRefreshing: false,
+            lastError: nil,
+            usageBarsShowUsed: false,
+            resetTimeDisplayStyle: .countdown,
+            tokenCostUsageEnabled: false,
+            showOptionalCreditsAndExtraUsage: true,
+            hidePersonalInfo: false,
+            now: now))
+
+        #expect(model.inlineUsageDashboard == nil)
+        #expect(model.usageNotes.contains { $0.contains("Sign in to platform.deepseek.com") })
+    }
+
+    @Test
+    func `model hides session cookie hint when extras disabled`() throws {
+        // If the user disabled "Show credits + extra usage", the hint must
+        // not be shown — the dashboard is opt-in.
+        let now = Date()
+        let metadata = try #require(ProviderDefaults.metadata[.deepseek])
+        let snapshot = Self.makeSnapshotWithFailure(
+            now: now,
+            failure: .sessionCookieRequired(
+                endpoint: "amount",
+                message: "Sign in to platform.deepseek.com (server: invalid token)"))
+
+        let model = UsageMenuCardView.Model.make(.init(
+            provider: .deepseek,
+            metadata: metadata,
+            snapshot: snapshot,
+            credits: nil,
+            creditsError: nil,
+            dashboard: nil,
+            dashboardError: nil,
+            tokenSnapshot: nil,
+            tokenError: nil,
+            account: AccountInfo(email: nil, plan: nil),
+            isRefreshing: false,
+            lastError: nil,
+            usageBarsShowUsed: false,
+            resetTimeDisplayStyle: .countdown,
+            tokenCostUsageEnabled: false,
+            showOptionalCreditsAndExtraUsage: false,
+            hidePersonalInfo: false,
+            now: now))
+
+        #expect(model.inlineUsageDashboard == nil)
+        #expect(model.usageNotes.isEmpty)
     }
 }
