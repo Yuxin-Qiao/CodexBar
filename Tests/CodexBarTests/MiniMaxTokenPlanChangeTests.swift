@@ -256,10 +256,42 @@ struct MiniMaxTokenPlanChangeTests {
     }
 
     @Test
-    func `api token fetch rejects official endpoint auth failure for fallback`() async throws {
+    func `api token fetch falls back to legacy coding plan endpoint after official auth failure`() async throws {
+        let now = Date(timeIntervalSince1970: 1_780_282_340)
         let transport = ProviderHTTPTransportStub { request in
             let url = try #require(request.url)
-            #expect(url.path == "/v1/token_plan/remains")
+            #expect(url.host == "api.minimaxi.com")
+            #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer sk-standard-test")
+            if url.path == "/v1/token_plan/remains" {
+                return Self.httpResponse(url: url, body: "{}", statusCode: 401, contentType: "application/json")
+            }
+            #expect(url.path == "/v1/api/openplatform/coding_plan/remains")
+            return Self.httpResponse(url: url, body: Self.percentBasedRemainsJSON, contentType: "application/json")
+        }
+
+        let snapshot = try await MiniMaxUsageFetcher.fetchUsage(
+            apiToken: "sk-standard-test",
+            region: .chinaMainland,
+            now: now,
+            session: transport)
+        let requests = await transport.requests()
+
+        #expect(snapshot.toUsageSnapshot().primary?.usedPercent == 4)
+        #expect(requests.map { $0.url?.path } == [
+            "/v1/token_plan/remains",
+            "/v1/api/openplatform/coding_plan/remains",
+        ])
+    }
+
+    @Test
+    func `api token fetch rejects after official and legacy endpoint auth failures`() async throws {
+        let transport = ProviderHTTPTransportStub { request in
+            let url = try #require(request.url)
+            #expect(url.host == "api.minimaxi.com")
+            #expect([
+                "/v1/token_plan/remains",
+                "/v1/api/openplatform/coding_plan/remains",
+            ].contains(url.path))
             return Self.httpResponse(url: url, body: "{}", statusCode: 401, contentType: "application/json")
         }
 
@@ -269,6 +301,12 @@ struct MiniMaxTokenPlanChangeTests {
                 region: .chinaMainland,
                 session: transport)
         }
+        let requests = await transport.requests()
+
+        #expect(requests.map { $0.url?.path } == [
+            "/v1/token_plan/remains",
+            "/v1/api/openplatform/coding_plan/remains",
+        ])
     }
 
     @Test

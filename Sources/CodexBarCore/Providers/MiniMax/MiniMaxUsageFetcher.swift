@@ -119,7 +119,35 @@ public struct MiniMaxUsageFetcher: Sendable {
         now: Date,
         transport: any ProviderHTTPTransport) async throws -> MiniMaxUsageSnapshot
     {
-        var request = URLRequest(url: region.tokenPlanRemainsURL)
+        var lastError: Error?
+        for remainsURL in [region.tokenPlanRemainsURL, region.apiRemainsURL] {
+            do {
+                return try await self.fetchAPIUsageOnce(
+                    apiToken: apiToken,
+                    remainsURL: remainsURL,
+                    now: now,
+                    transport: transport)
+            } catch let error as MiniMaxUsageError {
+                lastError = error
+                guard remainsURL == region.tokenPlanRemainsURL,
+                      self.shouldTryLegacyAPIEndpoint(after: error)
+                else {
+                    throw error
+                }
+                Self.log.debug("MiniMax token-plan API failed, trying legacy coding-plan endpoint")
+            }
+        }
+        if let lastError { throw lastError }
+        throw MiniMaxUsageError.parseFailed("Missing MiniMax API remains URL.")
+    }
+
+    private static func fetchAPIUsageOnce(
+        apiToken: String,
+        remainsURL: URL,
+        now: Date,
+        transport: any ProviderHTTPTransport) async throws -> MiniMaxUsageSnapshot
+    {
+        var request = URLRequest(url: remainsURL)
         request.httpMethod = "GET"
         request.setValue("Bearer \(apiToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "accept")
@@ -149,6 +177,17 @@ public struct MiniMaxUsageFetcher: Sendable {
             Self.log.debug("MiniMax multi-service response detected: \(services.count) services")
         }
         return snapshot
+    }
+
+    private static func shouldTryLegacyAPIEndpoint(after error: MiniMaxUsageError) -> Bool {
+        switch error {
+        case .invalidCredentials:
+            true
+        case let .apiError(message):
+            message.contains("HTTP 404") || message.contains("HTTP 405")
+        case .networkError, .parseFailed:
+            true
+        }
     }
 
     private static func fetchCodingPlanHTML(
