@@ -256,10 +256,41 @@ struct MiniMaxTokenPlanChangeTests {
     }
 
     @Test
-    func `api token fetch rejects official endpoint auth failure for fallback`() async throws {
+    func `api token fetch falls back to legacy coding plan remains endpoint`() async throws {
+        let now = Date(timeIntervalSince1970: 1_780_282_340)
         let transport = ProviderHTTPTransportStub { request in
             let url = try #require(request.url)
-            #expect(url.path == "/v1/token_plan/remains")
+            if url.path == "/v1/token_plan/remains" {
+                return Self.httpResponse(url: url, body: "{}", statusCode: 401, contentType: "application/json")
+            }
+            #expect(url.host == "api.minimaxi.com")
+            #expect(url.path == "/v1/api/openplatform/coding_plan/remains")
+            #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer sk-standard-test")
+            return Self.httpResponse(url: url, body: Self.percentBasedRemainsJSON, contentType: "application/json")
+        }
+
+        let snapshot = try await MiniMaxUsageFetcher.fetchUsage(
+            apiToken: "sk-standard-test",
+            region: .chinaMainland,
+            now: now,
+            session: transport)
+        let requests = await transport.requests()
+
+        #expect(snapshot.toUsageSnapshot().primary?.usedPercent == 4)
+        #expect(requests.map { $0.url?.path } == [
+            "/v1/token_plan/remains",
+            "/v1/api/openplatform/coding_plan/remains",
+        ])
+    }
+
+    @Test
+    func `api token fetch rejects when official and legacy endpoints both fail auth`() async throws {
+        let transport = ProviderHTTPTransportStub { request in
+            let url = try #require(request.url)
+            #expect([
+                "/v1/token_plan/remains",
+                "/v1/api/openplatform/coding_plan/remains",
+            ].contains(url.path))
             return Self.httpResponse(url: url, body: "{}", statusCode: 401, contentType: "application/json")
         }
 
