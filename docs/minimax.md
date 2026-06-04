@@ -8,8 +8,8 @@ read_when:
 
 # MiniMax provider
 
-MiniMax supports Coding Plan API tokens or web sessions. Web-session mode uses MiniMax browser/session state and
-falls back across the provider's supported web requests when needed.
+MiniMax supports Coding Plan API tokens or web sessions. Web-session mode uses MiniMax browser/session state, reads
+the Coding Plan remains JSON endpoint first, and falls back across the provider's supported web requests when needed.
 
 ## Data sources
 
@@ -35,6 +35,8 @@ falls back across the provider's supported web requests when needed.
 
 ## Requests
 - Web sessions use the global host or China mainland host.
+- Web-session usage first requests `/v1/api/openplatform/coding_plan/remains`; the legacy Coding Plan page is a
+  fallback for older accounts or temporary endpoint changes.
 - Region picker in Providers settings toggles the host; environment overrides:
   - `MINIMAX_HOST=platform.minimaxi.com`
   - `MINIMAX_CODING_PLAN_URL=...` (full URL override)

@@ -785,7 +785,7 @@ struct MiniMaxUsageParserTests {
         let now = try #require(ISO8601DateFormatter().date(from: "2026-05-17T12:00:00Z"))
         let transport = ProviderHTTPTransportStub { request in
             let url = try #require(request.url)
-            if url.path.contains("coding-plan") {
+            if Self.isCodingPlanRequest(url) {
                 return Self.httpResponse(
                     url: url,
                     body: Self.codingPlanJSON,
@@ -828,7 +828,7 @@ struct MiniMaxUsageParserTests {
         let now = try #require(ISO8601DateFormatter().date(from: "2026-05-17T12:00:00Z"))
         let transport = ProviderHTTPTransportStub { request in
             let url = try #require(request.url)
-            if url.path.contains("coding-plan") {
+            if Self.isCodingPlanRequest(url) {
                 return Self.httpResponse(
                     url: url,
                     body: Self.codingPlanJSON,
@@ -873,7 +873,7 @@ struct MiniMaxUsageParserTests {
         let now = try #require(ISO8601DateFormatter().date(from: "2026-05-17T12:00:00Z"))
         let transport = ProviderHTTPTransportStub { request in
             let url = try #require(request.url)
-            #expect(url.path.contains("coding-plan"))
+            #expect(Self.isCodingPlanRequest(url))
             return Self.httpResponse(
                 url: url,
                 body: Self.codingPlanJSON,
@@ -892,6 +892,7 @@ struct MiniMaxUsageParserTests {
         #expect(snapshot.currentPrompts == 2)
         #expect(snapshot.billingSummary == nil)
         #expect(requests.count == 1)
+        #expect(requests.first?.url?.path == "/v1/api/openplatform/coding_plan/remains")
     }
 
     @Test
@@ -899,7 +900,7 @@ struct MiniMaxUsageParserTests {
         let now = try #require(ISO8601DateFormatter().date(from: "2026-05-17T12:00:00Z"))
         let transport = ProviderHTTPTransportStub { request in
             let url = try #require(request.url)
-            if url.path.contains("coding-plan") {
+            if Self.isCodingPlanRequest(url) {
                 return Self.httpResponse(
                     url: url,
                     body: Self.codingPlanJSON,
@@ -924,7 +925,7 @@ struct MiniMaxUsageParserTests {
         let now = try #require(ISO8601DateFormatter().date(from: "2026-05-17T12:00:00Z"))
         let transport = ProviderHTTPTransportStub { request in
             let url = try #require(request.url)
-            if url.path.contains("coding-plan") {
+            if Self.isCodingPlanRequest(url) {
                 return Self.httpResponse(
                     url: url,
                     body: Self.codingPlanJSON,
@@ -950,7 +951,7 @@ struct MiniMaxUsageParserTests {
         let now = try #require(ISO8601DateFormatter().date(from: "2026-05-17T12:00:00Z"))
         let transport = ProviderHTTPTransportStub { request in
             let url = try #require(request.url)
-            if url.path.contains("coding-plan") {
+            if Self.isCodingPlanRequest(url) {
                 return Self.httpResponse(
                     url: url,
                     body: Self.codingPlanJSON,
@@ -967,6 +968,44 @@ struct MiniMaxUsageParserTests {
                 session: transport,
                 now: now)
         }
+    }
+
+    @Test
+    func `web usage fetch falls back to coding plan html when remains endpoints are unavailable`() async throws {
+        let now = try #require(ISO8601DateFormatter().date(from: "2026-05-17T12:00:00Z"))
+        let html = """
+        <div>Coding Plan Pro</div>
+        <div>Available usage: 10 prompts / 5 hours</div>
+        <div>Used 80%</div>
+        <div>Resets in 60 min</div>
+        """
+        let transport = ProviderHTTPTransportStub { request in
+            let url = try #require(request.url)
+            if url.path == "/v1/api/openplatform/coding_plan/remains" {
+                return Self.httpResponse(url: url, body: "{}", statusCode: 404, contentType: "application/json")
+            }
+            #expect(url.path == "/user-center/payment/coding-plan")
+            #expect(request.value(forHTTPHeaderField: "Cookie") == "HERTZ-SESSION=abc")
+            return Self.httpResponse(url: url, body: html, contentType: "text/html")
+        }
+
+        let snapshot = try await MiniMaxUsageFetcher.fetchUsage(
+            cookieHeader: "HERTZ-SESSION=abc",
+            region: .global,
+            environment: [:],
+            includeBillingHistory: false,
+            session: transport,
+            now: now)
+
+        let requests = await transport.requests()
+        #expect(requests.map { $0.url?.path } == [
+            "/v1/api/openplatform/coding_plan/remains",
+            "/v1/api/openplatform/coding_plan/remains",
+            "/user-center/payment/coding-plan",
+        ])
+        #expect(snapshot.planName == "Pro")
+        #expect(snapshot.availablePrompts == 10)
+        #expect(snapshot.usedPercent == 80)
     }
 
     private static let codingPlanJSON = """
@@ -1000,6 +1039,11 @@ struct MiniMaxUsageParserTests {
             httpVersion: "HTTP/1.1",
             headerFields: ["Content-Type": contentType])!
         return (Data(body.utf8), response)
+    }
+
+    private static func isCodingPlanRequest(_ url: URL) -> Bool {
+        url.path == "/v1/api/openplatform/coding_plan/remains"
+            || url.path == "/user-center/payment/coding-plan"
     }
 }
 

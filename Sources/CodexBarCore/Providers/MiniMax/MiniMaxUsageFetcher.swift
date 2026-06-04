@@ -46,7 +46,12 @@ public struct MiniMaxUsageFetcher: Sendable {
             transport: transport)
         do {
             let snapshot = try await self.attachingSubscriptionMetadataIfAvailable(
-                to: self.fetchCodingPlanHTML(context: context, now: now),
+                to: self.fetchCodingPlanRemains(
+                    context: context,
+                    remainsContext: RemainsContext(
+                        authorizationToken: authorizationToken,
+                        groupID: groupID),
+                    now: now),
                 context: context,
                 groupID: groupID)
             return try await self.attachingBillingIfAvailable(
@@ -54,26 +59,28 @@ public struct MiniMaxUsageFetcher: Sendable {
                 context: context,
                 includeBillingHistory: includeBillingHistory,
                 now: now)
-        } catch let error as MiniMaxUsageError {
-            if case .parseFailed = error {
-                Self.log.debug("MiniMax coding plan HTML parse failed, trying remains API")
-                let snapshot = try await self.attachingSubscriptionMetadataIfAvailable(
-                    to: self.fetchCodingPlanRemains(
-                        context: context,
-                        remainsContext: RemainsContext(
-                            authorizationToken: authorizationToken,
-                            groupID: groupID),
-                        now: now),
-                    context: context,
-                    groupID: groupID)
-                return try await self.attachingBillingIfAvailable(
-                    to: snapshot,
-                    context: context,
-                    includeBillingHistory: includeBillingHistory,
-                    now: now)
-            }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as URLError where error.code == .cancelled {
             throw error
+        } catch let error as MiniMaxUsageError {
+            if case .invalidCredentials = error {
+                throw error
+            }
+            Self.log.debug("MiniMax remains API unavailable, trying coding plan HTML: \(error.localizedDescription)")
+        } catch {
+            Self.log.debug("MiniMax remains API unavailable, trying coding plan HTML: \(error.localizedDescription)")
         }
+
+        let snapshot = try await self.attachingSubscriptionMetadataIfAvailable(
+            to: self.fetchCodingPlanHTML(context: context, now: now),
+            context: context,
+            groupID: groupID)
+        return try await self.attachingBillingIfAvailable(
+            to: snapshot,
+            context: context,
+            includeBillingHistory: includeBillingHistory,
+            now: now)
     }
 
     public static func fetchUsage(
