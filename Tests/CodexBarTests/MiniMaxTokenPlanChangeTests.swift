@@ -185,7 +185,7 @@ struct MiniMaxTokenPlanChangeTests {
         #expect(services[0].windowType == "5 hours")
         #expect(services[0].usage == 2)
         #expect(services[0].limit == 200)
-        #expect(services[0].percent == 2)
+        #expect(services[0].percent == 1)
         #expect(services[0].isUnlimited == false)
         #expect(services[1].serviceType == "general")
         #expect(services[1].displayName == "General")
@@ -194,7 +194,7 @@ struct MiniMaxTokenPlanChangeTests {
         #expect(services[1].limit == 0)
         #expect(services[1].percent == 0)
         #expect(services[1].isUnlimited)
-        #expect(snapshot.toUsageSnapshot().primary?.usedPercent == 2)
+        #expect(snapshot.toUsageSnapshot().primary?.usedPercent == 1)
         #expect(snapshot.toUsageSnapshot().secondary?.resetDescription == "Unlimited")
     }
 

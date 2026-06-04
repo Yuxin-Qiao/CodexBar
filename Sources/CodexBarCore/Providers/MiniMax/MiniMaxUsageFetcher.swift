@@ -1581,9 +1581,9 @@ enum MiniMaxUsageParser {
             usage = 0
         } else if let remainingPercent = input.remainingPercent {
             let quotaLimit = self.percentQuotaLimit(boostPermille: input.boostPermille)
-            percent = self.usedPercent(remainingPercent: remainingPercent) * (Double(quotaLimit) / 100.0)
+            percent = self.usedPercent(remainingPercent: remainingPercent)
             limit = quotaLimit
-            usage = Int(percent.rounded())
+            usage = Int((percent * Double(quotaLimit) / 100.0).rounded())
         } else {
             guard let total = input.total, total > 0, let remaining = input.remaining else { return nil }
             let used = max(0, total - remaining)
