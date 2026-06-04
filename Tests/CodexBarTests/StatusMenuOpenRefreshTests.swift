@@ -721,7 +721,7 @@ extension StatusMenuTests {
         let menuKey = ObjectIdentifier(menu)
         controller.openMenus[menuKey] = menu
         controller.menuRefreshEnabledOverrideForTesting = true
-        controller._test_providerSwitcherMenuRebuildDebounceNanoseconds = 50_000_000
+        controller._test_providerSwitcherMenuRebuildDebounceNanoseconds = 0
         defer { controller._test_providerSwitcherMenuRebuildDebounceNanoseconds = nil }
 
         var rebuildCount = 0
@@ -729,21 +729,50 @@ extension StatusMenuTests {
             rebuildCount += 1
         }
         defer { controller._test_openMenuRebuildObserver = nil }
+        var refreshGateEntries = 0
+        var pendingRefreshGates: [CheckedContinuation<Void, Never>] = []
+        func resumePendingRefreshGates() {
+            let gates = pendingRefreshGates
+            pendingRefreshGates.removeAll(keepingCapacity: true)
+            for gate in gates {
+                gate.resume()
+            }
+        }
+        controller._test_openMenuRefreshYieldOverride = {
+            refreshGateEntries += 1
+            await withCheckedContinuation { continuation in
+                pendingRefreshGates.append(continuation)
+            }
+        }
+        defer {
+            resumePendingRefreshGates()
+            controller._test_openMenuRefreshYieldOverride = nil
+        }
 
         controller.deferSwitcherMenuRebuildIfStillVisible(menu, provider: .codex)
-        try? await Task.sleep(nanoseconds: 10_000_000)
-        controller.deferSwitcherMenuRebuildIfStillVisible(menu, provider: .codex)
-
-        try? await Task.sleep(nanoseconds: 25_000_000)
+        for _ in 0..<20 where refreshGateEntries == 0 {
+            await Task.yield()
+        }
+        #expect(refreshGateEntries == 1)
         #expect(rebuildCount == 0)
+
+        controller.deferSwitcherMenuRebuildIfStillVisible(menu, provider: .codex)
+        resumePendingRefreshGates()
+        for _ in 0..<20 where refreshGateEntries < 2 {
+            await Task.yield()
+        }
+        #expect(refreshGateEntries == 2)
+        #expect(rebuildCount == 0)
+        resumePendingRefreshGates()
 
         for _ in 0..<20 where rebuildCount == 0 {
             await Task.yield()
-            try? await Task.sleep(nanoseconds: 5_000_000)
         }
 
         #expect(rebuildCount == 1)
-        try? await Task.sleep(nanoseconds: 75_000_000)
+        for _ in 0..<20 {
+            await Task.yield()
+        }
         #expect(rebuildCount == 1)
     }
 
