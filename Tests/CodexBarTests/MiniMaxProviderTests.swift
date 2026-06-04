@@ -685,6 +685,64 @@ struct MiniMaxUsageParserTests {
     }
 
     @Test
+    func `token plan usage summary maps MiniMax activity payload`() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try #require(TimeZone(secondsFromGMT: 0))
+        let now = try #require(ISO8601DateFormatter().date(from: "2026-06-05T12:00:00Z"))
+        let json = """
+        {
+          "total_days": 7,
+          "total_token_consumed": "1.35B",
+          "most_active_day": {
+            "date": "2026-06-02",
+            "token_count": "117.45M"
+          },
+          "active_days": 4,
+          "daily_token_usage": [
+            999999,
+            52277861,
+            0,
+            0,
+            0,
+            14487534,
+            117447158,
+            1700554
+          ],
+          "base_resp": { "status_code": 0, "status_msg": "success" }
+        }
+        """
+
+        let summary = try MiniMaxBillingHistoryParser.parseUsageSummary(
+            data: Data(json.utf8),
+            now: now,
+            calendar: calendar)
+
+        #expect(summary.todayTokens == 1_700_554)
+        #expect(summary.last7DaysTokens == 185_913_107)
+        #expect(summary.last30DaysTokens == 185_913_107)
+        #expect(summary.daily.map(\.day) == [
+            "2026-05-29",
+            "2026-05-30",
+            "2026-05-31",
+            "2026-06-01",
+            "2026-06-02",
+            "2026-06-03",
+            "2026-06-04",
+        ])
+        #expect(summary.daily.map(\.tokens) == [
+            52_277_861,
+            0,
+            0,
+            0,
+            14_487_534,
+            117_447_158,
+            1_700_554,
+        ])
+        #expect(summary.topModels.first?.name == "Peak 2026-06-02")
+        #expect(summary.topModels.first?.tokens == 117_450_000)
+    }
+
+    @Test
     func `billing history preserves date only days in local calendar`() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = try #require(TimeZone(secondsFromGMT: -7 * 60 * 60))
@@ -791,21 +849,16 @@ struct MiniMaxUsageParserTests {
                     body: Self.codingPlanJSON,
                     contentType: "application/json")
             }
-            #expect(url.path == "/account/amount")
-            #expect(url.query?.contains("aggregate=false") == true)
+            #expect(url.path == "/backend/account/token_plan/usage_summary")
             #expect(request.value(forHTTPHeaderField: "Cookie") == "HERTZ-SESSION=abc")
+            #expect(request.value(forHTTPHeaderField: "origin") == "https://platform.minimax.io")
+            #expect(request.value(forHTTPHeaderField: "referer") == "https://platform.minimax.io/console/usage")
             let body = """
             {
               "base_resp": { "status_code": 0 },
-              "total_cnt": 1,
-              "charge_records": [
-                {
-                  "consume_token": 1234,
-                  "ymd": "2026-05-17",
-                  "method": "chat",
-                  "model": "MiniMax-M1"
-                }
-              ]
+              "total_days": 2,
+              "daily_token_usage": [4321, 1234],
+              "most_active_day": { "date": "2026-05-16", "token_count": "4.32K" }
             }
             """
             return Self.httpResponse(url: url, body: body, contentType: "application/json")
@@ -820,7 +873,8 @@ struct MiniMaxUsageParserTests {
 
         #expect(snapshot.currentPrompts == 2)
         #expect(snapshot.billingSummary?.todayTokens == 1234)
-        #expect(snapshot.billingSummary?.last30DaysTokens == 1234)
+        #expect(snapshot.billingSummary?.last7DaysTokens == 5555)
+        #expect(snapshot.billingSummary?.last30DaysTokens == 5555)
     }
 
     @Test
@@ -833,6 +887,9 @@ struct MiniMaxUsageParserTests {
                     url: url,
                     body: Self.codingPlanJSON,
                     contentType: "application/json")
+            }
+            if url.path == "/backend/account/token_plan/usage_summary" {
+                return Self.httpResponse(url: url, body: "{}", statusCode: 404, contentType: "application/json")
             }
             let page = URLComponents(url: url, resolvingAgainstBaseURL: false)?
                 .queryItems?
@@ -1100,6 +1157,17 @@ struct MiniMaxAPIRegionTests {
         #expect(url.query?.contains("page=2") == true)
         #expect(url.query?.contains("limit=100") == true)
         #expect(url.query?.contains("aggregate=false") == true)
+    }
+
+    @Test
+    func `usage summary url uses MiniMax backend host`() {
+        let global = MiniMaxUsageFetcher.resolveUsageSummaryURL(region: .global, environment: [:])
+        let china = MiniMaxUsageFetcher.resolveUsageSummaryURL(region: .chinaMainland, environment: [:])
+
+        #expect(global.host == "www.minimax.io")
+        #expect(global.path == "/backend/account/token_plan/usage_summary")
+        #expect(china.host == "www.minimaxi.com")
+        #expect(china.path == "/backend/account/token_plan/usage_summary")
     }
 
     @Test

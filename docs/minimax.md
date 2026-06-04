@@ -37,6 +37,10 @@ the Coding Plan remains JSON endpoint first, and falls back across the provider'
 - Web sessions use the global host or China mainland host.
 - Web-session usage first requests `/v1/api/openplatform/coding_plan/remains`; the legacy Coding Plan page is a
   fallback for older accounts or temporary endpoint changes.
+- Token activity charts first request `/backend/account/token_plan/usage_summary` on MiniMax's `www` backend host.
+  This mirrors the current MiniMax console usage page and supplies yesterday, 7-day, 30-day, peak day, and heatmap
+  data. The older `/account/amount` billing-history endpoint remains a fallback when the token-plan summary is not
+  available.
 - Region picker in Providers settings toggles the host; environment overrides:
   - `MINIMAX_HOST=platform.minimaxi.com`
   - `MINIMAX_CODING_PLAN_URL=...` (full URL override)
@@ -50,7 +54,7 @@ the Coding Plan remains JSON endpoint first, and falls back across the provider'
 
 ## Snapshot mapping
 - Primary usage, reset timing, and plan/tier are derived from Coding Plan response fields or page text.
-- Web-session billing history, when available, is mapped into the shared inline usage dashboard:
+- Web-session token-plan activity or billing history, when available, is mapped into the shared inline usage dashboard:
   - 30-day token trend.
   - Top model and top method breakdowns.
   - Summary rows for recent billing-history totals.

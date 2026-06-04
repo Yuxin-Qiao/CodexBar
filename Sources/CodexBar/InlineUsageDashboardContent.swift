@@ -406,20 +406,20 @@ extension UsageMenuCardView.Model {
             valueStyle: .tokens,
             kpis: [
                 .init(
-                    title: L("Today"),
+                    title: L("Latest"),
                     value: UsageFormatter.tokenCountString(billing.todayTokens),
                     emphasis: true),
+                .init(
+                    title: L("Week"),
+                    value: billing.last7DaysTokens.map(UsageFormatter.tokenCountString) ?? "—",
+                    emphasis: false),
                 .init(
                     title: L("30d tokens"),
                     value: UsageFormatter.tokenCountString(billing.last30DaysTokens),
                     emphasis: false),
                 .init(
-                    title: L("Today cash"),
-                    value: billing.todayCash.map(Self.minimaxCashString) ?? "—",
-                    emphasis: false),
-                .init(
-                    title: L("Models"),
-                    value: "\(billing.topModels.count)",
+                    title: L("Top model"),
+                    value: billing.topModels.first.map { UsageFormatter.tokenCountString($0.tokens) } ?? "—",
                     emphasis: false),
             ],
             points: points,

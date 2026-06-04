@@ -9,6 +9,7 @@ public struct MiniMaxUsageFetcher: Sendable {
     private static let codingPlanQuery = "cycle_type=3"
     private static let codingPlanRemainsPath = "v1/api/openplatform/coding_plan/remains"
     private static let tokenPlanRemainsPath = "v1/token_plan/remains"
+    private static let usageSummaryPath = "backend/account/token_plan/usage_summary"
     private static let billingHistoryPath = "account/amount"
     private static let billingHistoryLimit = 100
     private struct RemainsContext {
@@ -19,6 +20,7 @@ public struct MiniMaxUsageFetcher: Sendable {
     struct WebFetchContext {
         let cookie: String
         let authorizationToken: String?
+        let groupID: String?
         let region: MiniMaxAPIRegion
         let environment: [String: String]
         let transport: any ProviderHTTPTransport
@@ -41,6 +43,7 @@ public struct MiniMaxUsageFetcher: Sendable {
         let context = WebFetchContext(
             cookie: cookie,
             authorizationToken: authorizationToken,
+            groupID: groupID,
             region: region,
             environment: environment,
             transport: transport)
@@ -392,6 +395,21 @@ public struct MiniMaxUsageFetcher: Sendable {
     }
 
     private static func fetchBillingSummary(context: WebFetchContext, now: Date) async throws -> MiniMaxBillingSummary {
+        do {
+            return try await self.fetchTokenPlanUsageSummary(context: context, now: now)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as URLError where error.code == .cancelled {
+            throw error
+        } catch let error as MiniMaxUsageError {
+            if case .invalidCredentials = error {
+                throw error
+            }
+            Self.log.debug("MiniMax token plan usage summary unavailable, trying billing history: \(error.localizedDescription)")
+        } catch {
+            Self.log.debug("MiniMax token plan usage summary unavailable, trying billing history: \(error.localizedDescription)")
+        }
+
         var records: [MiniMaxBillingRecord] = []
         var totalCount: Int?
 
@@ -428,6 +446,23 @@ public struct MiniMaxUsageFetcher: Sendable {
         return MiniMaxBillingHistoryParser.aggregate(records: records, now: now)
     }
 
+    private static func fetchTokenPlanUsageSummary(
+        context: WebFetchContext,
+        now: Date) async throws -> MiniMaxBillingSummary
+    {
+        let url = self.resolveUsageSummaryURL(region: context.region, environment: context.environment)
+        let response = try await self.billingHistoryResponse(url: url, context: context)
+        guard response.statusCode == 200 else {
+            let body = String(data: response.data, encoding: .utf8) ?? ""
+            Self.log.debug("MiniMax token plan usage summary returned \(response.statusCode): \(body)")
+            if response.statusCode == 401 || response.statusCode == 403 {
+                throw MiniMaxUsageError.invalidCredentials
+            }
+            throw MiniMaxUsageError.apiError("HTTP \(response.statusCode)")
+        }
+        return try MiniMaxBillingHistoryParser.parseUsageSummary(data: response.data, now: now)
+    }
+
     private static func billingHistoryResponse(
         url: URL,
         context: WebFetchContext) async throws -> ProviderHTTPResponse
@@ -440,14 +475,20 @@ public struct MiniMaxUsageFetcher: Sendable {
         }
         request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "accept")
         request.setValue("XMLHttpRequest", forHTTPHeaderField: "x-requested-with")
+        if let groupID = context.groupID, !groupID.isEmpty {
+            request.setValue(groupID, forHTTPHeaderField: "x-group-id")
+        }
         let userAgent =
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
             "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
         request.setValue(userAgent, forHTTPHeaderField: "user-agent")
         request.setValue("en-US,en;q=0.9", forHTTPHeaderField: "accept-language")
-        let origin = self.originURL(from: url)
+        let origin = self.billingRequestOriginURL(url: url, context: context)
         request.setValue(origin.absoluteString, forHTTPHeaderField: "origin")
-        request.setValue(origin.appendingPathComponent("account").absoluteString, forHTTPHeaderField: "referer")
+        let referer = url.path == "/\(Self.usageSummaryPath)"
+            ? self.url(from: origin.absoluteString, path: "console/usage")?.absoluteString ?? origin.absoluteString
+            : origin.appendingPathComponent("account").absoluteString
+        request.setValue(referer, forHTTPHeaderField: "referer")
 
         do {
             return try await context.transport.response(for: request)
@@ -473,6 +514,16 @@ public struct MiniMaxUsageFetcher: Sendable {
         components.query = nil
         components.fragment = nil
         return components.url ?? url
+    }
+
+    private static func billingRequestOriginURL(url: URL, context: WebFetchContext) -> URL {
+        guard url.path == "/\(Self.usageSummaryPath)",
+              MiniMaxSettingsReader.hostOverride(environment: context.environment) == nil,
+              let origin = URL(string: context.region.baseURLString)
+        else {
+            return self.originURL(from: url)
+        }
+        return origin
     }
 
     static func resolveCodingPlanURL(
@@ -544,6 +595,25 @@ public struct MiniMaxUsageFetcher: Sendable {
 
     static func resolveTokenPlanRemainsURL(region: MiniMaxAPIRegion) -> URL {
         region.tokenPlanRemainsURL
+    }
+
+    static func resolveUsageSummaryURL(
+        region: MiniMaxAPIRegion,
+        environment: [String: String]) -> URL
+    {
+        if let host = MiniMaxSettingsReader.hostOverride(environment: environment),
+           let hostURL = self.url(from: host, path: Self.usageSummaryPath)
+        {
+            return hostURL
+        }
+
+        let host = switch region {
+        case .global:
+            "https://www.minimax.io"
+        case .chinaMainland:
+            "https://www.minimaxi.com"
+        }
+        return self.url(from: host, path: Self.usageSummaryPath)!
     }
 
     private static func webRemainsFallbackURLs(region: MiniMaxAPIRegion) -> [URL] {
