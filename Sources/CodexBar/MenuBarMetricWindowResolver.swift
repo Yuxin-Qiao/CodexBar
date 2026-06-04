@@ -104,7 +104,7 @@ enum MenuBarMetricWindowResolver {
         {
             return primary.usedPercent >= secondary.usedPercent ? primary : secondary
         }
-        if provider == .cursor {
+        if provider == .cursor || provider == .minimax {
             return Self.mostConstrainedWindow(
                 primary: snapshot.primary,
                 secondary: snapshot.secondary,

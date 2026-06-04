@@ -22,6 +22,23 @@ struct MenuBarMetricWindowResolverTests {
     }
 
     @Test
+    func `automatic metric uses minimax weekly token lane when it is most constrained`() {
+        let snapshot = UsageSnapshot(
+            primary: RateWindow(usedPercent: 0, windowMinutes: 300, resetsAt: nil, resetDescription: nil),
+            secondary: RateWindow(usedPercent: 97, windowMinutes: 7 * 24 * 60, resetsAt: nil, resetDescription: nil),
+            updatedAt: Date())
+
+        let window = MenuBarMetricWindowResolver.rateWindow(
+            preference: .automatic,
+            provider: .minimax,
+            snapshot: snapshot,
+            supportsAverage: false)
+
+        #expect(window?.usedPercent == 97)
+        #expect(window?.windowMinutes == 7 * 24 * 60)
+    }
+
+    @Test
     func `extra usage metric maps provider cost into a menu bar window`() {
         let snapshot = UsageSnapshot(
             primary: RateWindow(usedPercent: 12, windowMinutes: nil, resetsAt: nil, resetDescription: nil),
