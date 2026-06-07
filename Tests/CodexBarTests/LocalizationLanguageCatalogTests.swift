@@ -22,6 +22,7 @@ struct LocalizationLanguageCatalogTests {
         "language_korean",
         "language_turkish",
         "language_indonesian",
+        "language_polish",
     ]
 
     @Test

@@ -400,6 +400,10 @@
 "language_chinese_traditional" = "繁體中文";
 "language_portuguese_brazilian" = "Português (Brasil)";
 "language_swedish" = "Svenska";
+"language_french" = "Francuski";
+"language_dutch" = "Niderlandzki";
+"language_ukrainian" = "Ukraiński";
+"language_vietnamese" = "Wietnamski";
 "language_polish" = "Polski";
 "start_at_login_title" = "Uruchamiaj przy logowaniu";
 "start_at_login_subtitle" = "Automatycznie uruchamia CodexBar podczas startu Maca.";
