@@ -44,6 +44,7 @@ struct MenuCardHeightFingerprintTests {
             subtitleText: "Signed in as very-secret@example.com",
             subtitleStyle: .info,
             planText: "Secret Plan",
+            subscriptionText: nil,
             metrics: [
                 .init(
                     id: "primary",
