@@ -15,6 +15,7 @@ struct UsageMenuCardLayoutTests {
             subtitleText: "Not fetched yet",
             subtitleStyle: .info,
             planText: "Pro 20x",
+            subscriptionText: nil,
             metrics: [],
             usageNotes: [],
             openAIAPIUsage: nil,
