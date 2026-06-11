@@ -405,6 +405,7 @@
 "language_ukrainian" = "Ukraiński";
 "language_vietnamese" = "Wietnamski";
 "language_polish" = "Polski";
+"language_japanese" = "Japoński";
 "start_at_login_title" = "Uruchamiaj przy logowaniu";
 "start_at_login_subtitle" = "Automatycznie uruchamia CodexBar podczas startu Maca.";
 "show_cost_summary" = "Pokaż podsumowanie kosztów";
