@@ -305,6 +305,8 @@
 "Symlink CodexBarCLI to /usr/local/bin and /opt/homebrew/bin as codexbar." = "Symlink CodexBarCLI to /usr/local/bin and /opt/homebrew/bin as codexbar.";
 "System" = "System";
 "Temporarily shows the loading animation after the next refresh." = "Temporarily shows the loading animation after the next refresh.";
+"terminal_app_subtitle" = "Terminal używany przez akcję Otwórz terminal";
+"terminal_app_title" = "Domyślny terminal";
 "Tertiary (\\(label))" = "Tertiary (\\(label))";
 "Tertiary (\\(tertiaryTitle))" = "Tertiary (\\(tertiaryTitle))";
 "The default Codex account on this Mac." = "The default Codex account on this Mac.";
@@ -911,7 +913,7 @@
 "Antigravity login failed" = "Antigravity login failed";
 "Antigravity login timed out" = "Antigravity login timed out";
 "Auth source" = "Auth source";
-"Automatic imports Chrome browser cookies from Xiaomi MiMo." = "Automatic imports Chrome browser cookies from Xiaomi MiMo.";
+"Automatic imports browser cookies from Xiaomi MiMo." = "Automatycznie importuje pliki cookie przeglądarki z Xiaomi MiMo.";
 "Automatic imports Windsurf session data from Chromium browser localStorage." = "Automatic imports Windsurf session data from Chromium browser localStorage.";
 "Automatic imports browser cookies from Bailian." = "Automatic imports browser cookies from Bailian.";
 "Automatically imports browser cookies." = "Automatically imports browser cookies.";
@@ -1011,6 +1013,7 @@
 "Personal account" = "Personal account";
 "Project ID" = "Project ID";
 "Re-auth" = "Re-auth";
+"Re-login at claude.ai" = "Zaloguj się ponownie na claude.ai";
 "Re-authenticating…" = "Re-authenticating…";
 "Refresh Session" = "Odśwież sesję";
 "Refresh organizations" = "Odśwież organizacje";
@@ -1066,3 +1069,5 @@
 "Clear" = "Clear";
 "No matching providers" = "No matching providers";
 "Search providers" = "Szukaj dostawców";
+
+"Request quota: %@ / %@" = "Limit żądań: %@ / %@";
