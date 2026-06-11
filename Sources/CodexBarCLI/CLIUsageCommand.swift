@@ -545,7 +545,7 @@ extension CodexBarCLI {
         environment: [String: String]? = nil,
         settings: ProviderSettingsSnapshot? = nil) -> Bool
     {
-        guard provider != .grok else {
+        guard provider != .grok, provider != .amp else {
             return false
         }
         if provider == .ollama,

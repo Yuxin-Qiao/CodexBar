@@ -5,6 +5,7 @@
 ### Added
 - Localization: add native Korean language support across the app and language picker (#1460). Thanks @soohanpark!
 - Devin: add daily and weekly quota tracking from the signed-in Chrome session or a manual Bearer token (#1264, fixes #800). Thanks @coygeek!
+- Amp: add local `amp usage` support, including account identity and individual and workspace credit balances (fixes #1317). Thanks @3kh0!
 - Menu bar: add an optional reset-time display for the selected quota metric, with percent fallback when reset metadata is unavailable (#1223, fixes #1185). Thanks @Yuxin-Qiao!
 - Menu bar: move the highlighted Overview provider with trackpad or mouse-wheel scrolling while preserving native submenu and keyboard behavior (#1436). Thanks @joshuavial!
 
@@ -12,6 +13,7 @@
 - Settings: slightly increase the window height so standard panes fit without clipping their final controls or helper text.
 - Menu bar: show immediate in-place feedback for manual refreshes, keep tracked-menu geometry stable, and coalesce repeated clicks until the active refresh succeeds or fails (#1458). Thanks @hhh2210!
 - Grok: recover web billing from status-7 credential failures by combining current browser sessions with non-expired CLI auth, accept raw protobuf responses, and render current zero-use periods (#1452). Thanks @bcharleson!
+- Amp: restore usage fetching against the current balance endpoint while retaining the legacy settings-page parser as a fallback. Thanks @3kh0!
 - Antigravity: detect current hyphenated IDE language-server processes inside Antigravity app bundles so local quota refreshes no longer report the IDE as unavailable (#1405). Thanks @lfmundim!
 - Menu bar: avoid republishing unchanged provider storage footprints so background scans no longer trigger unnecessary menu observation work (#1416). Thanks @soohanpark!
 - Cursor: show capped team Extra usage when no individual cap exists, and honor percent used/remaining menu bar display settings instead of always showing currency spend (#1426). Thanks @lpc-eol!
