@@ -110,6 +110,10 @@ struct PreferencesPaneSmokeTests {
         #expect(L("tab_general") == "일반")
         #expect(L("language_title") == "언어")
         #expect(L("Search providers") == "공급자 검색")
+        #expect(L("quota_warning_notification_body", "20%", 25, "주간") == "20% 남음. 25% 주간 경고 임계값에 도달했습니다.")
+        #expect(L("%@: %@%% used", "오늘", "42") == "오늘: 42% 사용")
+        #expect(String(format: L("%.0f%% used"), 42.0) == "42% 사용")
+        #expect(String(format: L("%d percent remaining"), 42) == "42% 남음")
     }
 
     private static func makeSettingsStore(suite: String) -> SettingsStore {

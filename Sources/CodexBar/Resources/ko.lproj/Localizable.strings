@@ -429,8 +429,8 @@
 "quota_warning_weekly" = "주 메뉴";
 "quota_warning_weekly_capitalized" = "주간";
 "quota_warning_notification_title" = "%1$@ %2$@ 낮은 할당량";
-"quota_warning_notification_body" = "%1$@ 왼쪽. %2$d% % %3$@ 경고 임계 값에 도달했습니다.";
-"quota_warning_notification_body_with_account" = "계정 %1$@. %2$@ 왼쪽. %3$d% % %4$@ 경고 임계 값에 도달했습니다.";
+"quota_warning_notification_body" = "%1$@ 남음. %2$d%% %3$@ 경고 임계값에 도달했습니다.";
+"quota_warning_notification_body_with_account" = "계정 %1$@. %2$@ 남음. %3$d%% %4$@ 경고 임계값에 도달했습니다.";
 "session_depleted_notification_title" = "%@ 세션 depleted";
 "session_depleted_notification_body" = "0% 왼쪽. 다시 사용할 때 통지합니다.";
 "session_restored_notification_title" = "%@ 세션 복원";
@@ -734,7 +734,7 @@
 "This month: %@ tokens" = "이번 달: %@ 토큰";
 "No utilization data yet." = "유입 데이터 없음.";
 "No %@ utilization data yet." = "아직 %@ 활용 데이터 없음.";
-"%@: %@%% used" = "%@: 사용된 %@%";
+"%@: %@%% used" = "%@: %@%% 사용";
 "%dd" = "%dd";
 "today" = "오늘";
 "just now" = "방금";
@@ -798,10 +798,10 @@
 "API spend" = "API 지출";
 "Extra usage" = "추가 사용";
 "Quota usage" = "Quota 사용법";
-"%.0f%% used" = "%.0f% 사용";
+"%.0f%% used" = "%.0f%% 사용";
 "Usage history (today)" = "사용법 역사 (today)";
 "Usage history (%d days)" = "사용법 역사 (%d 일)";
-"%d percent remaining" = "나머지 %d %";
+"%d percent remaining" = "%d%% 남음";
 "Unknown" = "알 수 없음";
 "stale data" = "stale 자료";
 "No credits history data." = "신용 역사 자료 없음.";
