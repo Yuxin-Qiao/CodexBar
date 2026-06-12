@@ -917,7 +917,11 @@ extension UsageMenuCardView.Model {
 
     private static func subscriptionDateString(_ date: Date, provider: UsageProvider) -> String {
         let formatter = DateFormatter()
-        formatter.locale = Locale.current
+        // Match other menu card date/number formatters (MenuCardView+Costs, plan history chart)
+        // by pinning to en_US_POSIX. Otherwise Locale.current (e.g. zh-Hans-CN) flips "May 18,
+        // 2027" into "2027年5月18日", which breaks CI/local test parity and diverges from the
+        // canonical menu card formatting used elsewhere.
+        formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = self.subscriptionDateTimeZone(provider: provider)
         formatter.setLocalizedDateFormatFromTemplate("MMM d, yyyy")
         return formatter.string(from: date)
