@@ -3,6 +3,8 @@ import Foundation
 import Testing
 @testable import CodexBar
 
+// swiftlint:disable contains_over_first_not_nil contains_over_filter_count
+
 @Suite(.serialized)
 @MainActor
 struct ProviderSubscriptionReminderFoundationTests {
@@ -335,8 +337,8 @@ struct ProviderSubscriptionReminderFoundationTests {
             includeContextualActions: false)
 
         let lines = Self.textLines(from: descriptor)
-        #expect(lines.first(where: { $0.hasPrefix("Subscription: Expires in 7 days") }) != nil)
-        #expect(lines.first(where: { $0.hasPrefix("Subscription: Resets ") }) == nil)
+        #expect(lines.contains(where: { $0.hasPrefix("Subscription: Expires in 7 days") }))
+        #expect(!lines.contains(where: { $0.hasPrefix("Subscription: Resets ") }))
     }
 
     @Test
