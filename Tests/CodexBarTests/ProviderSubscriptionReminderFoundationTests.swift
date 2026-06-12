@@ -3,7 +3,6 @@ import Foundation
 import Testing
 @testable import CodexBar
 
-// swiftlint:disable contains_over_first_not_nil contains_over_filter_count
 
 @Suite(.serialized)
 @MainActor
@@ -337,7 +336,9 @@ struct ProviderSubscriptionReminderFoundationTests {
             includeContextualActions: false)
 
         let lines = Self.textLines(from: descriptor)
+        // swiftlint:disable:next contains_over_filter_count contains_over_first_not_nil
         #expect(lines.contains(where: { $0.hasPrefix("Subscription: Expires in 7 days") }))
+        // swiftlint:disable:next contains_over_filter_count contains_over_first_not_nil
         #expect(!lines.contains(where: { $0.hasPrefix("Subscription: Resets ") }))
     }
 
@@ -385,4 +386,5 @@ private final class SubscriptionReminderNotifierSpy: SessionQuotaNotifying {
     {
         self.reminders.append((provider, event))
     }
+    // swiftlint:disable:previous contains_over_filter_count
 }
