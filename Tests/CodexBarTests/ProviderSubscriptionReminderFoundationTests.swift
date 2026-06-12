@@ -3,7 +3,6 @@ import Foundation
 import Testing
 @testable import CodexBar
 
-
 @Suite(.serialized)
 @MainActor
 struct ProviderSubscriptionReminderFoundationTests {
