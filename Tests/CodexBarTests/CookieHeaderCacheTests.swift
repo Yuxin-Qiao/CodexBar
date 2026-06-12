@@ -209,6 +209,100 @@ struct CookieHeaderCacheTests {
     }
 
     @Test
+    func `loadForDisplay memoizes keychain lookups`() {
+        KeychainCacheStore.setTestStoreForTesting(true)
+        defer { KeychainCacheStore.setTestStoreForTesting(false) }
+        CookieHeaderCache.resetDisplayCacheForTesting()
+        defer { CookieHeaderCache.resetDisplayCacheForTesting() }
+
+        let provider: UsageProvider = .codex
+        CookieHeaderCache.store(provider: provider, cookieHeader: "auth=abc", sourceLabel: "Chrome")
+
+        #expect(CookieHeaderCache.loadForDisplay(provider: provider)?.cookieHeader == "auth=abc")
+
+        // Remove the backing entry without going through CookieHeaderCache: the strict load
+        // sees the change, the display path keeps serving the memoized snapshot.
+        KeychainCacheStore.clear(key: .cookie(provider: provider))
+        #expect(CookieHeaderCache.load(provider: provider) == nil)
+        #expect(CookieHeaderCache.loadForDisplay(provider: provider)?.cookieHeader == "auth=abc")
+    }
+
+    @Test
+    func `loadForDisplay memoizes missing entries`() {
+        KeychainCacheStore.setTestStoreForTesting(true)
+        defer { KeychainCacheStore.setTestStoreForTesting(false) }
+        CookieHeaderCache.resetDisplayCacheForTesting()
+        defer { CookieHeaderCache.resetDisplayCacheForTesting() }
+
+        let provider: UsageProvider = .codex
+        #expect(CookieHeaderCache.loadForDisplay(provider: provider) == nil)
+
+        KeychainCacheStore.store(
+            key: .cookie(provider: provider),
+            entry: CookieHeaderCache.Entry(
+                cookieHeader: "auth=behind-the-back",
+                storedAt: Date(timeIntervalSince1970: 0),
+                sourceLabel: "Chrome"))
+        #expect(CookieHeaderCache.loadForDisplay(provider: provider) == nil)
+    }
+
+    @Test
+    func `store and clear update the display snapshot immediately`() {
+        KeychainCacheStore.setTestStoreForTesting(true)
+        defer { KeychainCacheStore.setTestStoreForTesting(false) }
+        CookieHeaderCache.resetDisplayCacheForTesting()
+        defer { CookieHeaderCache.resetDisplayCacheForTesting() }
+
+        let provider: UsageProvider = .codex
+        CookieHeaderCache.store(provider: provider, cookieHeader: "auth=first", sourceLabel: "Chrome")
+        #expect(CookieHeaderCache.loadForDisplay(provider: provider)?.cookieHeader == "auth=first")
+
+        CookieHeaderCache.store(provider: provider, cookieHeader: "auth=second", sourceLabel: "Safari")
+        #expect(CookieHeaderCache.loadForDisplay(provider: provider)?.cookieHeader == "auth=second")
+
+        CookieHeaderCache.clear(provider: provider)
+        #expect(CookieHeaderCache.loadForDisplay(provider: provider) == nil)
+    }
+
+    @Test
+    func `stale display snapshot revalidates off the calling path`() async throws {
+        KeychainCacheStore.setTestStoreForTesting(true)
+        defer { KeychainCacheStore.setTestStoreForTesting(false) }
+        CookieHeaderCache.resetDisplayCacheForTesting()
+        defer { CookieHeaderCache.resetDisplayCacheForTesting() }
+        CookieHeaderCache.setDisplayStalenessIntervalOverrideForTesting(0)
+        defer { CookieHeaderCache.setDisplayStalenessIntervalOverrideForTesting(nil) }
+
+        let provider: UsageProvider = .codex
+        KeychainCacheStore.store(
+            key: .cookie(provider: provider),
+            entry: CookieHeaderCache.Entry(
+                cookieHeader: "auth=old",
+                storedAt: Date(timeIntervalSince1970: 0),
+                sourceLabel: "Chrome"))
+        #expect(CookieHeaderCache.loadForDisplay(provider: provider)?.cookieHeader == "auth=old")
+
+        KeychainCacheStore.store(
+            key: .cookie(provider: provider),
+            entry: CookieHeaderCache.Entry(
+                cookieHeader: "auth=new",
+                storedAt: Date(timeIntervalSince1970: 1),
+                sourceLabel: "Chrome"))
+
+        // The stale lookup returns the old snapshot and schedules a revalidation.
+        _ = CookieHeaderCache.loadForDisplay(provider: provider)
+        var refreshed = false
+        for _ in 0..<200 {
+            if CookieHeaderCache.loadForDisplay(provider: provider)?.cookieHeader == "auth=new" {
+                refreshed = true
+                break
+            }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        #expect(refreshed)
+    }
+
+    @Test
     func `clear all removes every provider cookie key without decoding entries`() {
         KeychainCacheStore.setTestStoreForTesting(true)
         defer { KeychainCacheStore.setTestStoreForTesting(false) }

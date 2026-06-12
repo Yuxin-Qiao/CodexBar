@@ -3,6 +3,7 @@
 ## 0.34.1 — Unreleased
 
 - Menu bar: restore native macOS positioning for merged provider dropdowns while preparing current content before AppKit lays out the menu.
+- Settings: memoize cookie cache lookups behind the "Cached: …" picker labels so opening Settings and switching panes no longer pays a synchronous Keychain read per SwiftUI body evaluation, which froze the window for seconds on the Providers pane.
 
 ## 0.34.0 — 2026-06-12
 

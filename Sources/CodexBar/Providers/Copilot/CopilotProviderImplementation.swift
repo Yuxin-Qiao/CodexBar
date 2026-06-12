@@ -149,7 +149,7 @@ struct CopilotProviderImplementation: ProviderImplementation {
                 },
                 trailingText: {
                     guard context.settings.copilotBudgetCookieSource != .manual else { return nil }
-                    guard let entry = CookieHeaderCache.load(provider: .copilot) else { return nil }
+                    guard let entry = CookieHeaderCache.loadForDisplay(provider: .copilot) else { return nil }
                     let when = entry.storedAt.relativeDescription()
                     return "Cached: \(entry.sourceLabel) • \(when)"
                 }),

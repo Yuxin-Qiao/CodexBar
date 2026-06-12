@@ -30,6 +30,86 @@ public enum CookieHeaderCache {
     private static let log = CodexBarLog.logger(LogCategories.cookieCache)
     private nonisolated(unsafe) static var legacyBaseURLOverride: URL?
 
+    private struct DisplaySnapshot {
+        let entry: Entry?
+        let loadedAt: Date
+    }
+
+    private static let displayCacheLock = NSLock()
+    private nonisolated(unsafe) static var displayCache: [KeychainCacheStore.Key: DisplaySnapshot] = [:]
+    private nonisolated(unsafe) static var displayRevalidationsInFlight: Set<KeychainCacheStore.Key> = []
+    private nonisolated(unsafe) static var displayStalenessIntervalOverride: TimeInterval?
+    private static let displayStalenessInterval: TimeInterval = 30
+
+    /// Settings rows render the "Cached: …" cookie label inside SwiftUI body evaluations, which
+    /// run repeatedly within a single AppKit layout pass. Each `load` pays a synchronous
+    /// securityd round-trip and decrypt, so display paths use this memoized variant instead: it
+    /// returns the last known entry immediately and revalidates a stale snapshot off the calling
+    /// path. In-process `store` and `clear` calls update the snapshot synchronously; only the
+    /// first lookup per key pays the keychain read.
+    public static func loadForDisplay(provider: UsageProvider, scope: Scope? = nil) -> Entry? {
+        let key = self.key(for: provider, scope: scope)
+        self.displayCacheLock.lock()
+        let cached = self.displayCache[key]
+        self.displayCacheLock.unlock()
+        guard let cached else {
+            let entry = self.load(provider: provider, scope: scope)
+            self.updateDisplaySnapshot(key: key, entry: entry)
+            return entry
+        }
+        if Date().timeIntervalSince(cached.loadedAt) >= self.currentDisplayStalenessInterval {
+            self.scheduleDisplayRevalidation(provider: provider, scope: scope, key: key)
+        }
+        return cached.entry
+    }
+
+    private static func scheduleDisplayRevalidation(
+        provider: UsageProvider,
+        scope: Scope?,
+        key: KeychainCacheStore.Key)
+    {
+        self.displayCacheLock.lock()
+        let inserted = self.displayRevalidationsInFlight.insert(key).inserted
+        self.displayCacheLock.unlock()
+        guard inserted else { return }
+        Task(priority: .utility) {
+            self.revalidateDisplaySnapshot(provider: provider, scope: scope, key: key)
+        }
+    }
+
+    private static func revalidateDisplaySnapshot(
+        provider: UsageProvider,
+        scope: Scope?,
+        key: KeychainCacheStore.Key)
+    {
+        let entry = self.load(provider: provider, scope: scope)
+        self.displayCacheLock.lock()
+        self.displayCache[key] = DisplaySnapshot(entry: entry, loadedAt: Date())
+        self.displayRevalidationsInFlight.remove(key)
+        self.displayCacheLock.unlock()
+    }
+
+    private static func updateDisplaySnapshot(key: KeychainCacheStore.Key, entry: Entry?) {
+        self.displayCacheLock.lock()
+        self.displayCache[key] = DisplaySnapshot(entry: entry, loadedAt: Date())
+        self.displayCacheLock.unlock()
+    }
+
+    private static var currentDisplayStalenessInterval: TimeInterval {
+        self.displayStalenessIntervalOverride ?? self.displayStalenessInterval
+    }
+
+    static func setDisplayStalenessIntervalOverrideForTesting(_ interval: TimeInterval?) {
+        self.displayStalenessIntervalOverride = interval
+    }
+
+    static func resetDisplayCacheForTesting() {
+        self.displayCacheLock.lock()
+        self.displayCache.removeAll()
+        self.displayRevalidationsInFlight.removeAll()
+        self.displayCacheLock.unlock()
+    }
+
     public static func load(provider: UsageProvider, scope: Scope? = nil) -> Entry? {
         let key = self.key(for: provider, scope: scope)
         switch KeychainCacheStore.load(key: key, as: Entry.self) {
@@ -69,6 +149,7 @@ public enum CookieHeaderCache {
         let entry = Entry(cookieHeader: normalized, storedAt: now, sourceLabel: sourceLabel)
         let key = self.key(for: provider, scope: scope)
         KeychainCacheStore.store(key: key, entry: entry)
+        self.updateDisplaySnapshot(key: key, entry: entry)
         if scope == nil {
             self.removeLegacyEntry(for: provider)
         }
@@ -79,6 +160,7 @@ public enum CookieHeaderCache {
     public static func clear(provider: UsageProvider, scope: Scope? = nil) -> Int {
         let key = self.key(for: provider, scope: scope)
         var cleared = KeychainCacheStore.clear(key: key) ? 1 : 0
+        self.updateDisplaySnapshot(key: key, entry: nil)
         if scope == nil, self.removeLegacyEntry(for: provider) {
             cleared += 1
         }
@@ -92,8 +174,11 @@ public enum CookieHeaderCache {
     public static func clearAllScopes(provider: UsageProvider) -> Int {
         let keys = self.cookieKeys(for: provider)
         var cleared = 0
-        for key in keys where KeychainCacheStore.clear(key: key) {
-            cleared += 1
+        for key in keys {
+            if KeychainCacheStore.clear(key: key) {
+                cleared += 1
+            }
+            self.updateDisplaySnapshot(key: key, entry: nil)
         }
         if self.removeLegacyEntry(for: provider) {
             cleared += 1
@@ -116,6 +201,9 @@ public enum CookieHeaderCache {
         for provider in UsageProvider.allCases where self.removeLegacyEntry(for: provider) {
             cleared += 1
         }
+        self.displayCacheLock.lock()
+        self.displayCache.removeAll()
+        self.displayCacheLock.unlock()
         self.log.debug("Cookie cache clearAll completed", metadata: ["cleared": "\(cleared)"])
         return cleared
     }
