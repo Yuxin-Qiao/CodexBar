@@ -4,7 +4,7 @@ import Foundation
 // ProviderSubscriptionReminderType and ProviderSubscriptionReminderState are defined in
 // CodexBarCore/ProviderSubscriptionReminderState.swift
 
-struct ProviderSubscriptionReminderEvent: Equatable, Sendable {
+struct ProviderSubscriptionReminderEvent: Equatable {
     let type: ProviderSubscriptionReminderType
     let title: String
     let body: String
