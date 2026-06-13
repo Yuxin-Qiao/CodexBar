@@ -30,8 +30,8 @@ read_when:
   tertiary, and extra windows render when the provider snapshot has data for them.
 - Manual refresh updates the open card subtitle and persistent Refresh-row spinner in place. Repeated clicks share the
   active request, and the existing row geometry remains fixed through success or failure.
-- Optional subscription metadata can show a separate subscription reminder row (for example, `Renews Jun 24` or
-  `Expires in 6 days`) when a provider has manual `subscriptionSnapshot` data.
+- Optional Codex subscription metadata can show a separate subscription reminder row (for example, `Renews Jun 24` or
+  `Expires in 6 days`) when Codex has manual `subscriptionSnapshot` data.
 - Subscription reminder rows are distinct from quota reset rows and do not affect usage percentages, pace, or reset
   calculations.
 - Codex credits can add a separate “Buy Credits…” menu action.

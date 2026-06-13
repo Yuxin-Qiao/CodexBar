@@ -1,6 +1,17 @@
 import CodexBarCore
 import Foundation
 
+func localizedProviderSubscriptionFormatterStrings() -> ProviderSubscriptionFormatter.Strings {
+    ProviderSubscriptionFormatter.Strings(
+        renewsToday: L("Renews today"),
+        renewsDateFormat: L("Renews %@"),
+        expiredDateFormat: L("Expired %@"),
+        expiresToday: L("Expires today"),
+        expiresInOneDay: L("Expires in 1 day"),
+        expiresInDaysFormat: L("Expires in %d days"),
+        expiresDateFormat: L("Expires %@"))
+}
+
 // ProviderSubscriptionReminderType and ProviderSubscriptionReminderState are defined in
 // CodexBarCore/ProviderSubscriptionReminderState.swift
 
@@ -32,8 +43,11 @@ enum ProviderSubscriptionReminderLogic {
         }
 
         var events: [ProviderSubscriptionReminderEvent] = []
-        let planText = snapshot.planName.map { " (\($0))" } ?? ""
-        let titleBase = "\(providerName) subscription\(planText)"
+        let titleBase = if let planName = snapshot.planName {
+            L("%@ subscription (%@)", providerName, planName)
+        } else {
+            L("%@ subscription", providerName)
+        }
         let context = ReminderContext(titleBase: titleBase, now: now, calendar: calendar)
 
         Self.appendRenewalEvent(
@@ -63,8 +77,13 @@ enum ProviderSubscriptionReminderLogic {
         guard let type = Self.renewalType(dayDelta: dayDelta) else { return }
         guard !state.fired.contains(type) else { return }
 
-        let dayLabel = dayDelta == 1 ? "day" : "days"
-        let body = dayDelta == 0 ? "Renews today." : "Renews in \(dayDelta) \(dayLabel)."
+        let body = if dayDelta == 0 {
+            L("Renews today.")
+        } else if dayDelta == 1 {
+            L("Renews in 1 day.")
+        } else {
+            L("Renews in %d days.", dayDelta)
+        }
         events.append(ProviderSubscriptionReminderEvent(
             type: type,
             title: context.titleBase,
@@ -85,14 +104,14 @@ enum ProviderSubscriptionReminderLogic {
         guard let type = Self.expirationType(dayDelta: dayDelta) else { return }
         guard !state.fired.contains(type) else { return }
 
-        let body: String
-        if dayDelta < 0 {
-            body = "Expired."
+        let body: String = if dayDelta < 0 {
+            L("Expired.")
         } else if dayDelta == 0 {
-            body = "Expires today."
+            L("Expires today.")
+        } else if dayDelta == 1 {
+            L("Expires in 1 day.")
         } else {
-            let dayLabel = dayDelta == 1 ? "day" : "days"
-            body = "Expires in \(dayDelta) \(dayLabel)."
+            L("Expires in %d days.", dayDelta)
         }
         events.append(ProviderSubscriptionReminderEvent(
             type: type,

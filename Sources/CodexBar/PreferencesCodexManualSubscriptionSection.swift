@@ -36,22 +36,22 @@ struct CodexManualSubscriptionSectionView: View {
     }
 
     var body: some View {
-        ProviderSettingsSection(title: "Subscription") {
+        ProviderSettingsSection(title: L("Subscription")) {
             DisclosureGroup(isExpanded: self.$isExpanded) {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Text("Plan name")
+                        Text(L("Plan name"))
                             .font(.subheadline.weight(.semibold))
                             .frame(width: ProviderSettingsMetrics.pickerLabelWidth, alignment: .leading)
                         Spacer(minLength: 0)
-                        TextField("Codex Plus (manual)", text: self.$planName)
+                        TextField(L("Codex Plus (manual)"), text: self.$planName)
                             .textFieldStyle(.roundedBorder)
                             .font(.footnote)
                             .frame(maxWidth: 280)
                     }
 
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Text("Status")
+                        Text(L("Status"))
                             .font(.subheadline.weight(.semibold))
                             .frame(width: ProviderSettingsMetrics.pickerLabelWidth, alignment: .leading)
                         Spacer(minLength: 0)
@@ -66,7 +66,7 @@ struct CodexManualSubscriptionSectionView: View {
                     }
 
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Text("Renewal date")
+                        Text(L("Renewal date"))
                             .font(.subheadline.weight(.semibold))
                             .frame(width: ProviderSettingsMetrics.pickerLabelWidth, alignment: .leading)
                         Spacer(minLength: 0)
@@ -77,7 +77,7 @@ struct CodexManualSubscriptionSectionView: View {
                     }
                     if self.hasRenewsAt {
                         HStack(alignment: .firstTextBaseline, spacing: 10) {
-                            Text("Renews on")
+                            Text(L("Renews on"))
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                                 .frame(width: ProviderSettingsMetrics.pickerLabelWidth, alignment: .leading)
@@ -91,7 +91,7 @@ struct CodexManualSubscriptionSectionView: View {
                     }
 
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Text("Expiry date")
+                        Text(L("Expiry date"))
                             .font(.subheadline.weight(.semibold))
                             .frame(width: ProviderSettingsMetrics.pickerLabelWidth, alignment: .leading)
                         Spacer(minLength: 0)
@@ -102,7 +102,7 @@ struct CodexManualSubscriptionSectionView: View {
                     }
                     if self.hasExpiresAt {
                         HStack(alignment: .firstTextBaseline, spacing: 10) {
-                            Text("Expires on")
+                            Text(L("Expires on"))
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                                 .frame(width: ProviderSettingsMetrics.pickerLabelWidth, alignment: .leading)
@@ -116,7 +116,7 @@ struct CodexManualSubscriptionSectionView: View {
                     }
 
                     if let line = self.previewLine {
-                        Text("Preview: Subscription: \(line)")
+                        Text(L("Preview: Subscription: %@", line))
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -131,15 +131,15 @@ struct CodexManualSubscriptionSectionView: View {
 
                     HStack(spacing: 10) {
                         Spacer(minLength: 0)
-                        Button("Save") {
+                        Button(L("Save")) {
                             self.saveSnapshot()
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
 
-                        Button("Clear") {
+                        Button(L("Clear")) {
                             self.onClear()
-                            self.notice = "Cleared manual subscription reminder."
+                            self.notice = L("Cleared manual subscription reminder.")
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
@@ -148,7 +148,7 @@ struct CodexManualSubscriptionSectionView: View {
                 .padding(.top, 8)
             } label: {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text("Subscription reminder")
+                    Text(L("Subscription reminder"))
                         .font(.subheadline.weight(.semibold))
                     Spacer(minLength: 0)
                     Text(self.summaryText)
@@ -164,24 +164,25 @@ struct CodexManualSubscriptionSectionView: View {
         return ProviderSubscriptionFormatter.menuLine(
             from: draft,
             now: Date(),
-            locale: codexBarLocalizedLocale())
+            locale: codexBarLocalizedLocale(),
+            strings: localizedProviderSubscriptionFormatterStrings())
     }
 
     private var summaryText: String {
         if let line = self.previewLine {
             return line
         }
-        return "Off"
+        return L("Off")
     }
 
     private func saveSnapshot() {
         let snapshot = self.makeSnapshotForSave(now: Date())
         guard snapshot.hasDisplayableDate else {
-            self.notice = "Enable renewal or expiry date before saving."
+            self.notice = L("Enable renewal or expiry date before saving.")
             return
         }
         self.onSave(snapshot)
-        self.notice = "Saved to local config."
+        self.notice = L("Saved to local config.")
     }
 
     private func makeSnapshotForSave(now: Date) -> ProviderSubscriptionSnapshot {
@@ -198,11 +199,11 @@ struct CodexManualSubscriptionSectionView: View {
 
     private static func statusTitle(_ status: ProviderSubscriptionStatus) -> String {
         switch status {
-        case .active: "Active"
-        case .trialing: "Trialing"
-        case .canceled: "Canceled"
-        case .pastDue: "Past due"
-        case .unknown: "Unknown"
+        case .active: L("Active")
+        case .trialing: L("Trialing")
+        case .canceled: L("Canceled")
+        case .pastDue: L("Past due")
+        case .unknown: L("Unknown")
         }
     }
 }

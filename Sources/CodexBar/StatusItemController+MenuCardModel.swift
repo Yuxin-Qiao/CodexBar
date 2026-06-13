@@ -95,11 +95,12 @@ extension StatusItemController {
                 ProviderSubscriptionFormatter.menuLine(
                     from: snapshot,
                     now: now,
-                    locale: codexBarLocalizedLocale())
+                    locale: codexBarLocalizedLocale(),
+                    strings: localizedProviderSubscriptionFormatterStrings())
             }
             .flatMap { line in
                 let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                return trimmed.isEmpty ? nil : "Subscription: \(trimmed)"
+                return trimmed.isEmpty ? nil : L("Subscription: %@", trimmed)
             }
 
         let input = UsageMenuCardView.Model.Input(

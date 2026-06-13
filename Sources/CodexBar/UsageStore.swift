@@ -855,6 +855,7 @@ final class UsageStore {
     }
 
     func handleProviderSubscriptionReminders(provider: UsageProvider) {
+        guard provider == .codex else { return }
         let keySnapshot = self.settings.providerSubscriptionSnapshot(for: provider)
         let fromSettings = self.settings.providerSubscriptionReminderState(for: provider)
         guard let subscription = keySnapshot, subscription.hasDisplayableDate else {

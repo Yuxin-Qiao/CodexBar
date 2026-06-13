@@ -85,6 +85,7 @@ extension SettingsStore {
     }
 
     func providerSubscriptionSnapshot(for provider: UsageProvider) -> ProviderSubscriptionSnapshot? {
+        guard provider == .codex else { return nil }
         guard let snapshot = self.configSnapshot.providerConfig(for: provider)?.subscriptionSnapshot else {
             return nil
         }
@@ -95,19 +96,22 @@ extension SettingsStore {
         provider: UsageProvider,
         snapshot: ProviderSubscriptionSnapshot?)
     {
+        guard provider == .codex else { return }
         self.updateProviderConfig(provider: provider) { entry in
             entry.subscriptionSnapshot = snapshot?.withProvider(provider)
         }
     }
 
     func providerSubscriptionReminderState(for provider: UsageProvider) -> ProviderSubscriptionReminderState? {
-        self.configSnapshot.providerConfig(for: provider)?.subscriptionReminderState?[provider.rawValue]
+        guard provider == .codex else { return nil }
+        return self.configSnapshot.providerConfig(for: provider)?.subscriptionReminderState?[provider.rawValue]
     }
 
     func setProviderSubscriptionReminderState(
         for provider: UsageProvider,
         state: ProviderSubscriptionReminderState?)
     {
+        guard provider == .codex else { return }
         let current = self.configSnapshot.providerConfig(for: provider)?
             .subscriptionReminderState?[provider.rawValue]
         if current == state { return }

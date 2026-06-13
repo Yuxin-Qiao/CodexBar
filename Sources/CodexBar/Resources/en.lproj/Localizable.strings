@@ -1081,3 +1081,37 @@
 "language_indonesian" = "Bahasa Indonesia";
 
 "Request quota: %@ / %@" = "Request quota: %@ / %@";
+
+"Subscription" = "Subscription";
+"Plan name" = "Plan name";
+"Codex Plus (manual)" = "Codex Plus (manual)";
+"Renewal date" = "Renewal date";
+"Renews on" = "Renews on";
+"Expiry date" = "Expiry date";
+"Expires on" = "Expires on";
+"Subscription reminder" = "Subscription reminder";
+"Trialing" = "Trialing";
+"Canceled" = "Canceled";
+"Past due" = "Past due";
+"Preview: Subscription: %@" = "Preview: Subscription: %@";
+"Save" = "Save";
+"Cleared manual subscription reminder." = "Cleared manual subscription reminder.";
+"Enable renewal or expiry date before saving." = "Enable renewal or expiry date before saving.";
+"Saved to local config." = "Saved to local config.";
+"Renews today" = "Renews today";
+"Renews %@" = "Renews %@";
+"Expired %@" = "Expired %@";
+"Expires today" = "Expires today";
+"Expires in 1 day" = "Expires in 1 day";
+"Expires in %d days" = "Expires in %d days";
+"Expires %@" = "Expires %@";
+"Subscription: %@" = "Subscription: %@";
+"%@ subscription" = "%@ subscription";
+"%@ subscription (%@)" = "%@ subscription (%@)";
+"Renews today." = "Renews today.";
+"Renews in 1 day." = "Renews in 1 day.";
+"Renews in %d days." = "Renews in %d days.";
+"Expired." = "Expired.";
+"Expires today." = "Expires today.";
+"Expires in 1 day." = "Expires in 1 day.";
+"Expires in %d days." = "Expires in %d days.";

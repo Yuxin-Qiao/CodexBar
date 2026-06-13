@@ -170,40 +170,107 @@ public struct ProviderSubscriptionSnapshot: Codable, Sendable, Equatable {
 }
 
 public enum ProviderSubscriptionFormatter {
+    public struct Strings: Sendable {
+        public let renewsToday: String
+        public let renewsDateFormat: String
+        public let expiredDateFormat: String
+        public let expiresToday: String
+        public let expiresInOneDay: String
+        public let expiresInDaysFormat: String
+        public let expiresDateFormat: String
+
+        public init(
+            renewsToday: String,
+            renewsDateFormat: String,
+            expiredDateFormat: String,
+            expiresToday: String,
+            expiresInOneDay: String,
+            expiresInDaysFormat: String,
+            expiresDateFormat: String)
+        {
+            self.renewsToday = renewsToday
+            self.renewsDateFormat = renewsDateFormat
+            self.expiredDateFormat = expiredDateFormat
+            self.expiresToday = expiresToday
+            self.expiresInOneDay = expiresInOneDay
+            self.expiresInDaysFormat = expiresInDaysFormat
+            self.expiresDateFormat = expiresDateFormat
+        }
+
+        public static let english = Strings(
+            renewsToday: "Renews today",
+            renewsDateFormat: "Renews %@",
+            expiredDateFormat: "Expired %@",
+            expiresToday: "Expires today",
+            expiresInOneDay: "Expires in 1 day",
+            expiresInDaysFormat: "Expires in %d days",
+            expiresDateFormat: "Expires %@")
+    }
+
     public static func menuLine(
         from snapshot: ProviderSubscriptionSnapshot,
         now: Date = .init(),
         calendar: Calendar = .current,
-        locale: Locale = .current) -> String?
+        locale: Locale = .current,
+        strings: Strings = .english) -> String?
     {
         if let expires = snapshot.subscriptionExpiresAt {
-            return self.expiresLine(date: expires, now: now, calendar: calendar, locale: locale)
+            return self.expiresLine(
+                date: expires,
+                now: now,
+                calendar: calendar,
+                locale: locale,
+                strings: strings)
         }
         if let renews = snapshot.subscriptionRenewsAt,
            snapshot.status == .active || snapshot.status == .trialing
         {
-            return self.renewsLine(date: renews, now: now, calendar: calendar, locale: locale)
+            return self.renewsLine(
+                date: renews,
+                now: now,
+                calendar: calendar,
+                locale: locale,
+                strings: strings)
         }
         return nil
     }
 
-    private static func renewsLine(date: Date, now: Date, calendar: Calendar, locale: Locale) -> String {
+    private static func renewsLine(
+        date: Date,
+        now: Date,
+        calendar: Calendar,
+        locale: Locale,
+        strings: Strings) -> String
+    {
         let dayDelta = dayDelta(from: now, to: date, calendar: calendar)
-        if dayDelta == 0 { return "Renews today" }
-        return "Renews \(self.formattedDate(date, locale: locale))"
+        if dayDelta == 0 { return strings.renewsToday }
+        return String(
+            format: strings.renewsDateFormat,
+            locale: locale,
+            self.formattedDate(date, locale: locale))
     }
 
-    private static func expiresLine(date: Date, now: Date, calendar: Calendar, locale: Locale) -> String {
+    private static func expiresLine(
+        date: Date,
+        now: Date,
+        calendar: Calendar,
+        locale: Locale,
+        strings: Strings) -> String
+    {
         let dayDelta = dayDelta(from: now, to: date, calendar: calendar)
         if dayDelta < 0 {
-            return "Expired \(self.formattedDate(date, locale: locale))"
+            return String(
+                format: strings.expiredDateFormat,
+                locale: locale,
+                self.formattedDate(date, locale: locale))
         }
-        if dayDelta == 0 { return "Expires today" }
-        if dayDelta <= 7 {
-            let label = dayDelta == 1 ? "day" : "days"
-            return "Expires in \(dayDelta) \(label)"
-        }
-        return "Expires \(self.formattedDate(date, locale: locale))"
+        if dayDelta == 0 { return strings.expiresToday }
+        if dayDelta == 1 { return strings.expiresInOneDay }
+        if dayDelta <= 7 { return String(format: strings.expiresInDaysFormat, locale: locale, dayDelta) }
+        return String(
+            format: strings.expiresDateFormat,
+            locale: locale,
+            self.formattedDate(date, locale: locale))
     }
 
     private static func formattedDate(_ date: Date, locale: Locale) -> String {

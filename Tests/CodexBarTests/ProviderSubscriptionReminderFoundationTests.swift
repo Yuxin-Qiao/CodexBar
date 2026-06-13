@@ -11,8 +11,8 @@ struct ProviderSubscriptionReminderFoundationTests {
         let now = Date(timeIntervalSince1970: 1_720_000_000)
         let renewsAt = now.addingTimeInterval(7 * 24 * 60 * 60)
         let snapshot = ProviderSubscriptionSnapshot(
-            provider: .minimax,
-            planName: "Max Monthly",
+            provider: .codex,
+            planName: "Codex Plus",
             status: .active,
             subscriptionRenewsAt: renewsAt,
             subscriptionExpiresAt: nil,
@@ -20,15 +20,15 @@ struct ProviderSubscriptionReminderFoundationTests {
             confidence: .manual,
             updatedAt: now)
         let config = CodexBarConfig(providers: [
-            ProviderConfig(id: .minimax, subscriptionSnapshot: snapshot),
+            ProviderConfig(id: .codex, subscriptionSnapshot: snapshot),
         ])
 
         let encoded = try JSONEncoder().encode(config)
         let decoded = try JSONDecoder().decode(CodexBarConfig.self, from: encoded)
-        let restored = try #require(decoded.providerConfig(for: .minimax)?.subscriptionSnapshot)
+        let restored = try #require(decoded.providerConfig(for: .codex)?.subscriptionSnapshot)
 
-        #expect(restored.provider == .minimax)
-        #expect(restored.planName == "Max Monthly")
+        #expect(restored.provider == .codex)
+        #expect(restored.planName == "Codex Plus")
         #expect(restored.status == .active)
         #expect(restored.subscriptionRenewsAt == renewsAt)
         #expect(restored.subscriptionExpiresAt == nil)
@@ -43,10 +43,10 @@ struct ProviderSubscriptionReminderFoundationTests {
           "version": 1,
           "providers": [
             {
-              "id": "minimax",
+              "id": "codex",
               "subscriptionSnapshot": {
-                "provider": "minimax",
-                "planName": "Monthly",
+                "provider": "codex",
+                "planName": "Codex Plus",
                 "status": "active",
                 "subscriptionRenewsAt": "2026-06-24T00:00:00Z",
                 "subscriptionExpiresAt": null,
@@ -59,7 +59,7 @@ struct ProviderSubscriptionReminderFoundationTests {
         }
         """
         let decoded = try JSONDecoder().decode(CodexBarConfig.self, from: Data(json.utf8))
-        let snapshot = try #require(decoded.providerConfig(for: .minimax)?.subscriptionSnapshot)
+        let snapshot = try #require(decoded.providerConfig(for: .codex)?.subscriptionSnapshot)
 
         #expect(snapshot.subscriptionRenewsAt != nil)
         #expect(snapshot.updatedAt != Date(timeIntervalSince1970: 0))
@@ -79,10 +79,10 @@ struct ProviderSubscriptionReminderFoundationTests {
 
         let expiresToday = Date()
         settings.setProviderSubscriptionSnapshot(
-            provider: .minimax,
+            provider: .codex,
             snapshot: ProviderSubscriptionSnapshot(
-                provider: .minimax,
-                planName: "Monthly",
+                provider: .codex,
+                planName: "Codex Plus",
                 status: .canceled,
                 subscriptionRenewsAt: nil,
                 subscriptionExpiresAt: expiresToday,
@@ -97,15 +97,15 @@ struct ProviderSubscriptionReminderFoundationTests {
             startupBehavior: .testing)
 
         let outcome = ProviderFetchOutcome(
-            result: .failure(ProviderFetchError.noAvailableStrategy(.minimax)),
+            result: .failure(ProviderFetchError.noAvailableStrategy(.codex)),
             attempts: [])
         await store.applySelectedOutcome(
             outcome,
-            provider: .minimax,
+            provider: .codex,
             account: nil,
             fallbackSnapshot: nil)
 
-        #expect(notifier.reminders.contains(where: { $0.provider == .minimax && $0.event.type == .expiresToday }))
+        #expect(notifier.reminders.contains(where: { $0.provider == .codex && $0.event.type == .expiresToday }))
     }
 
     @Test
@@ -117,8 +117,8 @@ struct ProviderSubscriptionReminderFoundationTests {
         let past = try #require(calendar.date(byAdding: .day, value: -2, to: now))
 
         let renews = ProviderSubscriptionSnapshot(
-            provider: .minimax,
-            planName: "Monthly",
+            provider: .codex,
+            planName: "Codex Plus",
             status: .active,
             subscriptionRenewsAt: today,
             subscriptionExpiresAt: nil,
@@ -126,8 +126,8 @@ struct ProviderSubscriptionReminderFoundationTests {
         #expect(ProviderSubscriptionFormatter.menuLine(from: renews, now: now, calendar: calendar) == "Renews today")
 
         let expiresSoon = ProviderSubscriptionSnapshot(
-            provider: .minimax,
-            planName: "Monthly",
+            provider: .codex,
+            planName: "Codex Plus",
             status: .canceled,
             subscriptionRenewsAt: nil,
             subscriptionExpiresAt: sixDays,
@@ -137,8 +137,8 @@ struct ProviderSubscriptionReminderFoundationTests {
                 "Expires in 6 days")
 
         let expired = ProviderSubscriptionSnapshot(
-            provider: .minimax,
-            planName: "Monthly",
+            provider: .codex,
+            planName: "Codex Plus",
             status: .canceled,
             subscriptionRenewsAt: nil,
             subscriptionExpiresAt: past,
@@ -154,15 +154,15 @@ struct ProviderSubscriptionReminderFoundationTests {
         let now = Date(timeIntervalSince1970: 1_720_000_000)
         let inSevenDays = try #require(calendar.date(byAdding: .day, value: 7, to: now))
         let snapshot = ProviderSubscriptionSnapshot(
-            provider: .minimax,
-            planName: "Monthly",
+            provider: .codex,
+            planName: "Codex Plus",
             status: .canceled,
             subscriptionRenewsAt: nil,
             subscriptionExpiresAt: inSevenDays,
             updatedAt: now)
 
         let first = ProviderSubscriptionReminderLogic.evaluate(
-            providerName: "MiniMax",
+            providerName: "Codex",
             snapshot: snapshot,
             previous: nil,
             now: now,
@@ -171,7 +171,7 @@ struct ProviderSubscriptionReminderFoundationTests {
         #expect(first.events.first?.type == .expiresIn7Days)
 
         let second = ProviderSubscriptionReminderLogic.evaluate(
-            providerName: "MiniMax",
+            providerName: "Codex",
             snapshot: snapshot,
             previous: first.state,
             now: now,
@@ -196,10 +196,10 @@ struct ProviderSubscriptionReminderFoundationTests {
             syntheticTokenStore: NoopSyntheticTokenStore())
         originalSettings.statusChecksEnabled = false
         originalSettings.setProviderSubscriptionSnapshot(
-            provider: .minimax,
+            provider: .codex,
             snapshot: ProviderSubscriptionSnapshot(
-                provider: .minimax,
-                planName: "Monthly",
+                provider: .codex,
+                planName: "Codex Plus",
                 status: .canceled,
                 subscriptionRenewsAt: nil,
                 subscriptionExpiresAt: inSevenDays,
@@ -213,7 +213,7 @@ struct ProviderSubscriptionReminderFoundationTests {
             sessionQuotaNotifier: originalNotifier,
             startupBehavior: .testing)
 
-        originalStore.handleProviderSubscriptionReminders(provider: .minimax)
+        originalStore.handleProviderSubscriptionReminders(provider: .codex)
         #expect(originalNotifier.reminders.count == 1)
         #expect(originalNotifier.reminders.first?.event.type == .expiresIn7Days)
 
@@ -222,7 +222,7 @@ struct ProviderSubscriptionReminderFoundationTests {
 
         let reloadedConfig = try configStore.load()
         #expect(reloadedConfig != nil)
-        let stateInReloaded = reloadedConfig?.providerConfig(for: .minimax)?.subscriptionReminderState?["minimax"]
+        let stateInReloaded = reloadedConfig?.providerConfig(for: .codex)?.subscriptionReminderState?["codex"]
         #expect(stateInReloaded?.fired.contains(.expiresIn7Days) == true)
 
         let relaunchedSettings = SettingsStore(
@@ -232,10 +232,10 @@ struct ProviderSubscriptionReminderFoundationTests {
             syntheticTokenStore: NoopSyntheticTokenStore())
         relaunchedSettings.statusChecksEnabled = false
 
-        let stateFromRelaunched = relaunchedSettings.providerSubscriptionReminderState(for: .minimax)
+        let stateFromRelaunched = relaunchedSettings.providerSubscriptionReminderState(for: .codex)
         #expect(stateFromRelaunched?.fired.contains(.expiresIn7Days) == true)
 
-        let snapshotFromRelaunched = relaunchedSettings.providerSubscriptionSnapshot(for: .minimax)
+        let snapshotFromRelaunched = relaunchedSettings.providerSubscriptionSnapshot(for: .codex)
         #expect(snapshotFromRelaunched != nil)
 
         let relaunchedNotifier = SubscriptionReminderNotifierSpy()
@@ -246,7 +246,7 @@ struct ProviderSubscriptionReminderFoundationTests {
             sessionQuotaNotifier: relaunchedNotifier,
             startupBehavior: .testing)
 
-        relaunchedStore.handleProviderSubscriptionReminders(provider: .minimax)
+        relaunchedStore.handleProviderSubscriptionReminders(provider: .codex)
 
         let dedupeWorks = relaunchedNotifier.reminders.isEmpty
         #expect(dedupeWorks == true)
@@ -293,26 +293,30 @@ struct ProviderSubscriptionReminderFoundationTests {
     }
 
     @Test
-    func `menu descriptor shows subscription line separate from quota rows`() throws {
+    func `manual subscription metadata is ignored for non-Codex providers`() throws {
         let suite = "ProviderSubscriptionReminderFoundationTests-menu-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defaults.removePersistentDomain(forName: suite)
+        let configStore = testConfigStore(suiteName: suite)
+        let expiresAt = Date().addingTimeInterval(7 * 24 * 60 * 60)
+        try configStore.save(CodexBarConfig(providers: [
+            ProviderConfig(
+                id: .minimax,
+                subscriptionSnapshot: ProviderSubscriptionSnapshot(
+                    provider: .minimax,
+                    planName: "Monthly",
+                    status: .canceled,
+                    subscriptionRenewsAt: nil,
+                    subscriptionExpiresAt: expiresAt,
+                    updatedAt: Date(timeIntervalSince1970: 1_720_000_000))),
+        ]))
         let settings = SettingsStore(
             userDefaults: defaults,
-            configStore: testConfigStore(suiteName: suite),
+            configStore: testConfigStore(suiteName: suite, reset: false),
             zaiTokenStore: NoopZaiTokenStore(),
             syntheticTokenStore: NoopSyntheticTokenStore())
         settings.statusChecksEnabled = false
-        let expiresAt = Date().addingTimeInterval(7 * 24 * 60 * 60)
-        settings.setProviderSubscriptionSnapshot(
-            provider: .minimax,
-            snapshot: ProviderSubscriptionSnapshot(
-                provider: .minimax,
-                planName: "Monthly",
-                status: .canceled,
-                subscriptionRenewsAt: nil,
-                subscriptionExpiresAt: expiresAt,
-                updatedAt: Date(timeIntervalSince1970: 1_720_000_000)))
+        #expect(settings.providerSubscriptionSnapshot(for: .minimax) == nil)
 
         let store = UsageStore(
             fetcher: UsageFetcher(),
@@ -335,10 +339,7 @@ struct ProviderSubscriptionReminderFoundationTests {
             includeContextualActions: false)
 
         let lines = Self.textLines(from: descriptor)
-        // swiftlint:disable:next contains_over_filter_count
-        #expect(lines.contains(where: { $0.hasPrefix("Subscription: Expires in 7 days") }))
-        // swiftlint:disable:next contains_over_filter_count
-        #expect(!lines.contains(where: { $0.hasPrefix("Subscription: Resets ") }))
+        #expect(lines.allSatisfy { !$0.hasPrefix("Subscription:") })
     }
 
     @Test
@@ -384,7 +385,8 @@ struct ProviderSubscriptionReminderFoundationTests {
             includeContextualActions: false)
 
         let lines = Self.textLines(from: descriptor)
-        #expect(lines.contains(where: { $0.hasPrefix("Subscription: Renews ") }))
+        let subscriptionLines = lines.filter { $0.hasPrefix("Subscription: Renews ") }
+        #expect(subscriptionLines.count == 1)
     }
 
     @Test
@@ -431,5 +433,4 @@ private final class SubscriptionReminderNotifierSpy: SessionQuotaNotifying {
     {
         self.reminders.append((provider, event))
     }
-    // swiftlint:disable:previous contains_over_filter_count
 }

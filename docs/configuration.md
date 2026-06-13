@@ -57,16 +57,15 @@ All provider fields are optional unless noted.
 - `workspaceID`: provider-specific workspace/deployment/project ID (e.g. Azure OpenAI deployment, OpenAI API project,
   `opencode`).
 - `tokenAccounts`: multi-account tokens for providers in `TokenAccountSupportCatalog`.
-- `subscriptionSnapshot`: optional manual subscription metadata for renewal/expiration reminders.
+- `subscriptionSnapshot`: optional Codex-only manual subscription metadata for renewal/expiration reminders.
 
 ### manual `subscriptionSnapshot`
-`subscriptionSnapshot` is provider-neutral account metadata for reminder UX. It is manual-only in this
-first version.
+`subscriptionSnapshot` stores Codex account metadata for reminder UX. The first version is manual and Codex-only.
 
 ```json
 {
-  "provider": "minimax",
-  "planName": "Max Monthly",
+  "provider": "codex",
+  "planName": "Codex Plus",
   "status": "active",
   "subscriptionRenewsAt": "2026-06-24T00:00:00Z",
   "subscriptionExpiresAt": null,
@@ -79,7 +78,7 @@ first version.
 Notes:
 - This is not quota reset timing and does not change usage-window math.
 - `source` and `confidence` are manual-only in this release.
-- Leave both dates empty to disable reminder display for the provider.
+- Leave both dates empty to disable the Codex reminder display.
 - Automatic provider detection is intentionally out of scope here and should land in
   provider-specific PRs with redacted real samples.
 

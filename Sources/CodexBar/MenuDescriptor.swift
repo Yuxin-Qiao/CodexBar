@@ -465,10 +465,11 @@ struct MenuDescriptor {
         if let subscription,
            let subscriptionLine = ProviderSubscriptionFormatter.menuLine(
                from: subscription,
-               locale: codexBarLocalizedLocale()),
+               locale: codexBarLocalizedLocale(),
+               strings: localizedProviderSubscriptionFormatterStrings()),
            !subscriptionLine.isEmpty
         {
-            entries.append(.text("Subscription: \(subscriptionLine)", .secondary))
+            entries.append(.text(L("Subscription: %@", subscriptionLine), .secondary))
         }
 
         if emailText?.isEmpty ?? true, let fallbackEmail = fallback.email, !fallbackEmail.isEmpty {
@@ -480,13 +481,6 @@ struct MenuDescriptor {
                 .text(
                     "\(L("Plan")): \(AccountFormatter.plan(fallbackPlan, provider: provider))",
                     .secondary))
-        }
-
-        if let subscription,
-           let subscriptionLine = ProviderSubscriptionFormatter.menuLine(from: subscription),
-           !subscriptionLine.isEmpty
-        {
-            entries.append(.text("Subscription: \(subscriptionLine)", .secondary))
         }
 
         return entries
