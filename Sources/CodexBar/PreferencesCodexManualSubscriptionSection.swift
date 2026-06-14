@@ -33,18 +33,29 @@ struct CodexManualSubscriptionSectionView: View {
         self._renewsAt = State(initialValue: source?.subscriptionRenewsAt ?? now)
         self._hasExpiresAt = State(initialValue: source?.subscriptionExpiresAt != nil)
         self._expiresAt = State(initialValue: source?.subscriptionExpiresAt ?? now)
+        self._isExpanded = State(initialValue: source != nil)
     }
 
     var body: some View {
-        ProviderSettingsSection(title: L("Subscription")) {
+        ProviderSettingsSection(title: L("Manual reminder")) {
             DisclosureGroup(isExpanded: self.$isExpanded) {
                 VStack(alignment: .leading, spacing: 10) {
+                    Text(L("Use this local-only fallback when CodexBar cannot read your Codex renewal or expiry automatically."))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(L("This does not sync with Codex and only affects menu display and reminder notifications on this Mac."))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Text(L("Plan name"))
+                        Text(L("Plan name (optional)"))
                             .font(.subheadline.weight(.semibold))
                             .frame(width: ProviderSettingsMetrics.pickerLabelWidth, alignment: .leading)
                         Spacer(minLength: 0)
-                        TextField(L("Codex Plus (manual)"), text: self.$planName)
+                        TextField(L("Codex Plus"), text: self.$planName)
                             .textFieldStyle(.roundedBorder)
                             .font(.footnote)
                             .frame(maxWidth: 280)
@@ -116,7 +127,7 @@ struct CodexManualSubscriptionSectionView: View {
                     }
 
                     if let line = self.previewLine {
-                        Text(L("Preview: Subscription: %@", line))
+                        Text(L("Menu preview: %@", L("Subscription: %@", line)))
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -147,7 +158,7 @@ struct CodexManualSubscriptionSectionView: View {
                 .padding(.top, 8)
             } label: {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text(L("Subscription reminder"))
+                    Text(L("Manual subscription reminder"))
                         .font(.subheadline.weight(.semibold))
                     Spacer(minLength: 0)
                     Text(self.summaryText)
@@ -177,11 +188,11 @@ struct CodexManualSubscriptionSectionView: View {
     private func saveSnapshot() {
         let snapshot = self.makeSnapshotForSave(now: Date())
         guard snapshot.hasDisplayableDate else {
-            self.notice = L("Enable renewal or expiry date before saving.")
+            self.notice = L("Turn on a renewal or expiry date before saving.")
             return
         }
         self.onSave(snapshot)
-        self.notice = L("Saved to local config.")
+        self.notice = L("Saved manual reminder on this Mac.")
     }
 
     private func clearSnapshot() {
@@ -193,7 +204,7 @@ struct CodexManualSubscriptionSectionView: View {
         self.hasExpiresAt = false
         self.expiresAt = now
         self.onClear()
-        self.notice = L("Cleared manual subscription reminder.")
+        self.notice = L("Cleared manual reminder.")
     }
 
     private func makeSnapshotForSave(now: Date) -> ProviderSubscriptionSnapshot {
