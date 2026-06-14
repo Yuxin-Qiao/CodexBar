@@ -216,6 +216,34 @@ struct ProviderSubscriptionReminderFoundationTests {
     }
 
     @Test
+    func `expiry takes precedence when both manual reminder dates are present`() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = Date(timeIntervalSince1970: 1_720_000_000)
+        let renewsSoon = try #require(calendar.date(byAdding: .day, value: 7, to: now))
+        let expiresSoon = try #require(calendar.date(byAdding: .day, value: 3, to: now))
+        let snapshot = ProviderSubscriptionSnapshot(
+            provider: .codex,
+            planName: "Codex Plus",
+            status: .active,
+            subscriptionRenewsAt: renewsSoon,
+            subscriptionExpiresAt: expiresSoon,
+            updatedAt: now)
+
+        let menuLine = ProviderSubscriptionFormatter.menuLine(from: snapshot, now: now, calendar: calendar)
+        #expect(menuLine == "Expires in 3 days")
+
+        let result = ProviderSubscriptionReminderLogic.evaluate(
+            providerName: "Codex",
+            snapshot: snapshot,
+            previous: nil,
+            now: now,
+            calendar: calendar)
+
+        #expect(result.events.count == 1)
+        #expect(result.events.first?.type == .expiresIn3Days)
+    }
+
+    @Test
     func `reminder logic emits threshold events once and dedupes`() throws {
         let calendar = Calendar(identifier: .gregorian)
         let now = Date(timeIntervalSince1970: 1_720_000_000)

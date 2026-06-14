@@ -50,16 +50,18 @@ enum ProviderSubscriptionReminderLogic {
         }
         let context = ReminderContext(titleBase: titleBase, now: now, calendar: calendar)
 
-        Self.appendRenewalEvent(
-            snapshot: snapshot,
-            state: &state,
-            events: &events,
-            context: context)
         Self.appendExpirationEvent(
             snapshot: snapshot,
             state: &state,
             events: &events,
             context: context)
+        if snapshot.subscriptionExpiresAt == nil {
+            Self.appendRenewalEvent(
+                snapshot: snapshot,
+                state: &state,
+                events: &events,
+                context: context)
+        }
 
         return (state, events)
     }

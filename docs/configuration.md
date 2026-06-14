@@ -79,6 +79,7 @@ Notes:
 - This is local-only manual metadata. CodexBar does not sync it from Codex and it only affects menu display and reminder notifications on the current Mac.
 - This is not quota reset timing and does not change usage-window math.
 - Renewal/expiry values are calendar days (`YYYY-MM-DD`), not timestamps.
+- If both renewal and expiry are set, expiry takes precedence for display and reminder evaluation.
 - `source` and `confidence` are manual-only in this release.
 - Leave both dates empty to disable the Codex reminder display.
 - Automatic provider detection is intentionally out of scope here and should land in
