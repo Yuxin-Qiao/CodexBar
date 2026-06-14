@@ -111,6 +111,44 @@ struct ProviderSubscriptionReminderFoundationTests {
     }
 
     @Test
+    func `manual subscription dates preserve calendar day across positive UTC offsets`() throws {
+        let json = """
+        {
+          "version": 1,
+          "providers": [
+            {
+              "id": "codex",
+              "subscriptionSnapshot": {
+                "provider": "codex",
+                "planName": "Codex Plus",
+                "status": "active",
+                "subscriptionRenewsAt": "2026-06-24T00:00:00Z",
+                "subscriptionExpiresAt": null,
+                "source": "manual",
+                "confidence": "manual",
+                "updatedAt": "2026-05-24T00:00:00Z"
+              }
+            }
+          ]
+        }
+        """
+        let decoded = try JSONDecoder().decode(CodexBarConfig.self, from: Data(json.utf8))
+        let snapshot = try #require(decoded.providerConfig(for: .codex)?.subscriptionSnapshot)
+        let locale = Locale(identifier: "en_US")
+        var kiritimatiCalendar = Calendar(identifier: .gregorian)
+        kiritimatiCalendar.timeZone = try #require(TimeZone(identifier: "Pacific/Kiritimati"))
+        let now = Date(timeIntervalSince1970: 1_718_928_000) // 2024-06-22T12:00:00Z
+
+        let line = ProviderSubscriptionFormatter.menuLine(
+            from: snapshot,
+            now: now,
+            calendar: kiritimatiCalendar,
+            locale: locale)
+
+        #expect(line == "Renews Jun 24, 2026")
+    }
+
+    @Test
     func `manual subscription dates encode as calendar day strings`() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = try #require(TimeZone(identifier: "America/Los_Angeles"))
@@ -257,6 +295,50 @@ struct ProviderSubscriptionReminderFoundationTests {
             CodexManualSubscriptionSectionView.effectiveStatusForSave(
                 hasExpiresAt: false,
                 status: .trialing) == .trialing)
+    }
+
+    @Test
+    func `manual expiry today remains stable across positive UTC offsets`() throws {
+        let json = """
+        {
+          "version": 1,
+          "providers": [
+            {
+              "id": "codex",
+              "subscriptionSnapshot": {
+                "provider": "codex",
+                "planName": "Codex Plus",
+                "status": "canceled",
+                "subscriptionRenewsAt": null,
+                "subscriptionExpiresAt": "2026-06-24T00:00:00Z",
+                "source": "manual",
+                "confidence": "manual",
+                "updatedAt": "2026-05-24T00:00:00Z"
+              }
+            }
+          ]
+        }
+        """
+        let decoded = try JSONDecoder().decode(CodexBarConfig.self, from: Data(json.utf8))
+        let snapshot = try #require(decoded.providerConfig(for: .codex)?.subscriptionSnapshot)
+        let now = Date(timeIntervalSince1970: 1_782_267_600) // 2026-06-24T01:00:00Z
+        var kiritimatiCalendar = Calendar(identifier: .gregorian)
+        kiritimatiCalendar.timeZone = try #require(TimeZone(identifier: "Pacific/Kiritimati"))
+
+        let line = ProviderSubscriptionFormatter.menuLine(
+            from: snapshot,
+            now: now,
+            calendar: kiritimatiCalendar)
+        let result = ProviderSubscriptionReminderLogic.evaluate(
+            providerName: "Codex",
+            snapshot: snapshot,
+            previous: nil,
+            now: now,
+            calendar: kiritimatiCalendar)
+
+        #expect(line == "Expires today")
+        #expect(result.events.count == 1)
+        #expect(result.events.first?.type == .expiresToday)
     }
 
     @Test

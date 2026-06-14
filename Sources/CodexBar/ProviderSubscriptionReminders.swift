@@ -174,13 +174,20 @@ enum ProviderSubscriptionReminderLogic {
 
     private static func dayOnlyTimestamp(_ date: Date?) -> String {
         guard let date else { return "nil" }
-        let midnight = Calendar(identifier: .iso8601).startOfDay(for: date)
+        let midnight = Self.manualReminderCalendar().startOfDay(for: date)
         return midnight.timeIntervalSince1970.description
     }
 
-    private static func dayDelta(from now: Date, to date: Date, calendar: Calendar) -> Int {
-        let startNow = calendar.startOfDay(for: now)
-        let startDate = calendar.startOfDay(for: date)
-        return calendar.dateComponents([.day], from: startNow, to: startDate).day ?? 0
+    private static func dayDelta(from now: Date, to date: Date, calendar _: Calendar) -> Int {
+        let manualCalendar = Self.manualReminderCalendar()
+        let startNow = manualCalendar.startOfDay(for: now)
+        let startDate = manualCalendar.startOfDay(for: date)
+        return manualCalendar.dateComponents([.day], from: startNow, to: startDate).day ?? 0
+    }
+
+    private static func manualReminderCalendar() -> Calendar {
+        var manualCalendar = Calendar(identifier: .gregorian)
+        manualCalendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
+        return manualCalendar
     }
 }

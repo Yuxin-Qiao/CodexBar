@@ -14,6 +14,7 @@ extension UsageMenuCardView.Model {
             MenuCardHeightFingerprint.field("subtitle", self.subtitleText),
             "subtitleStyle=\(self.subtitleStyle.heightFingerprint)",
             MenuCardHeightFingerprint.field("plan", self.planText),
+            MenuCardHeightFingerprint.field("subscription", self.subscriptionText),
             MenuCardHeightFingerprint.field("placeholder", self.placeholder),
             MenuCardHeightFingerprint.field("credits", self.creditsText),
             "creditsRemaining=\(self.creditsRemaining.map(String.init(describing:)) ?? "nil")",

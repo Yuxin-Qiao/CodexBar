@@ -234,6 +234,12 @@ public struct ProviderSubscriptionSnapshot: Codable, Sendable, Equatable {
         guard let startOfDayUTC = self.manualDateFormatter.date(from: value) else { return nil }
         return self.manualDateCalendar.date(byAdding: .hour, value: 12, to: startOfDayUTC)
     }
+
+    static func manualDisplayCalendar() -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
+        return calendar
+    }
 }
 
 public enum ProviderSubscriptionFormatter {
@@ -277,7 +283,7 @@ public enum ProviderSubscriptionFormatter {
     public static func menuLine(
         from snapshot: ProviderSubscriptionSnapshot,
         now: Date = .init(),
-        calendar: Calendar = .current,
+        calendar _: Calendar = .current,
         locale: Locale = .current,
         strings: Strings = .english) -> String?
     {
@@ -285,7 +291,6 @@ public enum ProviderSubscriptionFormatter {
             return self.expiresLine(
                 date: expires,
                 now: now,
-                calendar: calendar,
                 locale: locale,
                 strings: strings)
         }
@@ -295,7 +300,6 @@ public enum ProviderSubscriptionFormatter {
             return self.renewsLine(
                 date: renews,
                 now: now,
-                calendar: calendar,
                 locale: locale,
                 strings: strings)
         }
@@ -305,11 +309,10 @@ public enum ProviderSubscriptionFormatter {
     private static func renewsLine(
         date: Date,
         now: Date,
-        calendar: Calendar,
         locale: Locale,
         strings: Strings) -> String
     {
-        let dayDelta = dayDelta(from: now, to: date, calendar: calendar)
+        let dayDelta = dayDelta(from: now, to: date)
         if dayDelta == 0 { return strings.renewsToday }
         return String(
             format: strings.renewsDateFormat,
@@ -320,11 +323,10 @@ public enum ProviderSubscriptionFormatter {
     private static func expiresLine(
         date: Date,
         now: Date,
-        calendar: Calendar,
         locale: Locale,
         strings: Strings) -> String
     {
-        let dayDelta = dayDelta(from: now, to: date, calendar: calendar)
+        let dayDelta = dayDelta(from: now, to: date)
         if dayDelta < 0 {
             return String(
                 format: strings.expiredDateFormat,
@@ -341,12 +343,19 @@ public enum ProviderSubscriptionFormatter {
     }
 
     private static func formattedDate(_ date: Date, locale: Locale) -> String {
-        date.formatted(.dateTime.month(.abbreviated).day().year().locale(locale))
+        let calendar = ProviderSubscriptionSnapshot.manualDisplayCalendar()
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.locale = locale
+        formatter.dateFormat = "MMM d, yyyy"
+        return formatter.string(from: date)
     }
 
-    private static func dayDelta(from now: Date, to date: Date, calendar: Calendar) -> Int {
-        let startNow = calendar.startOfDay(for: now)
-        let startDate = calendar.startOfDay(for: date)
-        return calendar.dateComponents([.day], from: startNow, to: startDate).day ?? 0
+    private static func dayDelta(from now: Date, to date: Date) -> Int {
+        let manualCalendar = ProviderSubscriptionSnapshot.manualDisplayCalendar()
+        let startNow = manualCalendar.startOfDay(for: now)
+        let startDate = manualCalendar.startOfDay(for: date)
+        return manualCalendar.dateComponents([.day], from: startNow, to: startDate).day ?? 0
     }
 }

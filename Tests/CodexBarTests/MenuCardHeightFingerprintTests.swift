@@ -33,9 +33,19 @@ struct MenuCardHeightFingerprintTests {
         #expect(left != changedPercent)
     }
 
+    @Test
+    func `height fingerprint changes when subscription row text changes`() {
+        let withoutSubscription = Self.model(subscriptionText: nil).heightFingerprint(section: "card")
+        let withSubscription = Self.model(subscriptionText: "Subscription: Expires in 7 days")
+            .heightFingerprint(section: "card")
+
+        #expect(withoutSubscription != withSubscription)
+    }
+
     private static func model(
         percent: Double = 42,
-        percentStyle: UsageMenuCardView.Model.PercentStyle = .left) -> UsageMenuCardView.Model
+        percentStyle: UsageMenuCardView.Model.PercentStyle = .left,
+        subscriptionText: String? = nil) -> UsageMenuCardView.Model
     {
         UsageMenuCardView.Model(
             provider: .codex,
@@ -44,7 +54,7 @@ struct MenuCardHeightFingerprintTests {
             subtitleText: "Signed in as very-secret@example.com",
             subtitleStyle: .info,
             planText: "Secret Plan",
-            subscriptionText: nil,
+            subscriptionText: subscriptionText,
             metrics: [
                 .init(
                     id: "primary",
