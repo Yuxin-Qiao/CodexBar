@@ -516,6 +516,9 @@ struct DeepSeekUsageFetcherTests {
             }
             Issue.record("Expected cancellation")
         } catch is CancellationError {
+            try await Self.withTimeout(.seconds(2)) {
+                await probe.waitUntilCancelled()
+            }
             #expect(await probe.wasCancelled())
         }
     }
