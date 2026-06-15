@@ -851,32 +851,6 @@ final class UsageStore {
         self.sessionQuotaNotifier.post(transition: transition, provider: provider, badge: nil)
     }
 
-    func handleProviderSubscriptionReminders(provider: UsageProvider) {
-        guard provider == .codex else { return }
-        let keySnapshot = self.settings.providerSubscriptionSnapshot(for: provider)
-        let fromSettings = self.settings.providerSubscriptionReminderState(for: provider)
-        guard let subscription = keySnapshot, subscription.hasDisplayableDate else {
-            if self.providerSubscriptionReminderState[provider] != nil || fromSettings != nil {
-                self.providerSubscriptionReminderState.removeValue(forKey: provider)
-                self.settings.setProviderSubscriptionReminderState(for: provider, state: nil)
-            }
-            return
-        }
-        let providerName = ProviderDescriptorRegistry.descriptor(for: provider).metadata.displayName
-        let inMemoryState = self.providerSubscriptionReminderState[provider]
-        let previous = inMemoryState ?? fromSettings
-        let result = ProviderSubscriptionReminderLogic.evaluate(
-            providerName: providerName,
-            snapshot: subscription,
-            previous: previous)
-        self.providerSubscriptionReminderState[provider] = result.state
-        if let state = result.state {
-            self.settings.setProviderSubscriptionReminderState(for: provider, state: state)
-        }
-        for event in result.events {
-            self.sessionQuotaNotifier.postProviderSubscriptionReminder(provider: provider, event: event, badge: nil)
-        }
-    }
     private func refreshStatus(_ provider: UsageProvider) async {
         guard self.settings.statusChecksEnabled else { return }
         guard let meta = self.providerMetadata[provider] else { return }
@@ -1009,6 +983,7 @@ extension UsageStore {
                 .groq: "Groq debug log not yet implemented",
                 .t3chat: "T3 Chat debug log not yet implemented",
                 .llmproxy: "LLM Proxy debug log not yet implemented",
+                .litellm: "LiteLLM debug log not yet implemented",
                 .deepgram: "Deepgram debug log not yet implemented",
             ]
             let buildText = {
@@ -1088,7 +1063,8 @@ extension UsageStore {
                      .vertexai, .kilo, .kiro, .kimi, .kimik2, .moonshot, .jetbrains, .perplexity, .mimo, .doubao,
                      .abacus, .mistral, .codebuff, .crof, .windsurf, .venice, .manus, .commandcode, .stepfun, .bedrock,
                      .grok, .groq, .t3chat, .llmproxy, .litellm, .deepgram:
-                    return Self.unimplementedDebugLogMessage(for: provider)
+                    return unimplementedDebugLogMessages[provider]
+                        ?? "\(provider.rawValue) debug log not yet implemented"
                 }
             }
             return await claudeDebugExecutionContext.apply {
