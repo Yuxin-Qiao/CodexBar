@@ -1,5 +1,5 @@
-import Foundation
 import CodexBarCore
+import Foundation
 
 extension UsageStore {
     func handleProviderSubscriptionReminders(provider: UsageProvider) {
