@@ -4,8 +4,10 @@ import FoundationNetworking
 #endif
 #if canImport(Darwin)
 import Darwin
-#else
+#elseif canImport(Glibc)
 import Glibc
+#elseif canImport(Musl)
+import Musl
 #endif
 
 public struct GeminiModelQuota: Sendable {
