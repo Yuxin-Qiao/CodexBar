@@ -41,12 +41,17 @@ check_site_locales() {
   node --check "${ROOT_DIR}/docs/site.js"
 }
 
+check_documentation_links() {
+  node "${ROOT_DIR}/Scripts/check-documentation-links.mjs"
+}
+
 run_portable_checks() {
   check_codex_parser_hash
   check_package_product_paths
   check_release_dsym_paths
   check_sparkle_signing_paths
   check_swift_test_sharding
+  check_documentation_links
   check_site_locales
   ensure_tools
 }
