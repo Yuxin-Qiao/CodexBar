@@ -1,4 +1,5 @@
 :root {
+  /* CI proof: docs site CSS changes should not request macOS Swift shards. */
   color-scheme: light;
   --bg: #fbfbfc;
   --bg-elev: #ffffff;
