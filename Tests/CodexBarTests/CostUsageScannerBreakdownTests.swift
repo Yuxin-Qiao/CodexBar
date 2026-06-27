@@ -1374,6 +1374,90 @@ struct CostUsageScannerBreakdownTests {
     }
 
     @Test
+    func `codex active session partial file keeps distinct archived rows`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2026, month: 6, day: 26)
+        let iso0 = env.isoString(for: day)
+        let iso1 = env.isoString(for: day.addingTimeInterval(1))
+        let iso2 = env.isoString(for: day.addingTimeInterval(2))
+        let model = "openai/gpt-5.5"
+        let sessionMeta: [String: Any] = [
+            "type": "session_meta",
+            "payload": [
+                "session_id": "sess-partial-active-archive",
+            ],
+        ]
+        let turnContext = self.codexTurnContext(timestamp: iso0, model: model)
+        let firstTurn: [String: Any] = [
+            "type": "event_msg",
+            "timestamp": iso1,
+            "payload": [
+                "type": "task_started",
+                "turn_id": "turn-a",
+            ],
+        ]
+        let firstUsage = self.codexTokenCount(
+            timestamp: iso1,
+            model: model,
+            last: (input: 20, cached: 0, output: 5))
+        let secondTurn: [String: Any] = [
+            "type": "event_msg",
+            "timestamp": iso2,
+            "payload": [
+                "type": "task_started",
+                "turn_id": "turn-b",
+            ],
+        ]
+        let secondUsage = self.codexTokenCount(
+            timestamp: iso2,
+            model: model,
+            last: (input: 30, cached: 500, output: 7))
+
+        _ = try env.writeCodexSessionFile(
+            day: day,
+            filename: "active-partial.jsonl",
+            contents: env.jsonl([sessionMeta, turnContext, firstTurn, firstUsage]))
+
+        let dayKey = CostUsageScanner.CostUsageDayRange.dayKey(from: day)
+        _ = try env.writeCodexArchivedSessionFile(
+            filename: "rollout-\(dayKey)T12-00-00-partial.jsonl",
+            contents: env.jsonl([sessionMeta, turnContext, firstTurn, firstUsage, secondTurn, secondUsage]))
+
+        var options = CostUsageScanner.Options(
+            codexSessionsRoot: env.codexSessionsRoot,
+            claudeProjectsRoots: nil,
+            cacheRoot: env.cacheRoot)
+        options.refreshMinIntervalSeconds = 0
+
+        let report = CostUsageScanner.loadDailyReport(
+            provider: .codex,
+            since: day,
+            until: day,
+            now: day,
+            options: options)
+        let expectedCost = (CostUsagePricing.codexCostUSD(
+            model: model,
+            inputTokens: 20,
+            cachedInputTokens: 0,
+            outputTokens: 5) ?? 0)
+            + (CostUsagePricing.codexCostUSD(
+                model: model,
+                inputTokens: 30,
+                cachedInputTokens: 500,
+                outputTokens: 7) ?? 0)
+
+        #expect(report.data.count == 1)
+        #expect(report.data[0].inputTokens == 50)
+        #expect(report.data[0].cacheReadTokens == 500)
+        #expect(report.data[0].outputTokens == 12)
+        #expect(report.data[0].totalTokens == 62)
+        #expect(report.data[0].modelBreakdowns?.first?.totalTokens == 62)
+        #expect(abs((report.data[0].costUSD ?? 0) - expectedCost) < 0.000001)
+    }
+
+    @Test
     func `codex daily report includes long lived sessions stored under older date partitions`() throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }

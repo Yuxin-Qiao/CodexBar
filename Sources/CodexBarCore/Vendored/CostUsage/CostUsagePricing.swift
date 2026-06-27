@@ -487,7 +487,7 @@ enum CostUsagePricing {
               let priorityInputCostPerToken = pricing.priorityInputCostPerToken,
               let priorityOutputCostPerToken = pricing.priorityOutputCostPerToken
         else { return nil }
-        if max(0, inputTokens) > self.codexPriorityInputTokenLimit {
+        if max(0, inputTokens) + max(0, cachedInputTokens) > self.codexPriorityInputTokenLimit {
             return nil
         }
 

@@ -163,6 +163,11 @@ struct CostUsagePricingTests {
             inputTokens: 272_001,
             cachedInputTokens: 0,
             outputTokens: 10)
+        let gpt55CachedHeavy = CostUsagePricing.codexPriorityCostUSD(
+            model: "gpt-5.5",
+            inputTokens: 200_000,
+            cachedInputTokens: 100_000,
+            outputTokens: 10)
         let gpt54Mini = CostUsagePricing.codexPriorityCostUSD(
             model: "gpt-5.4-mini",
             inputTokens: 272_001,
@@ -170,6 +175,7 @@ struct CostUsagePricingTests {
             outputTokens: 10)
 
         #expect(gpt55 == nil)
+        #expect(gpt55CachedHeavy == nil)
         #expect(gpt54Mini == nil)
     }
 
@@ -177,11 +183,11 @@ struct CostUsagePricingTests {
     func `codex priority cost remains available at priority input boundary`() {
         let gpt55 = CostUsagePricing.codexPriorityCostUSD(
             model: "gpt-5.5",
-            inputTokens: 272_000,
-            cachedInputTokens: 0,
+            inputTokens: 200_000,
+            cachedInputTokens: 72000,
             outputTokens: 10)
 
-        #expect(gpt55 == (272_000.0 * 1.25e-5) + (10.0 * 7.5e-5))
+        #expect(gpt55 == (200_000.0 * 1.25e-5) + (72000.0 * 1.25e-6) + (10.0 * 7.5e-5))
     }
 
     @Test

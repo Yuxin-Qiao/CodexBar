@@ -72,6 +72,7 @@ enum CostUsageScanner {
     struct CodexScanState {
         var contributingSessionIds: Set<String> = []
         var seenFileIds: Set<String> = []
+        var seenCodexUsageRowKeys: Set<String> = []
     }
 
     struct CodexScannedSession {
@@ -2146,10 +2147,6 @@ enum CostUsageScanner {
         }
 
         let cached = cache.files[metadata.path]
-        if let cachedSessionId = cached?.sessionId, state.contributingSessionIds.contains(cachedSessionId) {
-            Self.dropCachedCodexFile(path: metadata.path, cached: cached, cache: &cache)
-            return
-        }
 
         let input = CodexFileScanInput(fileURL: fileURL, metadata: metadata, cached: cached)
         if Self.keepCachedCodexFileIfFresh(input: input, context: context, cache: &cache, state: &state) {
