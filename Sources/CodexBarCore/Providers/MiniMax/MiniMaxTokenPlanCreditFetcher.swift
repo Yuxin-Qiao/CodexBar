@@ -11,6 +11,7 @@ enum MiniMaxTokenPlanCreditFetcher {
         environment: [String: String],
         transport: any ProviderHTTPTransport) async throws -> Double?
     {
+        let effectiveRegion = Self.effectiveRegion(for: region, environment: environment)
         let url = try self.resolveCreditURL(region: region, environment: environment)
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
@@ -25,7 +26,7 @@ enum MiniMaxTokenPlanCreditFetcher {
             "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
         request.setValue(userAgent, forHTTPHeaderField: "user-agent")
         request.setValue("en-US,en;q=0.9", forHTTPHeaderField: "accept-language")
-        let origin = MiniMaxSubscriptionMetadataFetcher.platformOriginURL(region: region)
+        let origin = MiniMaxSubscriptionMetadataFetcher.platformOriginURL(region: effectiveRegion)
         request.setValue(origin.absoluteString, forHTTPHeaderField: "origin")
         request.setValue(origin.absoluteString + "/", forHTTPHeaderField: "referer")
 
@@ -55,7 +56,20 @@ enum MiniMaxTokenPlanCreditFetcher {
         if let override = MiniMaxSettingsReader.tokenPlanCreditURL(environment: environment) {
             return override
         }
-        return region.tokenPlanCreditURL
+        return Self.effectiveRegion(for: region, environment: environment).tokenPlanCreditURL
+    }
+
+    static func effectiveRegion(for region: MiniMaxAPIRegion, environment: [String: String]) -> MiniMaxAPIRegion {
+        guard let host = MiniMaxSettingsReader.hostOverride(environment: environment)?.lowercased() else {
+            return region
+        }
+        if host.contains("minimaxi.com") {
+            return .chinaMainland
+        }
+        if host.contains("minimax.io") {
+            return .global
+        }
+        return region
     }
 
     private static func validateBaseResponse(in payload: [String: Any]) throws {

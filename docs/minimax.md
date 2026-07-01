@@ -40,6 +40,7 @@ falls back across the provider's supported web requests when needed.
   - `MINIMAX_CODING_PLAN_URL=...` (full URL override)
   - `MINIMAX_REMAINS_URL=...` (full URL override)
   - `MINIMAX_TOKEN_PLAN_CREDIT_URL=...` (full URL override for recharge-credit balance)
+- `MINIMAX_HOST` also selects the matching `www.*` credit host (`minimaxi.com` → `www.minimaxi.com`, `minimax.io` → `www.minimax.io`).
 - Security policy: endpoint overrides are only accepted when they use `https://`, omit userinfo, and do not contain encoded host delimiters. Custom HTTPS proxy/test domains continue to work for compatibility, but `http://` endpoints are rejected so cookies and authorization headers are not sent in cleartext.
 - Strict provider-host mode: set `MINIMAX_REQUIRE_PROVIDER_ENDPOINT_OVERRIDES=true` to additionally reject custom proxy/test domains and only accept MiniMax-owned hosts under `minimax.io` or `minimaxi.com`.
 

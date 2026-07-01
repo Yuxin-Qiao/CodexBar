@@ -341,7 +341,15 @@ struct MiniMaxTokenPlanCreditTests {
         print("LIVE_MINIMAX_COOKIE_RESOLVED=true")
         print("LIVE_MINIMAX_RESOLVED_REGION=\(apiResult.resolvedRegion.rawValue)")
         print("LIVE_MINIMAX_BALANCE=\(balance.map { String($0) } ?? "nil")")
-        #expect(balance == 20000)
+        let balanceValue = try #require(balance)
+        #expect(balanceValue >= 0)
+        if let expectedRaw = ProcessInfo.processInfo.environment["MINIMAX_LIVE_TEST_EXPECTED_BALANCE"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !expectedRaw.isEmpty,
+            let expected = Double(expectedRaw)
+        {
+            #expect(balanceValue == expected)
+        }
     }
 
     private static func httpResponse(

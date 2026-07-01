@@ -114,7 +114,9 @@ struct MiniMaxAPIFetchStrategy: ProviderFetchStrategy {
 
     private static func resolveExplicitCookieOverride(context: ProviderFetchContext) -> MiniMaxCookieOverride? {
         if let settings = context.settings?.minimax, settings.cookieSource == .manual {
-            return MiniMaxCookieHeader.override(from: settings.manualCookieHeader)
+            if let override = MiniMaxCookieHeader.override(from: settings.manualCookieHeader) {
+                return override
+            }
         }
         guard let raw = ProviderTokenResolver.minimaxCookie(environment: context.env) else {
             return nil
@@ -277,9 +279,10 @@ struct MiniMaxCodingPlanFetchStrategy: ProviderFetchStrategy {
     }
 
     private static func resolveCookieOverride(context: ProviderFetchContext) -> MiniMaxCookieOverride? {
-        if let settings = context.settings?.minimax {
-            guard settings.cookieSource == .manual else { return nil }
-            return MiniMaxCookieHeader.override(from: settings.manualCookieHeader)
+        if let settings = context.settings?.minimax, settings.cookieSource == .manual {
+            if let override = MiniMaxCookieHeader.override(from: settings.manualCookieHeader) {
+                return override
+            }
         }
         guard let raw = ProviderTokenResolver.minimaxCookie(environment: context.env) else {
             return nil

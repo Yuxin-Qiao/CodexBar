@@ -13,6 +13,7 @@
 - Claude history: keep OAuth utilization separate across account switches while preserving continuity through token refreshes.
 - Linux CLI: keep Claude OAuth usage subprocess-free, skip version probes, and let Auto bypass unsupported web sources. Thanks @derekszen!
 - Usage display: make Usage widgets follow the used-versus-remaining preference already shared by menus and Overview rows (#1738). Thanks @OlegLustenko and @FrancoLan!
+- MiniMax: route Token Plan credit lookups to the matching `www.*` host when `MINIMAX_HOST` selects a China or global platform domain.
 
 ## 0.37.3 — 2026-06-28
 

@@ -1221,11 +1221,20 @@ struct MiniMaxAPIRegionTests {
     }
 
     @Test
-    func `host override does not rewrite token plan credit url`() throws {
-        let env = [MiniMaxSettingsReader.hostKey: "platform.minimaxi.com"]
-        let resolved = try MiniMaxTokenPlanCreditFetcher.resolveCreditURL(region: .global, environment: env)
-        #expect(resolved.host == "www.minimax.io")
-        #expect(resolved.path == "/backend/account/token_plan_credit")
+    func `host override selects matching www token plan credit host`() throws {
+        let chinaEnv = [MiniMaxSettingsReader.hostKey: "platform.minimaxi.com"]
+        let chinaResolved = try MiniMaxTokenPlanCreditFetcher.resolveCreditURL(
+            region: .global,
+            environment: chinaEnv)
+        #expect(chinaResolved.host == "www.minimaxi.com")
+        #expect(chinaResolved.path == "/backend/account/token_plan_credit")
+
+        let globalEnv = [MiniMaxSettingsReader.hostKey: "platform.minimax.io"]
+        let globalResolved = try MiniMaxTokenPlanCreditFetcher.resolveCreditURL(
+            region: .chinaMainland,
+            environment: globalEnv)
+        #expect(globalResolved.host == "www.minimax.io")
+        #expect(globalResolved.path == "/backend/account/token_plan_credit")
     }
 
     @Test
