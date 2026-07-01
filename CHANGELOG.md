@@ -6,6 +6,7 @@
 - Claude web usage: bound stale requests so Auto can reach CLI fallback instead of hanging indefinitely.
 - Claude history: keep OAuth utilization separate across account switches while preserving continuity through token refreshes.
 - Linux CLI: keep Claude OAuth usage subprocess-free, skip version probes, and let Auto bypass unsupported web sources. Thanks @derekszen!
+- Usage display: make Usage widgets follow the used-versus-remaining preference already shared by menus and Overview rows (#1738). Thanks @OlegLustenko and @FrancoLan!
 
 ## 0.37.3 — 2026-06-28
 
