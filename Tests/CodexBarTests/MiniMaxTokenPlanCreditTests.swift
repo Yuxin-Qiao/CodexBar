@@ -37,7 +37,7 @@ struct MiniMaxTokenPlanCreditTests {
     }
 
     @Test
-    func `token plan credit enrichment is best effort when session is invalid`() async {
+    func `token plan credit enrichment is best effort when session is invalid`() async throws {
         let remainsSnapshot = MiniMaxUsageSnapshot(
             planName: "Max",
             availablePrompts: 1000,
@@ -57,7 +57,7 @@ struct MiniMaxTokenPlanCreditTests {
                 contentType: "application/json")
         }
 
-        let enriched = await MiniMaxUsageFetcher.attachingTokenPlanCreditIfAvailable(
+        let enriched = try await MiniMaxUsageFetcher.attachingTokenPlanCreditIfAvailable(
             to: remainsSnapshot,
             context: MiniMaxUsageFetcher.WebFetchContext(
                 cookie: "HERTZ-SESSION=abc",
@@ -106,7 +106,78 @@ struct MiniMaxTokenPlanCreditTests {
     }
 
     @Test
-    func `api usage fetch merges token plan credit when cached cookie is available`() async throws {
+    func `token plan credit enrichment propagates cancellation`() async {
+        let remainsSnapshot = MiniMaxUsageSnapshot(
+            planName: "Max",
+            availablePrompts: 1000,
+            currentPrompts: 0,
+            remainingPrompts: 1000,
+            windowMinutes: 300,
+            usedPercent: 0,
+            resetsAt: nil,
+            updatedAt: Date(),
+            services: nil)
+        let transport = ProviderHTTPTransportStub { _ in
+            throw CancellationError()
+        }
+
+        await #expect(throws: CancellationError.self) {
+            _ = try await MiniMaxUsageFetcher.attachingTokenPlanCreditIfAvailable(
+                to: remainsSnapshot,
+                context: MiniMaxUsageFetcher.WebFetchContext(
+                    cookie: "HERTZ-SESSION=abc",
+                    authorizationToken: nil,
+                    region: .chinaMainland,
+                    environment: [:],
+                    transport: transport),
+                groupID: nil)
+        }
+    }
+
+    @Test
+    func `token plan credit enrichment forwards group id from curl override`() async throws {
+        let creditJSON = try String(contentsOf: Self.fixtureURL(named: "token-plan-credit-normal.json"))
+        let transport = ProviderHTTPTransportStub { request in
+            let url = try #require(request.url)
+            #expect(request.value(forHTTPHeaderField: "x-group-id") == "2040544334402560487")
+            return Self.httpResponse(url: url, body: creditJSON, contentType: "application/json")
+        }
+        let curl = """
+        curl 'https://platform.minimaxi.com/' \\
+          -H 'Cookie: HERTZ-SESSION=abc' \\
+          -H 'x-group-id: 2040544334402560487'
+        """
+        guard let override = MiniMaxCookieHeader.override(from: curl),
+              let cookie = MiniMaxCookieHeader.normalized(from: override.cookieHeader)
+        else {
+            Issue.record("Expected curl override to preserve group id")
+            return
+        }
+
+        let enriched = try await MiniMaxUsageFetcher.attachingTokenPlanCreditIfAvailable(
+            to: MiniMaxUsageSnapshot(
+                planName: "Max",
+                availablePrompts: 1000,
+                currentPrompts: 0,
+                remainingPrompts: 1000,
+                windowMinutes: 300,
+                usedPercent: 0,
+                resetsAt: nil,
+                updatedAt: Date(),
+                services: nil),
+            context: MiniMaxUsageFetcher.WebFetchContext(
+                cookie: cookie,
+                authorizationToken: override.authorizationToken,
+                region: .chinaMainland,
+                environment: [:],
+                transport: transport),
+            groupID: override.groupID)
+
+        #expect(enriched.pointsBalance == 20000)
+    }
+
+    @Test
+    func `api usage fetch merges token plan credit when explicit cookie is available`() async throws {
         let now = Date(timeIntervalSince1970: 1_780_282_340)
         let creditJSON = try String(contentsOf: Self.fixtureURL(named: "token-plan-credit-normal.json"))
         let transport = ProviderHTTPTransportStub { request in
@@ -123,7 +194,7 @@ struct MiniMaxTokenPlanCreditTests {
             region: .chinaMainland,
             now: now,
             session: transport)
-        let enriched = await MiniMaxUsageFetcher.attachingTokenPlanCreditIfAvailable(
+        let enriched = try await MiniMaxUsageFetcher.attachingTokenPlanCreditIfAvailable(
             to: remainsSnapshot,
             context: MiniMaxUsageFetcher.WebFetchContext(
                 cookie: "_token=abc; minimax_group_id_v2=2040544334402560487",
@@ -134,6 +205,63 @@ struct MiniMaxTokenPlanCreditTests {
             groupID: "2040544334402560487")
 
         #expect(remainsSnapshot.pointsBalance == nil)
+        #expect(enriched.pointsBalance == 20000)
+    }
+
+    @Test
+    func `api token fetch resolves china region after global rejection`() async throws {
+        let now = Date(timeIntervalSince1970: 1_780_282_340)
+        let transport = ProviderHTTPTransportStub { request in
+            let url = try #require(request.url)
+            if url.host == "api.minimax.io" {
+                return Self.httpResponse(url: url, body: "{}", statusCode: 401, contentType: "application/json")
+            }
+            #expect(url.host == "api.minimaxi.com")
+            return Self.httpResponse(url: url, body: Self.percentBasedRemainsJSON, contentType: "application/json")
+        }
+
+        let result = try await MiniMaxUsageFetcher.fetchAPITokenUsage(
+            apiToken: "sk-cp-test",
+            region: .global,
+            now: now,
+            session: transport)
+
+        #expect(result.resolvedRegion == .chinaMainland)
+    }
+
+    @Test
+    func `api credit enrichment uses resolved china web host after global retry`() async throws {
+        let now = Date(timeIntervalSince1970: 1_780_282_340)
+        let creditJSON = try String(contentsOf: Self.fixtureURL(named: "token-plan-credit-normal.json"))
+        let transport = ProviderHTTPTransportStub { request in
+            let url = try #require(request.url)
+            if url.host == "api.minimax.io" {
+                return Self.httpResponse(url: url, body: "{}", statusCode: 401, contentType: "application/json")
+            }
+            if url.host == "api.minimaxi.com", url.path.contains("remains") {
+                return Self.httpResponse(url: url, body: Self.percentBasedRemainsJSON, contentType: "application/json")
+            }
+            #expect(url.host == "www.minimaxi.com")
+            #expect(url.path == "/backend/account/token_plan_credit")
+            return Self.httpResponse(url: url, body: creditJSON, contentType: "application/json")
+        }
+
+        let apiResult = try await MiniMaxUsageFetcher.fetchAPITokenUsage(
+            apiToken: "sk-cp-test",
+            region: .global,
+            now: now,
+            session: transport)
+        let enriched = try await MiniMaxUsageFetcher.attachingTokenPlanCreditIfAvailable(
+            to: apiResult.snapshot,
+            context: MiniMaxUsageFetcher.WebFetchContext(
+                cookie: "HERTZ-SESSION=abc",
+                authorizationToken: nil,
+                region: apiResult.resolvedRegion,
+                environment: [:],
+                transport: transport),
+            groupID: nil)
+
+        #expect(apiResult.resolvedRegion == .chinaMainland)
         #expect(enriched.pointsBalance == 20000)
     }
 

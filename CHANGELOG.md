@@ -21,8 +21,6 @@
 - Cost history: choose inline, submenu, or combined local-cost presentation. Thanks @Zihao-Qi!
 - Confetti: optionally celebrate session-limit resets with full-screen confetti, configurable beside the weekly-limit celebration in Advanced settings. Thanks @bystritskiy!
 - z.ai: support saved token-account team usage with account-scoped organization and project metadata. Thanks @zqbake!
-
-### Fixed
 - CLI: show session pace in text output, expose derived pace data in JSON, and honor the configured weekly work-day baseline. Thanks @kmatsunami!
 - Claude: add a combined "Session + Weekly" menu bar metric that shows the 5-hour session and weekly lanes together (paced on the weekly lane), matching Codex, and classify lanes by cadence so a weekly-only account is not mislabeled as a session. Thanks @Shengqiang-Zhang!
 

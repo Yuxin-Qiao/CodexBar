@@ -52,6 +52,7 @@ falls back across the provider's supported web requests when needed.
 ## Snapshot mapping
 - Primary usage, reset timing, and plan/tier are derived from Coding Plan response fields or page text.
 - Token Plan recharge credits (积分余额) are fetched from `GET https://www.minimaxi.com/backend/account/token_plan_credit` (or the global `www.minimax.io` host) using the browser session cookie. API-token remains responses do not include this balance.
+- API-token refreshes only merge recharge credits when an explicit manual or environment cookie is configured; cached browser cookies are not attached automatically to avoid cross-account balance bleed.
 - Web-session billing history, when available, is mapped into the shared inline usage dashboard:
   - 30-day token trend.
   - Top model and top method breakdowns.

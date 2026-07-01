@@ -85,39 +85,38 @@ struct MiniMaxAPIFetchStrategy: ProviderFetchStrategy {
         guard let apiToken = ProviderTokenResolver.minimaxToken(environment: context.env) else {
             throw MiniMaxAPISettingsError.missingToken
         }
-        let region = context.settings?.minimax?.apiRegion ?? .global
-        var usage = try await MiniMaxUsageFetcher.fetchUsage(apiToken: apiToken, region: region)
-        if let cookieHeader = Self.resolveCookieHeader(context: context),
-           let cookie = MiniMaxCookieHeader.normalized(from: cookieHeader)
+        let preferredRegion = context.settings?.minimax?.apiRegion ?? .global
+        let apiResult = try await MiniMaxUsageFetcher.fetchAPITokenUsage(
+            apiToken: apiToken,
+            region: preferredRegion)
+        var usage = apiResult.snapshot
+        if let cookieOverride = Self.resolveExplicitCookieOverride(context: context),
+           let cookie = MiniMaxCookieHeader.normalized(from: cookieOverride.cookieHeader)
         {
             let fetchContext = MiniMaxUsageFetcher.WebFetchContext(
                 cookie: cookie,
-                authorizationToken: nil,
-                region: region,
+                authorizationToken: cookieOverride.authorizationToken,
+                region: apiResult.resolvedRegion,
                 environment: context.env,
                 transport: ProviderHTTPClient.shared)
-            usage = await MiniMaxUsageFetcher.attachingTokenPlanCreditIfAvailable(
+            usage = try await MiniMaxUsageFetcher.attachingTokenPlanCreditIfAvailable(
                 to: usage,
                 context: fetchContext,
-                groupID: MiniMaxCookieHeader.override(from: cookieHeader)?.groupID)
+                groupID: cookieOverride.groupID)
         }
         return self.makeResult(
             usage: usage.toUsageSnapshot(),
             sourceLabel: "api")
     }
 
-    private static func resolveCookieHeader(context: ProviderFetchContext) -> String? {
+    private static func resolveExplicitCookieOverride(context: ProviderFetchContext) -> MiniMaxCookieOverride? {
         if let settings = context.settings?.minimax, settings.cookieSource == .manual {
-            return MiniMaxCookieHeader.override(from: settings.manualCookieHeader)?.cookieHeader
+            return MiniMaxCookieHeader.override(from: settings.manualCookieHeader)
         }
-        if let raw = ProviderTokenResolver.minimaxCookie(environment: context.env) {
-            return MiniMaxCookieHeader.override(from: raw)?.cookieHeader
+        guard let raw = ProviderTokenResolver.minimaxCookie(environment: context.env) else {
+            return nil
         }
-        #if os(macOS)
-        return CookieHeaderCache.load(provider: .minimax)?.cookieHeader
-        #else
-        return nil
-        #endif
+        return MiniMaxCookieHeader.override(from: raw)
     }
 
     func shouldFallback(on error: Error, context _: ProviderFetchContext) -> Bool {

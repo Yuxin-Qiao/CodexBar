@@ -275,7 +275,7 @@ extension MiniMaxUsageFetcher {
     static func attachingTokenPlanCreditIfAvailable(
         to snapshot: MiniMaxUsageSnapshot,
         context: WebFetchContext,
-        groupID: String?) async -> MiniMaxUsageSnapshot
+        groupID: String?) async throws -> MiniMaxUsageSnapshot
     {
         guard snapshot.pointsBalance == nil,
               MiniMaxCookieHeader.normalized(from: context.cookie) != nil
@@ -293,9 +293,9 @@ extension MiniMaxUsageFetcher {
                 transport: context.transport)
             return snapshot.withPointsBalanceIfMissing(balance)
         } catch is CancellationError {
-            return snapshot
+            throw CancellationError()
         } catch let error as URLError where error.code == .cancelled {
-            return snapshot
+            throw CancellationError()
         } catch {
             Self.log.debug("MiniMax token plan credit unavailable: \(error.localizedDescription)")
             return snapshot
