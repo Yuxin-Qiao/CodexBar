@@ -81,15 +81,6 @@ struct ProviderRegistry {
                                 }
                             }
                         },
-                        providerRegionUpdater: { provider, region in
-                            await MainActor.run {
-                                guard provider == .minimax,
-                                      let resolved = MiniMaxAPIRegion(rawValue: region),
-                                      settings.minimaxAPIRegion != resolved
-                                else { return }
-                                settings.minimaxAPIRegion = resolved
-                            }
-                        },
                         costUsageHistoryDays: settings.costUsageHistoryDays,
                         persistsCLISessions: true,
                         persistentCLISessionIdleWindow: Self.persistentCLISessionIdleWindow(

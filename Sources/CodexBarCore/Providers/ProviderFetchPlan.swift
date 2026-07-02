@@ -20,7 +20,6 @@ public enum ProviderSourceMode: String, CaseIterable, Sendable, Codable {
 public struct ProviderFetchContext: Sendable {
     public typealias TokenAccountTokenUpdater = @Sendable (UsageProvider, UUID, String) async -> Void
     public typealias ProviderManualTokenUpdater = @Sendable (UsageProvider, String) async -> Void
-    public typealias ProviderRegionUpdater = @Sendable (UsageProvider, String) async -> Void
 
     public let runtime: ProviderRuntime
     public let sourceMode: ProviderSourceMode
@@ -37,7 +36,6 @@ public struct ProviderFetchContext: Sendable {
     public let selectedTokenAccountID: UUID?
     public let tokenAccountTokenUpdater: TokenAccountTokenUpdater?
     public let providerManualTokenUpdater: ProviderManualTokenUpdater?
-    public let providerRegionUpdater: ProviderRegionUpdater?
     public let costUsageHistoryDays: Int
     /// Whether warm CLI helper sessions (such as the managed Antigravity `agy`
     /// process) may outlive a single fetch. True for long-lived hosts (the app,
@@ -65,7 +63,6 @@ public struct ProviderFetchContext: Sendable {
         selectedTokenAccountID: UUID? = nil,
         tokenAccountTokenUpdater: TokenAccountTokenUpdater? = nil,
         providerManualTokenUpdater: ProviderManualTokenUpdater? = nil,
-        providerRegionUpdater: ProviderRegionUpdater? = nil,
         costUsageHistoryDays: Int = 30,
         persistsCLISessions: Bool = false,
         persistentCLISessionIdleWindow: TimeInterval? = nil)
@@ -85,7 +82,6 @@ public struct ProviderFetchContext: Sendable {
         self.selectedTokenAccountID = selectedTokenAccountID
         self.tokenAccountTokenUpdater = tokenAccountTokenUpdater
         self.providerManualTokenUpdater = providerManualTokenUpdater
-        self.providerRegionUpdater = providerRegionUpdater
         self.costUsageHistoryDays = max(1, min(365, costUsageHistoryDays))
         self.persistsCLISessions = persistsCLISessions
         self.persistentCLISessionIdleWindow = persistentCLISessionIdleWindow

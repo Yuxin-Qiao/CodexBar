@@ -265,31 +265,6 @@ struct MiniMaxTokenPlanCreditTests {
         #expect(enriched.pointsBalance == 20000)
     }
 
-    @Test
-    func `resolved china region should be persisted when global default fails`() async throws {
-        let now = Date(timeIntervalSince1970: 1_780_282_340)
-        let transport = ProviderHTTPTransportStub { request in
-            let url = try #require(request.url)
-            if url.host == "api.minimax.io" {
-                return Self.httpResponse(url: url, body: "{}", statusCode: 401, contentType: "application/json")
-            }
-            #expect(url.host == "api.minimaxi.com")
-            return Self.httpResponse(url: url, body: Self.percentBasedRemainsJSON, contentType: "application/json")
-        }
-
-        let preferredRegion = MiniMaxAPIRegion.global
-        let apiResult = try await MiniMaxUsageFetcher.fetchAPITokenUsage(
-            apiToken: "sk-cp-test",
-            region: preferredRegion,
-            now: now,
-            session: transport)
-
-        let regionToPersist = apiResult.resolvedRegion != preferredRegion
-            ? apiResult.resolvedRegion.rawValue
-            : nil
-        #expect(regionToPersist == MiniMaxAPIRegion.chinaMainland.rawValue)
-    }
-
     private static func fixtureURL(named name: String) throws -> URL {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
