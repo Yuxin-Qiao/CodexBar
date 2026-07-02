@@ -188,5 +188,4 @@ struct CursorMenuCardModelTests {
         #expect(model.metrics.map(\.title) == ["Requests"])
         #expect(model.metrics.first?.detailText == "Request quota: 347 / 500")
     }
-
 }
