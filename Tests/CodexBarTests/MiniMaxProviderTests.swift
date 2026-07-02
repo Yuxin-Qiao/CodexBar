@@ -301,6 +301,7 @@ struct MiniMaxCookieHeaderTests {
     }
 }
 
+// swiftlint:disable type_body_length
 struct MiniMaxUsageParserTests {
     @Test
     func `signed out check ignores login copy inside scripts`() {
@@ -954,6 +955,12 @@ struct MiniMaxUsageParserTests {
                     body: Self.codingPlanJSON,
                     contentType: "application/json")
             }
+            if url.path == "/backend/account/token_plan_credit" {
+                return Self.httpResponse(
+                    url: url,
+                    body: #"{"remaining_credits":0,"base_resp":{"status_code":0}}"#,
+                    contentType: "application/json")
+            }
             #expect(url.path == "/account/amount")
             #expect(url.query?.contains("aggregate=false") == true)
             #expect(request.value(forHTTPHeaderField: "Cookie") == "HERTZ-SESSION=abc")
@@ -995,6 +1002,12 @@ struct MiniMaxUsageParserTests {
                 return Self.httpResponse(
                     url: url,
                     body: Self.codingPlanJSON,
+                    contentType: "application/json")
+            }
+            if url.path == "/backend/account/token_plan_credit" {
+                return Self.httpResponse(
+                    url: url,
+                    body: #"{"remaining_credits":0,"base_resp":{"status_code":0}}"#,
                     contentType: "application/json")
             }
             let page = URLComponents(url: url, resolvingAgainstBaseURL: false)?
@@ -1178,6 +1191,7 @@ struct MiniMaxUsageParserTests {
     }
 }
 
+// swiftlint:enable type_body_length
 struct MiniMaxAPIRegionTests {
     @Test
     func `defaults to global hosts`() {
