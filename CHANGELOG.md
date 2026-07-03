@@ -11,6 +11,7 @@
 - Quota warnings: add an optional centered on-screen text alert that stays click-through and does not steal focus. Thanks @SAASEmpiree!
 
 ### Fixed
+- Claude: suppress background delegated CLI OAuth refresh when the keychain holds MCP-only state (`mcpOAuth` without `claudeAiOauth`), honor `onlyOnUserAction` with the experimental security CLI reader, and fail fast instead of invoking `claude /status` (fixes #1844, partial). Thanks @Yuxin-Qiao!
 - Settings: align General-pane controls, show compact installed terminal app icons, and enlarge the window to fit more options.
 - Sakana AI: parse server-rendered quota reset timestamps as UTC instead of device-local time (#1826). Thanks @ss251!
 - Cursor: hide misleading pace and run-out details once a billing-cycle quota is fully depleted. Thanks @Yuxin-Qiao!
