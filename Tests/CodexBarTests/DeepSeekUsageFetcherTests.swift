@@ -105,6 +105,10 @@ struct DeepSeekUsageFetcherTests {
             updatedAt: updatedAt)
     }
 
+    private static let sampleSession = DeepSeekPlatformSession(
+        cookieHeader: "session=abc",
+        authorizationHeader: nil)
+
     @Test
     func `parses USD balance response`() throws {
         let json = """
@@ -367,6 +371,8 @@ struct DeepSeekUsageFetcherTests {
             try await DeepSeekUsageFetcher._fetchUsageForTesting(
                 apiKey: "test-key",
                 includeOptionalUsage: true,
+            platformSession: Self.sampleSession,
+                platformSession: Self.sampleSession,
                 optionalSummaryJoinGrace: .milliseconds(50),
                 fetchBalanceData: { _ in
                     Data(Self.sampleBalanceJSON.utf8)
@@ -394,6 +400,7 @@ struct DeepSeekUsageFetcherTests {
         let snapshot = try await DeepSeekUsageFetcher._fetchUsageForTesting(
             apiKey: "test-key",
             includeOptionalUsage: true,
+            platformSession: Self.sampleSession,
             optionalSummaryJoinGrace: .milliseconds(20),
             fetchBalanceData: { _ in
                 Data(Self.sampleBalanceJSON.utf8)
@@ -420,6 +427,7 @@ struct DeepSeekUsageFetcherTests {
         let snapshot = try await DeepSeekUsageFetcher._fetchUsageForTesting(
             apiKey: "test-key",
             includeOptionalUsage: true,
+            platformSession: Self.sampleSession,
             optionalSummaryJoinGrace: .seconds(2),
             fetchBalanceData: { _ in
                 Data(Self.sampleBalanceJSON.utf8)
@@ -440,6 +448,8 @@ struct DeepSeekUsageFetcherTests {
             _ = try await DeepSeekUsageFetcher._fetchUsageForTesting(
                 apiKey: "test-key",
                 includeOptionalUsage: true,
+            platformSession: Self.sampleSession,
+                platformSession: Self.sampleSession,
                 optionalSummaryJoinGrace: .seconds(2),
                 fetchBalanceData: { _ in
                     await probe.waitUntilStarted()
@@ -469,6 +479,8 @@ struct DeepSeekUsageFetcherTests {
             _ = try await DeepSeekUsageFetcher._fetchUsageForTesting(
                 apiKey: "test-key",
                 includeOptionalUsage: true,
+            platformSession: Self.sampleSession,
+                platformSession: Self.sampleSession,
                 optionalSummaryJoinGrace: .seconds(2),
                 fetchBalanceData: { _ in
                     await probe.waitUntilStarted()
@@ -497,6 +509,8 @@ struct DeepSeekUsageFetcherTests {
             try await DeepSeekUsageFetcher._fetchUsageForTesting(
                 apiKey: "test-key",
                 includeOptionalUsage: true,
+            platformSession: Self.sampleSession,
+                platformSession: Self.sampleSession,
                 optionalSummaryJoinGrace: .seconds(30),
                 fetchBalanceData: { _ in
                     Data(Self.sampleBalanceJSON.utf8)
@@ -534,6 +548,8 @@ struct DeepSeekUsageFetcherTests {
             try await DeepSeekUsageFetcher._fetchUsageForTesting(
                 apiKey: "test-key",
                 includeOptionalUsage: true,
+            platformSession: Self.sampleSession,
+                platformSession: Self.sampleSession,
                 optionalSummaryJoinGrace: .seconds(30),
                 fetchBalanceData: { _ in
                     balanceStarted.continuation.yield(())
@@ -594,6 +610,7 @@ struct DeepSeekUsageFetcherTests {
         let snapshot = try await DeepSeekUsageFetcher._fetchUsageForTesting(
             apiKey: "test-key",
             includeOptionalUsage: true,
+            platformSession: Self.sampleSession,
             optionalSummaryJoinGrace: .seconds(2),
             fetchBalanceData: { _ in
                 Data(Self.sampleBalanceJSON.utf8)

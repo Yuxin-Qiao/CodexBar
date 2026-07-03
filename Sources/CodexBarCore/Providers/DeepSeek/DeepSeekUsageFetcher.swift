@@ -103,6 +103,7 @@ public struct DeepSeekUsageSnapshot: Sendable {
 
 public enum DeepSeekUsageError: LocalizedError, Sendable {
     case missingCredentials
+    case invalidCredentials
     case networkError(String)
     case apiError(String)
     case parseFailed(String)
@@ -111,6 +112,8 @@ public enum DeepSeekUsageError: LocalizedError, Sendable {
         switch self {
         case .missingCredentials:
             "Missing DeepSeek API key."
+        case .invalidCredentials:
+            "DeepSeek platform web session expired or invalid."
         case let .networkError(message):
             "DeepSeek network error: \(message)"
         case let .apiError(message):
@@ -139,31 +142,35 @@ public struct DeepSeekUsageFetcher: Sendable {
 
     public static func fetchUsage(
         apiKey: String,
-        includeOptionalUsage: Bool = true) async throws -> DeepSeekUsageSnapshot
+        includeOptionalUsage: Bool = true,
+        platformSession: DeepSeekPlatformSession? = nil) async throws -> DeepSeekUsageSnapshot
     {
         try await self.fetchUsage(
             apiKey: apiKey,
             includeOptionalUsage: includeOptionalUsage,
+            platformSession: platformSession,
             optionalSummaryJoinGrace: self.optionalSummaryJoinGrace,
             fetchBalanceData: { key in
                 try await self.fetchBalanceData(apiKey: key)
             },
-            fetchSummary: { key in
-                try await self.fetchUsageSummary(apiKey: key)
+            fetchSummary: { session in
+                try await self.fetchUsageSummary(session: session)
             })
     }
 
     static func _fetchUsageForTesting(
         apiKey: String,
         includeOptionalUsage: Bool,
+        platformSession: DeepSeekPlatformSession? = nil,
         optionalSummaryJoinGrace: Duration = .zero,
         fetchBalanceData: @escaping @Sendable (String) async throws -> Data,
-        fetchSummary: @escaping @Sendable (String) async throws -> DeepSeekUsageSummary)
+        fetchSummary: @escaping @Sendable (DeepSeekPlatformSession) async throws -> DeepSeekUsageSummary)
         async throws -> DeepSeekUsageSnapshot
     {
         try await self.fetchUsage(
             apiKey: apiKey,
             includeOptionalUsage: includeOptionalUsage,
+            platformSession: platformSession,
             optionalSummaryJoinGrace: optionalSummaryJoinGrace,
             fetchBalanceData: fetchBalanceData,
             fetchSummary: fetchSummary)
@@ -172,18 +179,21 @@ public struct DeepSeekUsageFetcher: Sendable {
     private static func fetchUsage(
         apiKey: String,
         includeOptionalUsage: Bool,
+        platformSession: DeepSeekPlatformSession?,
         optionalSummaryJoinGrace: Duration,
         fetchBalanceData: @escaping @Sendable (String) async throws -> Data,
-        fetchSummary: @escaping @Sendable (String) async throws -> DeepSeekUsageSummary)
+        fetchSummary: @escaping @Sendable (DeepSeekPlatformSession) async throws -> DeepSeekUsageSummary)
         async throws -> DeepSeekUsageSnapshot
     {
         guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw DeepSeekUsageError.missingCredentials
         }
 
-        let summaryTask: Task<DeepSeekUsageSummary, Error>? = if includeOptionalUsage {
+        let summaryTask: Task<DeepSeekUsageSummary, Error>? = if includeOptionalUsage, let platformSession,
+                                                                 !platformSession.isEmpty
+        {
             Task {
-                try await fetchSummary(apiKey)
+                try await fetchSummary(platformSession)
             }
         } else {
             nil
@@ -270,15 +280,24 @@ public struct DeepSeekUsageFetcher: Sendable {
     }
 
     public static func fetchUsageSummary(
-        apiKey: String,
+        session: DeepSeekPlatformSession,
         now: Date = Date(),
         calendar: Calendar? = nil) async throws -> DeepSeekUsageSummary
     {
+        guard !session.isEmpty else {
+            throw DeepSeekUsageError.invalidCredentials
+        }
         let calendar = calendar ?? self.apiCalendar
         let period = try self.usagePeriod(now: now, calendar: calendar)
 
-        let amountData = try await self.fetchAmount(apiKey: apiKey, month: period.month, year: period.year)
-        let costData = try await self.fetchCost(apiKey: apiKey, month: period.month, year: period.year)
+        let amountData = try await self.fetchAmount(
+            session: session,
+            month: period.month,
+            year: period.year)
+        let costData = try await self.fetchCost(
+            session: session,
+            month: period.month,
+            year: period.year)
 
         return try DeepSeekUsageCostParser.parse(
             amountData: amountData,
@@ -299,61 +318,66 @@ public struct DeepSeekUsageFetcher: Sendable {
         return (month: month, year: year)
     }
 
-    private static func fetchAmount(apiKey: String, month: Int, year: Int) async throws -> Data {
-        guard var components = URLComponents(url: self.usageAmountURL, resolvingAgainstBaseURL: false) else {
-            throw DeepSeekUsageError.networkError("Invalid URL")
-        }
-        components.queryItems = [
-            URLQueryItem(name: "month", value: String(month)),
-            URLQueryItem(name: "year", value: String(year)),
-        ]
-        guard let url = components.url else {
-            throw DeepSeekUsageError.networkError("Could not construct URL")
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.timeoutInterval = Self.timeoutSeconds
-
-        let response = try await ProviderHTTPClient.shared.response(for: request)
-        let data = response.data
-        guard response.statusCode == 200 else {
-            if response.statusCode == 401 || response.statusCode == 403 {
-                throw DeepSeekUsageError.missingCredentials
-            }
-            throw DeepSeekUsageError.apiError("HTTP \(response.statusCode)")
-        }
-
-        return data
+    private static func fetchAmount(session: DeepSeekPlatformSession, month: Int, year: Int) async throws -> Data {
+        try await self.fetchPlatformData(
+            url: self.usageAmountURL,
+            session: session,
+            month: month,
+            year: year)
     }
 
-    private static func fetchCost(apiKey: String, month: Int, year: Int) async throws -> Data {
-        guard var components = URLComponents(url: self.usageCostURL, resolvingAgainstBaseURL: false) else {
+    private static func fetchCost(session: DeepSeekPlatformSession, month: Int, year: Int) async throws -> Data {
+        try await self.fetchPlatformData(
+            url: self.usageCostURL,
+            session: session,
+            month: month,
+            year: year)
+    }
+
+    private static func fetchPlatformData(
+        url: URL,
+        session: DeepSeekPlatformSession,
+        month: Int,
+        year: Int) async throws -> Data
+    {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
             throw DeepSeekUsageError.networkError("Invalid URL")
         }
         components.queryItems = [
             URLQueryItem(name: "month", value: String(month)),
             URLQueryItem(name: "year", value: String(year)),
         ]
-        guard let url = components.url else {
+        guard let requestURL = components.url else {
             throw DeepSeekUsageError.networkError("Could not construct URL")
         }
 
-        var request = URLRequest(url: url)
+        var request = URLRequest(url: requestURL)
         request.httpMethod = "GET"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("https://platform.deepseek.com", forHTTPHeaderField: "Origin")
+        request.setValue("https://platform.deepseek.com/usage", forHTTPHeaderField: "Referer")
+        request.setValue(
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+                + "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            forHTTPHeaderField: "User-Agent")
+        if let cookieHeader = session.cookieHeader, !cookieHeader.isEmpty {
+            request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
+        }
+        if let authorizationHeader = session.authorizationHeader, !authorizationHeader.isEmpty {
+            request.setValue(authorizationHeader, forHTTPHeaderField: "Authorization")
+        }
         request.timeoutInterval = Self.timeoutSeconds
 
         let response = try await ProviderHTTPClient.shared.response(for: request)
         let data = response.data
         guard response.statusCode == 200 else {
             if response.statusCode == 401 || response.statusCode == 403 {
-                throw DeepSeekUsageError.missingCredentials
+                throw DeepSeekUsageError.invalidCredentials
             }
             throw DeepSeekUsageError.apiError("HTTP \(response.statusCode)")
+        }
+        if DeepSeekCookieHeader.isAuthFailurePayload(data) {
+            throw DeepSeekUsageError.invalidCredentials
         }
 
         return data

@@ -129,6 +129,12 @@ public enum ProviderTokenResolver {
         self.deepseekResolution(environment: environment)?.token
     }
 
+    public static func deepseekCookie(
+        environment: [String: String] = ProcessInfo.processInfo.environment) -> String?
+    {
+        self.deepseekCookieResolution(environment: environment)?.token
+    }
+
     public static func poeToken(
         environment: [String: String] = ProcessInfo.processInfo.environment) -> String?
     {
@@ -179,6 +185,12 @@ public enum ProviderTokenResolver {
         environment: [String: String] = ProcessInfo.processInfo.environment) -> ProviderTokenResolution?
     {
         self.resolveEnv(DeepSeekSettingsReader.apiKey(environment: environment))
+    }
+
+    public static func deepseekCookieResolution(
+        environment: [String: String] = ProcessInfo.processInfo.environment) -> ProviderTokenResolution?
+    {
+        self.resolveEnv(DeepSeekSettingsReader.platformSession(environment: environment))
     }
 
     public static func poeResolution(

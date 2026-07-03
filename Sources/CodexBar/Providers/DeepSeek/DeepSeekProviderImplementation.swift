@@ -1,5 +1,7 @@
+import AppKit
 import CodexBarCore
 import Foundation
+import SwiftUI
 
 struct DeepSeekProviderImplementation: ProviderImplementation {
     let id: UsageProvider = .deepseek
@@ -10,7 +12,15 @@ struct DeepSeekProviderImplementation: ProviderImplementation {
     }
 
     @MainActor
-    func observeSettings(_: SettingsStore) {}
+    func observeSettings(_ settings: SettingsStore) {
+        _ = settings.deepSeekCookieSource
+        _ = settings.deepSeekCookieHeader
+    }
+
+    @MainActor
+    func settingsSnapshot(context: ProviderSettingsSnapshotContext) -> ProviderSettingsSnapshotContribution? {
+        .deepseek(context.settings.deepSeekSettingsSnapshot(tokenOverride: context.tokenOverride))
+    }
 
     @MainActor
     func isAvailable(context: ProviderAvailabilityContext) -> Bool {
@@ -21,7 +31,68 @@ struct DeepSeekProviderImplementation: ProviderImplementation {
     }
 
     @MainActor
-    func settingsFields(context _: ProviderSettingsContext) -> [ProviderSettingsFieldDescriptor] {
-        []
+    func settingsPickers(context: ProviderSettingsContext) -> [ProviderSettingsPickerDescriptor] {
+        let cookieBinding = Binding(
+            get: { context.settings.deepSeekCookieSource.rawValue },
+            set: { raw in
+                context.settings.deepSeekCookieSource = ProviderCookieSource(rawValue: raw) ?? .auto
+            })
+        let cookieOptions = ProviderCookieSourceUI.options(
+            allowsOff: true,
+            keychainDisabled: context.settings.debugDisableKeychainAccess)
+
+        let cookieSubtitle: () -> String? = {
+            ProviderCookieSourceUI.subtitle(
+                source: context.settings.deepSeekCookieSource,
+                keychainDisabled: context.settings.debugDisableKeychainAccess,
+                auto: "Automatic imports browser cookies from platform.deepseek.com on user-initiated refresh.",
+                manual: "Paste a Cookie or Authorization header captured from platform.deepseek.com.",
+                off: "DeepSeek usage summaries are disabled; only API balance is shown.")
+        }
+
+        return [
+            ProviderSettingsPickerDescriptor(
+                id: "deepseek-cookie-source",
+                title: "Usage summary source",
+                subtitle: "Usage amount/cost endpoints require a platform web session.",
+                dynamicSubtitle: cookieSubtitle,
+                binding: cookieBinding,
+                options: cookieOptions,
+                isVisible: nil,
+                onChange: nil,
+                trailingText: {
+                    guard let entry = CookieHeaderCache.loadForDisplay(provider: .deepseek) else { return nil }
+                    let when = entry.storedAt.relativeDescription()
+                    return "Cached: \(entry.sourceLabel) • \(when)"
+                }),
+        ]
+    }
+
+    @MainActor
+    func settingsFields(context: ProviderSettingsContext) -> [ProviderSettingsFieldDescriptor] {
+        [
+            ProviderSettingsFieldDescriptor(
+                id: "deepseek-platform-session",
+                title: "Platform session",
+                subtitle: "Paste the Cookie or Authorization header from a request to "
+                    + "platform.deepseek.com (DevTools → Network → usage API).",
+                kind: .secure,
+                placeholder: "Cookie: … or Bearer …",
+                binding: context.stringBinding(\.deepSeekCookieHeader),
+                actions: [
+                    ProviderSettingsActionDescriptor(
+                        id: "deepseek-open-usage",
+                        title: "Open Usage Dashboard",
+                        style: .link,
+                        isVisible: nil,
+                        perform: {
+                            if let url = URL(string: "https://platform.deepseek.com/usage") {
+                                NSWorkspace.shared.open(url)
+                            }
+                        }),
+                ],
+                isVisible: { context.settings.deepSeekCookieSource == .manual },
+                onActivate: nil),
+        ]
     }
 }

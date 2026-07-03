@@ -6,6 +6,7 @@
 - z.ai: support saved token-account team usage with account-scoped organization and project metadata. Thanks @zqbake!
 
 ### Fixed
+- DeepSeek: fetch platform usage summaries with web-session cookies instead of Bearer API keys (which silently returned `Authorization Failed`). Thanks @Yuxin-Qiao!
 - Mistral: restore Vibe monthly-plan usage by forwarding only required console session cookies. Thanks @lfmundim!
 
 ## 0.37.3 — 2026-06-23

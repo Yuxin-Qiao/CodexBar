@@ -252,6 +252,15 @@ public enum ProviderBrowserCookieDefaults {
         #endif
     }
 
+    /// Chrome-only by default: platform sessions usually live in the browser used to sign in.
+    public static var deepSeekCookieImportOrder: BrowserCookieImportOrder? {
+        #if os(macOS)
+        [.chrome]
+        #else
+        nil
+        #endif
+    }
+
     /// Copilot budget imports should stay Chrome-only by default to avoid prompting unrelated browsers.
     public static var copilotCookieImportOrder: BrowserCookieImportOrder? {
         #if os(macOS)

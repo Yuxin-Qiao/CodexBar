@@ -296,11 +296,17 @@ enum DeepSeekUsageCostParser {
         }
 
         // Validate responses
+        if let code = amountPayload.code, Self.isAuthFailureCode(code) {
+            throw DeepSeekUsageError.invalidCredentials
+        }
         if let code = amountPayload.code, code != 0 {
             throw DeepSeekUsageError.apiError("amount code \(code)")
         }
         if let bizCode = amountPayload.data?.bizCode, bizCode != 0 {
             throw DeepSeekUsageError.apiError("amount biz_code \(bizCode)")
+        }
+        if let code = costPayload.code, Self.isAuthFailureCode(code) {
+            throw DeepSeekUsageError.invalidCredentials
         }
         if let code = costPayload.code, code != 0 {
             throw DeepSeekUsageError.apiError("cost code \(code)")
@@ -682,6 +688,10 @@ enum DeepSeekUsageCostParser {
     }
 
     // MARK: - Helpers
+
+    private static func isAuthFailureCode(_ code: Int) -> Bool {
+        code == 40002 || code == 40003
+    }
 
     private static func parseTokenAmount(_ value: String?) -> Int {
         guard let value, let intValue = Int64(value.trimmingCharacters(in: .whitespacesAndNewlines)) else {
