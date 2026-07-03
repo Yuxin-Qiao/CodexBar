@@ -2,7 +2,7 @@
 
 Partial fix for #1844: when Claude Code stores only MCP OAuth state in `Claude Code-credentials` (no `claudeAiOauth`), CodexBar no longer runs background delegated `claude /status` refresh—which can launch the default browser via `/usr/bin/open`.
 
-**Scope:** Phase 1 guard only. Does not discover Claude Code 2.1.x's primary OAuth storage location.
+**Scope:** Phase 1 guard only. Does not discover Claude Code 2.1.x's primary OAuth storage location. Full token discovery remains on #1844.
 
 ## Problem
 
@@ -18,7 +18,7 @@ Contributing issues on `main`:
 1. **Honor stored keychain prompt mode for delegated refresh** across all keychain read strategies (including `securityCLIExperimental`). Background refresh with `onlyOnUserAction` fails closed with existing user-action guidance instead of calling `claude /status`.
 2. **Detect MCP-only keychain payloads** via `ClaudeOAuthCredentialsError.mcpOAuthOnlyKeychain`, skip delegated CLI touch, and fail fast during expired Claude CLI credential load.
 3. **Split security CLI read paths**: `readRawClaudeKeychainPayloadViaSecurityCLIIfEnabled` vs parsed credential load.
-4. **Verification helper**: `Scripts/verify_1844_live.sh` and `docs/verify-1844-proof.md`.
+4. **Verification helper**: `Scripts/verify_1844_live.sh` (isolated `HOME`, keychain preflight) and `docs/verify-1844-proof.md`.
 
 ## Tests
 
@@ -29,9 +29,9 @@ Contributing issues on `main`:
 
 ## Verification
 
-- [x] Focused macOS integration tests (2026-07-03) — details in `docs/verify-1844-proof.md` and PR comment
+- [x] Focused macOS integration tests — `docs/verify-1844-proof.md`
 - [x] `make check` on contributor machine
-- [ ] Optional: Keychain fixture E2E via `./Scripts/verify_1844_live.sh` (one Keychain Allow)
+- [x] Keychain fixture E2E via `./Scripts/verify_1844_live.sh` when the MCP fixture is the unpinned keychain read (isolated `HOME`, no real `~/.claude` writes)
 - [ ] Optional: Menu Refresh screenshot on a host with the reporter's keychain shape
 
 ### Commands
