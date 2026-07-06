@@ -205,4 +205,31 @@ struct StatuspageSummaryTests {
         // Overall page status reflects the worst leaf (standalone full outage).
         #expect(result.status.indicator == .critical)
     }
+
+    @Test func `build component uptimes marks degraded day from incident`() throws {
+        var calendar = Calendar(identifier: .gregorian); calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let now = calendar.date(from: DateComponents(year: 2026, month: 6, day: 23, hour: 20))!
+        let components = [ProviderStatusComponent(id: "cli", name: "CLI", indicator: .none, status: "operational")]
+        let incidents = try UsageStore.parseStatuspageIncidents(data: Data(#"""
+        {"incidents":[{"id":"inc-1","impact":"minor","started_at":"2026-06-23T14:26:14.689Z","resolved_at":"2026-06-23T16:47:03.408Z","components":[{"id":"cli"}],"incident_updates":[{"created_at":"2026-06-23T14:26:15.019Z","affected_components":[{"code":"cli","old_status":"operational","new_status":"degraded_performance"}]},{"created_at":"2026-06-23T16:47:03.408Z","affected_components":[{"code":"cli","old_status":"degraded_performance","new_status":"operational"}]}]}]}
+        """#.utf8))
+        let uptimes = StatuspageUptimeBuilder.buildComponentUptimes(components: components, incidents: incidents, now: now, calendar: calendar)
+        #expect(try #require(uptimes.first).days.last?.severity == .degraded)
+    }
+
+    @Test func `build component uptimes from live cursor fixtures`() throws {
+        let fixtures = try #require(Bundle.module.url(
+            forResource: "cursor-status-components",
+            withExtension: "json",
+            subdirectory: "Fixtures"))
+        let incidentsURL = try #require(Bundle.module.url(
+            forResource: "cursor-status-incidents",
+            withExtension: "json",
+            subdirectory: "Fixtures"))
+        let components = try UsageStore.parseStatuspageComponents(data: Data(contentsOf: fixtures))
+        let incidents = try UsageStore.parseStatuspageIncidents(data: Data(contentsOf: incidentsURL))
+        let uptimes = StatuspageUptimeBuilder.buildComponentUptimes(components: components, incidents: incidents)
+        #expect(uptimes.count == 6)
+        #expect(uptimes.allSatisfy { $0.days.count == 30 })
+    }
 }

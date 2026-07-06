@@ -91,6 +91,11 @@ extension UsageStore {
         return self.statusComponents[provider] ?? []
     }
 
+    func statusUptimeHistories(for provider: UsageProvider) -> [StatusComponentUptime] {
+        guard self.statusChecksEnabled else { return [] }
+        return self.statusUptimeHistories[provider] ?? []
+    }
+
     func accountInfo(for provider: UsageProvider) -> AccountInfo {
         let now = Date()
         let configRevision = self.settings.configRevision

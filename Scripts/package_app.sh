@@ -434,7 +434,8 @@ install_widget_extension() {
 }
 
 install_binary "CodexBar" "$APP/Contents/MacOS/CodexBar"
-strip_release_binary "$APP/Contents/MacOS/CodexBar"
+# Do not strip the main app binary: `strip -x` removes Swift metadata that release
+# builds still need at runtime on current macOS toolchains (crash in async status fetch).
 # Ship CodexBarCLI alongside the app for easy symlinking.
 install_binary "CodexBarCLI" "$APP/Contents/Helpers/CodexBarCLI"
 strip_release_binary "$APP/Contents/Helpers/CodexBarCLI"

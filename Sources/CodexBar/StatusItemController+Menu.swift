@@ -1579,7 +1579,7 @@ extension StatusItemController {
     /// Providers that surface the live component list as a native submenu. Every other provider
     /// keeps the plain "Status Page" link that opens the website. Kept deliberately small: these
     /// are the statuspage.io/incident.io feeds we actively curate and trust to render well.
-    static let statusComponentsSubmenuProviders: Set<UsageProvider> = [.claude, .codex, .augment]
+    static let statusComponentsSubmenuProviders: Set<UsageProvider> = [.claude, .codex, .augment, .cursor]
 
     /// Builds the status submenu (component rows + a website link) for the curated providers in
     /// `statusComponentsSubmenuProviders`. Gated on the provider being in that allowlist (and
@@ -1602,6 +1602,7 @@ extension StatusItemController {
         else { return }
         item.action = nil
         item.submenu = submenu
+        item.isEnabled = true
     }
 
     func makeStatusComponentsSubmenu(provider: UsageProvider, width: CGFloat? = nil) -> NSMenu? {

@@ -695,6 +695,8 @@
 "Usage Dashboard" = "用量仪表盘";
 "Status Page" = "状态页";
 "Open Status Page" = "打开状态页";
+"status_uptime_past_30_days" = "过去 30 天";
+"status_uptime_percent_format" = "%.2f%% 正常运行";
 "Settings..." = "设置…";
 "About CodexBar" = "关于 CodexBar";
 "Quit" = "退出";

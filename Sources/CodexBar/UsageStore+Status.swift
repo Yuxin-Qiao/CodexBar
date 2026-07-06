@@ -137,6 +137,26 @@ extension UsageStore {
         return (status, components)
     }
 
+    @concurrent
+    nonisolated static func fetchStatuspageIncidents(from baseURL: URL, transport: any ProviderHTTPTransport = ProviderHTTPClient.shared) async throws -> [StatuspageIncident] {
+        var request = URLRequest(url: baseURL.appendingPathComponent("api/v2/incidents.json")); request.timeoutInterval = 10
+        let (data, _) = try await transport.data(for: request)
+        return try Self.parseStatuspageIncidents(data: data)
+    }
+    nonisolated static func parseStatuspageIncidents(data: Data) throws -> [StatuspageIncident] {
+        struct Response: Decodable { let incidents: [StatuspageIncident]? }
+        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = StatusFeedDateParser.decodingStrategy()
+        return try decoder.decode(Response.self, from: data).incidents ?? []
+    }
+
+    @concurrent
+    nonisolated static func buildStatuspageUptimes(
+        components: [ProviderStatusComponent],
+        incidents: [StatuspageIncident]) -> [StatusComponentUptime]
+    {
+        StatuspageUptimeBuilder.buildComponentUptimes(components: components, incidents: incidents)
+    }
+
     /// Parses incident.io's native status-page summary (`/proxy/<host>`). Groups come from
     /// `structure.items`; per-component statuses come from `affected_components` (anything not
     /// listed there is operational). A group's status aggregates the worst of its children.

@@ -286,7 +286,12 @@ extension StatusItemController {
             let childSig = component.children.map(signature).joined(separator: ",")
             return "\(component.id)=\(component.indicator.rawValue)[\(childSig)]"
         }
-        return components.map(signature).joined(separator: ";")
+        let componentSig = components.map(signature).joined(separator: ";")
+        let uptimeSig = self.store.statusUptimeHistories(for: provider).map { uptime in
+            let days = uptime.days.map { "\(Int($0.date.timeIntervalSince1970)):\($0.severity)" }.joined()
+            return "\(uptime.id)[\(days)]"
+        }.joined(separator: ";")
+        return [componentSig, uptimeSig].joined(separator: "|")
     }
 
     private func storageBreakdownRenderSignature(for provider: UsageProvider) -> String {
@@ -517,23 +522,26 @@ extension StatusItemController {
         let components = self.store.statusComponents(for: provider)
         if !components.isEmpty {
             if self.menuCardRenderingEnabledForController {
-                final class HostingRelay {
-                    weak var hosting: MenuHostingView<StatusComponentsMenuView>?
-                }
+                let uptimeHistories = self.store.statusUptimeHistories(for: provider)
+                let uptimeByComponentID = Dictionary(uniqueKeysWithValues: uptimeHistories.map { ($0.id, $0) })
+                let usesUptimeStrips = !uptimeByComponentID.isEmpty
+                final class HostingRelay { weak var hosting: MenuHostingView<AnyView>? }
                 let relay = HostingRelay()
-                let listView = StatusComponentsMenuView(
-                    components: components,
-                    width: width,
-                    onToggle: {
-                        // Re-measure the live content after SwiftUI applies the expand/collapse so the
-                        // row grows/shrinks to fit exactly (no leftover blank space).
+                let listView = if usesUptimeStrips {
+                    AnyView(StatusComponentsUptimeMenuView(components: components, uptimeByComponentID: uptimeByComponentID, width: width, onToggle: {
                         DispatchQueue.main.async {
                             guard let hosting = relay.hosting else { return }
-                            hosting.applyMeasuredHeight(
-                                width: width,
-                                height: hosting.measuredFittingHeight(width: width))
+                            hosting.applyMeasuredHeight(width: width, height: hosting.measuredFittingHeight(width: width))
                         }
-                    })
+                    }))
+                } else {
+                    AnyView(StatusComponentsMenuView(components: components, width: width, onToggle: {
+                        DispatchQueue.main.async {
+                            guard let hosting = relay.hosting else { return }
+                            hosting.applyMeasuredHeight(width: width, height: hosting.measuredFittingHeight(width: width))
+                        }
+                    }))
+                }
                 let hosting = MenuHostingView(rootView: listView)
                 relay.hosting = hosting
                 hosting.applyMeasuredHeight(width: width, height: hosting.measuredFittingHeight(width: width))

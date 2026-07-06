@@ -722,6 +722,8 @@
 "Usage Dashboard" = "Usage Dashboard";
 "Status Page" = "Status Page";
 "Open Status Page" = "Open Status Page";
+"status_uptime_past_30_days" = "Past 30 days";
+"status_uptime_percent_format" = "%.2f%% uptime";
 "Settings..." = "Settings...";
 "About CodexBar" = "About CodexBar";
 "Quit" = "Quit";
