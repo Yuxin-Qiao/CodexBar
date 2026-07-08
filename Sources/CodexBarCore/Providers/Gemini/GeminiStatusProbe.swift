@@ -507,7 +507,7 @@ public struct GeminiStatusProbe: Sendable {
         let expiryDate: Date?
     }
 
-    private struct OAuthClientCredentials {
+    fileprivate struct OAuthClientCredentials {
         let clientId: String
         let clientSecret: String
     }
