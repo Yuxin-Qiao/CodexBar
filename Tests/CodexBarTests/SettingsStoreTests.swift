@@ -25,6 +25,23 @@ struct SettingsStoreTests {
         }
     }
 
+    private final class BoolRecorder: @unchecked Sendable {
+        private let lock = NSLock()
+        private var values: [Bool] = []
+
+        func append(_ value: Bool) {
+            self.lock.lock()
+            self.values.append(value)
+            self.lock.unlock()
+        }
+
+        func get() -> [Bool] {
+            self.lock.lock()
+            defer { self.lock.unlock() }
+            return self.values
+        }
+    }
+
     @Test
     func `default refresh frequency is five minutes`() throws {
         let suite = "SettingsStoreTests-default"
@@ -782,6 +799,59 @@ struct SettingsStoreTests {
     }
 
     @Test
+    func `provider quota warning stale editor save does not restore cleared override`() throws {
+        let suite = "SettingsStoreTests-quota-warning-provider-cleared-override"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        let configStore = testConfigStore(suiteName: suite)
+        let store = SettingsStore(
+            userDefaults: defaults,
+            configStore: configStore,
+            zaiTokenStore: NoopZaiTokenStore(),
+            syntheticTokenStore: NoopSyntheticTokenStore())
+        store.quotaWarningThresholds = [50, 20]
+        store.setQuotaWarningOverride(provider: .codex, window: .session, thresholds: [70, 30], enabled: true)
+        let staleEditorThresholds = store.resolvedQuotaWarningThresholds(provider: .codex, window: .session)
+
+        store.setQuotaWarningOverride(provider: .codex, window: .session, thresholds: nil, enabled: nil)
+        store.setQuotaWarningThresholdsIfOverridden(
+            provider: .codex,
+            window: .session,
+            thresholds: staleEditorThresholds)
+
+        #expect(store.hasQuotaWarningOverride(provider: .codex, window: .session) == false)
+        #expect(store.resolvedQuotaWarningThresholds(provider: .codex, window: .session) == [50, 20])
+    }
+
+    @Test
+    func `provider quota warning inherited thresholds stay inherited after no-op editor save`() throws {
+        let suite = "SettingsStoreTests-quota-warning-provider-inherited-thresholds"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        let configStore = testConfigStore(suiteName: suite)
+        let store = SettingsStore(
+            userDefaults: defaults,
+            configStore: configStore,
+            zaiTokenStore: NoopZaiTokenStore(),
+            syntheticTokenStore: NoopSyntheticTokenStore())
+        store.quotaWarningThresholds = [50, 20]
+        store.setQuotaWarningOverride(provider: .codex, window: .session, thresholds: nil, enabled: true)
+
+        let resolvedEditorThresholds = store.resolvedQuotaWarningThresholds(provider: .codex, window: .session)
+        store.setQuotaWarningThresholdsIfOverridden(
+            provider: .codex,
+            window: .session,
+            thresholds: resolvedEditorThresholds)
+
+        let sessionConfig = store.providerConfig(for: .codex)?.quotaWarnings?.session
+        #expect(sessionConfig?.enabled == true)
+        #expect(sessionConfig?.thresholds == nil)
+
+        store.quotaWarningThresholds = [80, 40]
+        #expect(store.resolvedQuotaWarningThresholds(provider: .codex, window: .session) == [80, 40])
+    }
+
+    @Test
     func `global quota warning thresholds resolve independently by window`() throws {
         let suite = "SettingsStoreTests-quota-warning-window-thresholds"
         let defaults = try #require(UserDefaults(suiteName: suite))
@@ -965,6 +1035,61 @@ struct SettingsStoreTests {
         store.applyExternalConfig(store.configSnapshot, reason: "test-external")
 
         #expect(notifications.get() == 0)
+    }
+
+    @Test
+    func `config notifications classify order and provider changes`() throws {
+        let suite = "SettingsStoreTests-config-change-impact"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        let store = SettingsStore(
+            userDefaults: defaults,
+            configStore: testConfigStore(suiteName: suite),
+            zaiTokenStore: NoopZaiTokenStore(),
+            syntheticTokenStore: NoopSyntheticTokenStore())
+        let impacts = BoolRecorder()
+        let token = NotificationCenter.default.addObserver(
+            forName: .codexbarProviderConfigDidChange,
+            object: store,
+            queue: .main)
+        { notification in
+            impacts.append(notification.userInfo?["affectsBackgroundWork"] as? Bool ?? true)
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        store.setProviderOrder(Array(store.orderedProviders().reversed()))
+        store.codexUsageDataSource = .cli
+
+        #expect(impacts.get() == [false, true])
+    }
+
+    @Test
+    func `external config ignores order-only changes for background work`() throws {
+        let suite = "SettingsStoreTests-external-config-impact"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        let store = SettingsStore(
+            userDefaults: defaults,
+            configStore: testConfigStore(suiteName: suite),
+            zaiTokenStore: NoopZaiTokenStore(),
+            syntheticTokenStore: NoopSyntheticTokenStore())
+
+        let initialConfigRevision = store.configRevision
+        let initialBackgroundRevision = store.backgroundWorkSettingsRevision
+        var reordered = store.configSnapshot
+        reordered.providers.reverse()
+        store.applyExternalConfig(reordered, reason: "order-only")
+
+        #expect(store.configRevision == initialConfigRevision + 1)
+        #expect(store.backgroundWorkSettingsRevision == initialBackgroundRevision)
+        #expect(store.orderedProviders() == reordered.providers.map(\.id))
+
+        var changed = store.configSnapshot
+        let codexIndex = try #require(changed.providers.firstIndex(where: { $0.id == .codex }))
+        changed.providers[codexIndex].source = .cli
+        store.applyExternalConfig(changed, reason: "provider-source", affectsBackgroundWork: false)
+
+        #expect(store.backgroundWorkSettingsRevision == initialBackgroundRevision + 1)
     }
 
     @Test
@@ -1268,6 +1393,33 @@ struct SettingsStoreTests {
 
         await expectObservation(for: .session, thresholds: [70, 30])
         await expectObservation(for: .weekly, thresholds: [80, 40])
+    }
+
+    @Test
+    func `quota warning threshold setters ignore unchanged values`() async throws {
+        let suite = "SettingsStoreTests-observation-quota-threshold-noop"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        let configStore = testConfigStore(suiteName: suite)
+
+        let store = SettingsStore(
+            userDefaults: defaults,
+            configStore: configStore,
+            zaiTokenStore: NoopZaiTokenStore(),
+            syntheticTokenStore: NoopSyntheticTokenStore())
+        store.setQuotaWarningThresholds(.session, thresholds: [70, 30])
+
+        let didChange = ObservationFlag()
+        withObservationTracking {
+            _ = store.menuObservationToken
+        } onChange: {
+            didChange.set()
+        }
+
+        store.setQuotaWarningThresholds(.session, thresholds: [70, 30])
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        #expect(didChange.get() == false)
     }
 
     @Test
