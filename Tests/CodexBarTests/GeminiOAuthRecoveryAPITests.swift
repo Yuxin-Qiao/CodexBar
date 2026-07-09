@@ -1,6 +1,7 @@
 import CodexBarCore
 import Foundation
 import Testing
+
 @Suite(.serialized)
 struct GeminiOAuthRecoveryAPITests {
     @Test

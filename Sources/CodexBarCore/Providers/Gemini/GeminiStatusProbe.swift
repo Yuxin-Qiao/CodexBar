@@ -1293,7 +1293,6 @@ extension GeminiStatusProbe {
         }
         let trimmed = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
-
     }
 }
 
