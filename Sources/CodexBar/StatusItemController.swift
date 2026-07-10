@@ -40,8 +40,6 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
     private static let defaultMenuRefreshEnabled = !SettingsStore.isRunningTests
     private(set) static var menuRefreshEnabled = !SettingsStore.isRunningTests
     static let quotaWarningFlashDuration: TimeInterval = 60
-    private nonisolated static let statusItemAccessibilityTitle = "CodexBar"
-    private nonisolated static let debugStatusItemAccessibilityTitle = "CodexBar Debug"
     private nonisolated static let statusItemAccessibilityIdentifierPrefix = "CodexBar.StatusItem"
     private nonisolated static let mergedLegacyDefaultItemIndex = 0
 
@@ -66,14 +64,6 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
                 "\(StatusItemController.statusItemAccessibilityIdentifierPrefix).\(provider.rawValue)"
             }
         }
-    }
-
-    nonisolated static func isDebugApp(bundleIdentifier: String?) -> Bool {
-        bundleIdentifier?.contains(".debug") == true
-    }
-
-    nonisolated static func statusItemAccessibilityTitle(isDebugApp: Bool) -> String {
-        isDebugApp ? self.debugStatusItemAccessibilityTitle : self.statusItemAccessibilityTitle
     }
 
     #if DEBUG
