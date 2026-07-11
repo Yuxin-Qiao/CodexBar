@@ -18,11 +18,6 @@ DOC_PROOF="$ROOT/docs/verify-2054-proof.md"
 CLI="${CODEXBAR_CLI:-/Applications/CodexBar.app/Contents/Helpers/CodexBarCLI}"
 SKIP_PACKAGE="${CODEXBAR_SKIP_PACKAGE:-0}"
 
-if [[ ! -x "$CLI" ]]; then
-  log "Missing CodexBarCLI at $CLI"
-  log "Install CodexBar or set CODEXBAR_CLI, then retry."
-  exit 2
-fi
 if ! command -v node >/dev/null 2>&1; then
   log "Missing node (required for redaction)."
   exit 2
@@ -37,6 +32,12 @@ if [[ "$SKIP_PACKAGE" != "1" ]]; then
   env CODEXBAR_SIGNING="${CODEXBAR_SIGNING:-adhoc}" "$ROOT/Scripts/package_app.sh" release \
     2>&1 | tee "$ARTIFACT/package.log"
   CLI="$ROOT/CodexBar.app/Contents/Helpers/CodexBarCLI"
+fi
+
+if [[ ! -x "$CLI" ]]; then
+  log "Missing CodexBarCLI at $CLI"
+  log "Install CodexBar, package this branch, or set CODEXBAR_CLI, then retry."
+  exit 2
 fi
 
 log "Phase 1: live Codex usage fetch via CodexBarCLI"

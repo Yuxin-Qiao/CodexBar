@@ -500,10 +500,18 @@ extension UsageStore {
         let crossedBelowThreshold = !sourceChanged && previousState?.wasAboveThreshold == true && !wasAboveThreshold
         let shouldPost = crossedBelowThreshold && resetBoundaryAllowsPost
         let suppressedGuardedCrossing = crossedBelowThreshold && !resetBoundaryAllowsPost
-        // Only preserve a known boundary when one already exists; otherwise adopt the current observation
-        // so Codex weekly can later require previous/current advance before posting.
-        let shouldPreserveBoundary = !sourceChanged && suppressedGuardedCrossing
-            && previousState?.resetBoundary != nil
+        // Session keeps the last known boundary whenever the observation does not advance it, even without
+        // a threshold crossing. Codex weekly only preserves on suppressed crossings when a boundary already
+        // exists so the first observed boundary can be adopted without blocking later advance checks.
+        let shouldPreserveBoundary = !sourceChanged && !resetBoundaryAllowsPost && {
+            if descriptor.seriesName == .session {
+                return previousState?.resetBoundary != nil
+            }
+            if context.provider == .codex, descriptor.seriesName == .weekly {
+                return suppressedGuardedCrossing && previousState?.resetBoundary != nil
+            }
+            return true
+        }()
         let shouldPreserveBaseline = suppressedGuardedCrossing
         states[detectorKey] = LimitResetDetectorState(
             // A transient zero must not erase the baseline needed to recognize the real reset that follows.
