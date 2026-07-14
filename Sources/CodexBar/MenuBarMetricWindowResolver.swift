@@ -12,7 +12,8 @@ enum MenuBarMetricWindowResolver {
         preference: MenuBarMetricPreference,
         provider: UsageProvider,
         snapshot: UsageSnapshot?,
-        supportsAverage: Bool)
+        supportsAverage: Bool,
+        now: Date = Date())
         -> RateWindow?
     {
         guard let snapshot else { return nil }
@@ -50,7 +51,7 @@ enum MenuBarMetricWindowResolver {
         case .average:
             return Self.averageWindow(provider: provider, snapshot: snapshot, supportsAverage: supportsAverage)
         case .automatic:
-            return Self.automaticWindow(provider: provider, snapshot: snapshot)
+            return Self.automaticWindow(provider: provider, snapshot: snapshot, now: now)
         }
     }
 
@@ -104,9 +105,14 @@ enum MenuBarMetricWindowResolver {
         return RateWindow(usedPercent: usedPercent, windowMinutes: nil, resetsAt: nil, resetDescription: nil)
     }
 
-    private static func automaticWindow(provider: UsageProvider, snapshot: UsageSnapshot) -> RateWindow? {
+    private static func automaticWindow(
+        provider: UsageProvider,
+        snapshot: UsageSnapshot,
+        now: Date)
+        -> RateWindow?
+    {
         if provider == .antigravity {
-            if let window = mostConstrainedAntigravityQuotaSummaryWindow(snapshot: snapshot) {
+            if let window = automaticAntigravityQuotaSummaryWindow(snapshot: snapshot, now: now) {
                 return window
             }
             return self.mostConstrainedWindow(
@@ -154,20 +160,114 @@ enum MenuBarMetricWindowResolver {
         return snapshot.primary ?? snapshot.secondary
     }
 
-    private static let antigravityQuotaSummaryWindowIDPrefix = "antigravity-quota-summary-"
-    private static let antigravityCompactFallbackWindowIDPrefix = "antigravity-compact-fallback-"
+    static let antigravityQuotaSummaryWindowIDPrefix = "antigravity-quota-summary-"
+    static let antigravityCompactFallbackWindowIDPrefix = "antigravity-compact-fallback-"
 
-    private static func mostConstrainedAntigravityQuotaSummaryWindow(snapshot: UsageSnapshot) -> RateWindow? {
-        let windows = snapshot.extraRateWindows?
-            .filter { $0.usageKnown && $0.id.hasPrefix(Self.antigravityQuotaSummaryWindowIDPrefix) }
-            .map(\.window) ?? []
-        guard !windows.isEmpty else { return nil }
-
-        let usableWindows = windows.filter { $0.usedPercent < 100 }
-        if let maxUsable = usableWindows.max(by: { $0.usedPercent < $1.usedPercent }) {
-            return maxUsable
+    /// Automatic menu-bar presentation is reset-focused: prefer the next binding reset,
+    /// while highest-usage ranking uses `antigravityQuotaRankingWindow` below.
+    static func antigravityQuotaRankingWindow(snapshot: UsageSnapshot) -> RateWindow? {
+        let windows = Self.antigravityQuotaSummaryWindows(snapshot: snapshot)
+        return windows.max { lhs, rhs in
+            if lhs.usedPercent != rhs.usedPercent {
+                return lhs.usedPercent < rhs.usedPercent
+            }
+            return (lhs.resetsAt ?? .distantFuture) > (rhs.resetsAt ?? .distantFuture)
         }
-        return windows.max(by: { $0.usedPercent < $1.usedPercent })
+    }
+
+    /// Returns whether every reported model family has a binding exhausted bucket.
+    /// A family is blocked when either its five-hour or weekly bucket is exhausted.
+    static func antigravityQuotaSummaryFamiliesAreAllBlocked(snapshot: UsageSnapshot) -> Bool? {
+        let recognized = Self.antigravityQuotaSummaryWindowsWithIDs(snapshot: snapshot).compactMap { namedWindow -> (
+            family: String,
+            window: RateWindow)? in
+            guard let family = Self.antigravityQuotaFamilyID(for: namedWindow) else { return nil }
+            return (family, namedWindow.window)
+        }
+        guard !recognized.isEmpty else { return nil }
+        let families = Dictionary(grouping: recognized) { $0.family }
+        let grouped = families.mapValues { values in
+            values.map(\.window)
+        }
+        return grouped.values.allSatisfy { familyWindows in
+            familyWindows.contains { $0.usedPercent >= 100 }
+        }
+    }
+
+    private static func automaticAntigravityQuotaSummaryWindow(
+        snapshot: UsageSnapshot,
+        now: Date)
+        -> RateWindow?
+    {
+        let windows = Self.antigravityQuotaSummaryWindows(snapshot: snapshot)
+
+        let sessionWindows = windows.filter { $0.windowMinutes == 300 }
+        let weeklyWindows = windows.filter { $0.windowMinutes == 10080 }
+
+        // 1. Check if any session window resets in the future.
+        let futureSessionWindows = sessionWindows.filter { $0.resetsAt.map { $0 > now } ?? false }
+        if !futureSessionWindows.isEmpty {
+            return self.bestAntigravityWindow(in: futureSessionWindows, now: now)
+        }
+
+        // 2. Check if any weekly window resets in the future.
+        let futureWeeklyWindows = weeklyWindows.filter { $0.resetsAt.map { $0 > now } ?? false }
+        if !futureWeeklyWindows.isEmpty {
+            return self.bestAntigravityWindow(in: futureWeeklyWindows, now: now)
+        }
+
+        // 3. Fallback: pick the highest usedPercent among both session and weekly windows.
+        let allWindows = sessionWindows + weeklyWindows
+        guard !allWindows.isEmpty else { return nil }
+        return allWindows.max(by: { $0.usedPercent < $1.usedPercent })
+    }
+
+    private static func antigravityQuotaSummaryWindows(snapshot: UsageSnapshot) -> [RateWindow] {
+        self.antigravityQuotaSummaryWindowsWithIDs(snapshot: snapshot).map(\.window)
+    }
+
+    private static func antigravityQuotaSummaryWindowsWithIDs(snapshot: UsageSnapshot) -> [NamedRateWindow] {
+        snapshot.extraRateWindows?.filter {
+            $0.usageKnown && $0.id.hasPrefix(Self.antigravityQuotaSummaryWindowIDPrefix)
+                && ($0.window.windowMinutes == 300 || $0.window.windowMinutes == 10080)
+        } ?? []
+    }
+
+    private static func antigravityQuotaFamilyID(for namedWindow: NamedRateWindow) -> String? {
+        let id = namedWindow.id
+        guard id.hasPrefix(self.antigravityQuotaSummaryWindowIDPrefix) else { return nil }
+        let suffix = id.dropFirst(Self.antigravityQuotaSummaryWindowIDPrefix.count)
+        if namedWindow.window.windowMinutes == 300 {
+            for cadenceSuffix in ["-5h", "-5-hour", "-five-hour", "-session"] where suffix.hasSuffix(cadenceSuffix) {
+                return String(suffix.dropLast(cadenceSuffix.count))
+            }
+        }
+        if namedWindow.window.windowMinutes == 10080, suffix.hasSuffix("-weekly") {
+            return String(suffix.dropLast(7))
+        }
+        return nil
+    }
+
+    private static func bestAntigravityWindow(in windows: [RateWindow], now: Date) -> RateWindow? {
+        guard !windows.isEmpty else { return nil }
+        return windows.max { lhs, rhs in
+            let lhsFuture = lhs.resetsAt.map { $0 > now } ?? false
+            let rhsFuture = rhs.resetsAt.map { $0 > now } ?? false
+
+            if lhsFuture != rhsFuture {
+                return rhsFuture
+            }
+
+            if lhsFuture {
+                if let lhsReset = lhs.resetsAt, let rhsReset = rhs.resetsAt {
+                    if lhsReset != rhsReset {
+                        return lhsReset > rhsReset
+                    }
+                }
+            }
+
+            return lhs.usedPercent < rhs.usedPercent
+        }
     }
 
     private static func mostConstrainedAntigravityLegacyExtraWindow(snapshot: UsageSnapshot) -> RateWindow? {
@@ -176,12 +276,6 @@ enum MenuBarMetricWindowResolver {
                 $0.usageKnown && $0.id.hasPrefix(Self.antigravityCompactFallbackWindowIDPrefix)
             }
             .map(\.window) ?? []
-        guard !windows.isEmpty else { return nil }
-
-        let usableWindows = windows.filter { $0.usedPercent < 100 }
-        if let maxUsable = usableWindows.max(by: { $0.usedPercent < $1.usedPercent }) {
-            return maxUsable
-        }
         return windows.max(by: { $0.usedPercent < $1.usedPercent })
     }
 

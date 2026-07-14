@@ -318,11 +318,12 @@ extension UsageStoreHighestUsageTests {
                 otherWeeklyUsed: 50),
             provider: .antigravity)
         highest = store.providerWithHighestUsage()
-        #expect(highest?.provider == .codex)
+        #expect(highest?.provider == .antigravity)
+        #expect(highest?.usedPercent == 100)
     }
 
     @Test
-    func `automatic metric skips exhausted antigravity quota summary lanes when another remains usable`() {
+    func `automatic metric prioritizes exhausted antigravity quota summary lanes even when another remains usable`() {
         let settings = SettingsStore(
             configStore: testConfigStore(suiteName: "UsageStoreHighestUsageTests-antigravity-summary-usable"),
             zaiTokenStore: NoopZaiTokenStore(),
@@ -349,15 +350,15 @@ extension UsageStoreHighestUsageTests {
         let antigravitySnapshot = self.antigravityQuotaSummarySnapshot(
             geminiSessionUsed: 100,
             geminiWeeklyUsed: 40,
-            otherSessionUsed: 100,
-            otherWeeklyUsed: 100)
+            otherSessionUsed: 90,
+            otherWeeklyUsed: 90)
 
         store._setSnapshotForTesting(codexSnapshot, provider: .codex)
         store._setSnapshotForTesting(antigravitySnapshot, provider: .antigravity)
 
         let highest = store.providerWithHighestUsage()
-        #expect(highest?.provider == .codex)
-        #expect(highest?.usedPercent == 80)
+        #expect(highest?.provider == .antigravity)
+        #expect(highest?.usedPercent == 100)
     }
 
     @Test
@@ -988,5 +989,86 @@ extension UsageStoreHighestUsageTests {
             provider: .antigravity)
         highest = store.providerWithHighestUsage()
         #expect(highest?.provider == .codex)
+    }
+
+    @Test
+    func `automatic metric highest usage sorting ranks by maximum used percentage rather than nearest reset Case E`() {
+        let settings = SettingsStore(
+            configStore: testConfigStore(suiteName: "UsageStoreHighestUsageTests-antigravity-case-e"),
+            zaiTokenStore: NoopZaiTokenStore(),
+            syntheticTokenStore: NoopSyntheticTokenStore())
+        settings.refreshFrequency = .manual
+        settings.statusChecksEnabled = false
+        settings.setMenuBarMetricPreference(.automatic, for: .antigravity)
+
+        let registry = ProviderRegistry.shared
+        if let codexMeta = registry.metadata[.codex] {
+            settings.setProviderEnabled(provider: .codex, metadata: codexMeta, enabled: true)
+        }
+        if let antigravityMeta = registry.metadata[.antigravity] {
+            settings.setProviderEnabled(provider: .antigravity, metadata: antigravityMeta, enabled: true)
+        }
+
+        let store = UsageStore(
+            fetcher: UsageFetcher(),
+            browserDetection: BrowserDetection(cacheTTL: 0),
+            settings: settings)
+
+        // Codex has 80% usage, resetsAt nil.
+        let codexSnapshot = UsageSnapshot(
+            primary: RateWindow(usedPercent: 80, windowMinutes: nil, resetsAt: nil, resetDescription: nil),
+            secondary: nil,
+            updatedAt: Date())
+
+        // Antigravity has:
+        // - Gemini 5-hour: 30% used, resets in 10 seconds. (Earliest reset!)
+        // - Claude 5-hour: 95% used, resets in 20 seconds. (Highest usage!)
+        // Under Case E, cross-provider sorting still uses usedPercent descending.
+        // Antigravity's max usage is 95%, so it should win over Codex's 80%.
+        let now = Date()
+        let antigravitySnapshot = UsageSnapshot(
+            primary: nil,
+            secondary: nil,
+            extraRateWindows: [
+                NamedRateWindow(
+                    id: "antigravity-quota-summary-gemini-5h",
+                    title: "Gemini Session",
+                    window: RateWindow(
+                        usedPercent: 30,
+                        windowMinutes: 300,
+                        resetsAt: now.addingTimeInterval(10),
+                        resetDescription: nil)),
+                NamedRateWindow(
+                    id: "antigravity-quota-summary-claude-5h",
+                    title: "Claude Session",
+                    window: RateWindow(
+                        usedPercent: 95,
+                        windowMinutes: 300,
+                        resetsAt: now.addingTimeInterval(20),
+                        resetDescription: nil)),
+            ],
+            updatedAt: now)
+
+        let resetFocusedWindow = MenuBarMetricWindowResolver.rateWindow(
+            preference: .automatic,
+            provider: .antigravity,
+            snapshot: antigravitySnapshot,
+            supportsAverage: false,
+            now: now)
+        let rankedWindow = MenuBarMetricWindowResolver.antigravityQuotaRankingWindow(
+            snapshot: antigravitySnapshot)
+        #expect(resetFocusedWindow?.usedPercent == 30)
+        #expect(rankedWindow?.usedPercent == 95)
+        print(
+            "Antigravity production selection proof: " +
+                "resetFocused=\(resetFocusedWindow?.usedPercent ?? -1)% " +
+                "highestUsage=\(rankedWindow?.usedPercent ?? -1)%")
+
+        store._setSnapshotForTesting(codexSnapshot, provider: .codex)
+        store._setSnapshotForTesting(antigravitySnapshot, provider: .antigravity)
+
+        let highest = store.providerWithHighestUsage(now: now)
+        #expect(highest?.provider == .antigravity)
+        #expect(highest?.usedPercent == 95)
     }
 }
