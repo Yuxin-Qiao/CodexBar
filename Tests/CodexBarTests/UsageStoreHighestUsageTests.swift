@@ -1049,7 +1049,7 @@ extension UsageStoreHighestUsageTests {
             ],
             updatedAt: now)
 
-        let resetFocusedWindow = MenuBarMetricWindowResolver.rateWindow(
+        let automaticWindow = MenuBarMetricWindowResolver.rateWindow(
             preference: .automatic,
             provider: .antigravity,
             snapshot: antigravitySnapshot,
@@ -1057,11 +1057,11 @@ extension UsageStoreHighestUsageTests {
             now: now)
         let rankedWindow = MenuBarMetricWindowResolver.antigravityQuotaRankingWindow(
             snapshot: antigravitySnapshot)
-        #expect(resetFocusedWindow?.usedPercent == 30)
+        #expect(automaticWindow?.usedPercent == 95)
         #expect(rankedWindow?.usedPercent == 95)
         print(
             "Antigravity production selection proof: " +
-                "resetFocused=\(resetFocusedWindow?.usedPercent ?? -1)% " +
+                "automatic=\(automaticWindow?.usedPercent ?? -1)% " +
                 "highestUsage=\(rankedWindow?.usedPercent ?? -1)%")
 
         store._setSnapshotForTesting(codexSnapshot, provider: .codex)

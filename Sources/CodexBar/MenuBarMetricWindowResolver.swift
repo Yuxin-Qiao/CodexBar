@@ -51,7 +51,7 @@ enum MenuBarMetricWindowResolver {
         case .average:
             return Self.averageWindow(provider: provider, snapshot: snapshot, supportsAverage: supportsAverage)
         case .automatic:
-            return Self.automaticWindow(provider: provider, snapshot: snapshot, now: now)
+            return Self.automaticWindow(provider: provider, snapshot: snapshot)
         }
     }
 
@@ -105,14 +105,10 @@ enum MenuBarMetricWindowResolver {
         return RateWindow(usedPercent: usedPercent, windowMinutes: nil, resetsAt: nil, resetDescription: nil)
     }
 
-    private static func automaticWindow(
-        provider: UsageProvider,
-        snapshot: UsageSnapshot,
-        now: Date)
-        -> RateWindow?
+    private static func automaticWindow(provider: UsageProvider, snapshot: UsageSnapshot) -> RateWindow?
     {
         if provider == .antigravity {
-            if let window = automaticAntigravityQuotaSummaryWindow(snapshot: snapshot, now: now) {
+            if let window = antigravityQuotaRankingWindow(snapshot: snapshot) {
                 return window
             }
             return self.mostConstrainedWindow(
@@ -163,8 +159,8 @@ enum MenuBarMetricWindowResolver {
     static let antigravityQuotaSummaryWindowIDPrefix = "antigravity-quota-summary-"
     static let antigravityCompactFallbackWindowIDPrefix = "antigravity-compact-fallback-"
 
-    /// Automatic menu-bar presentation is reset-focused: prefer the next binding reset,
-    /// while highest-usage ranking uses `antigravityQuotaRankingWindow` below.
+    /// Automatic menu-bar presentation and highest-usage ranking use the same binding quota
+    /// lane, so an exhausted quota cannot be hidden by a less-used lane that resets sooner.
     static func antigravityQuotaRankingWindow(snapshot: UsageSnapshot) -> RateWindow? {
         let windows = Self.antigravityQuotaSummaryWindows(snapshot: snapshot)
         return windows.max { lhs, rhs in
@@ -194,34 +190,6 @@ enum MenuBarMetricWindowResolver {
         }
     }
 
-    private static func automaticAntigravityQuotaSummaryWindow(
-        snapshot: UsageSnapshot,
-        now: Date)
-        -> RateWindow?
-    {
-        let windows = Self.antigravityQuotaSummaryWindows(snapshot: snapshot)
-
-        let sessionWindows = windows.filter { $0.windowMinutes == 300 }
-        let weeklyWindows = windows.filter { $0.windowMinutes == 10080 }
-
-        // 1. Check if any session window resets in the future.
-        let futureSessionWindows = sessionWindows.filter { $0.resetsAt.map { $0 > now } ?? false }
-        if !futureSessionWindows.isEmpty {
-            return self.bestAntigravityWindow(in: futureSessionWindows, now: now)
-        }
-
-        // 2. Check if any weekly window resets in the future.
-        let futureWeeklyWindows = weeklyWindows.filter { $0.resetsAt.map { $0 > now } ?? false }
-        if !futureWeeklyWindows.isEmpty {
-            return self.bestAntigravityWindow(in: futureWeeklyWindows, now: now)
-        }
-
-        // 3. Fallback: pick the highest usedPercent among both session and weekly windows.
-        let allWindows = sessionWindows + weeklyWindows
-        guard !allWindows.isEmpty else { return nil }
-        return allWindows.max(by: { $0.usedPercent < $1.usedPercent })
-    }
-
     private static func antigravityQuotaSummaryWindows(snapshot: UsageSnapshot) -> [RateWindow] {
         self.antigravityQuotaSummaryWindowsWithIDs(snapshot: snapshot).map(\.window)
     }
@@ -246,28 +214,6 @@ enum MenuBarMetricWindowResolver {
             return String(suffix.dropLast(7))
         }
         return nil
-    }
-
-    private static func bestAntigravityWindow(in windows: [RateWindow], now: Date) -> RateWindow? {
-        guard !windows.isEmpty else { return nil }
-        return windows.max { lhs, rhs in
-            let lhsFuture = lhs.resetsAt.map { $0 > now } ?? false
-            let rhsFuture = rhs.resetsAt.map { $0 > now } ?? false
-
-            if lhsFuture != rhsFuture {
-                return rhsFuture
-            }
-
-            if lhsFuture {
-                if let lhsReset = lhs.resetsAt, let rhsReset = rhs.resetsAt {
-                    if lhsReset != rhsReset {
-                        return lhsReset > rhsReset
-                    }
-                }
-            }
-
-            return lhs.usedPercent < rhs.usedPercent
-        }
     }
 
     private static func mostConstrainedAntigravityLegacyExtraWindow(snapshot: UsageSnapshot) -> RateWindow? {

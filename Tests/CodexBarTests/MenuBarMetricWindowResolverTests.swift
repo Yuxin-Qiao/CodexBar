@@ -666,7 +666,7 @@ struct MenuBarMetricWindowResolverTests {
     }
 
     @Test
-    func `automatic metric chooses nearest future reset window Case A`() {
+    func `automatic metric chooses most constrained quota window Case A`() {
         let now = Date(timeIntervalSince1970: 100_000)
         let geminiReset = now.addingTimeInterval(60) // 1 minute from now
         let claudeReset = now.addingTimeInterval(120) // 2 minutes from now
@@ -701,8 +701,8 @@ struct MenuBarMetricWindowResolverTests {
             supportsAverage: false,
             now: now)
 
-        #expect(window?.resetsAt == geminiReset)
-        #expect(window?.usedPercent == 30)
+        #expect(window?.resetsAt == claudeReset)
+        #expect(window?.usedPercent == 90)
     }
 
     @Test
