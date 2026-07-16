@@ -85,6 +85,34 @@ struct AntigravityQuotaSummaryTests {
     }
 
     @Test
+    func `maps session quota bucket to the five hour window`() throws {
+        let json = """
+        {
+          "groups": [
+            {
+              "displayName": "Gemini Models",
+              "buckets": [
+                {
+                  "bucketId": "gemini-session",
+                  "displayName": "Session",
+                  "remaining": { "remainingFraction": 0.75 }
+                }
+              ]
+            }
+          ]
+        }
+        """
+
+        let snapshot = try AntigravityStatusProbe.parseQuotaSummaryResponse(Data(json.utf8))
+        let window = try #require(snapshot.toUsageSnapshot().extraRateWindows?.first)
+
+        #expect(window.id == "antigravity-quota-summary-gemini-session")
+        #expect(window.title == "Gemini 5-hour")
+        #expect(window.window.windowMinutes == 300)
+        #expect(window.window.remainingPercent == 75)
+    }
+
+    @Test
     func `fetch snapshot prefers quota summary endpoint and merges identity`() async throws {
         let endpoint = AntigravityStatusProbe.AntigravityConnectionEndpoint(
             scheme: "https",

@@ -361,7 +361,9 @@ public struct AntigravityStatusSnapshot: Sendable {
 
     private static func quotaBucketKind(for bucket: AntigravityQuotaSummaryBucket) -> QuotaBucketKind {
         let combined = "\(bucket.bucketId) \(bucket.displayName)".lowercased()
-        if combined.contains("5h") || combined.contains("5-hour") || combined.contains("five hour") {
+        if combined.contains("5h") || combined.contains("5-hour") || combined.contains("five hour")
+            || combined.contains("session")
+        {
             return .session
         }
         if combined.contains("weekly") {
