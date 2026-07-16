@@ -44,7 +44,7 @@ extension UsageStore {
     {
         let effectivePreference = self.settings.menuBarMetricPreference(for: provider, snapshot: snapshot)
         if provider == .antigravity, effectivePreference == .automatic {
-            return MenuBarMetricWindowResolver.antigravityQuotaRankingWindow(snapshot: snapshot)
+            return MenuBarMetricWindowResolver.antigravityQuotaRankingWindow(snapshot: snapshot, now: now)
         }
         if provider == .codex {
             return self.codexMenuBarMetricWindow(snapshot: snapshot, now: now)

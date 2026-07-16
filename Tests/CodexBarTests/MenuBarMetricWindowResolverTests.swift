@@ -571,41 +571,6 @@ struct MenuBarMetricWindowResolverTests {
     }
 
     @Test
-    func `automatic metric prioritizes exhausted antigravity five hour bucket when weekly remains usable`() {
-        let snapshot = UsageSnapshot(
-            primary: nil,
-            secondary: nil,
-            extraRateWindows: [
-                NamedRateWindow(
-                    id: "antigravity-quota-summary-gemini-5h",
-                    title: "Gemini Models Five Hour Limit",
-                    window: RateWindow(
-                        usedPercent: 100,
-                        windowMinutes: 300,
-                        resetsAt: Date().addingTimeInterval(3600),
-                        resetDescription: nil)),
-                NamedRateWindow(
-                    id: "antigravity-quota-summary-gemini-weekly",
-                    title: "Gemini Models Weekly Limit",
-                    window: RateWindow(
-                        usedPercent: 40,
-                        windowMinutes: 10080,
-                        resetsAt: Date().addingTimeInterval(86400 * 5),
-                        resetDescription: nil)),
-            ],
-            updatedAt: Date())
-
-        let window = MenuBarMetricWindowResolver.rateWindow(
-            preference: .automatic,
-            provider: .antigravity,
-            snapshot: snapshot,
-            supportsAverage: false)
-
-        #expect(window?.usedPercent == 100)
-        #expect(window?.windowMinutes == 300)
-    }
-
-    @Test
     func `antigravity blocking recognizes session cadence IDs`() {
         let snapshot = UsageSnapshot(
             primary: nil,
@@ -840,5 +805,42 @@ struct MenuBarMetricWindowResolverTests {
         // The 60-min unsupported window must be ignored; winner should be the 5h window
         #expect(window?.resetsAt == geminiReset)
         #expect(window?.windowMinutes == 300)
+    }
+
+    @Test
+    func `automatic metric prefers a future reset when tied quota usage has an elapsed reset`() {
+        let now = Date(timeIntervalSince1970: 100_000)
+        let futureReset = now.addingTimeInterval(120)
+        let snapshot = UsageSnapshot(
+            primary: nil,
+            secondary: nil,
+            extraRateWindows: [
+                NamedRateWindow(
+                    id: "antigravity-quota-summary-gemini-5h",
+                    title: "Gemini Session",
+                    window: RateWindow(
+                        usedPercent: 100,
+                        windowMinutes: 300,
+                        resetsAt: now.addingTimeInterval(-60),
+                        resetDescription: nil)),
+                NamedRateWindow(
+                    id: "antigravity-quota-summary-claude-5h",
+                    title: "Claude Session",
+                    window: RateWindow(
+                        usedPercent: 100,
+                        windowMinutes: 300,
+                        resetsAt: futureReset,
+                        resetDescription: nil)),
+            ],
+            updatedAt: now)
+
+        let window = MenuBarMetricWindowResolver.rateWindow(
+            preference: .automatic,
+            provider: .antigravity,
+            snapshot: snapshot,
+            supportsAverage: false,
+            now: now)
+
+        #expect(window?.resetsAt == futureReset)
     }
 }

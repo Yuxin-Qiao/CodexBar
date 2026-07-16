@@ -51,7 +51,7 @@ enum MenuBarMetricWindowResolver {
         case .average:
             return Self.averageWindow(provider: provider, snapshot: snapshot, supportsAverage: supportsAverage)
         case .automatic:
-            return Self.automaticWindow(provider: provider, snapshot: snapshot)
+            return Self.automaticWindow(provider: provider, snapshot: snapshot, now: now)
         }
     }
 
@@ -105,10 +105,9 @@ enum MenuBarMetricWindowResolver {
         return RateWindow(usedPercent: usedPercent, windowMinutes: nil, resetsAt: nil, resetDescription: nil)
     }
 
-    private static func automaticWindow(provider: UsageProvider, snapshot: UsageSnapshot) -> RateWindow?
-    {
+    private static func automaticWindow(provider: UsageProvider, snapshot: UsageSnapshot, now: Date) -> RateWindow? {
         if provider == .antigravity {
-            if let window = antigravityQuotaRankingWindow(snapshot: snapshot) {
+            if let window = antigravityQuotaRankingWindow(snapshot: snapshot, now: now) {
                 return window
             }
             return self.mostConstrainedWindow(
@@ -161,13 +160,18 @@ enum MenuBarMetricWindowResolver {
 
     /// Automatic menu-bar presentation and highest-usage ranking use the same binding quota
     /// lane, so an exhausted quota cannot be hidden by a less-used lane that resets sooner.
-    static func antigravityQuotaRankingWindow(snapshot: UsageSnapshot) -> RateWindow? {
+    static func antigravityQuotaRankingWindow(snapshot: UsageSnapshot, now: Date = Date()) -> RateWindow? {
         let windows = Self.antigravityQuotaSummaryWindows(snapshot: snapshot)
         return windows.max { lhs, rhs in
             if lhs.usedPercent != rhs.usedPercent {
                 return lhs.usedPercent < rhs.usedPercent
             }
-            return (lhs.resetsAt ?? .distantFuture) > (rhs.resetsAt ?? .distantFuture)
+            let lhsReset = lhs.resetsAt.flatMap { $0 > now ? $0 : nil }
+            let rhsReset = rhs.resetsAt.flatMap { $0 > now ? $0 : nil }
+            if (lhsReset != nil) != (rhsReset != nil) {
+                return lhsReset == nil
+            }
+            return (lhsReset ?? .distantFuture) > (rhsReset ?? .distantFuture)
         }
     }
 
