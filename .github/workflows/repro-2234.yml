@@ -1,0 +1,53 @@
+name: Repro 2234 SIGILL
+
+on:
+  push:
+    branches: [issue2241-repro]
+  workflow_dispatch:
+
+jobs:
+  repro:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install Swift
+        uses: swift-actions/setup-swift@f4e8f28b4a5b0c9cd3b291906ab6fff5f9aee8d8 # v2.2.6
+        with:
+          swift-version: "6.3.3"
+
+      - name: Swift toolchain version
+        run: swift --version
+
+      - name: Run fd leak repro
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd repro/2234
+          swift run Repro leak 2>&1 | tee leak.log
+
+      - name: Run EMFILE/SIGILL repro
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd repro/2234
+          # Tight fd limit forces the EMFILE branch quickly.
+          ulimit -n 64
+          set +e
+          swift run Repro emfile 2>&1 | tee emfile.log
+          exit_code=$?
+          set -e
+          echo "emfile exit code: $exit_code"
+          if [[ $exit_code -ne 0 ]]; then
+            echo "Process crashed as expected (SIGILL or other signal -> exit $exit_code)"
+          fi
+
+      - name: Upload repro logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449c92c490cdb0436b51a # v4.6.2
+        with:
+          name: repro-2234-logs
+          path: |
+            repro/2234/leak.log
+            repro/2234/emfile.log
