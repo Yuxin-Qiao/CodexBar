@@ -833,7 +833,20 @@ struct GrokWebBillingFetcherTests {
 final class GrokWebBillingStubURLProtocol: URLProtocol {
     nonisolated(unsafe) static var requests: [URLRequest] = []
     nonisolated(unsafe) static var requestBodies: [Data?] = []
-    nonisolated(unsafe) static var handler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?
+    private static let GrokWebBillingStubURLProtocolHandlerLock = NSRecursiveLock()
+    private nonisolated(unsafe) static var _handler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?
+    static var handler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))? {
+        get {
+            self.GrokWebBillingStubURLProtocolHandlerLock.lock()
+            defer { self.GrokWebBillingStubURLProtocolHandlerLock.unlock() }
+            return self._handler
+        }
+        set {
+            self.GrokWebBillingStubURLProtocolHandlerLock.lock()
+            self._handler = newValue
+            self.GrokWebBillingStubURLProtocolHandlerLock.unlock()
+        }
+    }
 
     override static func canInit(with _: URLRequest) -> Bool {
         true

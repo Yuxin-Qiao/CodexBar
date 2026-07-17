@@ -265,7 +265,20 @@ struct OpenRouterUsageStatsTests {
 }
 
 final class OpenRouterStubURLProtocol: URLProtocol {
-    nonisolated(unsafe) static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    private static let OpenRouterStubURLProtocolHandlerLock = NSRecursiveLock()
+    private nonisolated(unsafe) static var _handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))? {
+        get {
+            self.OpenRouterStubURLProtocolHandlerLock.lock()
+            defer { self.OpenRouterStubURLProtocolHandlerLock.unlock() }
+            return self._handler
+        }
+        set {
+            self.OpenRouterStubURLProtocolHandlerLock.lock()
+            self._handler = newValue
+            self.OpenRouterStubURLProtocolHandlerLock.unlock()
+        }
+    }
 
     override static func canInit(with request: URLRequest) -> Bool {
         request.url?.host == "openrouter.test"

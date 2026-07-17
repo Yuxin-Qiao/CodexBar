@@ -140,7 +140,20 @@ struct CodexOpenAIWorkspaceResolverTests {
 
 final class CodexOpenAIWorkspaceStubURLProtocol: URLProtocol {
     nonisolated(unsafe) static var requests: [URLRequest] = []
-    nonisolated(unsafe) static var handler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?
+    private static let CodexOpenAIWorkspaceStubURLProtocolHandlerLock = NSRecursiveLock()
+    private nonisolated(unsafe) static var _handler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?
+    static var handler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))? {
+        get {
+            self.CodexOpenAIWorkspaceStubURLProtocolHandlerLock.lock()
+            defer { self.CodexOpenAIWorkspaceStubURLProtocolHandlerLock.unlock() }
+            return self._handler
+        }
+        set {
+            self.CodexOpenAIWorkspaceStubURLProtocolHandlerLock.lock()
+            self._handler = newValue
+            self.CodexOpenAIWorkspaceStubURLProtocolHandlerLock.unlock()
+        }
+    }
 
     override static func canInit(with request: URLRequest) -> Bool {
         true

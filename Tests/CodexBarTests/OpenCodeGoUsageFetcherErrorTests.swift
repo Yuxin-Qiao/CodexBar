@@ -844,7 +844,20 @@ struct OpenCodeGoUsageFetcherErrorTests {
 }
 
 final class OpenCodeGoStubURLProtocol: URLProtocol {
-    nonisolated(unsafe) static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    private static let OpenCodeGoStubURLProtocolHandlerLock = NSRecursiveLock()
+    private nonisolated(unsafe) static var _handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))? {
+        get {
+            self.OpenCodeGoStubURLProtocolHandlerLock.lock()
+            defer { self.OpenCodeGoStubURLProtocolHandlerLock.unlock() }
+            return self._handler
+        }
+        set {
+            self.OpenCodeGoStubURLProtocolHandlerLock.lock()
+            self._handler = newValue
+            self.OpenCodeGoStubURLProtocolHandlerLock.unlock()
+        }
+    }
 
     override static func canInit(with request: URLRequest) -> Bool {
         request.url?.host == "opencode.ai"

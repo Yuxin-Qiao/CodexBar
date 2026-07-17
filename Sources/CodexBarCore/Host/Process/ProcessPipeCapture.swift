@@ -144,6 +144,13 @@ package final class ProcessPipeCapture: @unchecked Sendable {
         snapshot = self.data
         self.condition.unlock()
 
+        // Explicitly close the read-end file descriptor. On Linux
+        // swift-corelibs-foundation, clearing readabilityHandler does not
+        // release the underlying dup'd monitor fd, so the pipe read end leaks
+        // if we rely solely on closeOnDealloc. Closing here prevents the
+        // long-running fd growth that leads to EMFILE/SIGILL (issue #2234).
+        try? self.handle.close()
+
         continuation?.resume()
         return snapshot
     }

@@ -534,7 +534,20 @@ struct WindsurfWebFetcherTests {
 
 final class WindsurfWebFetcherStubURLProtocol: URLProtocol {
     nonisolated(unsafe) static var requests: [URLRequest] = []
-    nonisolated(unsafe) static var handler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?
+    private static let WindsurfWebFetcherStubURLProtocolHandlerLock = NSRecursiveLock()
+    private nonisolated(unsafe) static var _handler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?
+    static var handler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))? {
+        get {
+            self.WindsurfWebFetcherStubURLProtocolHandlerLock.lock()
+            defer { self.WindsurfWebFetcherStubURLProtocolHandlerLock.unlock() }
+            return self._handler
+        }
+        set {
+            self.WindsurfWebFetcherStubURLProtocolHandlerLock.lock()
+            self._handler = newValue
+            self.WindsurfWebFetcherStubURLProtocolHandlerLock.unlock()
+        }
+    }
 
     override static func canInit(with _: URLRequest) -> Bool {
         true

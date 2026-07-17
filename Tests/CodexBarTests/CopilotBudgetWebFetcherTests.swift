@@ -655,7 +655,20 @@ struct CopilotBudgetWebFetcherTests {
 
 final class CopilotBudgetBindingStubURLProtocol: URLProtocol {
     private static let lock = NSLock()
-    nonisolated(unsafe) static var handler: (@Sendable (URLRequest) throws -> (Data, URLResponse))?
+    private static let CopilotBudgetBindingStubURLProtocolHandlerLock = NSRecursiveLock()
+    private nonisolated(unsafe) static var _handler: (@Sendable (URLRequest) throws -> (Data, URLResponse))?
+    static var handler: (@Sendable (URLRequest) throws -> (Data, URLResponse))? {
+        get {
+            self.CopilotBudgetBindingStubURLProtocolHandlerLock.lock()
+            defer { self.CopilotBudgetBindingStubURLProtocolHandlerLock.unlock() }
+            return self._handler
+        }
+        set {
+            self.CopilotBudgetBindingStubURLProtocolHandlerLock.lock()
+            self._handler = newValue
+            self.CopilotBudgetBindingStubURLProtocolHandlerLock.unlock()
+        }
+    }
     private nonisolated(unsafe) static var recordedRequests: [URLRequest] = []
 
     static func reset() {

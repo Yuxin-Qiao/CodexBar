@@ -104,12 +104,12 @@ public enum CookieHeaderCache {
     private nonisolated(unsafe) static var displayGenerations: [KeychainCacheStore.Key: UInt64] = [:]
     private nonisolated(unsafe) static var displayRevalidationsInFlight: Set<KeychainCacheStore.Key> = []
     private nonisolated(unsafe) static var legacyMigrationsInFlight: Set<UsageProvider> = []
-    private nonisolated(unsafe) static var displayStalenessIntervalOverride: TimeInterval?
-    private nonisolated(unsafe) static var displayUnavailableRetryIntervalOverride: TimeInterval?
     private static let displayStalenessInterval: TimeInterval = 30
     private static let displayUnavailableRetryInterval: TimeInterval = 1
     #if DEBUG
     @TaskLocal private static var taskLegacyBaseURLOverride: URL?
+    @TaskLocal private static var taskDisplayStalenessIntervalOverride: TimeInterval?
+    @TaskLocal private static var taskDisplayUnavailableRetryIntervalOverride: TimeInterval?
     @TaskLocal private static var legacyRemovalFailureOverride = false
     #endif
 
@@ -278,20 +278,64 @@ public enum CookieHeaderCache {
     }
 
     private static var currentDisplayStalenessInterval: TimeInterval {
-        self.displayStalenessIntervalOverride ?? self.displayStalenessInterval
+        #if DEBUG
+        return self.taskDisplayStalenessIntervalOverride ?? self.displayStalenessInterval
+        #else
+        return self.displayStalenessInterval
+        #endif
     }
 
     private static var currentDisplayUnavailableRetryInterval: TimeInterval {
-        self.displayUnavailableRetryIntervalOverride ?? self.displayUnavailableRetryInterval
+        #if DEBUG
+        return self.taskDisplayUnavailableRetryIntervalOverride ?? self.displayUnavailableRetryInterval
+        #else
+        return self.displayUnavailableRetryInterval
+        #endif
     }
 
-    static func setDisplayStalenessIntervalOverrideForTesting(_ interval: TimeInterval?) {
-        self.displayStalenessIntervalOverride = interval
+    #if DEBUG
+    static func withDisplayStalenessIntervalOverrideForTesting<T>(
+        _ interval: TimeInterval?,
+        operation: () throws -> T) rethrows -> T
+    {
+        try self.$taskDisplayStalenessIntervalOverride.withValue(interval) {
+            try operation()
+        }
     }
 
-    static func setDisplayUnavailableRetryIntervalOverrideForTesting(_ interval: TimeInterval?) {
-        self.displayUnavailableRetryIntervalOverride = interval
+    static func withDisplayStalenessIntervalOverrideForTesting<T>(
+        _ interval: TimeInterval?,
+        isolation _: isolated (any Actor)? = #isolation,
+        operation: () async throws -> T) async rethrows -> T
+    {
+        try await self.$taskDisplayStalenessIntervalOverride.withValue(interval) {
+            try await operation()
+        }
     }
+
+    static func withDisplayUnavailableRetryIntervalOverrideForTesting<T>(
+        _ interval: TimeInterval?,
+        operation: () throws -> T) rethrows -> T
+    {
+        try self.$taskDisplayUnavailableRetryIntervalOverride.withValue(interval) {
+            try operation()
+        }
+    }
+
+    static func withDisplayUnavailableRetryIntervalOverrideForTesting<T>(
+        _ interval: TimeInterval?,
+        isolation _: isolated (any Actor)? = #isolation,
+        operation: () async throws -> T) async rethrows -> T
+    {
+        try await self.$taskDisplayUnavailableRetryIntervalOverride.withValue(interval) {
+            try await operation()
+        }
+    }
+
+    static func currentDisplayIntervalsForTesting() -> (staleness: TimeInterval, retry: TimeInterval) {
+        (self.currentDisplayStalenessInterval, self.currentDisplayUnavailableRetryInterval)
+    }
+    #endif
 
     static func resetDisplayCacheForTesting() {
         self.displayCacheLock.lock()
