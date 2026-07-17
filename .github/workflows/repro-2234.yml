@@ -10,10 +10,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@v4
 
       - name: Install Swift
-        uses: swift-actions/setup-swift@f4e8f28b4a5b0c9cd3b291906ab6fff5f9aee8d8 # v2.2.6
+        uses: swift-actions/setup-swift@v2
         with:
           swift-version: "6.3.3"
 
@@ -45,7 +45,7 @@ jobs:
 
       - name: Upload repro logs
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449c92c490cdb0436b51a # v4.6.2
+        uses: actions/upload-artifact@v4
         with:
           name: repro-2234-logs
           path: |
