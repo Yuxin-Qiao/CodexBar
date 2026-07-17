@@ -1200,7 +1200,20 @@ extension MiMoProviderTests {
 }
 
 final class MiMoStubURLProtocol: URLProtocol {
-    nonisolated(unsafe) static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    private static let MiMoStubURLProtocolHandlerLock = NSRecursiveLock()
+    private nonisolated(unsafe) static var _handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))? {
+        get {
+            self.MiMoStubURLProtocolHandlerLock.lock()
+            defer { self.MiMoStubURLProtocolHandlerLock.unlock() }
+            return self._handler
+        }
+        set {
+            self.MiMoStubURLProtocolHandlerLock.lock()
+            self._handler = newValue
+            self.MiMoStubURLProtocolHandlerLock.unlock()
+        }
+    }
 
     override static func canInit(with request: URLRequest) -> Bool {
         request.url?.host == "mimo.test"

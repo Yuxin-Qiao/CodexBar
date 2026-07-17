@@ -612,7 +612,20 @@ private final class CrossModelRequestPathRecorder: @unchecked Sendable {
 }
 
 final class CrossModelStubURLProtocol: URLProtocol {
-    nonisolated(unsafe) static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    private static let CrossModelStubURLProtocolHandlerLock = NSRecursiveLock()
+    private nonisolated(unsafe) static var _handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))? {
+        get {
+            self.CrossModelStubURLProtocolHandlerLock.lock()
+            defer { self.CrossModelStubURLProtocolHandlerLock.unlock() }
+            return self._handler
+        }
+        set {
+            self.CrossModelStubURLProtocolHandlerLock.lock()
+            self._handler = newValue
+            self.CrossModelStubURLProtocolHandlerLock.unlock()
+        }
+    }
 
     override static func canInit(with request: URLRequest) -> Bool {
         request.url?.host == "crossmodel.test"

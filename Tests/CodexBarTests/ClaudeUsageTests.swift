@@ -1299,7 +1299,20 @@ struct ClaudeAutoFetcherCharacterizationTests {
 }
 
 final class ClaudeAutoFetcherStubURLProtocol: URLProtocol {
-    nonisolated(unsafe) static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    private static let ClaudeAutoFetcherStubURLProtocolHandlerLock = NSRecursiveLock()
+    private nonisolated(unsafe) static var _handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))? {
+        get {
+            self.ClaudeAutoFetcherStubURLProtocolHandlerLock.lock()
+            defer { self.ClaudeAutoFetcherStubURLProtocolHandlerLock.unlock() }
+            return self._handler
+        }
+        set {
+            self.ClaudeAutoFetcherStubURLProtocolHandlerLock.lock()
+            self._handler = newValue
+            self.ClaudeAutoFetcherStubURLProtocolHandlerLock.unlock()
+        }
+    }
 
     override static func canInit(with request: URLRequest) -> Bool {
         request.url?.host == "claude.ai"

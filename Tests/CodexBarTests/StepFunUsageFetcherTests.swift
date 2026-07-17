@@ -769,7 +769,20 @@ private final class StepFunRequestRecorder: @unchecked Sendable {
 }
 
 private final class StepFunStubURLProtocol: URLProtocol {
-    nonisolated(unsafe) static var handler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?
+    private static let StepFunStubURLProtocolHandlerLock = NSRecursiveLock()
+    private nonisolated(unsafe) static var _handler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?
+    static var handler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))? {
+        get {
+            self.StepFunStubURLProtocolHandlerLock.lock()
+            defer { self.StepFunStubURLProtocolHandlerLock.unlock() }
+            return self._handler
+        }
+        set {
+            self.StepFunStubURLProtocolHandlerLock.lock()
+            self._handler = newValue
+            self.StepFunStubURLProtocolHandlerLock.unlock()
+        }
+    }
 
     override static func canInit(with request: URLRequest) -> Bool {
         request.url?.host == "platform.stepfun.com"

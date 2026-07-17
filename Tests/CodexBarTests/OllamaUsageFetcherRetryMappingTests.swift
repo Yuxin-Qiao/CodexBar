@@ -441,7 +441,20 @@ struct OllamaUsageFetcherRetryMappingTests {
 }
 
 final class OllamaRetryMappingStubURLProtocol: URLProtocol {
-    nonisolated(unsafe) static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    private static let OllamaRetryMappingStubURLProtocolHandlerLock = NSRecursiveLock()
+    private nonisolated(unsafe) static var _handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))? {
+        get {
+            self.OllamaRetryMappingStubURLProtocolHandlerLock.lock()
+            defer { self.OllamaRetryMappingStubURLProtocolHandlerLock.unlock() }
+            return self._handler
+        }
+        set {
+            self.OllamaRetryMappingStubURLProtocolHandlerLock.lock()
+            self._handler = newValue
+            self.OllamaRetryMappingStubURLProtocolHandlerLock.unlock()
+        }
+    }
 
     override static func canInit(with request: URLRequest) -> Bool {
         guard let host = request.url?.host?.lowercased() else { return false }

@@ -205,7 +205,20 @@ struct CrofUsageFetcherTests {
 }
 
 final class CrofStubURLProtocol: URLProtocol {
-    nonisolated(unsafe) static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    private static let CrofStubURLProtocolHandlerLock = NSRecursiveLock()
+    private nonisolated(unsafe) static var _handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))? {
+        get {
+            self.CrofStubURLProtocolHandlerLock.lock()
+            defer { self.CrofStubURLProtocolHandlerLock.unlock() }
+            return self._handler
+        }
+        set {
+            self.CrofStubURLProtocolHandlerLock.lock()
+            self._handler = newValue
+            self.CrofStubURLProtocolHandlerLock.unlock()
+        }
+    }
     nonisolated(unsafe) static var requests: [URLRequest] = []
 
     override static func canInit(with request: URLRequest) -> Bool {

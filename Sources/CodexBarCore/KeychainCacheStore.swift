@@ -260,10 +260,6 @@ public enum KeychainCacheStore {
         #endif
     }
 
-    static func setServiceOverrideForTesting(_ service: String?) {
-        self.globalServiceOverride = service
-    }
-
     public static func withServiceOverrideForTesting<T>(
         _ service: String?,
         operation: () throws -> T) rethrows -> T
@@ -391,7 +387,7 @@ public enum KeychainCacheStore {
     }
 
     private static var serviceName: String {
-        serviceOverride ?? self.globalServiceOverride ?? self.cacheService
+        serviceOverride ?? self.cacheService
     }
 
     private static var canUseRealKeychain: Bool {
