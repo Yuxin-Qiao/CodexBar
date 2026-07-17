@@ -7,6 +7,7 @@ public enum KeychainAccessGate {
     private static let flagKey = "debugDisableKeychainAccess"
     static let disableAccessEnvironmentKey = "CODEXBAR_DISABLE_KEYCHAIN_ACCESS"
     @TaskLocal private static var taskOverrideValue: Bool?
+    private static let overrideValueLock = NSRecursiveLock()
     private nonisolated(unsafe) static var overrideValue: Bool?
     private static let processForceDisabledLock = NSLock()
     private nonisolated(unsafe) static var processForceDisabledReason: String?
@@ -21,6 +22,8 @@ public enum KeychainAccessGate {
             }
             #endif
             if self.processDisableReason != nil { return true }
+            self.overrideValueLock.lock()
+            defer { self.overrideValueLock.unlock() }
             if let overrideValue { return overrideValue }
             if UserDefaults.standard.bool(forKey: Self.flagKey) { return true }
             if let shared = AppGroupSupport.sharedDefaults(), shared.bool(forKey: Self.flagKey) {
@@ -29,9 +32,13 @@ public enum KeychainAccessGate {
             return false
         }
         set {
-            overrideValue = newValue
+            let mirror: Bool
+            self.overrideValueLock.lock()
+            self.overrideValue = newValue
+            mirror = self.isDisabled
+            self.overrideValueLock.unlock()
             #if os(macOS) && canImport(SweetCookieKit)
-            BrowserCookieKeychainAccessGate.isDisabled = self.isDisabled
+            BrowserCookieKeychainAccessGate.isDisabled = mirror
             #endif
         }
     }
@@ -88,7 +95,9 @@ public enum KeychainAccessGate {
 
     #if DEBUG
     static func resetOverrideForTesting() {
+        self.overrideValueLock.lock()
         self.overrideValue = nil
+        self.overrideValueLock.unlock()
         self.processForceDisabledLock.lock()
         self.processForceDisabledReason = nil
         self.processForceDisabledLock.unlock()

@@ -893,7 +893,20 @@ struct AlibabaTokenPlanWebStrategyTests {
 }
 
 final class AlibabaTokenPlanStubURLProtocol: URLProtocol {
-    nonisolated(unsafe) static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    private static let AlibabaTokenPlanStubURLProtocolHandlerLock = NSRecursiveLock()
+    private nonisolated(unsafe) static var _handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))? {
+        get {
+            self.AlibabaTokenPlanStubURLProtocolHandlerLock.lock()
+            defer { self.AlibabaTokenPlanStubURLProtocolHandlerLock.unlock() }
+            return self._handler
+        }
+        set {
+            self.AlibabaTokenPlanStubURLProtocolHandlerLock.lock()
+            self._handler = newValue
+            self.AlibabaTokenPlanStubURLProtocolHandlerLock.unlock()
+        }
+    }
 
     override static func canInit(with request: URLRequest) -> Bool {
         guard let host = request.url?.host else { return false }

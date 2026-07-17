@@ -189,7 +189,20 @@ struct MoonshotUsageFetcherTests {
 
 final class MoonshotStubURLProtocol: URLProtocol {
     nonisolated(unsafe) static var requests: [URLRequest] = []
-    nonisolated(unsafe) static var handler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?
+    private static let MoonshotStubURLProtocolHandlerLock = NSRecursiveLock()
+    private nonisolated(unsafe) static var _handler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?
+    static var handler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))? {
+        get {
+            self.MoonshotStubURLProtocolHandlerLock.lock()
+            defer { self.MoonshotStubURLProtocolHandlerLock.unlock() }
+            return self._handler
+        }
+        set {
+            self.MoonshotStubURLProtocolHandlerLock.lock()
+            self._handler = newValue
+            self.MoonshotStubURLProtocolHandlerLock.unlock()
+        }
+    }
 
     override static func canInit(with _: URLRequest) -> Bool {
         true

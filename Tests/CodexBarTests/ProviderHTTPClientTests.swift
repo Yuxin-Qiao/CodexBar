@@ -242,7 +242,20 @@ private actor ScriptedHTTPTransport: ProviderHTTPTransport {
 }
 
 final class StubURLProtocol: URLProtocol {
-    nonisolated(unsafe) static var handler: ((URLRequest) throws -> (Data, URLResponse))?
+    private static let StubURLProtocolHandlerLock = NSRecursiveLock()
+    private nonisolated(unsafe) static var _handler: ((URLRequest) throws -> (Data, URLResponse))?
+    static var handler: ((URLRequest) throws -> (Data, URLResponse))? {
+        get {
+            self.StubURLProtocolHandlerLock.lock()
+            defer { self.StubURLProtocolHandlerLock.unlock() }
+            return self._handler
+        }
+        set {
+            self.StubURLProtocolHandlerLock.lock()
+            self._handler = newValue
+            self.StubURLProtocolHandlerLock.unlock()
+        }
+    }
     nonisolated(unsafe) static var requests: [URLRequest] = []
 
     override static func canInit(with request: URLRequest) -> Bool {

@@ -1076,7 +1076,20 @@ struct AlibabaCodingPlanUsageFetcherRequestTests {
 }
 
 final class AlibabaUsageFetcherStubURLProtocol: URLProtocol {
-    nonisolated(unsafe) static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    private static let AlibabaUsageFetcherStubURLProtocolHandlerLock = NSRecursiveLock()
+    private nonisolated(unsafe) static var _handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))? {
+        get {
+            self.AlibabaUsageFetcherStubURLProtocolHandlerLock.lock()
+            defer { self.AlibabaUsageFetcherStubURLProtocolHandlerLock.unlock() }
+            return self._handler
+        }
+        set {
+            self.AlibabaUsageFetcherStubURLProtocolHandlerLock.lock()
+            self._handler = newValue
+            self.AlibabaUsageFetcherStubURLProtocolHandlerLock.unlock()
+        }
+    }
 
     override static func canInit(with request: URLRequest) -> Bool {
         request.url?.host == "bailian.console.aliyun.com"
@@ -1106,7 +1119,20 @@ final class AlibabaUsageFetcherStubURLProtocol: URLProtocol {
 }
 
 final class AlibabaConsoleSECTokenStubURLProtocol: URLProtocol {
-    nonisolated(unsafe) static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    private static let AlibabaConsoleSECTokenStubURLProtocolHandlerLock = NSRecursiveLock()
+    private nonisolated(unsafe) static var _handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))? {
+        get {
+            self.AlibabaConsoleSECTokenStubURLProtocolHandlerLock.lock()
+            defer { self.AlibabaConsoleSECTokenStubURLProtocolHandlerLock.unlock() }
+            return self._handler
+        }
+        set {
+            self.AlibabaConsoleSECTokenStubURLProtocolHandlerLock.lock()
+            self._handler = newValue
+            self.AlibabaConsoleSECTokenStubURLProtocolHandlerLock.unlock()
+        }
+    }
 
     override static func canInit(with request: URLRequest) -> Bool {
         guard let host = request.url?.host else { return false }

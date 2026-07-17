@@ -683,7 +683,20 @@ private final class BedrockRequestCapture: @unchecked Sendable {
 }
 
 final class BedrockStubURLProtocol: URLProtocol {
-    nonisolated(unsafe) static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    private static let BedrockStubURLProtocolHandlerLock = NSRecursiveLock()
+    private nonisolated(unsafe) static var _handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))? {
+        get {
+            self.BedrockStubURLProtocolHandlerLock.lock()
+            defer { self.BedrockStubURLProtocolHandlerLock.unlock() }
+            return self._handler
+        }
+        set {
+            self.BedrockStubURLProtocolHandlerLock.lock()
+            self._handler = newValue
+            self.BedrockStubURLProtocolHandlerLock.unlock()
+        }
+    }
 
     override static func canInit(with request: URLRequest) -> Bool {
         request.url?.host == "bedrock.test"

@@ -648,7 +648,20 @@ struct ClaudeOAuthCredentialsStoreCLIStorageOwnershipTests {
 }
 
 private final class ClaudeOAuthTokenRefreshStubURLProtocol: URLProtocol {
-    nonisolated(unsafe) static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    private static let ClaudeOAuthTokenRefreshStubURLProtocolHandlerLock = NSRecursiveLock()
+    private nonisolated(unsafe) static var _handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))? {
+        get {
+            self.ClaudeOAuthTokenRefreshStubURLProtocolHandlerLock.lock()
+            defer { self.ClaudeOAuthTokenRefreshStubURLProtocolHandlerLock.unlock() }
+            return self._handler
+        }
+        set {
+            self.ClaudeOAuthTokenRefreshStubURLProtocolHandlerLock.lock()
+            self._handler = newValue
+            self.ClaudeOAuthTokenRefreshStubURLProtocolHandlerLock.unlock()
+        }
+    }
 
     static func reset() {
         self.handler = nil

@@ -437,7 +437,20 @@ private actor CodebuffRequestGate {
 }
 
 final class CodebuffStubURLProtocol: URLProtocol {
-    nonisolated(unsafe) static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    private static let CodebuffStubURLProtocolHandlerLock = NSRecursiveLock()
+    private nonisolated(unsafe) static var _handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))? {
+        get {
+            self.CodebuffStubURLProtocolHandlerLock.lock()
+            defer { self.CodebuffStubURLProtocolHandlerLock.unlock() }
+            return self._handler
+        }
+        set {
+            self.CodebuffStubURLProtocolHandlerLock.lock()
+            self._handler = newValue
+            self.CodebuffStubURLProtocolHandlerLock.unlock()
+        }
+    }
     nonisolated(unsafe) static var requests: [URLRequest] = []
     nonisolated(unsafe) static var requestBodies: [Data?] = []
 

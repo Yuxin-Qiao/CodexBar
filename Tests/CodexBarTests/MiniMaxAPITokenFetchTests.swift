@@ -201,7 +201,20 @@ struct MiniMaxAPITokenFetchTests {
 }
 
 final class MiniMaxAPITokenStubURLProtocol: URLProtocol {
-    nonisolated(unsafe) static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    private static let MiniMaxAPITokenStubURLProtocolHandlerLock = NSRecursiveLock()
+    private nonisolated(unsafe) static var _handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))? {
+        get {
+            self.MiniMaxAPITokenStubURLProtocolHandlerLock.lock()
+            defer { self.MiniMaxAPITokenStubURLProtocolHandlerLock.unlock() }
+            return self._handler
+        }
+        set {
+            self.MiniMaxAPITokenStubURLProtocolHandlerLock.lock()
+            self._handler = newValue
+            self.MiniMaxAPITokenStubURLProtocolHandlerLock.unlock()
+        }
+    }
     nonisolated(unsafe) static var requests: [URLRequest] = []
 
     override static func canInit(with request: URLRequest) -> Bool {
