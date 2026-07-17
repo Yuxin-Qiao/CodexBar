@@ -318,12 +318,88 @@ extension UsageStoreHighestUsageTests {
                 otherWeeklyUsed: 50),
             provider: .antigravity)
         highest = store.providerWithHighestUsage()
+        #expect(highest?.provider == .codex)
+    }
+
+    @Test
+    func `automatic metric ranks antigravity by exhausted quota lanes across groups when enabled`() throws {
+        let suiteName = "UsageStoreHighestUsageTests-antigravity-all-summary-on"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        let settings = SettingsStore(
+            userDefaults: defaults,
+            configStore: testConfigStore(suiteName: suiteName),
+            zaiTokenStore: NoopZaiTokenStore(),
+            syntheticTokenStore: NoopSyntheticTokenStore())
+        settings.refreshFrequency = .manual
+        settings.statusChecksEnabled = false
+        settings.setMenuBarMetricPreference(.automatic, for: .antigravity)
+        settings.antigravityPrioritizesExhaustedQuota = true
+
+        let registry = ProviderRegistry.shared
+        if let codexMeta = registry.metadata[.codex] {
+            settings.setProviderEnabled(provider: .codex, metadata: codexMeta, enabled: true)
+        }
+        if let antigravityMeta = registry.metadata[.antigravity] {
+            settings.setProviderEnabled(provider: .antigravity, metadata: antigravityMeta, enabled: true)
+        }
+
+        let store = UsageStore(
+            fetcher: UsageFetcher(),
+            browserDetection: BrowserDetection(cacheTTL: 0),
+            settings: settings)
+        store._setSnapshotForTesting(
+            UsageSnapshot(
+                primary: RateWindow(usedPercent: 80, windowMinutes: nil, resetsAt: nil, resetDescription: nil),
+                secondary: nil,
+                updatedAt: Date()),
+            provider: .codex)
+        let antigravity = self.antigravityQuotaSummarySnapshot(
+            geminiSessionUsed: 10,
+            geminiWeeklyUsed: 20,
+            otherSessionUsed: 95,
+            otherWeeklyUsed: 90)
+        let unknownCadence = NamedRateWindow(
+            id: "antigravity-quota-summary-future-daily",
+            title: "Future daily lane",
+            window: RateWindow(
+                usedPercent: 99,
+                windowMinutes: 24 * 60,
+                resetsAt: nil,
+                resetDescription: nil))
+        store._setSnapshotForTesting(
+            antigravity.with(extraRateWindows: (antigravity.extraRateWindows ?? []) + [unknownCadence]),
+            provider: .antigravity)
+
+        var highest = store.providerWithHighestUsage()
+        #expect(highest?.provider == .antigravity)
+        #expect(highest?.usedPercent == 95)
+
+        store._setSnapshotForTesting(
+            self.antigravityQuotaSummarySnapshot(
+                geminiSessionUsed: 95,
+                geminiWeeklyUsed: 20,
+                otherSessionUsed: 10,
+                otherWeeklyUsed: 10),
+            provider: .antigravity)
+        highest = store.providerWithHighestUsage()
+        #expect(highest?.provider == .antigravity)
+        #expect(highest?.usedPercent == 95)
+
+        store._setSnapshotForTesting(
+            self.antigravityQuotaSummarySnapshot(
+                geminiSessionUsed: 100,
+                geminiWeeklyUsed: 100,
+                otherSessionUsed: 50,
+                otherWeeklyUsed: 50),
+            provider: .antigravity)
+        highest = store.providerWithHighestUsage()
         #expect(highest?.provider == .antigravity)
         #expect(highest?.usedPercent == 100)
     }
 
     @Test
-    func `automatic metric prioritizes exhausted antigravity quota summary lanes even when another remains usable`() {
+    func `automatic metric skips exhausted antigravity quota summary lanes when another remains usable`() {
         let settings = SettingsStore(
             configStore: testConfigStore(suiteName: "UsageStoreHighestUsageTests-antigravity-summary-usable"),
             zaiTokenStore: NoopZaiTokenStore(),
@@ -331,6 +407,50 @@ extension UsageStoreHighestUsageTests {
         settings.refreshFrequency = .manual
         settings.statusChecksEnabled = false
         settings.setMenuBarMetricPreference(.automatic, for: .antigravity)
+
+        let registry = ProviderRegistry.shared
+        if let codexMeta = registry.metadata[.codex] {
+            settings.setProviderEnabled(provider: .codex, metadata: codexMeta, enabled: true)
+        }
+        if let antigravityMeta = registry.metadata[.antigravity] {
+            settings.setProviderEnabled(provider: .antigravity, metadata: antigravityMeta, enabled: true)
+        }
+
+        let fetcher = UsageFetcher()
+        let store = UsageStore(fetcher: fetcher, browserDetection: BrowserDetection(cacheTTL: 0), settings: settings)
+
+        let codexSnapshot = UsageSnapshot(
+            primary: RateWindow(usedPercent: 80, windowMinutes: nil, resetsAt: nil, resetDescription: nil),
+            secondary: nil,
+            updatedAt: Date())
+        let antigravitySnapshot = self.antigravityQuotaSummarySnapshot(
+            geminiSessionUsed: 100,
+            geminiWeeklyUsed: 40,
+            otherSessionUsed: 100,
+            otherWeeklyUsed: 100)
+
+        store._setSnapshotForTesting(codexSnapshot, provider: .codex)
+        store._setSnapshotForTesting(antigravitySnapshot, provider: .antigravity)
+
+        let highest = store.providerWithHighestUsage()
+        #expect(highest?.provider == .codex)
+        #expect(highest?.usedPercent == 80)
+    }
+
+    @Test
+    func `automatic metric prioritizes exhausted antigravity quota summary lanes when enabled`() throws {
+        let suiteName = "UsageStoreHighestUsageTests-antigravity-summary-on"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        let settings = SettingsStore(
+            userDefaults: defaults,
+            configStore: testConfigStore(suiteName: suiteName),
+            zaiTokenStore: NoopZaiTokenStore(),
+            syntheticTokenStore: NoopSyntheticTokenStore())
+        settings.refreshFrequency = .manual
+        settings.statusChecksEnabled = false
+        settings.setMenuBarMetricPreference(.automatic, for: .antigravity)
+        settings.antigravityPrioritizesExhaustedQuota = true
 
         let registry = ProviderRegistry.shared
         if let codexMeta = registry.metadata[.codex] {
@@ -992,14 +1112,19 @@ extension UsageStoreHighestUsageTests {
     }
 
     @Test
-    func `automatic metric highest usage sorting ranks by maximum used percentage rather than nearest reset Case E`() {
+    func `automatic metric highest usage sorting ranks by maximum used percentage rather than nearest reset Case E`() throws {
+        let suiteName = "UsageStoreHighestUsageTests-antigravity-case-e"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
         let settings = SettingsStore(
-            configStore: testConfigStore(suiteName: "UsageStoreHighestUsageTests-antigravity-case-e"),
+            userDefaults: defaults,
+            configStore: testConfigStore(suiteName: suiteName),
             zaiTokenStore: NoopZaiTokenStore(),
             syntheticTokenStore: NoopSyntheticTokenStore())
         settings.refreshFrequency = .manual
         settings.statusChecksEnabled = false
         settings.setMenuBarMetricPreference(.automatic, for: .antigravity)
+        settings.antigravityPrioritizesExhaustedQuota = true
 
         let registry = ProviderRegistry.shared
         if let codexMeta = registry.metadata[.codex] {
@@ -1054,7 +1179,8 @@ extension UsageStoreHighestUsageTests {
             provider: .antigravity,
             snapshot: antigravitySnapshot,
             supportsAverage: false,
-            now: now)
+            now: now,
+            antigravityPrioritizesExhaustedQuota: true)
         let rankedWindow = MenuBarMetricWindowResolver.antigravityQuotaRankingWindow(
             snapshot: antigravitySnapshot)
         #expect(automaticWindow?.usedPercent == 95)

@@ -355,6 +355,17 @@ extension SettingsStore {
         }
     }
 
+    /// Opt-in Antigravity ranking: when on, the automatic menu-bar metric and the cross-provider
+    /// highest-usage ranking surface an exhausted quota lane first (ties break by nearest upcoming
+    /// reset) instead of preferring the most-used lane that still has quota.
+    var antigravityPrioritizesExhaustedQuota: Bool {
+        get { self.defaultsState.antigravityPrioritizesExhaustedQuota }
+        set {
+            self.defaultsState.antigravityPrioritizesExhaustedQuota = newValue
+            self.userDefaults.set(newValue, forKey: "antigravityPrioritizesExhaustedQuota")
+        }
+    }
+
     var copilotIconSecondaryWindowIDRaw: String {
         get { self.defaultsState.copilotIconSecondaryWindowIDRaw }
         set {

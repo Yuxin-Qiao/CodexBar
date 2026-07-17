@@ -88,6 +88,21 @@ struct ProviderSettingsDescriptorTests {
     }
 
     @Test
+    func `antigravity exposes exhausted quota toggle as default off opt in`() throws {
+        let fixture = try self.makeSettingsFixture(suite: "ProviderSettingsDescriptorTests-antigravity-exhausted")
+        let context = fixture.settingsContext(provider: .antigravity)
+
+        let toggles = AntigravityProviderImplementation().settingsToggles(context: context)
+        let toggle = try #require(toggles.first(where: { $0.id == "antigravity-prioritize-exhausted-quota" }))
+        #expect(toggle.binding.wrappedValue == false)
+        #expect(toggle.subtitle.contains("Optional."))
+        #expect(toggle.subtitle.contains("Turn this on"))
+
+        toggle.binding.wrappedValue = true
+        #expect(fixture.settings.antigravityPrioritizesExhaustedQuota == true)
+    }
+
+    @Test
     func `codex exposes open AI web extras toggle as default off opt in`() throws {
         let fixture = try self.makeSettingsFixture(suite: "ProviderSettingsDescriptorTests-codex-openai-toggle")
         let context = fixture.settingsContext(provider: .codex)

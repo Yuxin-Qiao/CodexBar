@@ -44,6 +44,9 @@ extension UsageStore {
     {
         let effectivePreference = self.settings.menuBarMetricPreference(for: provider, snapshot: snapshot)
         if provider == .antigravity, effectivePreference == .automatic {
+            guard self.settings.antigravityPrioritizesExhaustedQuota else {
+                return Self.mostConstrainedAntigravityQuotaSummaryWindow(snapshot: snapshot)
+            }
             return MenuBarMetricWindowResolver.antigravityQuotaRankingWindow(snapshot: snapshot, now: now)
         }
         if provider == .codex {
@@ -54,7 +57,8 @@ extension UsageStore {
             provider: provider,
             snapshot: snapshot,
             supportsAverage: self.settings.menuBarMetricSupportsAverage(for: provider),
-            now: now)
+            now: now,
+            antigravityPrioritizesExhaustedQuota: self.settings.antigravityPrioritizesExhaustedQuota)
     }
 
     private func shouldExcludeFromHighestUsage(
@@ -92,6 +96,11 @@ extension UsageStore {
             return percents.allSatisfy { $0 >= 100 }
         }
         if provider == .antigravity, effectivePreference == .automatic {
+            guard self.settings.antigravityPrioritizesExhaustedQuota else {
+                let windows = Self.antigravityRenderedQuotaSummaryWindows(snapshot: snapshot)
+                guard !windows.isEmpty else { return true }
+                return windows.allSatisfy { $0.usedPercent >= 100 }
+            }
             if let allFamiliesBlocked = MenuBarMetricWindowResolver
                 .antigravityQuotaSummaryFamiliesAreAllBlocked(snapshot: snapshot)
             {
@@ -128,5 +137,27 @@ extension UsageStore {
         }
 
         return true
+    }
+
+    private nonisolated static func mostConstrainedAntigravityQuotaSummaryWindow(
+        snapshot: UsageSnapshot)
+        -> RateWindow?
+    {
+        let windows = self.antigravityRenderedQuotaSummaryWindows(snapshot: snapshot)
+        guard !windows.isEmpty else { return nil }
+
+        let usableWindows = windows.filter { $0.usedPercent < 100 }
+        if let maxUsable = usableWindows.max(by: { $0.usedPercent < $1.usedPercent }) {
+            return maxUsable
+        }
+        return windows.max(by: { $0.usedPercent < $1.usedPercent })
+    }
+
+    private nonisolated static func antigravityRenderedQuotaSummaryWindows(
+        snapshot: UsageSnapshot)
+        -> [RateWindow]
+    {
+        let windows = IconRemainingResolver.resolvedWindows(snapshot: snapshot, style: .antigravity)
+        return [windows.primary, windows.secondary].compactMap(\.self)
     }
 }

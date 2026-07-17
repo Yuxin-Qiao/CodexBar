@@ -229,7 +229,7 @@ struct MenuBarMetricWindowResolverTests {
     }
 
     @Test
-    func `automatic metric prioritizes exhausted antigravity five hour bucket even when another remains usable`() {
+    func `automatic metric skips exhausted antigravity five hour bucket when another remains usable`() {
         let snapshot = UsageSnapshot(
             primary: RateWindow(usedPercent: 30, windowMinutes: 10080, resetsAt: nil, resetDescription: nil),
             secondary: RateWindow(usedPercent: 67, windowMinutes: 10080, resetsAt: nil, resetDescription: nil),
@@ -258,6 +258,42 @@ struct MenuBarMetricWindowResolverTests {
             provider: .antigravity,
             snapshot: snapshot,
             supportsAverage: false)
+
+        #expect(window?.remainingPercent == 29)
+        #expect(window?.windowMinutes == 300)
+    }
+
+    @Test
+    func `automatic metric prioritizes exhausted antigravity five hour bucket when enabled`() {
+        let snapshot = UsageSnapshot(
+            primary: RateWindow(usedPercent: 30, windowMinutes: 10080, resetsAt: nil, resetDescription: nil),
+            secondary: RateWindow(usedPercent: 67, windowMinutes: 10080, resetsAt: nil, resetDescription: nil),
+            extraRateWindows: [
+                NamedRateWindow(
+                    id: "antigravity-quota-summary-gemini-5h",
+                    title: "Gemini Models Five Hour Limit",
+                    window: RateWindow(usedPercent: 71, windowMinutes: 300, resetsAt: nil, resetDescription: nil)),
+                NamedRateWindow(
+                    id: "antigravity-quota-summary-gemini-weekly",
+                    title: "Gemini Models Weekly Limit",
+                    window: RateWindow(usedPercent: 30, windowMinutes: 10080, resetsAt: nil, resetDescription: nil)),
+                NamedRateWindow(
+                    id: "antigravity-quota-summary-3p-5h",
+                    title: "Claude and GPT models Five Hour Limit",
+                    window: RateWindow(usedPercent: 100, windowMinutes: 300, resetsAt: nil, resetDescription: nil)),
+                NamedRateWindow(
+                    id: "antigravity-quota-summary-3p-weekly",
+                    title: "Claude and GPT models Weekly Limit",
+                    window: RateWindow(usedPercent: 67, windowMinutes: 10080, resetsAt: nil, resetDescription: nil)),
+            ],
+            updatedAt: Date())
+
+        let window = MenuBarMetricWindowResolver.rateWindow(
+            preference: .automatic,
+            provider: .antigravity,
+            snapshot: snapshot,
+            supportsAverage: false,
+            antigravityPrioritizesExhaustedQuota: true)
 
         #expect(window?.remainingPercent == 0)
         #expect(window?.windowMinutes == 300)
@@ -303,6 +339,7 @@ struct MenuBarMetricWindowResolverTests {
     @Test
     func `automatic metric ignores exhausted antigravity quota summary with unsupported cadence`() {
         // An unknown future cadence (e.g. 60-min) should not win when 5h and weekly lanes are usable.
+        // The cadence filter only applies to the opt-in exhausted-first ranking.
         let snapshot = UsageSnapshot(
             primary: RateWindow(usedPercent: 30, windowMinutes: 10080, resetsAt: nil, resetDescription: nil),
             secondary: RateWindow(usedPercent: 67, windowMinutes: 10080, resetsAt: nil, resetDescription: nil),
@@ -326,7 +363,8 @@ struct MenuBarMetricWindowResolverTests {
             preference: .automatic,
             provider: .antigravity,
             snapshot: snapshot,
-            supportsAverage: false)
+            supportsAverage: false,
+            antigravityPrioritizesExhaustedQuota: true)
 
         // The exhausted 60-min unsupported bucket must be ignored; winner should be the 5h window at 50%.
         #expect(window?.usedPercent == 50)
@@ -571,13 +609,13 @@ struct MenuBarMetricWindowResolverTests {
     }
 
     @Test
-    func `antigravity blocking recognizes session cadence IDs`() {
+    func `antigravity blocking recognizes five hour cadence ID variants`() {
         let snapshot = UsageSnapshot(
             primary: nil,
             secondary: nil,
             extraRateWindows: [
                 NamedRateWindow(
-                    id: "antigravity-quota-summary-gemini-session",
+                    id: "antigravity-quota-summary-gemini-5h",
                     title: "Gemini Session",
                     window: RateWindow(
                         usedPercent: 100,
@@ -664,7 +702,8 @@ struct MenuBarMetricWindowResolverTests {
             provider: .antigravity,
             snapshot: snapshot,
             supportsAverage: false,
-            now: now)
+            now: now,
+            antigravityPrioritizesExhaustedQuota: true)
 
         #expect(window?.resetsAt == claudeReset)
         #expect(window?.usedPercent == 90)
@@ -704,7 +743,8 @@ struct MenuBarMetricWindowResolverTests {
             provider: .antigravity,
             snapshot: snapshot,
             supportsAverage: false,
-            now: now)
+            now: now,
+            antigravityPrioritizesExhaustedQuota: true)
 
         #expect(window?.resetsAt == geminiReset)
         #expect(window?.usedPercent == 100)
@@ -760,7 +800,8 @@ struct MenuBarMetricWindowResolverTests {
             provider: .antigravity,
             snapshot: snapshot,
             supportsAverage: false,
-            now: now)
+            now: now,
+            antigravityPrioritizesExhaustedQuota: true)
 
         #expect(window?.resetsAt == geminiWeeklyReset)
         #expect(window?.usedPercent == 90)
@@ -800,7 +841,8 @@ struct MenuBarMetricWindowResolverTests {
             provider: .antigravity,
             snapshot: snapshot,
             supportsAverage: false,
-            now: now)
+            now: now,
+            antigravityPrioritizesExhaustedQuota: true)
 
         // The 60-min unsupported window must be ignored; winner should be the 5h window
         #expect(window?.resetsAt == geminiReset)
@@ -839,7 +881,8 @@ struct MenuBarMetricWindowResolverTests {
             provider: .antigravity,
             snapshot: snapshot,
             supportsAverage: false,
-            now: now)
+            now: now,
+            antigravityPrioritizesExhaustedQuota: true)
 
         #expect(window?.resetsAt == futureReset)
     }

@@ -13,7 +13,8 @@ enum MenuBarMetricWindowResolver {
         provider: UsageProvider,
         snapshot: UsageSnapshot?,
         supportsAverage: Bool,
-        now: Date = Date())
+        now: Date = Date(),
+        antigravityPrioritizesExhaustedQuota: Bool = false)
         -> RateWindow?
     {
         guard let snapshot else { return nil }
@@ -26,17 +27,20 @@ enum MenuBarMetricWindowResolver {
             return Self.requestedWindow(
                 provider: provider,
                 snapshot: snapshot,
-                lanes: Self.tertiaryOrder(for: provider))
+                lanes: Self.tertiaryOrder(for: provider),
+                antigravityPrioritizesExhaustedQuota: antigravityPrioritizesExhaustedQuota)
         case .primary:
             return Self.requestedWindow(
                 provider: provider,
                 snapshot: snapshot,
-                lanes: Self.primaryOrder(for: provider))
+                lanes: Self.primaryOrder(for: provider),
+                antigravityPrioritizesExhaustedQuota: antigravityPrioritizesExhaustedQuota)
         case .secondary:
             return Self.requestedWindow(
                 provider: provider,
                 snapshot: snapshot,
-                lanes: Self.secondaryOrder(for: provider))
+                lanes: Self.secondaryOrder(for: provider),
+                antigravityPrioritizesExhaustedQuota: antigravityPrioritizesExhaustedQuota)
         case .primaryAndSecondary:
             // Claude accounts that only expose an enterprise/extra-usage spend limit have no real
             // session/weekly lanes; surface the spend limit (as `.automatic` does) instead of an empty
@@ -51,7 +55,11 @@ enum MenuBarMetricWindowResolver {
         case .average:
             return Self.averageWindow(provider: provider, snapshot: snapshot, supportsAverage: supportsAverage)
         case .automatic:
-            return Self.automaticWindow(provider: provider, snapshot: snapshot, now: now)
+            return Self.automaticWindow(
+                provider: provider,
+                snapshot: snapshot,
+                now: now,
+                antigravityPrioritizesExhaustedQuota: antigravityPrioritizesExhaustedQuota)
         }
     }
 
@@ -105,16 +113,27 @@ enum MenuBarMetricWindowResolver {
         return RateWindow(usedPercent: usedPercent, windowMinutes: nil, resetsAt: nil, resetDescription: nil)
     }
 
-    private static func automaticWindow(provider: UsageProvider, snapshot: UsageSnapshot, now: Date) -> RateWindow? {
+    private static func automaticWindow(
+        provider: UsageProvider,
+        snapshot: UsageSnapshot,
+        now: Date,
+        antigravityPrioritizesExhaustedQuota: Bool) -> RateWindow?
+    {
         if provider == .antigravity {
-            if let window = antigravityQuotaRankingWindow(snapshot: snapshot, now: now) {
+            if let window = self.antigravityAutomaticQuotaSummaryWindow(
+                snapshot: snapshot,
+                now: now,
+                prioritizesExhaustedQuota: antigravityPrioritizesExhaustedQuota)
+            {
                 return window
             }
             return self.mostConstrainedWindow(
                 primary: snapshot.primary,
                 secondary: snapshot.secondary,
                 tertiary: snapshot.tertiary)
-                ?? self.mostConstrainedAntigravityLegacyExtraWindow(snapshot: snapshot)
+                ?? self.mostConstrainedAntigravityLegacyExtraWindow(
+                    snapshot: snapshot,
+                    prioritizesExhaustedQuota: antigravityPrioritizesExhaustedQuota)
         }
         if provider == .perplexity {
             return snapshot.automaticPerplexityWindow()
@@ -158,8 +177,39 @@ enum MenuBarMetricWindowResolver {
     static let antigravityQuotaSummaryWindowIDPrefix = "antigravity-quota-summary-"
     static let antigravityCompactFallbackWindowIDPrefix = "antigravity-compact-fallback-"
 
-    /// Automatic menu-bar presentation and highest-usage ranking use the same binding quota
-    /// lane, so an exhausted quota cannot be hidden by a less-used lane that resets sooner.
+    /// Antigravity automatic quota-summary selection. The default usable-wins behavior prefers the
+    /// most-used lane that still has quota and only falls back to an exhausted lane when every lane
+    /// is dry. The opt-in exhausted-first behavior instead ranks the recognized five-hour/weekly
+    /// lanes so an exhausted lane wins, breaking usage ties by the nearest upcoming reset.
+    static func antigravityAutomaticQuotaSummaryWindow(
+        snapshot: UsageSnapshot,
+        now: Date = Date(),
+        prioritizesExhaustedQuota: Bool) -> RateWindow?
+    {
+        if prioritizesExhaustedQuota {
+            return self.antigravityQuotaRankingWindow(snapshot: snapshot, now: now)
+        }
+        return self.antigravityUsableFirstQuotaSummaryWindow(snapshot: snapshot)
+    }
+
+    /// Default Antigravity quota-summary selection: most-used lane that still has quota, falling
+    /// back to the most-used lane when every reported lane is exhausted.
+    private static func antigravityUsableFirstQuotaSummaryWindow(snapshot: UsageSnapshot) -> RateWindow? {
+        let windows = snapshot.extraRateWindows?
+            .filter { $0.usageKnown && $0.id.hasPrefix(Self.antigravityQuotaSummaryWindowIDPrefix) }
+            .map(\.window) ?? []
+        guard !windows.isEmpty else { return nil }
+
+        let usableWindows = windows.filter { $0.usedPercent < 100 }
+        if let maxUsable = usableWindows.max(by: { $0.usedPercent < $1.usedPercent }) {
+            return maxUsable
+        }
+        return windows.max(by: { $0.usedPercent < $1.usedPercent })
+    }
+
+    /// Opt-in exhausted-first ranking: automatic menu-bar presentation and highest-usage ranking
+    /// use the same binding quota lane, so an exhausted quota cannot be hidden by a less-used lane
+    /// that resets sooner.
     static func antigravityQuotaRankingWindow(snapshot: UsageSnapshot, now: Date = Date()) -> RateWindow? {
         let windows = Self.antigravityQuotaSummaryWindows(snapshot: snapshot)
         return windows.max { lhs, rhs in
@@ -210,7 +260,7 @@ enum MenuBarMetricWindowResolver {
         guard id.hasPrefix(self.antigravityQuotaSummaryWindowIDPrefix) else { return nil }
         let suffix = id.dropFirst(Self.antigravityQuotaSummaryWindowIDPrefix.count)
         if namedWindow.window.windowMinutes == 300 {
-            for cadenceSuffix in ["-5h", "-5-hour", "-five-hour", "-session"] where suffix.hasSuffix(cadenceSuffix) {
+            for cadenceSuffix in ["-5h", "-5-hour", "-five-hour"] where suffix.hasSuffix(cadenceSuffix) {
                 return String(suffix.dropLast(cadenceSuffix.count))
             }
         }
@@ -220,23 +270,35 @@ enum MenuBarMetricWindowResolver {
         return nil
     }
 
-    private static func mostConstrainedAntigravityLegacyExtraWindow(snapshot: UsageSnapshot) -> RateWindow? {
+    private static func mostConstrainedAntigravityLegacyExtraWindow(
+        snapshot: UsageSnapshot,
+        prioritizesExhaustedQuota: Bool = false) -> RateWindow?
+    {
         let windows = snapshot.extraRateWindows?
             .filter {
                 $0.usageKnown && $0.id.hasPrefix(Self.antigravityCompactFallbackWindowIDPrefix)
             }
             .map(\.window) ?? []
+        if !prioritizesExhaustedQuota {
+            let usableWindows = windows.filter { $0.usedPercent < 100 }
+            if let maxUsable = usableWindows.max(by: { $0.usedPercent < $1.usedPercent }) {
+                return maxUsable
+            }
+        }
         return windows.max(by: { $0.usedPercent < $1.usedPercent })
     }
 
     private static func requestedWindow(
         provider: UsageProvider,
         snapshot: UsageSnapshot,
-        lanes: [Lane]) -> RateWindow?
+        lanes: [Lane],
+        antigravityPrioritizesExhaustedQuota: Bool = false) -> RateWindow?
     {
         self.window(in: snapshot, following: lanes)
             ?? (provider == .antigravity
-                ? self.mostConstrainedAntigravityLegacyExtraWindow(snapshot: snapshot)
+                ? self.mostConstrainedAntigravityLegacyExtraWindow(
+                    snapshot: snapshot,
+                    prioritizesExhaustedQuota: antigravityPrioritizesExhaustedQuota)
                 : nil)
     }
 

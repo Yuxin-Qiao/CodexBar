@@ -358,7 +358,8 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
             provider: provider,
             snapshot: snapshot,
             supportsAverage: self.settings.menuBarMetricSupportsAverage(for: provider),
-            now: now)
+            now: now,
+            antigravityPrioritizesExhaustedQuota: self.settings.antigravityPrioritizesExhaustedQuota)
     }
 
     private func codexMenuBarMetricWindow(snapshot: UsageSnapshot?, now: Date) -> RateWindow? {

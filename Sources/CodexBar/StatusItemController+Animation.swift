@@ -612,7 +612,8 @@ extension StatusItemController {
             preference: preference,
             provider: provider,
             snapshot: snapshot,
-            supportsAverage: self.settings.menuBarMetricSupportsAverage(for: provider))
+            supportsAverage: self.settings.menuBarMetricSupportsAverage(for: provider),
+            antigravityPrioritizesExhaustedQuota: self.settings.antigravityPrioritizesExhaustedQuota)
     }
 
     func menuBarCreditsRemainingForIcon(

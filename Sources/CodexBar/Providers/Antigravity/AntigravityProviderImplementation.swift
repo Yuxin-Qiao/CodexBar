@@ -9,6 +9,7 @@ struct AntigravityProviderImplementation: ProviderImplementation {
     @MainActor
     func observeSettings(_ settings: SettingsStore) {
         _ = settings.antigravityUsageDataSource
+        _ = settings.antigravityPrioritizesExhaustedQuota
         _ = settings.tokenAccountsData(for: .antigravity)
     }
 
@@ -51,6 +52,34 @@ struct AntigravityProviderImplementation: ProviderImplementation {
                     let label = context.store.sourceLabel(for: .antigravity)
                     return label == "auto" ? nil : label
                 }),
+        ]
+    }
+
+    @MainActor
+    func settingsToggles(context: ProviderSettingsContext) -> [ProviderSettingsToggleDescriptor] {
+        let exhaustedFirstBinding = Binding(
+            get: { context.settings.antigravityPrioritizesExhaustedQuota },
+            set: { enabled in
+                context.settings.antigravityPrioritizesExhaustedQuota = enabled
+            })
+        return [
+            ProviderSettingsToggleDescriptor(
+                id: "antigravity-prioritize-exhausted-quota",
+                title: "Prioritize exhausted quota",
+                subtitle: [
+                    "Optional.",
+                    "Turn this on to surface the Antigravity quota lane that hit its limit,",
+                    "even when another model family still has quota; ties break by the nearest reset.",
+                    "When off, the menu bar and highest-usage ranking prefer",
+                    "the most-used lane that remains usable.",
+                ].joined(separator: " "),
+                binding: exhaustedFirstBinding,
+                statusText: nil,
+                actions: [],
+                isVisible: nil,
+                onChange: nil,
+                onAppDidBecomeActive: nil,
+                onAppearWhenEnabled: nil),
         ]
     }
 
