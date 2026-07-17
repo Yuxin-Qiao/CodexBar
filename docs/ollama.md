@@ -54,8 +54,21 @@ Ollama API keys currently do not expire, but they can be revoked from the key se
 
 ### “No Ollama session cookie found”
 
-Sign in at `https://ollama.com/signin` in Chrome, then refresh CodexBar.
-If your active session is only in Safari (or another browser), use **Cookie source → Manual** and paste a cookie header.
+Sign in at `https://ollama.com/signin` in Chrome, Safari, or Brave, then refresh CodexBar.
+
+Common causes that all surface as this same error:
+
+- **Safari**: CodexBar needs **Full Disk Access** to read Safari cookies.
+- **Brave / Chrome / Edge**: a prior Chrome Safe Storage Keychain denial pauses **all Chromium-family** automatic imports for about 6 hours. Safari and Firefox are unaffected. Use app **Refresh**, wait out the cooldown, or paste a manual cookie.
+- **No recognized session cookie**: sign out/in again, or confirm the Cookie header includes a session cookie such as `wos-session` / `__Secure-session`.
+
+Quick diagnose (redacted CLI + cooldown dump):
+
+```bash
+./Scripts/diagnose_ollama_cookies.sh
+```
+
+If your active session is only in Safari (or another browser) and Auto import still fails, use **Cookie source → Manual** and paste a cookie header.
 
 ### “Ollama session cookie expired”
 

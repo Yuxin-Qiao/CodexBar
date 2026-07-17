@@ -174,6 +174,17 @@ public enum BrowserCookieAccessGate {
         }
     }
 
+    /// End of the Chromium-family cookie cooldown, if still active.
+    public static func chromiumFamilyCooldownEnd(now: Date = Date()) -> Date? {
+        self.lock.withLock { state in
+            self.loadIfNeeded(&state)
+            guard let blockedUntil = state.chromiumFamilyDeniedUntil, blockedUntil > now else {
+                return nil
+            }
+            return blockedUntil
+        }
+    }
+
     public static func recordIfNeeded(_ error: Error, now: Date = Date()) {
         guard let error = error as? BrowserCookieError else { return }
         guard case .accessDenied = error else { return }
@@ -325,6 +336,10 @@ extension BrowserCookieClient {
 }
 #else
 public enum BrowserCookieAccessGate {
+    public static func chromiumFamilyCooldownEnd(now _: Date = Date()) -> Date? {
+        nil
+    }
+
     public static func shouldAttempt(_ browser: Browser, now: Date = Date()) -> Bool {
         true
     }

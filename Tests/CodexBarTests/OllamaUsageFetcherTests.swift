@@ -1,13 +1,22 @@
 import Foundation
 import Testing
 @testable import CodexBarCore
+#if os(macOS)
+import SweetCookieKit
+#endif
 
 struct OllamaUsageFetcherTests {
     @Test
     func `session authentication errors point to current recovery page`() {
         #expect(OllamaUsageError.notLoggedIn.errorDescription?.contains("https://ollama.com/signin") == true)
         #expect(OllamaUsageError.invalidCredentials.errorDescription?.contains("https://ollama.com/signin") == true)
-        #expect(OllamaUsageError.noSessionCookie.errorDescription?.contains("https://ollama.com/signin") == true)
+        #expect(OllamaUsageError.noSessionCookie().errorDescription?.contains("https://ollama.com/signin") == true)
+        #expect(OllamaUsageError.noSessionCookie().errorDescription?.contains("Full Disk Access") == true)
+        #expect(OllamaUsageError.noSessionCookie().errorDescription?.contains("Manual") == true)
+        #expect(
+            OllamaUsageError.noSessionCookie(details: "Grant CodexBar Full Disk Access to read Safari cookies.")
+                .errorDescription?
+                .contains("Grant CodexBar Full Disk Access") == true)
     }
 
     @Test
@@ -59,8 +68,11 @@ struct OllamaUsageFetcherTests {
                 override: nil,
                 manualCookieMode: true)
             Issue.record("Expected OllamaUsageError.noSessionCookie")
-        } catch OllamaUsageError.noSessionCookie {
-            // expected
+        } catch let error as OllamaUsageError {
+            guard case .noSessionCookie = error else {
+                Issue.record("Expected OllamaUsageError.noSessionCookie, got \(error)")
+                return
+            }
         } catch {
             Issue.record("Expected OllamaUsageError.noSessionCookie, got \(error)")
         }
@@ -81,8 +93,11 @@ struct OllamaUsageFetcherTests {
                 override: "analytics_session_id=noise; theme=dark",
                 manualCookieMode: true)
             Issue.record("Expected OllamaUsageError.noSessionCookie")
-        } catch OllamaUsageError.noSessionCookie {
-            // expected
+        } catch let error as OllamaUsageError {
+            guard case .noSessionCookie = error else {
+                Issue.record("Expected OllamaUsageError.noSessionCookie, got \(error)")
+                return
+            }
         } catch {
             Issue.record("Expected OllamaUsageError.noSessionCookie, got \(error)")
         }
@@ -159,8 +174,11 @@ struct OllamaUsageFetcherTests {
         do {
             _ = try OllamaCookieImporter.selectSessionInfo(from: candidates)
             Issue.record("Expected OllamaUsageError.noSessionCookie")
-        } catch OllamaUsageError.noSessionCookie {
-            // expected
+        } catch let error as OllamaUsageError {
+            guard case .noSessionCookie = error else {
+                Issue.record("Expected OllamaUsageError.noSessionCookie, got \(error)")
+                return
+            }
         } catch {
             Issue.record("Expected OllamaUsageError.noSessionCookie, got \(error)")
         }
@@ -231,8 +249,11 @@ struct OllamaUsageFetcherTests {
                 allowFallbackBrowsers: false,
                 loadFallbackCandidates: { fallback })
             Issue.record("Expected OllamaUsageError.noSessionCookie")
-        } catch OllamaUsageError.noSessionCookie {
-            // expected
+        } catch let error as OllamaUsageError {
+            guard case .noSessionCookie = error else {
+                Issue.record("Expected OllamaUsageError.noSessionCookie, got \(error)")
+                return
+            }
         } catch {
             Issue.record("Expected OllamaUsageError.noSessionCookie, got \(error)")
         }
@@ -271,6 +292,76 @@ struct OllamaUsageFetcherTests {
             allowFallbackBrowsers: true,
             loadFallbackCandidates: { fallback })
         #expect(selected.sourceLabel == "Comet Profile")
+    }
+
+    @Test
+    func `cookie importer surfaces safari access denial`() throws {
+        let detection = BrowserDetection(
+            homeDirectory: "/tmp/codexbar-ollama-browser-test",
+            cacheTTL: 0,
+            fileExists: { _ in false },
+            directoryContents: { _ in nil })
+
+        do {
+            _ = try OllamaCookieImporter.importSessions(
+                browserDetection: detection,
+                preferredBrowsers: [.safari],
+                allowFallbackBrowsers: false,
+                loadRecords: { browser, _, _ in
+                    throw BrowserCookieError.accessDenied(
+                        browser: browser,
+                        details: "Grant CodexBar Full Disk Access to read Safari cookies.")
+                })
+            Issue.record("Expected Safari access denial")
+        } catch let error as OllamaUsageError {
+            #expect(error.localizedDescription.contains("Full Disk Access"))
+            #expect(error.localizedDescription.contains("Safari") ||
+                error.localizedDescription.contains("Grant CodexBar"))
+        }
+    }
+
+    @Test
+    func `cookie importer surfaces keychain denial details`() throws {
+        let detection = BrowserDetection(
+            homeDirectory: "/tmp/codexbar-ollama-browser-test",
+            cacheTTL: 0,
+            fileExists: { _ in false },
+            directoryContents: { _ in nil })
+
+        do {
+            _ = try OllamaCookieImporter.importSessions(
+                browserDetection: detection,
+                preferredBrowsers: [.safari],
+                allowFallbackBrowsers: false,
+                loadRecords: { browser, _, _ in
+                    throw BrowserCookieError.accessDenied(
+                        browser: browser,
+                        details: "Chrome Safe Storage Keychain access was denied.")
+                })
+            Issue.record("Expected keychain access denial")
+        } catch let error as OllamaUsageError {
+            #expect(error.localizedDescription.contains("Keychain") ||
+                error.localizedDescription.contains("Safe Storage"))
+        }
+    }
+
+    @Test
+    func `diagnose cookie import mentions cooldown and preferred browsers`() {
+        BrowserCookieAccessGate.resetForTesting()
+        defer { BrowserCookieAccessGate.resetForTesting() }
+
+        let detection = BrowserDetection(
+            homeDirectory: "/tmp/codexbar-ollama-diagnose-test",
+            cacheTTL: 0,
+            fileExists: { _ in false },
+            directoryContents: { _ in nil })
+        let report = OllamaCookieImporter.diagnoseCookieImport(
+            browserDetection: detection,
+            preferredBrowsers: [.chrome, .safari],
+            allowFallbackBrowsers: true)
+        #expect(report.contains("Preferred browsers: Chrome, Safari"))
+        #expect(report.contains("Chromium-family cooldown"))
+        #expect(report.contains("Import result:"))
     }
 
     private static func makeCookie(

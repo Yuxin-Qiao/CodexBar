@@ -39,25 +39,34 @@ public enum OllamaUsageError: LocalizedError, Sendable {
     case apiUnauthorized
     case parseFailed(String)
     case networkError(String)
-    case noSessionCookie
+    case noSessionCookie(details: String? = nil)
 
     public var errorDescription: String? {
         switch self {
         case .missingAPIKey:
-            "Missing Ollama API key. Set apiKey in ~/.codexbar/config.json or OLLAMA_API_KEY."
+            return "Missing Ollama API key. Set apiKey in ~/.codexbar/config.json or OLLAMA_API_KEY."
         case .notLoggedIn:
-            "Not signed in to Ollama. Please sign in at \(Self.signInURL)."
+            return "Not signed in to Ollama. Please sign in at \(Self.signInURL)."
         case .invalidCredentials:
-            "Ollama session cookie expired. Please sign in again at \(Self.signInURL)."
+            return "Ollama session cookie expired. Please sign in again at \(Self.signInURL)."
         case .apiUnauthorized:
-            "Ollama API key is invalid or revoked."
+            return "Ollama API key is invalid or revoked."
         case let .parseFailed(message):
-            "Could not parse Ollama usage: \(message)"
+            return "Could not parse Ollama usage: \(message)"
         case let .networkError(message):
-            "Ollama request failed: \(message)"
-        case .noSessionCookie:
-            "No Ollama session cookie found. Please sign in at \(Self.signInURL) in your browser."
+            return "Ollama request failed: \(message)"
+        case let .noSessionCookie(details):
+            let base = "No Ollama session cookie found. Please sign in at \(Self.signInURL) in Chrome, Safari, or Brave, " +
+                "or paste a Cookie header under Cookie source → Manual. " +
+                "Safari needs Full Disk Access; Chromium browsers may be paused for 6 hours after a Safe Storage denial."
+            guard let details, !details.isEmpty else { return base }
+            return "\(base) \(details)"
         }
+    }
+
+    static func isNoSessionCookie(_ error: Error) -> Bool {
+        if case .noSessionCookie = error as? OllamaUsageError { return true }
+        return false
     }
 }
 
@@ -85,30 +94,79 @@ public enum OllamaCookieImporter {
         }
     }
 
+    struct CollectionResult {
+        var candidates: [SessionInfo] = []
+        var accessDeniedHints: [String] = []
+        var failureDetails: [String] = []
+    }
+
     public static func importSessions(
         browserDetection: BrowserDetection,
         preferredBrowsers: [Browser] = [.chrome],
         allowFallbackBrowsers: Bool = false,
         logger: ((String) -> Void)? = nil) throws -> [SessionInfo]
     {
+        try self.importSessions(
+            browserDetection: browserDetection,
+            preferredBrowsers: preferredBrowsers,
+            allowFallbackBrowsers: allowFallbackBrowsers,
+            logger: logger,
+            loadRecords: { browserSource, query, log in
+                try Self.cookieClient.codexBarRecords(
+                    matching: query,
+                    in: browserSource,
+                    logger: log)
+            })
+    }
+
+    static func importSessions(
+        browserDetection: BrowserDetection,
+        preferredBrowsers: [Browser] = [.chrome],
+        allowFallbackBrowsers: Bool = false,
+        logger: ((String) -> Void)? = nil,
+        loadRecords: (Browser, BrowserCookieQuery, ((String) -> Void)?) throws
+            -> [BrowserCookieStoreRecords]) throws -> [SessionInfo]
+    {
         let log: (String) -> Void = { msg in logger?("[ollama-cookie] \(msg)") }
+        self.logImportPlan(
+            browserDetection: browserDetection,
+            preferredBrowsers: preferredBrowsers,
+            logger: log)
+
         let preferredSources = preferredBrowsers.isEmpty
             ? ollamaCookieImportOrder.cookieImportCandidates(using: browserDetection)
             : preferredBrowsers.cookieImportCandidates(using: browserDetection)
-        let preferredCandidates = self.collectSessionInfo(from: preferredSources, logger: log)
-        return try self.selectSessionInfosWithFallback(
-            preferredCandidates: preferredCandidates,
-            allowFallbackBrowsers: allowFallbackBrowsers,
-            loadFallbackCandidates: {
-                guard !preferredBrowsers.isEmpty else { return [] }
-                let fallbackSources = self.fallbackBrowserSources(
-                    browserDetection: browserDetection,
-                    excluding: preferredSources)
-                guard !fallbackSources.isEmpty else { return [] }
-                log("No recognized Ollama session in preferred browsers; trying fallback import order")
-                return self.collectSessionInfo(from: fallbackSources, logger: log)
-            },
-            logger: log)
+        var diagnostics = self.collectSessionInfo(
+            from: preferredSources,
+            logger: log,
+            loadRecords: loadRecords)
+
+        do {
+            return try self.selectSessionInfos(from: diagnostics.candidates, logger: log)
+        } catch let error where OllamaUsageError.isNoSessionCookie(error) {
+            guard allowFallbackBrowsers, !preferredBrowsers.isEmpty else {
+                throw self.missingSessionError(diagnostics: diagnostics)
+            }
+            let fallbackSources = self.fallbackBrowserSources(
+                browserDetection: browserDetection,
+                excluding: preferredSources)
+            guard !fallbackSources.isEmpty else {
+                throw self.missingSessionError(diagnostics: diagnostics)
+            }
+            log("No recognized Ollama session in preferred browsers; trying fallback import order")
+            let fallback = self.collectSessionInfo(
+                from: fallbackSources,
+                logger: log,
+                loadRecords: loadRecords)
+            diagnostics.candidates = fallback.candidates
+            diagnostics.accessDeniedHints.append(contentsOf: fallback.accessDeniedHints)
+            diagnostics.failureDetails.append(contentsOf: fallback.failureDetails)
+            do {
+                return try self.selectSessionInfos(from: fallback.candidates, logger: log)
+            } catch let fallbackError where OllamaUsageError.isNoSessionCookie(fallbackError) {
+                throw self.missingSessionError(diagnostics: diagnostics)
+            }
+        }
     }
 
     public static func importSession(
@@ -123,9 +181,77 @@ public enum OllamaCookieImporter {
             allowFallbackBrowsers: allowFallbackBrowsers,
             logger: logger)
         guard let first = sessions.first else {
-            throw OllamaUsageError.noSessionCookie
+            throw OllamaUsageError.noSessionCookie()
         }
         return first
+    }
+
+    /// Redacted per-browser cookie-import report for troubleshooting.
+    public static func diagnoseCookieImport(
+        browserDetection: BrowserDetection,
+        preferredBrowsers: [Browser] = [.chrome],
+        allowFallbackBrowsers: Bool = true,
+        now: Date = Date()) -> String
+    {
+        var lines: [String] = []
+        lines.append("=== Ollama Cookie Import Diagnosis ===")
+        lines.append("Preferred browsers: \(preferredBrowsers.map(\.displayName).joined(separator: ", "))")
+        lines.append("Fallback enabled: \(allowFallbackBrowsers)")
+
+        if let cooldownEnd = BrowserCookieAccessGate.chromiumFamilyCooldownEnd(now: now) {
+            let remaining = max(0, Int(cooldownEnd.timeIntervalSince(now)))
+            lines.append(
+                "Chromium-family cooldown active until \(ISO8601DateFormatter().string(from: cooldownEnd)) " +
+                    "(\(remaining)s remaining). Brave/Chrome/Edge automatic imports are paused; Safari/Firefox are not.")
+        } else {
+            lines.append("Chromium-family cooldown: inactive")
+        }
+
+        let planned = preferredBrowsers.isEmpty ? ollamaCookieImportOrder : preferredBrowsers
+        let installed = planned.filter { browserDetection.isCookieSourceAvailable($0) }
+        let attemptable = installed.cookieImportCandidates(using: browserDetection)
+        let skipped = installed.filter { !BrowserCookieAccessGate.shouldAttempt($0) }
+        lines.append("Installed preferred sources: \(installed.map(\.displayName).joined(separator: ", ").ifEmpty("none"))")
+        lines.append("Attemptable preferred sources: \(attemptable.map(\.displayName).joined(separator: ", ").ifEmpty("none"))")
+        if !skipped.isEmpty {
+            lines.append(
+                "Skipped preferred sources (cooldown/keychain): " +
+                    skipped.map(\.displayName).joined(separator: ", "))
+        }
+
+        if allowFallbackBrowsers {
+            let fallbackInstalled = ollamaCookieImportOrder.filter {
+                browserDetection.isCookieSourceAvailable($0) && !installed.contains($0)
+            }
+            let fallbackAttemptable = fallbackInstalled.cookieImportCandidates(using: browserDetection)
+            let fallbackSkipped = fallbackInstalled.filter { !BrowserCookieAccessGate.shouldAttempt($0) }
+            lines.append(
+                "Fallback attemptable: " +
+                    fallbackAttemptable.map(\.displayName).joined(separator: ", ").ifEmpty("none"))
+            if !fallbackSkipped.isEmpty {
+                lines.append(
+                    "Fallback skipped (cooldown/keychain): " +
+                        fallbackSkipped.map(\.displayName).joined(separator: ", "))
+            }
+        }
+
+        var importLines: [String] = []
+        do {
+            _ = try self.importSessions(
+                browserDetection: browserDetection,
+                preferredBrowsers: preferredBrowsers,
+                allowFallbackBrowsers: allowFallbackBrowsers,
+                logger: { importLines.append($0) })
+            lines.append("Import result: found recognized Ollama session cookie")
+        } catch {
+            lines.append("Import result: \(error.localizedDescription)")
+        }
+        if !importLines.isEmpty {
+            lines.append("")
+            lines.append("Importer log:")
+            lines.append(contentsOf: importLines)
+        }
+        return lines.joined(separator: "\n")
     }
 
     static func selectSessionInfos(
@@ -144,7 +270,7 @@ public enum OllamaCookieImporter {
             }
         }
         guard !recognized.isEmpty else {
-            throw OllamaUsageError.noSessionCookie
+            throw OllamaUsageError.noSessionCookie()
         }
         return recognized
     }
@@ -154,7 +280,7 @@ public enum OllamaCookieImporter {
         logger: ((String) -> Void)? = nil) throws -> SessionInfo
     {
         guard let first = try self.selectSessionInfos(from: candidates, logger: logger).first else {
-            throw OllamaUsageError.noSessionCookie
+            throw OllamaUsageError.noSessionCookie()
         }
         return first
     }
@@ -170,7 +296,7 @@ public enum OllamaCookieImporter {
         }
         do {
             return try self.selectSessionInfos(from: preferredCandidates, logger: logger)
-        } catch OllamaUsageError.noSessionCookie {
+        } catch let error where OllamaUsageError.isNoSessionCookie(error) {
             let fallbackCandidates = loadFallbackCandidates()
             return try self.selectSessionInfos(from: fallbackCandidates, logger: logger)
         }
@@ -188,7 +314,7 @@ public enum OllamaCookieImporter {
             loadFallbackCandidates: loadFallbackCandidates,
             logger: logger).first
         else {
-            throw OllamaUsageError.noSessionCookie
+            throw OllamaUsageError.noSessionCookie()
         }
         return first
     }
@@ -202,35 +328,92 @@ public enum OllamaCookieImporter {
             .filter { !tried.contains($0) }
     }
 
+    private static func logImportPlan(
+        browserDetection: BrowserDetection,
+        preferredBrowsers: [Browser],
+        logger: (String) -> Void)
+    {
+        let planned = preferredBrowsers.isEmpty ? ollamaCookieImportOrder : preferredBrowsers
+        let installed = planned.filter { browserDetection.isCookieSourceAvailable($0) }
+        let attemptable = installed.cookieImportCandidates(using: browserDetection)
+        logger("Preferred cookie import candidates: \(attemptable.map(\.displayName).joined(separator: ", ").ifEmpty("none"))")
+        let skipped = installed.filter { !BrowserCookieAccessGate.shouldAttempt($0) }
+        if !skipped.isEmpty {
+            logger(
+                "Skipping browsers during cooldown/keychain pause: " +
+                    skipped.map(\.displayName).joined(separator: ", "))
+        }
+        if let cooldownEnd = BrowserCookieAccessGate.chromiumFamilyCooldownEnd() {
+            logger(
+                "Chromium-family cooldown active until " +
+                    ISO8601DateFormatter().string(from: cooldownEnd))
+        }
+    }
+
     private static func collectSessionInfo(
         from browserSources: [Browser],
-        logger: @escaping (String) -> Void) -> [SessionInfo]
+        logger: @escaping (String) -> Void,
+        loadRecords: (Browser, BrowserCookieQuery, ((String) -> Void)?) throws
+            -> [BrowserCookieStoreRecords]) -> CollectionResult
     {
-        var candidates: [SessionInfo] = []
+        var result = CollectionResult()
         for browserSource in browserSources {
             do {
                 let query = BrowserCookieQuery(domains: self.cookieDomains)
-                let sources = try Self.cookieClient.codexBarRecords(
-                    matching: query,
-                    in: browserSource,
-                    logger: logger)
+                let sources = try loadRecords(browserSource, query, logger)
                 for source in sources where !source.records.isEmpty {
                     let cookies = BrowserCookieClient.makeHTTPCookies(source.records, origin: query.origin)
                     guard !cookies.isEmpty else { continue }
-                    candidates.append(SessionInfo(cookies: cookies, sourceLabel: source.label))
+                    result.candidates.append(SessionInfo(cookies: cookies, sourceLabel: source.label))
                 }
+            } catch let error as BrowserCookieError {
+                BrowserCookieAccessGate.recordIfNeeded(error)
+                if let hint = error.accessDeniedHint {
+                    result.accessDeniedHints.append(hint)
+                }
+                let detail = "\(browserSource.displayName): \(error.localizedDescription)"
+                result.failureDetails.append(detail)
+                logger("\(browserSource.displayName) cookie import failed: \(error.localizedDescription)")
             } catch {
                 BrowserCookieAccessGate.recordIfNeeded(error)
+                let detail = "\(browserSource.displayName): \(error.localizedDescription)"
+                result.failureDetails.append(detail)
                 logger("\(browserSource.displayName) cookie import failed: \(error.localizedDescription)")
             }
         }
-        return candidates
+        return result
+    }
+
+    private static func missingSessionError(diagnostics: CollectionResult) -> OllamaUsageError {
+        var parts: [String] = []
+        let hints = Array(Set(diagnostics.accessDeniedHints)).sorted()
+        parts.append(contentsOf: hints)
+        let hintBlob = hints.joined(separator: " ")
+        let uniqueFailures = Array(Set(diagnostics.failureDetails)).sorted().filter { failure in
+            // Prefer the shorter access-denied hint when the same text is also in "Browser: …".
+            !hints.contains { failure.hasSuffix($0) } && (hintBlob.isEmpty || !failure.contains(hintBlob))
+        }
+        parts.append(contentsOf: uniqueFailures)
+        if let cooldownEnd = BrowserCookieAccessGate.chromiumFamilyCooldownEnd() {
+            parts.append(
+                "Chromium-family cookie imports are paused until " +
+                    "\(ISO8601DateFormatter().string(from: cooldownEnd)) " +
+                    "(Safari is unaffected; use app Refresh or Manual cookie paste).")
+        }
+        let details = parts.joined(separator: " ")
+        return .noSessionCookie(details: details.isEmpty ? nil : details)
     }
 
     private static func containsRecognizedSessionCookie(in cookies: [HTTPCookie]) -> Bool {
         cookies.contains { cookie in
             isRecognizedOllamaSessionCookieName(cookie.name)
         }
+    }
+}
+
+private extension String {
+    func ifEmpty(_ fallback: String) -> String {
+        self.isEmpty ? fallback : self
     }
 }
 #endif
@@ -340,7 +523,7 @@ public struct OllamaUsageFetcher: Sendable {
                     }
                 })
         } catch ProviderCandidateRetryRunnerError.noCandidates {
-            throw OllamaUsageError.noSessionCookie
+            throw OllamaUsageError.noSessionCookie()
         } catch {
             throw Self.surfacedError(from: error)
         }
@@ -388,7 +571,7 @@ public struct OllamaUsageFetcher: Sendable {
             CookieCandidate(cookieHeader: session.cookieHeader, sourceLabel: session.sourceLabel)
         }
         #else
-        throw OllamaUsageError.noSessionCookie
+        throw OllamaUsageError.noSessionCookie()
         #endif
     }
 
@@ -400,6 +583,14 @@ public struct OllamaUsageFetcher: Sendable {
         var lines: [String] = []
         lines.append("=== Ollama Debug Probe @ \(stamp) ===")
         lines.append("")
+
+        #if os(macOS)
+        if !manualCookieMode, cookieHeaderOverride == nil {
+            lines.append(
+                OllamaCookieImporter.diagnoseCookieImport(browserDetection: self.browserDetection))
+            lines.append("")
+        }
+        #endif
 
         do {
             let cookieHeader = try await self.resolveCookieHeader(
@@ -473,7 +664,7 @@ public struct OllamaUsageFetcher: Sendable {
         logger?("[ollama] Using cookies from \(session.sourceLabel)")
         return session.cookieHeader
         #else
-        throw OllamaUsageError.noSessionCookie
+        throw OllamaUsageError.noSessionCookie()
         #endif
     }
 
@@ -485,13 +676,13 @@ public struct OllamaUsageFetcher: Sendable {
         if let override = CookieHeaderNormalizer.normalize(override) {
             guard hasRecognizedOllamaSessionCookie(in: override) else {
                 logger?("[ollama] Manual cookie header missing recognized session cookie")
-                throw OllamaUsageError.noSessionCookie
+                throw OllamaUsageError.noSessionCookie()
             }
             logger?("[ollama] Using manual cookie header")
             return override
         }
         if manualCookieMode {
-            throw OllamaUsageError.noSessionCookie
+            throw OllamaUsageError.noSessionCookie()
         }
         return nil
     }
