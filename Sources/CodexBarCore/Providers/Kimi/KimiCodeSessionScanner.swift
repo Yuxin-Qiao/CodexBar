@@ -29,8 +29,16 @@ public enum KimiCodeSessionScanner {
         var cacheCreation = 0
         var output = 0
         var requests = 0
+        var cost = 0.0
+        var sawCost = false
 
-        mutating func add(_ usage: WireEvent.Usage) -> Bool {
+        mutating func add(
+            _ usage: WireEvent.Usage,
+            model: String,
+            pricingDate: Date,
+            modelsDevCatalog: ModelsDevCatalog?,
+            modelsDevCacheRoot: URL?) -> Bool
+        {
             guard let input = Self.valid(usage.inputOther),
                   let cacheRead = Self.valid(usage.inputCacheRead),
                   let cacheCreation = Self.valid(usage.inputCacheCreation),
@@ -48,6 +56,16 @@ public enum KimiCodeSessionScanner {
             self.cacheCreation = nextCacheCreation
             self.output = nextOutput
             self.requests = nextRequests
+            if let cost = Self.estimatedCost(
+                model: model,
+                usage: usage,
+                pricingDate: pricingDate,
+                modelsDevCatalog: modelsDevCatalog,
+                modelsDevCacheRoot: modelsDevCacheRoot)
+            {
+                self.cost += cost
+                self.sawCost = true
+            }
             return true
         }
 
@@ -65,6 +83,10 @@ public enum KimiCodeSessionScanner {
             self.cacheCreation = nextCacheCreation
             self.output = nextOutput
             self.requests = nextRequests
+            if other.sawCost {
+                self.cost += other.cost
+                self.sawCost = true
+            }
             return true
         }
 
@@ -86,6 +108,42 @@ public enum KimiCodeSessionScanner {
             let result = lhs.addingReportingOverflow(rhs)
             return result.overflow ? nil : result.partialValue
         }
+
+        private static func estimatedCost(
+            model: String,
+            usage: WireEvent.Usage,
+            pricingDate: Date,
+            modelsDevCatalog: ModelsDevCatalog?,
+            modelsDevCacheRoot: URL?) -> Double?
+        {
+            guard let input = self.valid(usage.inputOther),
+                  let cacheRead = self.valid(usage.inputCacheRead),
+                  let cacheCreation = self.valid(usage.inputCacheCreation),
+                  let output = self.valid(usage.output)
+            else {
+                return nil
+            }
+            return CostUsagePricing.claudeCostUSD(
+                model: self.pricingModelID(model),
+                inputTokens: input,
+                cacheReadInputTokens: cacheRead,
+                cacheCreationInputTokens: cacheCreation,
+                outputTokens: output,
+                pricingDate: pricingDate,
+                modelsDevCatalog: modelsDevCatalog,
+                modelsDevCacheRoot: modelsDevCacheRoot)
+        }
+
+        private static func pricingModelID(_ model: String) -> String {
+            let bare = model.split(separator: "/", omittingEmptySubsequences: true).last
+                .map(String.init) ?? model
+            switch bare.lowercased() {
+            case "k3", "k3-256k":
+                return "kimi-k3"
+            default:
+                return bare
+            }
+        }
     }
 
     public static func scan(
@@ -93,7 +151,8 @@ public enum KimiCodeSessionScanner {
         fileManager: FileManager = .default,
         historyDays: Int = defaultHistoryDays,
         now: Date = Date(),
-        calendar: Calendar = .current) -> CostUsageTokenSnapshot?
+        calendar: Calendar = .current,
+        modelsDevCacheRoot: URL? = nil) -> CostUsageTokenSnapshot?
     {
         let days = max(1, historyDays)
         let home = KimiSettingsReader.kimiCodeHomeURL(environment: environment)
@@ -110,6 +169,7 @@ public enum KimiCodeSessionScanner {
         let start = calendar.date(byAdding: .day, value: -(days - 1), to: end) ?? end
         var values: [DayModelKey: TokenAccumulator] = [:]
         let decoder = JSONDecoder()
+        let modelsDevCatalog = CostUsagePricing.modelsDevCatalog(now: now, cacheRoot: modelsDevCacheRoot)
 
         while let url = enumerator.nextObject() as? URL {
             guard url.lastPathComponent == "wire.jsonl",
@@ -141,7 +201,13 @@ public enum KimiCodeSessionScanner {
                 guard day >= start, day <= end else { continue }
                 let key = DayModelKey(day: CostUsageLocalDay.key(from: day, calendar: calendar), model: rawModel)
                 var value = values[key] ?? TokenAccumulator()
-                guard value.add(usage) else { continue }
+                guard value.add(
+                    usage,
+                    model: rawModel,
+                    pricingDate: date,
+                    modelsDevCatalog: modelsDevCatalog,
+                    modelsDevCacheRoot: modelsDevCacheRoot)
+                else { continue }
                 values[key] = value
             }
         }
@@ -154,18 +220,24 @@ public enum KimiCodeSessionScanner {
             }
             var total = TokenAccumulator()
             var modelBreakdowns: [CostUsageDailyReport.ModelBreakdown] = []
+            var dayCost = 0.0
+            var daySawCost = false
             for (key, value) in models {
                 guard let modelTotal = value.total else { return nil }
                 guard total.merge(value) else { return nil }
                 modelBreakdowns.append(CostUsageDailyReport.ModelBreakdown(
                     modelName: key.model,
-                    costUSD: nil,
+                    costUSD: value.sawCost ? value.cost : nil,
                     totalTokens: modelTotal,
                     inputTokens: value.input,
                     cacheReadTokens: value.cacheRead,
                     cacheCreationTokens: value.cacheCreation,
                     outputTokens: value.output,
                     requestCount: value.requests))
+                if value.sawCost {
+                    dayCost += value.cost
+                    daySawCost = true
+                }
             }
             guard let totalTokens = total.total else { return nil }
             return CostUsageDailyReport.Entry(
@@ -176,12 +248,14 @@ public enum KimiCodeSessionScanner {
                 cacheCreationTokens: total.cacheCreation,
                 totalTokens: totalTokens,
                 requestCount: total.requests,
-                costUSD: nil,
+                costUSD: daySawCost ? dayCost : nil,
                 modelsUsed: modelBreakdowns.map(\.modelName),
                 modelBreakdowns: modelBreakdowns)
         }
         let totalTokens = self.sum(daily.compactMap(\.totalTokens))
         let totalRequests = self.sum(daily.compactMap(\.requestCount))
+        let totalCost = daily.compactMap(\.costUSD).reduce(0, +)
+        let sawCost = daily.contains { $0.costUSD != nil }
         guard let totalTokens, let totalRequests else { return nil }
 
         return CostUsageTokenSnapshot(
@@ -189,12 +263,13 @@ public enum KimiCodeSessionScanner {
             sessionCostUSD: nil,
             sessionRequests: nil,
             last30DaysTokens: totalTokens,
-            last30DaysCostUSD: nil,
+            last30DaysCostUSD: sawCost ? totalCost : nil,
             last30DaysRequests: totalRequests,
-            currencyCode: "XXX",
+            currencyCode: sawCost ? "USD" : "XXX",
             historyDays: days,
             historyCoverageIsEstablished: true,
             historyLabel: "Kimi Code CLI",
+            costSource: .estimated,
             daily: daily,
             updatedAt: now)
     }

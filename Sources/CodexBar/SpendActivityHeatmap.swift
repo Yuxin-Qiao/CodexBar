@@ -62,6 +62,19 @@ struct SpendActivitySeries {
     func date(at index: Int) -> Date? {
         self.calendar.date(byAdding: .day, value: index, to: self.start)
     }
+
+    /// Naive start-of-day for the first day of week column `week` (0 = oldest week).
+    func weekStartDate(at week: Int) -> Date? {
+        self.calendar.date(byAdding: .day, value: week * Self.dayCount, to: self.start)
+    }
+
+    /// Last day within week column `week` that is not in the future (for range tooltips).
+    func weekEndDate(at week: Int) -> Date? {
+        guard let startOfWeek = self.weekStartDate(at: week),
+              let endOfWeek = self.calendar.date(byAdding: .day, value: Self.dayCount - 1, to: startOfWeek)
+        else { return nil }
+        return min(endOfWeek, self.today)
+    }
 }
 
 enum SpendActivityLevels {
@@ -91,17 +104,28 @@ enum SpendActivityLevels {
         return weekly.map { sum += $0; return sum }
     }
 
-    /// Color for a daily level, blending accent toward the background (Codex's alpha ramp).
+    /// GitHub contribution-graph greens (light mode), as a tribute. Level 0 is the empty track.
     static func color(forLevel level: Int) -> Color {
-        // Alphas mirror Codex: empty ~0.14 (dark) and a 4-step active ramp.
-        let accent = Color.accentColor
         switch level {
-        case 4: return accent
-        case 3: return accent.opacity(0.68)
-        case 2: return accent.opacity(0.42)
-        case 1: return accent.opacity(0.22)
-        default: return Color(nsColor: .separatorColor).opacity(0.16)
+        case 4: self.rgb(0x216E39)
+        case 3: self.rgb(0x30A14E)
+        case 2: self.rgb(0x40C463)
+        case 1: self.rgb(0x9BE9A8)
+        default: self.rgb(0xEBEDF0)
         }
+    }
+
+    /// Uniform fill for the weekly/cumulative columns: no per-level shading — the trend is read
+    /// from the filled height, so a single mid-green keeps it clean. Empty cells use level 0.
+    static var uniformFill: Color {
+        rgb(0x40C463)
+    }
+
+    private static func rgb(_ hex: UInt32) -> Color {
+        Color(
+            red: Double((hex >> 16) & 0xFF) / 255,
+            green: Double((hex >> 8) & 0xFF) / 255,
+            blue: Double(hex & 0xFF) / 255)
     }
 }
 
@@ -155,12 +179,16 @@ struct SpendActivityHeatmapView: View {
                     SpendActivityDailyGrid(series: series)
                     self.dailyLegend
                 case .weekly:
-                    SpendActivityBarGrid(series: series, values: SpendActivityLevels.weeklyTotals(series.daily))
+                    SpendActivityWeekGrid(
+                        series: series,
+                        values: SpendActivityLevels.weeklyTotals(series.daily),
+                        cumulative: false)
                     self.barCaption(text: L("Each column = 1 week"))
                 case .cumulative:
-                    SpendActivityBarGrid(
+                    SpendActivityWeekGrid(
                         series: series,
-                        values: SpendActivityLevels.cumulativeTotals(SpendActivityLevels.weeklyTotals(series.daily)))
+                        values: SpendActivityLevels.cumulativeTotals(SpendActivityLevels.weeklyTotals(series.daily)),
+                        cumulative: true)
                     self.barCaption(text: L("Running total"))
                 }
             }
@@ -359,36 +387,120 @@ private struct SpendActivityDailyGrid: View {
     }
 }
 
-// MARK: - 每周 / 累计 柱状网格
+// MARK: - 每周 / 累计 方格矩阵（7×52，每列一周，Codex 方块风格 + tooltip）
 
-private struct SpendActivityBarGrid: View {
+/// A full 7×52 grid like the daily view, but each *column* is one week: every cell in the column
+/// shares that week's intensity, forming a colored column. Hovering a column shows a tooltip with
+/// the week's total (or the running total up to that week, when `cumulative` is set).
+private struct SpendActivityWeekGrid: View {
     let series: SpendActivitySeries
     let values: [Int]
+    let cumulative: Bool
 
     private let columns = SpendActivitySeries.weekCount
+    private let rows = SpendActivitySeries.dayCount
+
+    @State private var hoveredColumn: Int?
 
     var body: some View {
+        // Fill each column bottom-up to a height proportional to its value, so weekly shows
+        // per-week magnitude and cumulative reads as a rising slope. Filled cells share one
+        // uniform green (no per-level shading — the height carries the trend); the rest render
+        // as the empty track.
         let maxValue = self.values.max() ?? 0
-        VStack(alignment: .leading, spacing: 2) {
-            Canvas { context, size in
-                let pitch = size.width / CGFloat(self.values.count)
-                let barWidth = max(pitch * 0.6, 1.5)
-                for (index, value) in self.values.enumerated() {
-                    guard value > 0, maxValue > 0 else { continue }
-                    let height = size.height * CGFloat(value) / CGFloat(maxValue)
-                    let rect = CGRect(
-                        x: CGFloat(index) * pitch + (pitch - barWidth) / 2,
-                        y: size.height - height,
-                        width: barWidth,
-                        height: height)
-                    context.fill(
-                        RoundedRectangle(cornerRadius: 1.5, style: .continuous).path(in: rect),
-                        with: .color(Color.accentColor.opacity(0.78)))
+        HStack(alignment: .top, spacing: 4) {
+            Spacer().frame(width: 16) // align with the daily grid's weekday gutter
+            GeometryReader { geo in
+                let pitch = geo.size.width / CGFloat(self.columns)
+                let rowPitch = geo.size.height / CGFloat(self.rows)
+                let cell = max(min(pitch, rowPitch) - 1.5, 2)
+                Canvas { context, _ in
+                    let corner = min(cell * 0.22, 2.5)
+                    for col in 0..<self.columns {
+                        guard col < self.values.count, self.isVisible(col) else { continue }
+                        let value = self.values[col]
+                        // Number of filled cells (bottom-up) for this column.
+                        let filled = maxValue > 0
+                            ? Int((Double(value) / Double(maxValue) * Double(self.rows)).rounded())
+                            : 0
+                        for row in 0..<self.rows {
+                            // row 0 is the top; fill from the bottom row up.
+                            let isFilled = row >= self.rows - filled
+                            let rect = CGRect(
+                                x: CGFloat(col) * pitch + (pitch - cell) / 2,
+                                y: CGFloat(row) * rowPitch + (rowPitch - cell) / 2,
+                                width: cell,
+                                height: cell)
+                            context.fill(
+                                RoundedRectangle(cornerRadius: corner, style: .continuous).path(in: rect),
+                                with: .color(isFilled
+                                    ? SpendActivityLevels.uniformFill
+                                    : SpendActivityLevels.color(forLevel: 0)))
+                        }
+                    }
+                }
+                .overlay(alignment: .topLeading) {
+                    self.tooltip(in: geo.size, pitch: pitch)
+                }
+                .contentShape(Rectangle())
+                .onContinuousHover { phase in
+                    switch phase {
+                    case let .active(location):
+                        self.hoveredColumn = self.columnIndex(at: location, pitch: pitch)
+                    case .ended:
+                        self.hoveredColumn = nil
+                    }
                 }
             }
-            .frame(height: 90)
-            .frame(maxWidth: .infinity)
+            .aspectRatio(CGFloat(self.columns) / CGFloat(self.rows), contentMode: .fit)
         }
-        .padding(.leading, 20)
     }
+
+    /// Hide week columns that have not started yet (entirely in the future).
+    private func isVisible(_ col: Int) -> Bool {
+        guard let weekStart = self.series.weekStartDate(at: col) else { return false }
+        return weekStart <= self.series.today
+    }
+
+    private func columnIndex(at location: CGPoint, pitch: CGFloat) -> Int? {
+        let col = Int(location.x / pitch)
+        guard col >= 0, col < self.columns else { return nil }
+        return self.isVisible(col) ? col : nil
+    }
+
+    @ViewBuilder
+    private func tooltip(in size: CGSize, pitch: CGFloat) -> some View {
+        if let col = self.hoveredColumn,
+           col < self.values.count,
+           let weekStart = self.series.weekStartDate(at: col)
+        {
+            let tokens = self.values[col]
+            let anchorX = CGFloat(col) * pitch + pitch / 2
+            let flip = anchorX > size.width * 0.6
+            Text(self.tooltipText(tokens: tokens, weekStart: weekStart))
+                .font(.caption.weight(.medium))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .fixedSize()
+                .offset(x: flip ? anchorX - 180 : anchorX + 6, y: -30)
+                .allowsHitTesting(false)
+        }
+    }
+
+    private func tooltipText(tokens: Int, weekStart: Date) -> String {
+        let count = UsageFormatter.tokenCountString(tokens)
+        let date = Self.dayFormatter.string(from: weekStart)
+        if self.cumulative {
+            return String(format: L("Cumulative %@ tokens as of %@"), count, date)
+        }
+        return String(format: L("%@ tokens in the week of %@"), count, date)
+    }
+
+    private static let dayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter
+    }()
 }

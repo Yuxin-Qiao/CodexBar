@@ -1390,3 +1390,6 @@
 "Fr" = "ศ";
 "Estimated" = "โดยประมาณ";
 "No per-client model history" = "ไม่มีประวัติโมเดลต่อไคลเอนต์";
+
+"Cumulative %@ tokens as of %@" = "%@ โทเทนสะสมถึง %@";
+"%@ tokens in the week of %@" = "%@ โทเทนในสัปดาห์ของ %@";

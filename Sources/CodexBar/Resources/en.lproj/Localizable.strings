@@ -1266,7 +1266,7 @@
 "Spend unavailable" = "Spend unavailable";
 "Model breakdown unavailable" = "Model breakdown unavailable";
 "Local estimated history" = "Local estimated history";
-"Coverage" = "Coverage";
+"Coverage" = "Common complete coverage";
 "Estimated spend" = "Estimated spend";
 "Tracked tokens" = "Tracked tokens";
 "Subscriptions" = "Subscriptions";
@@ -1392,3 +1392,6 @@
 "Fr" = "Fr";
 "Estimated" = "Estimated";
 "No per-client model history" = "No per-client model history";
+
+"Cumulative %@ tokens as of %@" = "Cumulative %@ tokens as of %@";
+"%@ tokens in the week of %@" = "%@ tokens in the week of %@";

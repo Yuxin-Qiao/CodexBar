@@ -14,6 +14,11 @@ extension CostUsagePricing {
         let candidates: [(providerID: String, modelID: String)]
         if lower.hasPrefix("deepseek-") {
             candidates = [("deepseek", trimmed)]
+        } else if lower == "k3" || lower == "k3-256k" || lower == "kimi-k3" {
+            candidates = [
+                ("moonshotai", "kimi-k3"),
+                ("moonshotai-cn", "kimi-k3"),
+            ]
         } else if lower == "kimi-for-coding" {
             candidates = [
                 ("kimi-for-coding", trimmed),
@@ -50,6 +55,42 @@ extension CostUsagePricing {
                     cacheReadInputCostPerTokenAboveThreshold: lookup.pricing
                         .cacheReadInputCostPerTokenAboveThreshold)
             }
+        }
+
+        // Kimi's official API price on 2026-07-26 is $3/M uncached input, $0.30/M cached
+        // input, and $15/M output for kimi-k3. Keep a fallback because newly released models can
+        // precede the models.dev catalog; the catalog remains authoritative as soon as it contains
+        // the model. Source: https://www.kimi.com/help/kimi-api/api-pricing
+        if lower == "k3" || lower == "k3-256k" || lower == "kimi-k3" {
+            return ClaudePricing(
+                inputCostPerToken: 3 / 1_000_000,
+                outputCostPerToken: 15 / 1_000_000,
+                cacheCreationInputCostPerToken: 3 / 1_000_000,
+                cacheReadInputCostPerToken: 0.30 / 1_000_000,
+                thresholdTokens: nil,
+                inputCostPerTokenAboveThreshold: nil,
+                outputCostPerTokenAboveThreshold: nil,
+                cacheCreationInputCostPerTokenAboveThreshold: nil,
+                cacheReadInputCostPerTokenAboveThreshold: nil)
+        }
+
+        // MiniMax-M3 launched before every cached pricing catalog carried its pay-as-you-go row.
+        // Keep the official standard-tier API price as a fallback so local Token Plan usage stays
+        // priceable while offline or during catalog refresh. For requests whose input context
+        // (including cache hits) exceeds 512K, MiniMax doubles input, output, and cache-read rates.
+        // Source (accessed 2026-07-26):
+        // https://platform.minimax.io/subscribe/token-plan?tab=api-enterprise
+        if lower == "minimax-m3" {
+            return ClaudePricing(
+                inputCostPerToken: 0.30 / 1_000_000,
+                outputCostPerToken: 1.20 / 1_000_000,
+                cacheCreationInputCostPerToken: 0.30 / 1_000_000,
+                cacheReadInputCostPerToken: 0.06 / 1_000_000,
+                thresholdTokens: 512_000,
+                inputCostPerTokenAboveThreshold: 0.60 / 1_000_000,
+                outputCostPerTokenAboveThreshold: 2.40 / 1_000_000,
+                cacheCreationInputCostPerTokenAboveThreshold: 0.60 / 1_000_000,
+                cacheReadInputCostPerTokenAboveThreshold: 0.12 / 1_000_000)
         }
         return nil
     }

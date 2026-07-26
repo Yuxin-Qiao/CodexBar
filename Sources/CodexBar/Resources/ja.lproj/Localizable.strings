@@ -1387,3 +1387,6 @@
 "Fr" = "金";
 "Estimated" = "推定";
 "No per-client model history" = "クライアント別のモデル履歴なし";
+
+"Cumulative %@ tokens as of %@" = "%2$@ までの累計 %1$@ トークン";
+"%@ tokens in the week of %@" = "%2$@ の週に %1$@ トークン";

@@ -530,7 +530,7 @@ struct SpendModelsSection: View {
                     x: .value(L("Day"), point.day, unit: .day),
                     yStart: .value(self.chartPresentation.metric.title, point.stackStart),
                     yEnd: .value(self.chartPresentation.metric.title, point.stackEnd),
-                    width: .ratio(0.68))
+                    width: .ratio(0.56))
                     .foregroundStyle(by: .value(L("Models"), point.seriesName))
                     .accessibilityLabel(Text("\(point.seriesName), \(self.dayText(point.day))"))
                     .accessibilityValue(Text(self.metricText(point.value)))
@@ -556,9 +556,7 @@ struct SpendModelsSection: View {
             range: .plotDimension(startPadding: 10, endPadding: 30))
         .chartForegroundStyleScale(
             domain: self.presentation.series.map(\.name),
-            range: self.presentation.series.indices.map { index in
-                self.color(for: index)
-            })
+            range: self.presentation.series.map { self.modelColor(for: $0.id) })
         .chartLegend(.hidden)
         .chartXAxis {
             AxisMarks(values: self.xAxisDates) { value in
@@ -572,6 +570,8 @@ struct SpendModelsSection: View {
         }
         .chartYAxis {
             AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { value in
+                AxisGridLine()
+                    .foregroundStyle(Color.secondary.opacity(0.10))
                 AxisValueLabel {
                     if let amount = value.as(Double.self) {
                         Text(self.axisMetricText(amount))
@@ -579,6 +579,11 @@ struct SpendModelsSection: View {
                     }
                 }
             }
+        }
+        .chartPlotStyle { plotArea in
+            plotArea
+                .background(Color.primary.opacity(0.018))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .frame(height: 220)
         .accessibilityLabel(L("Models"))
@@ -607,14 +612,22 @@ struct SpendModelsSection: View {
     private var rankingContent: some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(SpendModelsRanking.visibleRows(self.presentation.rows, showsAll: self.showsAllModels)) { row in
-                HStack(spacing: 9) {
-                    RoundedRectangle(cornerRadius: 2, style: .continuous)
-                        .fill(self.color(for: row))
-                        .frame(width: 10, height: 10)
-                        .accessibilityHidden(true)
-                    Text(row.source.displayName)
-                        .font(.body)
-                        .lineLimit(1)
+                HStack(spacing: 10) {
+                    ZStack {
+                        Circle()
+                            .fill(self.color(for: row).opacity(0.13))
+                        SpendProviderIcon(provider: row.source.modelProvider, size: 14)
+                    }
+                    .frame(width: 26, height: 26)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(row.source.displayName)
+                            .font(.body)
+                            .lineLimit(1)
+                        Text(SpendProviderIdentity.displayName(for: row.source.modelProvider))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                     Spacer()
                     Text(self.rowDetail(row))
                         .font(.body)
@@ -646,13 +659,22 @@ struct SpendModelsSection: View {
     private func rowDetail(_ row: SpendModelsPresentation.Row) -> String {
         guard self.presentation.metric == .tokens else {
             guard let value = row.value else { return "—" }
-            let providers = row.source.providerNames.joined(separator: " · ")
             var parts = [self.metricText(value)]
-            if !providers.isEmpty { parts.append(providers) }
             if row.source.costIsEstimated { parts.append(L("estimated")) }
             return parts.joined(separator: " · ")
         }
-        return spendModelsRowDetailText(row)
+        guard let value = row.value else { return "—" }
+        if row.source.inputTokens != nil,
+           row.source.outputTokens != nil,
+           let inputTokens = row.source.inputTokens,
+           let outputTokens = row.source.outputTokens
+        {
+            return L(
+                "%@ in · %@ out",
+                UsageFormatter.tokenCountString(inputTokens),
+                UsageFormatter.tokenCountString(outputTokens))
+        }
+        return UsageFormatter.tokenCountString(Int(value.rounded()))
     }
 
     private func shareText(_ value: Double?) -> String {
@@ -670,7 +692,7 @@ struct SpendModelsSection: View {
             ForEach(points) { point in
                 HStack(spacing: 7) {
                     Circle()
-                        .fill(self.color(for: self.seriesIndex(point.seriesID)))
+                        .fill(self.modelColor(for: point.seriesID))
                         .frame(width: 8, height: 8)
                     Text(point.seriesName)
                     Spacer(minLength: 12)
@@ -732,32 +754,16 @@ struct SpendModelsSection: View {
         SpendModelsEnglishFormatter.dayText(day)
     }
 
-    private func color(for index: Int) -> Color {
-        let accentOpacities = [0.95, 0.76, 0.58, 0.42, 0.30]
-        if index < accentOpacities.count {
-            return Color.accentColor.opacity(accentOpacities[index])
-        }
-        let neutralOpacities = [0.30, 0.40, 0.50, 0.60, 0.70]
-        return Color(nsColor: .secondaryLabelColor)
-            .opacity(neutralOpacities[(index - accentOpacities.count) % neutralOpacities.count])
-    }
-
+    /// Brand color of the model's vendor, independent of whichever harness recorded the usage.
     private func color(for row: SpendModelsPresentation.Row) -> Color {
-        guard let index = self.presentation.series.firstIndex(where: { $0.id == row.id }) else {
-            return Color(nsColor: .tertiaryLabelColor).opacity(0.55)
-        }
-        return self.color(for: index)
+        SpendProviderColor.color(for: row.source.modelProvider)
     }
 
     private func modelColor(for id: String) -> Color {
-        guard let index = self.presentation.series.firstIndex(where: { $0.id == id }) else {
+        guard let row = self.presentation.rows.first(where: { $0.id == id }) else {
             return Color(nsColor: .tertiaryLabelColor).opacity(0.55)
         }
-        return self.color(for: index)
-    }
-
-    private func seriesIndex(_ id: String) -> Int {
-        self.presentation.series.firstIndex(where: { $0.id == id }) ?? 0
+        return self.color(for: row)
     }
 
     private func updateSelectedDay(location: CGPoint?, proxy: ChartProxy, geo: GeometryProxy) {

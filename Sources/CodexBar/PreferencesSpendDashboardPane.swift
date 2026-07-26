@@ -25,7 +25,8 @@ func spendDashboardRefreshFailureText(_ count: Int) -> String {
 }
 
 func spendDashboardCoverageText(covered: Int, requested: Int) -> String {
-    "\(L("Coverage")): \(codexBarLocalizedInteger(covered)) / \(codexBarLocalizedInteger(requested))"
+    "\(L("Coverage")): \(spendDashboardDayRangeText(covered)) · " +
+        "\(L("Time range")): \(spendDashboardDayRangeText(requested))"
 }
 
 enum SpendDashboardModelHistoryPresentation: Equatable {
@@ -151,10 +152,12 @@ struct SpendDashboardPane: View {
             }
         } else {
             let modelHostGroupID = self.controller.model.groups.first?.id
+            let subscriptionNames = self.dashboardSubscriptionNames
             ForEach(self.controller.model.groups) { group in
                 SpendCurrencySection(
                     group: group,
                     requestedDays: self.controller.model.requestedDays,
+                    subscriptionNames: subscriptionNames,
                     modelAnalysis: group.id == modelHostGroupID
                         ? self.controller.model.modelAnalysis(for: self.selectedModelDays)
                         : nil,
@@ -168,12 +171,24 @@ struct SpendDashboardPane: View {
         }
 
         if self.controller.failedSourceCount > 0 {
-            Label(
-                spendDashboardRefreshFailureText(self.controller.failedSourceCount),
-                systemImage: "exclamationmark.triangle.fill")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            SpendRefreshFailureNotice(
+                sourceNames: self.failedSourceNames,
+                refresh: { self.controller.refresh() })
         }
+    }
+
+    private var failedSourceNames: [String] {
+        self.controller.failedSourceIDs.map { sourceID in
+            if let codexName = self.configuration.codexAccountDisplayNames[sourceID] {
+                return codexName
+            }
+            let providerID = sourceID.split(separator: ":", maxSplits: 1).first.map(String.init) ?? sourceID
+            if let provider = UsageProvider(rawValue: providerID) {
+                return self.store.metadata(for: provider).displayName
+            }
+            return sourceID
+        }
+        .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
     private var provenance: some View {
@@ -206,10 +221,39 @@ struct SpendDashboardPane: View {
     private var sharePayload: ShareStatsPayload? {
         ShareStatsBuilder.make(
             model: self.controller.model,
-            subscriptionNames: self.subscriptionNames)
+            subscriptionNames: self.shareSubscriptionNames)
     }
 
-    private var subscriptionNames: [String: ShareStatsSubscriptionName] {
+    private var dashboardSubscriptionNames: [String: String] {
+        var names: [String: String] = [:]
+        let codexRowCount = self.controller.model.groups
+            .flatMap(\.providers)
+            .count { $0.provider == .codex }
+        for group in self.controller.model.groups {
+            for row in group.providers {
+                let snapshots: [UsageSnapshot?] = if row.provider == .codex,
+                                                     row.id.hasPrefix("codex:")
+                {
+                    [
+                        self.store.codexAccountSnapshots.first {
+                            row.id == "codex:\($0.id)"
+                        }?.snapshot,
+                        codexRowCount == 1 ? self.store.snapshot(for: .codex) : nil,
+                    ]
+                } else {
+                    [self.store.snapshot(for: row.provider)]
+                }
+                if let name = snapshots.lazy.compactMap({
+                    SpendSubscriptionPlan.from(snapshot: $0, provider: row.provider)
+                }).first {
+                    names[row.id] = name.displayName
+                }
+            }
+        }
+        return names
+    }
+
+    private var shareSubscriptionNames: [String: ShareStatsSubscriptionName] {
         var names: [String: ShareStatsSubscriptionName] = [:]
         let codexRowCount = self.controller.model.groups
             .flatMap(\.providers)
@@ -246,6 +290,7 @@ struct SpendDashboardPane: View {
 private struct SpendCurrencySection: View {
     let group: SpendDashboardModel.CurrencyGroup
     let requestedDays: Int
+    let subscriptionNames: [String: String]
     let modelAnalysis: SpendDashboardModel.ModelAnalysis?
     let modelChartDomain: ClosedRange<Date>?
     let activityAnalysis: SpendDashboardModel.ModelAnalysis?
@@ -288,7 +333,7 @@ private struct SpendCurrencySection: View {
                 }
             }
 
-            SpendProviderPanel(group: self.group)
+            SpendProviderPanel(group: self.group, subscriptionNames: self.subscriptionNames)
             if let modelAnalysis {
                 SpendModelsSection(
                     analysis: modelAnalysis,
@@ -323,6 +368,7 @@ private struct SpendSummaryValue: View {
 
 private struct SpendProviderPanel: View {
     let group: SpendDashboardModel.CurrencyGroup
+    let subscriptionNames: [String: String]
 
     var body: some View {
         SpendDashboardPanel {
@@ -338,7 +384,18 @@ private struct SpendProviderPanel: View {
                             .foregroundStyle(.tertiary)
                             .frame(width: 26, alignment: .leading)
                         SpendProviderIcon(provider: row.provider)
-                        Text(row.displayName).lineLimit(1)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(row.displayName)
+                                .lineLimit(1)
+                            if let subscriptionName = row.subscriptionName
+                                ?? self.subscriptionNames[row.id]
+                            {
+                                Text(subscriptionName)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
                         Spacer()
                         Text(row.totalCost.map {
                             UsageFormatter.currencyString($0, currencyCode: self.group.currencyCode)
@@ -392,8 +449,20 @@ private struct SpendDailyChart: View {
             dailyPoints: self.group.dailyPoints,
             aggregateTotal: self.group.totalCost)
         SpendDashboardPanel {
-            VStack(alignment: .leading, spacing: 12) {
-                Text(L("Daily estimated spend")).font(.headline)
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(L("Daily estimated spend")).font(.headline)
+                        if presentation.content == .chart {
+                            Text(
+                                "\(L("Active")) \(codexBarLocalizedInteger(presentation.dayCount)) · " +
+                                    "\(L("Total")) \(self.totalCostText)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer()
+                }
                 if presentation.content == .unavailable {
                     ContentUnavailableView(L("Spend unavailable"), systemImage: "chart.bar.xaxis")
                         .frame(maxWidth: .infinity, minHeight: 170)
@@ -403,21 +472,35 @@ private struct SpendDailyChart: View {
                             x: .value(L("Day"), point.day, unit: .day),
                             yStart: .value(L("Estimated spend"), point.stackStart),
                             yEnd: .value(L("Estimated spend"), point.stackEnd),
-                            width: .ratio(0.72))
+                            width: .ratio(0.52))
                             .foregroundStyle(by: .value(L("Provider"), point.providerName))
                             .accessibilityLabel(Text(self.pointAccessibilityLabel(point)))
                             .accessibilityValue(Text(UsageFormatter.currencyString(
                                 point.cost,
                                 currencyCode: self.group.currencyCode)))
                     }
-                    .chartXScale(domain: self.group.chartDomain)
+                    .chartXScale(domain: self.activeChartDomain)
                     .chartForegroundStyleScale(
                         domain: presentation.series.map(\.name),
                         range: presentation.series.map { self.providerColor($0.provider) })
-                    .chartLegend(position: .bottom, alignment: .leading, spacing: 8)
+                    .chartLegend(.hidden)
+                    .chartXAxis {
+                        AxisMarks(values: .automatic(desiredCount: 6)) { value in
+                            AxisGridLine()
+                                .foregroundStyle(Color.secondary.opacity(0.08))
+                            AxisTick()
+                                .foregroundStyle(Color.secondary.opacity(0.35))
+                            AxisValueLabel {
+                                if let date = value.as(Date.self) {
+                                    Text(date.formatted(self.axisDateFormat))
+                                }
+                            }
+                        }
+                    }
                     .chartYAxis {
                         AxisMarks(position: .leading) { value in
                             AxisGridLine()
+                                .foregroundStyle(Color.secondary.opacity(0.16))
                             AxisValueLabel {
                                 if let amount = value.as(Double.self) {
                                     Text(UsageFormatter.compactCurrencyString(
@@ -427,12 +510,59 @@ private struct SpendDailyChart: View {
                             }
                         }
                     }
-                    .frame(height: 170)
+                    .chartPlotStyle { plotArea in
+                        plotArea
+                            .background(Color.primary.opacity(0.018))
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+                    .frame(height: 188)
                     .accessibilityLabel(L("Daily estimated spend"))
                     .accessibilityValue(presentation.accessibilityValue)
+
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 118), spacing: 12, alignment: .leading)],
+                        alignment: .leading,
+                        spacing: 7)
+                    {
+                        ForEach(presentation.series, id: \.name) { series in
+                            HStack(spacing: 7) {
+                                SpendProviderIcon(provider: series.provider, size: 13)
+                                Text(series.name)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                    }
                 }
             }
         }
+    }
+
+    private var totalCostText: String {
+        UsageFormatter.currencyString(
+            self.group.dailyPoints.reduce(0) { $0 + $1.cost },
+            currencyCode: self.group.currencyCode)
+    }
+
+    private var activeChartDomain: ClosedRange<Date> {
+        guard let firstDay = self.group.dailyPoints.map(\.day).min(),
+              let lastDay = self.group.dailyPoints.map(\.day).max()
+        else { return self.group.chartDomain }
+        let calendar = Calendar.current
+        let paddedStart = calendar.date(byAdding: .day, value: -1, to: firstDay) ?? firstDay
+        let paddedEnd = calendar.date(byAdding: .day, value: 2, to: lastDay) ?? lastDay
+        let start = max(self.group.chartDomain.lowerBound, paddedStart)
+        let end = min(self.group.chartDomain.upperBound, max(paddedEnd, start))
+        return start...end
+    }
+
+    private var axisDateFormat: Date.FormatStyle {
+        let interval = self.activeChartDomain.upperBound.timeIntervalSince(self.activeChartDomain.lowerBound)
+        if interval <= 90 * 24 * 60 * 60 {
+            return .dateTime.month(.abbreviated).day().locale(codexBarLocalizedLocale())
+        }
+        return .dateTime.year().month(.abbreviated).locale(codexBarLocalizedLocale())
     }
 
     private func pointAccessibilityLabel(_ point: SpendDashboardModel.DailyPoint) -> String {
@@ -447,8 +577,40 @@ private struct SpendDailyChart: View {
     }
 }
 
-private struct SpendProviderIcon: View {
+private struct SpendRefreshFailureNotice: View {
+    let sourceNames: [String]
+    let refresh: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(spendDashboardRefreshFailureText(self.sourceNames.count))
+                    .font(.caption.weight(.semibold))
+                if !self.sourceNames.isEmpty {
+                    Text(self.sourceNames.joined(separator: " · "))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            Button(L("Refresh"), action: self.refresh)
+                .controlSize(.small)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(.orange.opacity(0.18))
+        }
+    }
+}
+
+struct SpendProviderIcon: View {
     let provider: UsageProvider
+    var size: CGFloat = 20
 
     var body: some View {
         Group {
@@ -458,7 +620,7 @@ private struct SpendProviderIcon: View {
                 Image(systemName: "circle.dotted")
             }
         }
-        .frame(width: 20, height: 20)
+        .frame(width: self.size, height: self.size)
         .accessibilityHidden(true)
     }
 }

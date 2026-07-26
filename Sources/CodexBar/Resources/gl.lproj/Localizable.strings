@@ -1386,3 +1386,6 @@
 "Fr" = "ve";
 "Estimated" = "Estimado";
 "No per-client model history" = "Sen historial de modelos por cliente";
+
+"Cumulative %@ tokens as of %@" = "%@ tokens acumulados ata %@";
+"%@ tokens in the week of %@" = "%@ tokens na semana do %@";

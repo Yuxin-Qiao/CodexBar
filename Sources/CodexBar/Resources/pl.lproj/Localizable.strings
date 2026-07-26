@@ -1390,3 +1390,6 @@
 "Fr" = "pt";
 "Estimated" = "Szacunkowo";
 "No per-client model history" = "Brak historii modeli na klienta";
+
+"Cumulative %@ tokens as of %@" = "Łącznie %@ tokenów do %@";
+"%@ tokens in the week of %@" = "%@ tokenów w tygodniu od %@";

@@ -1354,3 +1354,6 @@
 "Fr" = "금";
 "Estimated" = "추정";
 "No per-client model history" = "클이언트별 모델 기록 없음";
+
+"Cumulative %@ tokens as of %@" = "%2$@ 기준 누적 %1$@ 토큰";
+"%@ tokens in the week of %@" = "%2$@ 주에 %1$@ 토큰";

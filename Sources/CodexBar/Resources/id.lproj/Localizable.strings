@@ -1390,3 +1390,6 @@
 "Fr" = "Jum";
 "Estimated" = "Perkiraan";
 "No per-client model history" = "Tidak ada riwayat model per klien";
+
+"Cumulative %@ tokens as of %@" = "Kumulatif %@ token hingga %@";
+"%@ tokens in the week of %@" = "%@ token dalam minggu %@";

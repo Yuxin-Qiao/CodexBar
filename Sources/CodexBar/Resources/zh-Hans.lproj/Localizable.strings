@@ -1237,7 +1237,7 @@
 "Spend unavailable" = "支出数据不可用";
 "Model breakdown unavailable" = "模型明细不可用";
 "Local estimated history" = "本地估算历史";
-"Coverage" = "覆盖范围";
+"Coverage" = "共同完整覆盖";
 "Estimated spend" = "估算支出";
 "Tracked tokens" = "已跟踪 token";
 "Subscriptions" = "订阅";
@@ -1363,3 +1363,6 @@
 "Fr" = "五";
 "Estimated" = "估算";
 "No per-client model history" = "暂无按工具划分的模型历史";
+
+"Cumulative %@ tokens as of %@" = "截至 %2$@ 累计 %1$@ 个 Token";
+"%@ tokens in the week of %@" = "%2$@ 当周使用了 %1$@ 个 Token";

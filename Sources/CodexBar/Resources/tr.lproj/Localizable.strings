@@ -1388,3 +1388,6 @@
 "Fr" = "Cu";
 "Estimated" = "Tahmini";
 "No per-client model history" = "İstemci başına model geçmişi yok";
+
+"Cumulative %@ tokens as of %@" = "%@ tarihine kadar toplam %@ token";
+"%@ tokens in the week of %@" = "%@ haftasında %@ token";

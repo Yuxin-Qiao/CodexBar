@@ -7,6 +7,7 @@ struct SpendDashboardModel: Equatable, Sendable {
         let provider: UsageProvider
         let displayName: String
         let modelProviderName: String
+        let subscriptionName: String?
         let snapshot: CostUsageTokenSnapshot
 
         /// Origin of this source's cost figures (provider-billed vs locally estimated).
@@ -19,12 +20,14 @@ struct SpendDashboardModel: Equatable, Sendable {
             provider: UsageProvider,
             displayName: String,
             modelProviderName: String? = nil,
+            subscriptionName: String? = nil,
             snapshot: CostUsageTokenSnapshot)
         {
             self.id = id ?? provider.rawValue
             self.provider = provider
             self.displayName = displayName
             self.modelProviderName = modelProviderName ?? displayName
+            self.subscriptionName = subscriptionName
             self.snapshot = snapshot
         }
     }
@@ -34,6 +37,7 @@ struct SpendDashboardModel: Equatable, Sendable {
         let rank: Int
         let provider: UsageProvider
         let displayName: String
+        var subscriptionName: String?
         let totalTokens: Int?
         let totalCost: Double?
         let coveredDayCount: Int
@@ -94,6 +98,7 @@ struct SpendDashboardModel: Equatable, Sendable {
     struct ModelAnalysisRow: Identifiable, Equatable, Sendable {
         let id: String
         let displayName: String
+        let modelProvider: UsageProvider
         let rawModelNames: [String]
         let providers: [UsageProvider]
         let providerNames: [String]
@@ -114,6 +119,7 @@ struct SpendDashboardModel: Equatable, Sendable {
         init(
             id: String,
             displayName: String,
+            modelProvider: UsageProvider? = nil,
             rawModelNames: [String],
             providers: [UsageProvider],
             providerNames: [String],
@@ -129,6 +135,9 @@ struct SpendDashboardModel: Equatable, Sendable {
         {
             self.id = id
             self.displayName = displayName
+            self.modelProvider = modelProvider ?? SpendProviderIdentity.modelProvider(
+                rawNames: rawModelNames,
+                fallbackProviders: providers)
             self.rawModelNames = rawModelNames
             self.providers = providers
             self.providerNames = providerNames
@@ -479,7 +488,15 @@ extension SpendDashboardModel {
         let summaries = inputs.map { input in
             Self.inputSummary(input: input, bounds: bounds, calendar: calendar)
         }
-        let providers = Self.providerRows(summaries)
+        // "By subscription" shows which vendor the user actually paid, so re-attribute each source's
+        // usage to its billing vendor (Codex driving MiniMax, Claude Code as a third-party harness,
+        // …) before ranking. The per-model breakdown, stacked chart and analysis keep the original
+        // per-tool attribution.
+        let billingInputs = SpendBillingAttribution.attribute(inputs)
+        let billingSummaries = billingInputs.map { input in
+            Self.inputSummary(input: input, bounds: bounds, calendar: calendar)
+        }
+        let providers = Self.providerRows(billingSummaries)
         let completeModelSummaries = summaries.filter { summary in
             guard summary.totalCost != nil else { return false }
             return Self.modelSummary(summaries: [summary]).completeness == .complete
@@ -489,15 +506,21 @@ extension SpendDashboardModel {
         let modelHistoryCompleteness = completeModelSummaries.count == summaries.count
             ? ModelHistoryCompleteness.complete
             : ModelHistoryCompleteness.incomplete
-        let dailyPoints = Self.dailyPoints(summaries: summaries)
+        // The spend chart answers the same billing question as "By subscription". Its series must
+        // therefore be the vendor that owns the quota, not the harness that emitted the log.
+        let dailyPoints = Self.dailyPoints(summaries: billingSummaries)
         return CurrencyGroup(
             currencyCode: currencyCode,
             providers: providers,
             models: modelSummary.rows,
             modelAnalysis: modelAnalysis,
             dailyPoints: dailyPoints,
-            totalTokens: Self.completeIntSum(providers.map(\.totalTokens)),
-            totalCost: Self.completeCostSum(providers.map(\.totalCost)),
+            // "Tracked tokens" is the subtotal we actually parsed, not a completeness assertion.
+            // A source without token detail must not erase known tokens from every other source.
+            // This mirrors Tokscale's aggregation: parsed token buckets always sum independently
+            // of whether every model/source can also be priced.
+            totalTokens: Self.availableIntSum(providers.map(\.totalTokens)),
+            totalCost: Self.availableCostSum(providers.map(\.totalCost)),
             coveredDayCount: Self.commonCoverageDayCount(summaries: summaries, calendar: calendar),
             chartDomain: Self.chartDomain(bounds: bounds, calendar: calendar),
             modelHistoryCompleteness: modelHistoryCompleteness)
@@ -542,15 +565,22 @@ extension SpendDashboardModel {
         let invalidCostHistory = hasInvalidCostHistory || !costAggregateIsConsistent
         // Daily-sum fallback: when the provider's aggregate cost figure uses a different window or
         // accounting than the local per-day logs (so the strict consistency check fails), fall back
-        // to summing the per-day costs instead of voiding the whole provider. This keeps the spend
-        // figure available as long as every in-range day was individually priceable.
+        // to summing the per-day costs instead of voiding the whole provider.
+        //
+        // The fallback sums only the days that were individually priceable. A day whose events all
+        // lack a cost figure (e.g. Cursor usage events that omit `totalCents`) yields a nil
+        // `entry.costUSD`; that single unpriceable day must not void the spend total for the whole
+        // window — the priceable days still carry a meaningful subtotal, matching how the model
+        // breakdown ("By tool") already aggregates them. The incomplete coverage is still surfaced
+        // via `hasInvalidCostHistory` / `modelHistoryCompleteness`.
         let dailyCostSum = Self.completeCostSum(entries.map { Self.validCost($0.entry.costUSD) })
+        let availableDailyCostSum = Self.availableCostSum(entries.map { Self.validCost($0.entry.costUSD) })
         let totalCost: Double? = if !invalidCostHistory {
             entries.isEmpty
                 ? (coveredDayCount > 0 && hasCompleteCostHistory ? 0 : nil)
                 : dailyCostSum
-        } else if !hasInvalidCostHistory, dailyCostSum != nil {
-            dailyCostSum
+        } else if !hasInvalidCostHistory {
+            availableDailyCostSum
         } else {
             nil
         }
@@ -581,6 +611,7 @@ extension SpendDashboardModel {
                     rank: rank + 1,
                     provider: entry.element.input.provider,
                     displayName: entry.element.input.displayName,
+                    subscriptionName: entry.element.input.subscriptionName,
                     totalTokens: entry.element.totalTokens,
                     totalCost: entry.element.totalCost,
                     coveredDayCount: entry.element.coveredDayCount)
@@ -1346,6 +1377,23 @@ extension SpendDashboardModel {
     private static func completeCostSum(_ values: [Double?]) -> Double? {
         guard values.allSatisfy({ $0 != nil }) else { return nil }
         return self.safeCostSum(values.compactMap(\.self))
+    }
+
+    /// Sums the providers that *have* a cost figure, ignoring those without one (e.g. a provider
+    /// with no local cost history). One cost-less provider must not void the whole currency's
+    /// spend total; it is still surfaced individually as "unavailable". Returns nil only when no
+    /// provider contributes a cost.
+    private static func availableCostSum(_ values: [Double?]) -> Double? {
+        let present = values.compactMap(\.self)
+        guard !present.isEmpty else { return nil }
+        return self.safeCostSum(present)
+    }
+
+    /// Sums the token values that were actually observed. Missing source totals remain visible on
+    /// their individual rows, but do not turn the dashboard-wide "Tracked tokens" subtotal into
+    /// an em dash.
+    private static func availableIntSum(_ values: [Int?]) -> Int? {
+        self.safeIntSum(values.compactMap(\.self))
     }
 
     private static func safeIntSum(_ values: [Int]) -> Int? {

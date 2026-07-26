@@ -1,0 +1,91 @@
+import CodexBarCore
+import Foundation
+#if canImport(SQLite3)
+import SQLite3
+#elseif canImport(CSQLite3)
+import CSQLite3
+#endif
+import Testing
+
+#if canImport(SQLite3) || canImport(CSQLite3)
+struct MiniMaxSessionScannerTests {
+    @Test
+    func `scanner prices MiniMax M3 even when the models catalog is empty`() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MiniMaxSessionScannerTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let database = root.appendingPathComponent("v2/sqlite/runtime-state.sqlite")
+        try FileManager.default.createDirectory(
+            at: database.deletingLastPathComponent(),
+            withIntermediateDirectories: true)
+        try Self.createDatabase(at: database)
+
+        let now = Date(timeIntervalSince1970: 1_785_033_600) // 2026-07-26 UTC
+        let cacheRoot = root.appendingPathComponent("empty-model-pricing-cache", isDirectory: true)
+        let snapshot = try #require(MiniMaxSessionScanner.scan(
+            environment: [MiniMaxSessionScanner.homeEnvironmentKey: root.path],
+            historyDays: 30,
+            now: now,
+            calendar: Self.calendar,
+            modelsDevCacheRoot: cacheRoot))
+
+        #expect(snapshot.currencyCode == "USD")
+        #expect(snapshot.costSource == .estimated)
+        #expect(snapshot.last30DaysTokens == 350)
+        #expect(snapshot.last30DaysRequests == 1)
+        #expect(abs((snapshot.last30DaysCostUSD ?? 0) - 0.000_102) < 0.000_000_001)
+        let breakdown = try #require(snapshot.daily.first?.modelBreakdowns?.first)
+        #expect(breakdown.modelName == "minimax/MiniMax-M3")
+        #expect(breakdown.reasoningTokens == 20)
+        #expect(abs((breakdown.costUSD ?? 0) - 0.000_102) < 0.000_000_001)
+    }
+
+    private static func createDatabase(at url: URL) throws {
+        var database: OpaquePointer?
+        guard sqlite3_open(url.path, &database) == SQLITE_OK, let database else {
+            throw SQLiteFixtureError.open
+        }
+        defer { sqlite3_close(database) }
+        let sql = """
+        CREATE TABLE local_runtime_token_usage (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id TEXT NOT NULL,
+          agent_name TEXT NOT NULL,
+          framework_type TEXT NOT NULL,
+          turn_id TEXT,
+          model TEXT,
+          ts INTEGER NOT NULL,
+          input_tokens INTEGER NOT NULL,
+          output_tokens INTEGER NOT NULL,
+          reasoning_tokens INTEGER NOT NULL,
+          cache_read_tokens INTEGER NOT NULL,
+          cache_write_tokens INTEGER NOT NULL,
+          cost_usd REAL,
+          raw TEXT
+        );
+        INSERT INTO local_runtime_token_usage (
+          session_id, agent_name, framework_type, turn_id, model, ts,
+          input_tokens, output_tokens, reasoning_tokens, cache_read_tokens,
+          cache_write_tokens, cost_usd
+        ) VALUES (
+          'session-1', 'main', 'agent', 'turn-1', 'minimax/MiniMax-M3', 1785033600000,
+          100, 50, 20, 200, 0, 0
+        );
+        """
+        guard sqlite3_exec(database, sql, nil, nil, nil) == SQLITE_OK else {
+            throw SQLiteFixtureError.schema
+        }
+    }
+
+    private static let calendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        return calendar
+    }()
+
+    private enum SQLiteFixtureError: Error {
+        case open
+        case schema
+    }
+}
+#endif

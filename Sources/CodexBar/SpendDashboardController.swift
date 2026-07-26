@@ -66,6 +66,7 @@ struct SpendDashboardLoadRequest: Sendable {
     let geminiCLIHomePath: String?
     let openCodeDataHomePath: String?
     let miniMaxHomePath: String?
+    let antigravityHomePath: String?
     let now: Date
     let force: Bool
 
@@ -79,6 +80,7 @@ struct SpendDashboardLoadRequest: Sendable {
         geminiCLIHomePath: String? = nil,
         openCodeDataHomePath: String? = nil,
         miniMaxHomePath: String? = nil,
+        antigravityHomePath: String? = nil,
         now: Date,
         force: Bool)
     {
@@ -91,6 +93,7 @@ struct SpendDashboardLoadRequest: Sendable {
         self.geminiCLIHomePath = geminiCLIHomePath
         self.openCodeDataHomePath = openCodeDataHomePath
         self.miniMaxHomePath = miniMaxHomePath
+        self.antigravityHomePath = antigravityHomePath
         self.now = now
         self.force = force
     }
@@ -150,6 +153,12 @@ struct MiniMaxSpendSnapshotLoadContext: Sendable {
     let historyDays: Int
 }
 
+struct AntigravitySpendSnapshotLoadContext: Sendable {
+    let homePath: String
+    let now: Date
+    let historyDays: Int
+}
+
 enum SpendDashboardSource {
     typealias CodexSnapshotLoader = @Sendable (CodexSpendSnapshotLoadContext) async throws
         -> CostUsageTokenSnapshot
@@ -160,6 +169,8 @@ enum SpendDashboardSource {
     typealias OpenCodeSnapshotLoader = @Sendable (OpenCodeSpendSnapshotLoadContext) async throws
         -> CostUsageTokenSnapshot?
     typealias MiniMaxSnapshotLoader = @Sendable (MiniMaxSpendSnapshotLoadContext) async throws
+        -> CostUsageTokenSnapshot?
+    typealias AntigravitySnapshotLoader = @Sendable (AntigravitySpendSnapshotLoadContext) async throws
         -> CostUsageTokenSnapshot?
 
     static let scanDays = 365
@@ -278,6 +289,9 @@ enum SpendDashboardSource {
             inputs.append(SpendDashboardModel.ProviderInput(
                 provider: provider,
                 displayName: store.metadata(for: provider).displayName,
+                subscriptionName: SpendSubscriptionPlan
+                    .from(snapshot: store.snapshot(for: provider), provider: provider)?
+                    .displayName,
                 snapshot: snapshot))
         }
         return SpendDashboardLoadRequest(
@@ -297,6 +311,9 @@ enum SpendDashboardSource {
                 : nil,
             miniMaxHomePath: self.localModelHistoryProviders(store: store).contains(.minimax)
                 ? Self.miniMaxHomeURL().path
+                : nil,
+            antigravityHomePath: self.localModelHistoryProviders(store: store).contains(.antigravity)
+                ? Self.antigravityHomeURL().path
                 : nil,
             now: captureNow,
             force: mode.forcesLoader)
@@ -319,6 +336,9 @@ enum SpendDashboardSource {
             },
             miniMaxSnapshotLoader: { context in
                 try await self.loadMiniMaxSnapshot(context)
+            },
+            antigravitySnapshotLoader: { context in
+                try await self.loadAntigravitySnapshot(context)
             })
     }
 
@@ -358,6 +378,9 @@ enum SpendDashboardSource {
         },
         miniMaxSnapshotLoader: @escaping MiniMaxSnapshotLoader = { context in
             try await Self.loadMiniMaxSnapshot(context)
+        },
+        antigravitySnapshotLoader: @escaping AntigravitySnapshotLoader = { context in
+            try await Self.loadAntigravitySnapshot(context)
         }) async -> SpendDashboardLoadResult
     {
         var inputs = request.capturedInputs
@@ -393,6 +416,7 @@ enum SpendDashboardSource {
                     provider: .codex,
                     displayName: account.displayName,
                     modelProviderName: ProviderDescriptorRegistry.descriptor(for: .codex).metadata.displayName,
+                    subscriptionName: nil,
                     snapshot: snapshot))
             } catch is CancellationError {
                 failedSourceIDs.formUnion(request.codexRequests.map { "codex:\($0.id)" })
@@ -441,11 +465,24 @@ enum SpendDashboardSource {
                     try await miniMaxSnapshotLoader(MiniMaxSpendSnapshotLoadContext(
                         homePath: homePath, now: request.now, historyDays: Self.scanDays))
                 }),
+            LocalSnapshotSource(
+                homePath: request.antigravityHomePath,
+                sourceID: "antigravity:local",
+                provider: .antigravity,
+                displayName: "Antigravity",
+                load: { homePath in
+                    try await antigravitySnapshotLoader(AntigravitySpendSnapshotLoadContext(
+                        homePath: homePath, now: request.now, historyDays: Self.scanDays))
+                }),
         ]
         for source in localSources {
             do {
                 if let input = try await source.loadInput() {
                     inputs.append(input)
+                    // The spend dashboard's canonical history for these providers is the local
+                    // scanner. A failed/unchanged live quota publication must not remain as a
+                    // refresh warning after the corresponding local history loaded successfully.
+                    failedSourceIDs.remove(source.provider.rawValue)
                 }
             } catch is CancellationError {
                 failedSourceIDs.insert(source.sourceID)
@@ -541,6 +578,20 @@ enum SpendDashboardSource {
         }.value
     }
 
+    private static func loadAntigravitySnapshot(
+        _ context: AntigravitySpendSnapshotLoadContext) async throws -> CostUsageTokenSnapshot?
+    {
+        try await Task.detached(priority: .utility) {
+            try Task.checkCancellation()
+            let snapshot = AntigravitySessionScanner.scan(
+                environment: [AntigravitySessionScanner.homeEnvironmentKey: context.homePath],
+                historyDays: context.historyDays,
+                now: context.now)
+            try Task.checkCancellation()
+            return snapshot
+        }.value
+    }
+
     /// Main-actor capture of the Gemini CLI home, mirroring `KimiSettingsReader.kimiCodeHomeURL`
     /// (the scanner itself appends `tmp` to whatever `GEMINI_CLI_HOME` resolves to).
     private static func geminiCLIHomeURL(
@@ -587,6 +638,22 @@ enum SpendDashboardSource {
             .appendingPathComponent(".minimax", isDirectory: true)
     }
 
+    /// Main-actor capture of the Antigravity home feeding `AntigravitySessionScanner` (the scanner
+    /// itself appends `conversations` to whatever `ANTIGRAVITY_HOME` resolves to).
+    private static func antigravityHomeURL(
+        environment: [String: String] = ProcessInfo.processInfo.environment) -> URL
+    {
+        if let override = environment[AntigravitySessionScanner.homeEnvironmentKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !override.isEmpty
+        {
+            return URL(fileURLWithPath: override, isDirectory: true)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".gemini", isDirectory: true)
+            .appendingPathComponent("antigravity", isDirectory: true)
+    }
+
     @MainActor
     static func costCapableProviders(store: UsageStore) -> [UsageProvider] {
         store.enabledProvidersForDisplay().filter {
@@ -597,7 +664,7 @@ enum SpendDashboardSource {
     @MainActor
     static func localModelHistoryProviders(store: UsageStore) -> [UsageProvider] {
         store.enabledProvidersForDisplay().filter {
-            $0 == .kimi || $0 == .gemini || $0 == .opencode || $0 == .minimax
+            $0 == .kimi || $0 == .gemini || $0 == .opencode || $0 == .minimax || $0 == .antigravity
         }
     }
 
@@ -917,6 +984,7 @@ final class SpendDashboardController {
     private(set) var model = SpendDashboardModel(requestedDays: 30, groups: [])
     private(set) var isRefreshing = false
     private(set) var failedSourceCount = 0
+    private(set) var failedSourceIDs: Set<String> = []
     private(set) var generation: UInt64 = 0
     private(set) var configuration: SpendDashboardConfiguration?
     private(set) var selectedDays: Int
@@ -984,12 +1052,14 @@ final class SpendDashboardController {
         if !invalidatedSourceIDs.isEmpty {
             self.loadedInputs.removeAll { invalidatedSourceIDs.contains($0.id) }
             self.failedSourceCount = 0
+            self.failedSourceIDs = []
             self.rebuildModel()
         }
 
         guard configuration.costUsageEnabled, !configuration.providerIDs.isEmpty else {
             self.loadedInputs = []
             self.failedSourceCount = 0
+            self.failedSourceIDs = []
             self.isRefreshing = false
             self.lastSuccessfulConfiguration = configuration
             self.phase = .ordinary
@@ -1152,6 +1222,7 @@ final class SpendDashboardController {
         self.loadedAt = request.now
         self.lastSuccessfulConfiguration = request.configuration
         self.failedSourceCount = result.failedSourceCount
+        self.failedSourceIDs = result.failedSourceIDs
         self.isRefreshing = false
         self.phase = .ordinary
         self.loadTask = nil
@@ -1185,7 +1256,9 @@ final class SpendDashboardController {
             !forceFailed.contains(input.id) &&
             !invalidated.contains(input.id) &&
             !outcome.confirmedEmptySourceIDs.contains(input.id) &&
-            (forcedCodexIDs.contains(input.id) || barrierFailed.contains(input.id))
+            (forcedCodexIDs.contains(input.id) ||
+                barrierFailed.contains(input.id) ||
+                Self.isLocalHistorySource(input.id))
         {
             inputs.append(input)
             capturedIDs.insert(input.id)
@@ -1196,6 +1269,15 @@ final class SpendDashboardController {
                 failedSourceIDs: forceFailed.union(barrierFailed),
                 invalidatedSourceIDs: invalidated),
             confirmedEmptySourceIDs: outcome.confirmedEmptySourceIDs)
+    }
+
+    private static func isLocalHistorySource(_ sourceID: String) -> Bool {
+        switch sourceID {
+        case "kimi:local", "gemini:local", "opencode:local", "minimax:local", "antigravity:local":
+            true
+        default:
+            false
+        }
     }
 
     func refresh() {
@@ -1260,6 +1342,7 @@ final class SpendDashboardController {
             provider: input.provider,
             displayName: displayName,
             modelProviderName: input.modelProviderName,
+            subscriptionName: input.subscriptionName,
             snapshot: input.snapshot)
     }
 

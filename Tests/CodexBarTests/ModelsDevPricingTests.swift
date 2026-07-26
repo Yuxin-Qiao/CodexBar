@@ -7,6 +7,29 @@ import Testing
 
 struct ModelsDevPricingTests {
     @Test
+    func `MiniMax M3 remains priceable without a refreshed catalog`() throws {
+        let emptyCatalog = ModelsDevCatalog(providers: [:])
+        let base = try #require(CostUsagePricing.claudeCostUSD(
+            model: "MiniMax-M3",
+            inputTokens: 467_711,
+            cacheReadInputTokens: 1_255_798,
+            cacheCreationInputTokens: 0,
+            outputTokens: 14833,
+            modelsDevCatalog: emptyCatalog))
+
+        #expect(abs(base - 0.466_921_560) < 0.000_000_001)
+
+        let shortContext = try #require(CostUsagePricing.claudeCostUSD(
+            model: "MiniMax-M3",
+            inputTokens: 100,
+            cacheReadInputTokens: 200,
+            cacheCreationInputTokens: 0,
+            outputTokens: 50,
+            modelsDevCatalog: emptyCatalog))
+        #expect(abs(shortContext - 0.000_102) < 0.000_000_001)
+    }
+
+    @Test
     func `parses models dev subset`() throws {
         let catalog = try Self.fixtureCatalog()
 

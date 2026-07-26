@@ -1390,3 +1390,6 @@
 "Fr" = "جم";
 "Estimated" = "تخمینی";
 "No per-client model history" = "بدون سابقه مدل برای هر کلاینت";
+
+"Cumulative %@ tokens as of %@" = "%@ توکن تجمعی تا %@";
+"%@ tokens in the week of %@" = "%@ توکن در هفته %@";

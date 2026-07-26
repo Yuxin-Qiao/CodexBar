@@ -16,8 +16,12 @@ import CSQLite3
 // plus `model` (e.g. `minimax/MiniMax-M3`) and `ts` (epoch milliseconds). `reasoning` is part of
 // billing output, so it stays folded into `outputTokens` and is additionally surfaced as the
 // `reasoningTokens` sub-bucket (never added on top). `cache_write` maps to `cacheCreationTokens`.
-// `cost_usd` is reported by the provider; when present it is summed into the day/model cost,
-// otherwise the snapshot stays token-only (`costUSD: nil`).
+// `cost_usd` is reported by the provider, but MiniMax coding plans run on a flat subscription and
+// report `0` there. To stay consistent with how Codex/Claude spend is estimated, we price each turn
+// at the vendor's official models.dev rate (via `CostUsagePricing.claudeCostUSD`, which routes
+// MiniMax through the third-party lookup) instead of trusting the zeroed provider figure. A turn is
+// priced from its token buckets; only when no official rate is known does the snapshot fall back to
+// the provider's `cost_usd`, and failing that stays token-only (`costUSD: nil`).
 #if canImport(SQLite3) || canImport(CSQLite3)
 public enum MiniMaxSessionScanner {
     public static let defaultHistoryDays = 30
@@ -41,7 +45,11 @@ public enum MiniMaxSessionScanner {
         var cost = 0.0
         var sawCost = false
 
-        mutating func add(_ row: UsageRow) -> Bool {
+        mutating func add(
+            _ row: UsageRow,
+            modelsDevCatalog: ModelsDevCatalog?,
+            modelsDevCacheRoot: URL?) -> Bool
+        {
             guard let nextInput = Self.adding(self.input, row.input),
                   let nextCacheRead = Self.adding(self.cacheRead, row.cacheRead),
                   let nextCacheCreation = Self.adding(self.cacheCreation, row.cacheCreation),
@@ -57,7 +65,10 @@ public enum MiniMaxSessionScanner {
             self.output = nextOutput
             self.reasoning = nextReasoning
             self.requests = nextRequests
-            if let cost = row.cost {
+            if let cost = row.estimatedCost(
+                modelsDevCatalog: modelsDevCatalog,
+                modelsDevCacheRoot: modelsDevCacheRoot)
+            {
                 self.cost += cost
                 self.sawCost = true
             }
@@ -111,19 +122,53 @@ public enum MiniMaxSessionScanner {
         let cacheRead: Int
         let cacheCreation: Int
         let cost: Double?
+
+        /// Prices the turn at the vendor's official models.dev rate (mirroring how Codex/Claude
+        /// spend is estimated). The stored `model` is namespaced as `minimax/MiniMax-M3`, but the
+        /// third-party lookup keys on the bare model id, so the provider prefix is stripped first.
+        /// `reasoning` is already folded into `output`, so it is not priced twice. Falls back to the
+        /// provider-reported `cost_usd` only when it carries a real (non-zero) figure and no
+        /// official rate is known.
+        func estimatedCost(
+            modelsDevCatalog: ModelsDevCatalog?,
+            modelsDevCacheRoot: URL?) -> Double?
+        {
+            let bareModel = Self.bareModelID(self.model)
+            if let priced = CostUsagePricing.claudeCostUSD(
+                model: bareModel,
+                inputTokens: self.input,
+                cacheReadInputTokens: self.cacheRead,
+                cacheCreationInputTokens: self.cacheCreation,
+                outputTokens: self.output,
+                pricingDate: Date(timeIntervalSince1970: TimeInterval(self.createdMs) / 1000),
+                modelsDevCatalog: modelsDevCatalog,
+                modelsDevCacheRoot: modelsDevCacheRoot)
+            {
+                return priced
+            }
+            if let cost = self.cost, cost > 0 { return cost }
+            return nil
+        }
+
+        private static func bareModelID(_ model: String) -> String {
+            guard let slash = model.lastIndex(of: "/") else { return model }
+            return String(model[model.index(after: slash)...])
+        }
     }
 
     public static func scan(
         environment: [String: String] = ProcessInfo.processInfo.environment,
         historyDays: Int = defaultHistoryDays,
         now: Date = Date(),
-        calendar: Calendar = .current) -> CostUsageTokenSnapshot?
+        calendar: Calendar = .current,
+        modelsDevCacheRoot: URL? = nil) -> CostUsageTokenSnapshot?
     {
         let days = max(1, historyDays)
         let databaseURL = self.runtimeDatabaseURL(environment: environment)
         guard FileManager.default.fileExists(atPath: databaseURL.path) else { return nil }
         guard let rows = self.readRows(databaseURL: databaseURL), !rows.isEmpty else { return nil }
 
+        let modelsDevCatalog = CostUsagePricing.modelsDevCatalog(now: now, cacheRoot: modelsDevCacheRoot)
         let end = calendar.startOfDay(for: now)
         let start = calendar.date(byAdding: .day, value: -(days - 1), to: end) ?? end
         var values: [DayModelKey: TokenAccumulator] = [:]
@@ -134,7 +179,8 @@ public enum MiniMaxSessionScanner {
             guard day >= start, day <= end else { continue }
             let key = DayModelKey(day: CostUsageLocalDay.key(from: day, calendar: calendar), model: row.model)
             var value = values[key] ?? TokenAccumulator()
-            guard value.add(row) else { continue }
+            guard value.add(row, modelsDevCatalog: modelsDevCatalog, modelsDevCacheRoot: modelsDevCacheRoot)
+            else { continue }
             values[key] = value
         }
 
@@ -196,6 +242,7 @@ public enum MiniMaxSessionScanner {
             historyDays: days,
             historyCoverageIsEstablished: true,
             historyLabel: "MiniMax",
+            costSource: .estimated,
             daily: daily,
             updatedAt: now)
     }

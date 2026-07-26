@@ -3,6 +3,14 @@ import SwiftUI
 
 // MARK: - 按工具分组数据
 
+/// Official per-provider brand color (matches the "Daily estimated spend" chart legend).
+enum SpendProviderColor {
+    static func color(for provider: UsageProvider) -> Color {
+        let rgb = ProviderDescriptorRegistry.descriptor(for: provider).branding.color
+        return Color(red: rgb.red, green: rgb.green, blue: rgb.blue)
+    }
+}
+
 /// A model's usage attributed to one tool (client), with the five-bucket token breakdown
 /// taken from the parent model row (buckets are tracked per model, so the per-client split
 /// shares them proportionally by that client's token contribution).
@@ -21,30 +29,77 @@ struct SpendClientModel: Identifiable, Equatable {
 
 /// One tool (client) with its models, sorted by tokens descending.
 struct SpendClientGroup: Identifiable, Equatable {
+    let sourceID: String
     let provider: UsageProvider
-    let name: String
+    /// Tool name, e.g. "Claude Code", "Codex Desktop", "Kimi Code CLI".
+    let toolName: String
+    /// Product family name, e.g. "Claude", "Codex", "Kimi".
+    let providerName: String
     let totalTokens: Int
     let totalCost: Double?
     let costIsEstimated: Bool
     let models: [SpendClientModel]
 
     var id: String {
-        self.provider.rawValue
+        self.sourceID
+    }
+
+    /// "Tool · Family" when they differ meaningfully, else just the tool name.
+    var displayTitle: String {
+        let tool = self.toolName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let family = self.providerName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if family.isEmpty || tool.localizedCaseInsensitiveContains(family) {
+            return tool
+        }
+        return "\(tool) · \(family)"
     }
 }
 
 enum SpendClientBreakdown {
-    /// Groups model rows by contributing tool. A model used by several tools appears under each,
+    /// The local tool that produced a provider's usage logs. Providers whose data is read from a
+    /// CLI/desktop app's local files surface under that tool's name; providers with a more specific
+    /// `sourceName` (e.g. a Codex account name, or the explicit "… CLI" names set at load time)
+    /// keep it untouched.
+    private static func toolName(provider: UsageProvider, sourceName: String, providerName: String) -> String {
+        // Only remap when the source name is just the product family (no specific tool identity).
+        guard sourceName.trimmingCharacters(in: .whitespacesAndNewlines)
+            .localizedCaseInsensitiveCompare(providerName.trimmingCharacters(in: .whitespacesAndNewlines))
+            == .orderedSame
+        else { return sourceName }
+        switch provider {
+        case .claude: return "Claude Code"
+        case .codex: return "Codex Desktop"
+        case .kimi: return "Kimi Desktop"
+        case .gemini: return "Gemini CLI"
+        case .opencode, .opencodego: return "OpenCode"
+        case .minimax: return "MiniMax Code"
+        case .cursor: return "Cursor"
+        case .copilot: return "GitHub Copilot"
+        case .antigravity: return "Antigravity"
+        default: return sourceName
+        }
+    }
+
+    /// Groups model rows by contributing tool (one card per tool/account, e.g. each Codex
+    /// account, Claude Code, Kimi Code CLI). A model used by several tools appears under each,
     /// with that tool's token/cost share (from `contributions`); the five-bucket breakdown is the
     /// model's own, shown for context under each tool it ran in.
     static func groups(from analysis: SpendDashboardModel.ModelAnalysis) -> [SpendClientGroup] {
-        var byProvider: [UsageProvider: (name: String, models: [String: Accum])] = [:]
+        var bySource: [String: (provider: UsageProvider, tool: String, family: String, models: [String: Accum])] = [:]
 
         for row in analysis.rows {
             for contribution in row.contributions {
                 let tokens = contribution.totalTokens ?? 0
                 guard tokens > 0 || contribution.estimatedCost != nil else { continue }
-                var bucket = byProvider[contribution.provider] ?? (contribution.providerName, [:])
+                var bucket = bySource[contribution.sourceID]
+                    ?? (
+                        contribution.provider,
+                        Self.toolName(
+                            provider: contribution.provider,
+                            sourceName: contribution.sourceName,
+                            providerName: contribution.providerName),
+                        contribution.providerName,
+                        [:])
                 var accum = bucket.models[row.id] ?? Accum(
                     displayName: row.displayName,
                     costIsEstimated: row.costIsEstimated)
@@ -58,11 +113,11 @@ enum SpendClientBreakdown {
                 accum.cacheCreationTokens = row.cacheCreationTokens
                 accum.reasoningTokens = row.reasoningTokens
                 bucket.models[row.id] = accum
-                byProvider[contribution.provider] = bucket
+                bySource[contribution.sourceID] = bucket
             }
         }
 
-        return byProvider.map { provider, bucket in
+        return bySource.map { sourceID, bucket in
             let models = bucket.models.map { id, accum in
                 SpendClientModel(
                     id: id,
@@ -83,8 +138,10 @@ enum SpendClientBreakdown {
                 return (partial ?? 0) + cost
             }
             return SpendClientGroup(
-                provider: provider,
-                name: bucket.name,
+                sourceID: sourceID,
+                provider: bucket.provider,
+                toolName: bucket.tool,
+                providerName: bucket.family,
                 totalTokens: totalTokens,
                 totalCost: totalCost,
                 costIsEstimated: models.contains { $0.costIsEstimated },
@@ -136,7 +193,7 @@ struct SpendClientsView: View {
                         .frame(width: 16, height: 16)
                         .accessibilityHidden(true)
                 }
-                Text(group.name)
+                Text(group.displayTitle)
                     .font(.body.weight(.semibold))
                 if group.costIsEstimated {
                     Text(L("Estimated"))
@@ -156,14 +213,14 @@ struct SpendClientsView: View {
 
             ForEach(Array(group.models.enumerated()), id: \.element.id) { index, model in
                 if index > 0 { Divider().padding(.vertical, 2) }
-                self.modelRow(model, groupTokens: group.totalTokens)
+                self.modelRow(model, groupTokens: group.totalTokens, provider: group.provider)
             }
         }
         .padding(12)
         .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
-    private func modelRow(_ model: SpendClientModel, groupTokens: Int) -> some View {
+    private func modelRow(_ model: SpendClientModel, groupTokens: Int, provider: UsageProvider) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(model.displayName)
@@ -185,7 +242,7 @@ struct SpendClientsView: View {
                 GeometryReader { geo in
                     let share = CGFloat(model.tokens) / CGFloat(groupTokens)
                     RoundedRectangle(cornerRadius: 2, style: .continuous)
-                        .fill(Color.accentColor.opacity(0.75))
+                        .fill(SpendProviderColor.color(for: provider).opacity(0.85))
                         .frame(width: max(geo.size.width * share, 2), height: 3)
                 }
                 .frame(height: 3)

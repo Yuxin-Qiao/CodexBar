@@ -1386,3 +1386,6 @@
 "Fr" = "vr";
 "Estimated" = "Geschat";
 "No per-client model history" = "Geen modelgeschiedenis per client";
+
+"Cumulative %@ tokens as of %@" = "Cumulatief %@ tokens tot %@";
+"%@ tokens in the week of %@" = "%@ tokens in de week van %@";

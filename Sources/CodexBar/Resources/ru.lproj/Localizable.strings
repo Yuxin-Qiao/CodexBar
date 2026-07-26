@@ -1388,3 +1388,6 @@
 "Fr" = "пт";
 "Estimated" = "Оценочно";
 "No per-client model history" = "Нет истории моделей по клиентам";
+
+"Cumulative %@ tokens as of %@" = "Всего %@ токенов на %@";
+"%@ tokens in the week of %@" = "%@ токенов за неделю от %@";

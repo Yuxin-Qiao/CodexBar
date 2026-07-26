@@ -1387,3 +1387,6 @@
 "Fr" = "T6";
 "Estimated" = "Ước tính";
 "No per-client model history" = "Không có lịch sử mô hình theo ứng dụng";
+
+"Cumulative %@ tokens as of %@" = "Tích lũy %@ token tính đến %@";
+"%@ tokens in the week of %@" = "%@ token trong tuần từ %@";

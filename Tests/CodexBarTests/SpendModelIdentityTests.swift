@@ -68,6 +68,26 @@ struct SpendModelIdentityTests {
         #expect(SpendModelIdentity(rawName: "k2.5", provider: .kimi).displayName == "Kimi K2.5")
         let coding = SpendModelIdentity(rawName: "kimi-code/kimi-for-coding-highspeed", provider: .kimi)
         #expect(coding.displayName == "Kimi for Coding High-Speed")
+        #expect(SpendModelIdentity(rawName: "k3-256k", provider: .kimi).displayName == "Kimi K3 (256K)")
+    }
+
+    @Test
+    func `identity names Antigravity aliases by their public model tier`() {
+        #expect(SpendModelIdentity(
+            rawName: "gemini-pro-default",
+            provider: .antigravity).displayName == "Gemini 3.1 Pro")
+        #expect(SpendModelIdentity(
+            rawName: "gemini-3-flash-a",
+            provider: .antigravity).displayName == "Gemini 3.5 Flash (High)")
+        #expect(SpendModelIdentity(
+            rawName: "gemini-3.5-flash-low",
+            provider: .antigravity).displayName == "Gemini 3.5 Flash (Medium)")
+        #expect(SpendModelIdentity(
+            rawName: "gemini-3.5-flash-extra-low",
+            provider: .antigravity).displayName == "Gemini 3.5 Flash (Low)")
+        #expect(SpendModelIdentity(
+            rawName: "gemini-default",
+            provider: .antigravity).displayName == "Gemini 3 Flash")
     }
 
     @Test

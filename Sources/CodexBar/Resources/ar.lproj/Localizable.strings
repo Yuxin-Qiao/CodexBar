@@ -1390,3 +1390,6 @@
 "Fr" = "جم";
 "Estimated" = "تقديري";
 "No per-client model history" = "لا يوجد سجل نماذج لكل عميل";
+
+"Cumulative %@ tokens as of %@" = "%@ رمزًا تراكميًا حتى %@";
+"%@ tokens in the week of %@" = "%@ رمزًا في أسبوع %@";

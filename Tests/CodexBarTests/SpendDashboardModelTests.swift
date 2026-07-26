@@ -10,11 +10,15 @@ struct SpendDashboardModelTests {
         CodexBarLocalizationOverride.$appLanguage.withValue("en") {
             #expect(spendDashboardRefreshFailureText(1) == "Refresh failures: 1")
             #expect(spendDashboardRefreshFailureText(2) == "Refresh failures: 2")
-            #expect(spendDashboardCoverageText(covered: 3, requested: 7) == "Coverage: 3 / 7")
+            #expect(spendDashboardCoverageText(
+                covered: 30,
+                requested: 365) == "Common complete coverage: 30d · Time range: Cumulative")
         }
         CodexBarLocalizationOverride.$appLanguage.withValue("de") {
             #expect(spendDashboardRefreshFailureText(1234) == "Fehlgeschlagene Aktualisierungen: 1.234")
-            #expect(spendDashboardCoverageText(covered: 3, requested: 30) == "Abdeckung: 3 / 30")
+            #expect(spendDashboardCoverageText(
+                covered: 7,
+                requested: 30) == "Abdeckung: 7d · Zeitraum: 30d")
         }
         CodexBarLocalizationOverride.$appLanguage.withValue("fa") {
             #expect(codexBarLocalizedInteger(12) == "۱۲")
@@ -23,8 +27,49 @@ struct SpendDashboardModelTests {
             #expect(spendDashboardDayRangeText(365) == "تجمعی")
             #expect(spendDashboardRankText(1234) == "#۱٬۲۳۴")
             #expect(spendDashboardRefreshFailureText(2) == "\(L("Refresh failures")): ۲")
-            #expect(spendDashboardCoverageText(covered: 3, requested: 30) == "پوشش: ۳ / ۳۰")
+            #expect(spendDashboardCoverageText(
+                covered: 7,
+                requested: 30) == "پوشش: ۷ روز · بازه زمانی: ۳۰ روز")
         }
+    }
+
+    @Test
+    func `tracked token subtotal keeps known values when another subscription is incomplete`() throws {
+        let known = Self.input(id: "known", provider: .codex, currency: "USD", cost: 2)
+        let incomplete = SpendDashboardModel.ProviderInput(
+            id: "incomplete",
+            provider: .minimax,
+            displayName: "MiniMax",
+            snapshot: CostUsageTokenSnapshot(
+                sessionTokens: nil,
+                sessionCostUSD: nil,
+                last30DaysTokens: nil,
+                last30DaysCostUSD: nil,
+                currencyCode: "USD",
+                historyDays: 30,
+                daily: [CostUsageDailyReport.Entry(
+                    date: "2026-07-16",
+                    inputTokens: nil,
+                    outputTokens: nil,
+                    totalTokens: nil,
+                    costUSD: nil,
+                    modelsUsed: ["MiniMax-M3"],
+                    modelBreakdowns: [CostUsageDailyReport.ModelBreakdown(
+                        modelName: "MiniMax-M3",
+                        costUSD: nil,
+                        totalTokens: nil)])],
+                updatedAt: Self.now))
+
+        let group = try #require(SpendDashboardModel.build(
+            inputs: [known, incomplete],
+            requestedDays: 30,
+            now: Self.now,
+            calendar: Self.calendar).groups.first)
+
+        let miniMax = try #require(group.providers.first { $0.provider == .minimax })
+        let knownTokens = try #require(known.snapshot.daily.first?.totalTokens)
+        #expect(miniMax.totalTokens == nil)
+        #expect(group.totalTokens == knownTokens)
     }
 
     @Test
@@ -318,8 +363,8 @@ struct SpendDashboardModelTests {
             now: Self.now,
             calendar: Self.calendar).groups.first)
 
-        #expect(group.totalCost == nil)
-        #expect(group.totalTokens == nil)
+        #expect(group.totalCost == 4)
+        #expect(group.totalTokens == 10)
         #expect(group.modelHistoryCompleteness == .incomplete)
         #expect(group.models.map(\.provider) == [.claude])
         #expect(group.models.map(\.modelName) == ["test-model"])
@@ -890,7 +935,7 @@ struct SpendDashboardModelTests {
 
         #expect(group.providers.first(where: { $0.id == "invalid" })?.totalCost == nil)
         #expect(group.totalCost == nil)
-        #expect(group.totalTokens == nil)
+        #expect(group.totalTokens == 20)
         #expect(group.dailyPoints.isEmpty)
     }
 
@@ -1012,7 +1057,7 @@ struct SpendDashboardModelTests {
         #expect(group.providers.first(where: { $0.id == "nonfinite" })?.totalTokens == 2)
         #expect(group.providers.filter { $0.id != "nonfinite" }.allSatisfy { $0.totalTokens == nil })
         #expect(group.totalCost == nil)
-        #expect(group.totalTokens == nil)
+        #expect(group.totalTokens == 2)
     }
 
     @Test

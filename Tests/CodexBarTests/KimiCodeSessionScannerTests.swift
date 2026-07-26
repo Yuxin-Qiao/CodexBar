@@ -49,10 +49,11 @@ struct KimiCodeSessionScannerTests {
             now: now,
             calendar: Self.calendar))
 
-        #expect(snapshot.currencyCode == "XXX")
+        #expect(snapshot.currencyCode == "USD")
         #expect(snapshot.last30DaysTokens == 82)
         #expect(snapshot.last30DaysRequests == 3)
-        #expect(snapshot.last30DaysCostUSD == nil)
+        #expect(snapshot.last30DaysCostUSD != nil)
+        #expect(snapshot.costSource == .estimated)
         #expect(snapshot.daily.count == 2)
         #expect(snapshot.daily.flatMap { $0.modelBreakdowns ?? [] }.map(\.modelName) == [
             "kimi-code/k3",
@@ -63,6 +64,8 @@ struct KimiCodeSessionScannerTests {
         #expect(snapshot.daily.flatMap { $0.modelBreakdowns ?? [] }.map(\.cacheReadTokens) == [25, 9])
         #expect(snapshot.daily.flatMap { $0.modelBreakdowns ?? [] }.map(\.cacheCreationTokens) == [6, 0])
         #expect(snapshot.daily.flatMap { $0.modelBreakdowns ?? [] }.map(\.outputTokens) == [10, 10])
+        let breakdowns = snapshot.daily.flatMap { $0.modelBreakdowns ?? [] }
+        #expect(abs((breakdowns.first?.costUSD ?? 0) - 0.0002175) < 0.000000001)
         // Kimi wire.jsonl carries no reasoning field, so the reasoning bucket stays nil.
         #expect(snapshot.daily.flatMap { $0.modelBreakdowns ?? [] }.map(\.reasoningTokens) == [nil, nil])
     }
