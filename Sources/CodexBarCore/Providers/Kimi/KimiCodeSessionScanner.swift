@@ -154,6 +154,25 @@ public enum KimiCodeSessionScanner {
         calendar: Calendar = .current,
         modelsDevCacheRoot: URL? = nil) -> CostUsageTokenSnapshot?
     {
+        try? self.scanCancellable(
+            environment: environment,
+            fileManager: fileManager,
+            historyDays: historyDays,
+            now: now,
+            calendar: calendar,
+            modelsDevCacheRoot: modelsDevCacheRoot)
+    }
+
+    public static func scanCancellable(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        fileManager: FileManager = .default,
+        historyDays: Int = defaultHistoryDays,
+        now: Date = Date(),
+        calendar: Calendar = .current,
+        modelsDevCacheRoot: URL? = nil,
+        checkCancellation: @escaping () throws -> Void = {}) throws -> CostUsageTokenSnapshot?
+    {
+        try checkCancellation()
         let days = max(1, historyDays)
         let home = KimiSettingsReader.kimiCodeHomeURL(environment: environment)
         let sessions = home.appendingPathComponent("sessions", isDirectory: true)
@@ -172,6 +191,7 @@ public enum KimiCodeSessionScanner {
         let modelsDevCatalog = CostUsagePricing.modelsDevCatalog(now: now, cacheRoot: modelsDevCacheRoot)
 
         while let url = enumerator.nextObject() as? URL {
+            try checkCancellation()
             guard url.lastPathComponent == "wire.jsonl",
                   url.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent == "agents"
             else {
@@ -183,32 +203,45 @@ public enum KimiCodeSessionScanner {
             {
                 continue
             }
-            guard let data = try? Data(contentsOf: url) else { continue }
-            for line in data.split(separator: 0x0A, omittingEmptySubsequences: true) {
-                guard let event = try? decoder.decode(WireEvent.self, from: Data(line)),
-                      event.type == "usage.record",
-                      event.usageScope == "turn",
-                      let time = event.time,
-                      time.isFinite,
-                      let rawModel = event.model?.trimmingCharacters(in: .whitespacesAndNewlines),
-                      !rawModel.isEmpty,
-                      let usage = event.usage
-                else {
-                    continue
+            do {
+                try CostUsageJsonl.scan(
+                    fileURL: url,
+                    maxLineBytes: 1024 * 1024,
+                    prefixBytes: 1024 * 1024,
+                    checkCancellation: checkCancellation)
+                { line in
+                    guard !line.wasTruncated,
+                          let event = try? decoder.decode(WireEvent.self, from: line.bytes),
+                          event.type == "usage.record",
+                          event.usageScope == "turn",
+                          let time = event.time,
+                          time.isFinite,
+                          let rawModel = event.model?.trimmingCharacters(in: .whitespacesAndNewlines),
+                          !rawModel.isEmpty,
+                          let usage = event.usage
+                    else {
+                        return
+                    }
+                    let date = Date(timeIntervalSince1970: time / 1000)
+                    let day = calendar.startOfDay(for: date)
+                    guard day >= start, day <= end else { return }
+                    let key = DayModelKey(
+                        day: CostUsageLocalDay.key(from: day, calendar: calendar),
+                        model: rawModel)
+                    var value = values[key] ?? TokenAccumulator()
+                    guard value.add(
+                        usage,
+                        model: rawModel,
+                        pricingDate: date,
+                        modelsDevCatalog: modelsDevCatalog,
+                        modelsDevCacheRoot: modelsDevCacheRoot)
+                    else { return }
+                    values[key] = value
                 }
-                let date = Date(timeIntervalSince1970: time / 1000)
-                let day = calendar.startOfDay(for: date)
-                guard day >= start, day <= end else { continue }
-                let key = DayModelKey(day: CostUsageLocalDay.key(from: day, calendar: calendar), model: rawModel)
-                var value = values[key] ?? TokenAccumulator()
-                guard value.add(
-                    usage,
-                    model: rawModel,
-                    pricingDate: date,
-                    modelsDevCatalog: modelsDevCatalog,
-                    modelsDevCacheRoot: modelsDevCacheRoot)
-                else { continue }
-                values[key] = value
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                continue
             }
         }
 

@@ -174,23 +174,43 @@ public enum OpenCodeSessionScanner {
         now: Date = Date(),
         calendar: Calendar = .current) -> CostUsageTokenSnapshot?
     {
+        try? self.scanCancellable(
+            environment: environment,
+            fileManager: fileManager,
+            historyDays: historyDays,
+            now: now,
+            calendar: calendar)
+    }
+
+    public static func scanCancellable(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        fileManager: FileManager = .default,
+        historyDays: Int = defaultHistoryDays,
+        now: Date = Date(),
+        calendar: Calendar = .current,
+        checkCancellation: @escaping () throws -> Void = {}) throws -> CostUsageTokenSnapshot?
+    {
+        try checkCancellation()
         let days = max(1, historyDays)
         let end = calendar.startOfDay(for: now)
         let start = calendar.date(byAdding: .day, value: -(days - 1), to: end) ?? end
 
         var context = ScanContext(start: start, end: end, calendar: calendar)
         var records: [UsageRecord] = []
-        records.append(contentsOf: self.scanJSONMessages(
+        try records.append(contentsOf: self.scanJSONMessages(
             environment: environment,
             fileManager: fileManager,
-            context: &context))
-        records.append(contentsOf: self.scanDatabaseMessages(
+            context: &context,
+            checkCancellation: checkCancellation))
+        try records.append(contentsOf: self.scanDatabaseMessages(
             environment: environment,
-            context: &context))
+            context: &context,
+            checkCancellation: checkCancellation))
 
         var values: [DayModelKey: TokenAccumulator] = [:]
         var costs: [DayModelKey: Double] = [:]
         for record in records {
+            try checkCancellation()
             let key = DayModelKey(day: record.day, model: record.model)
             var value = values[key] ?? TokenAccumulator()
             guard value.add(record.usage) else { continue }
@@ -274,7 +294,8 @@ public enum OpenCodeSessionScanner {
     private static func scanJSONMessages(
         environment: [String: String],
         fileManager: FileManager,
-        context: inout ScanContext) -> [UsageRecord]
+        context: inout ScanContext,
+        checkCancellation: () throws -> Void) throws -> [UsageRecord]
     {
         let start = context.start
         let end = context.end
@@ -291,6 +312,7 @@ public enum OpenCodeSessionScanner {
         let decoder = JSONDecoder()
         var records: [UsageRecord] = []
         while let url = enumerator.nextObject() as? URL {
+            try checkCancellation()
             guard url.pathExtension.lowercased() == "json" else { continue }
             if let modificationDate = try? url.resourceValues(forKeys: [.contentModificationDateKey])
                 .contentModificationDate,
@@ -340,7 +362,8 @@ public enum OpenCodeSessionScanner {
     /// SQL so we never materialize the blob.
     private static func scanDatabaseMessages(
         environment: [String: String],
-        context: inout ScanContext) -> [UsageRecord]
+        context: inout ScanContext,
+        checkCancellation: () throws -> Void) throws -> [UsageRecord]
     {
         let start = context.start
         let end = context.end
@@ -375,14 +398,20 @@ public enum OpenCodeSessionScanner {
           json_extract(data, '$.cost')
         FROM message
         WHERE json_extract(data, '$.role') = 'assistant'
+          AND json_extract(data, '$.time.created') >= ?
+          AND json_extract(data, '$.time.created') < ?
         """
 
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
         defer { sqlite3_finalize(stmt) }
+        let until = calendar.date(byAdding: .day, value: 1, to: end) ?? end
+        sqlite3_bind_int64(stmt, 1, Int64(start.timeIntervalSince1970 * 1000))
+        sqlite3_bind_int64(stmt, 2, Int64(until.timeIntervalSince1970 * 1000))
 
         var records: [UsageRecord] = []
         while true {
+            try checkCancellation()
             let step = sqlite3_step(stmt)
             if step == SQLITE_DONE { break }
             guard step == SQLITE_ROW else { return [] }

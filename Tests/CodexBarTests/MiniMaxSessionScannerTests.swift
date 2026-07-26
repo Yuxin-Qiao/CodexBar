@@ -40,7 +40,35 @@ struct MiniMaxSessionScannerTests {
         #expect(abs((breakdown.costUSD ?? 0) - 0.000_102) < 0.000_000_001)
     }
 
-    private static func createDatabase(at url: URL) throws {
+    @Test
+    func `scanner filters old database rows before decoding`() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MiniMaxSessionScannerTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let database = root.appendingPathComponent("v2/sqlite/runtime-state.sqlite")
+        try FileManager.default.createDirectory(
+            at: database.deletingLastPathComponent(),
+            withIntermediateDirectories: true)
+        try Self.createDatabase(at: database, oldRowCount: 200)
+
+        var checks = 0
+        let snapshot = try MiniMaxSessionScanner.scanCancellable(
+            environment: [MiniMaxSessionScanner.homeEnvironmentKey: root.path],
+            historyDays: 30,
+            now: Date(timeIntervalSince1970: 1_785_033_600),
+            calendar: Self.calendar,
+            checkCancellation: {
+                checks += 1
+                if checks > 10 {
+                    throw CancellationError()
+                }
+            })
+
+        #expect(snapshot?.last30DaysRequests == 1)
+        #expect(checks <= 10)
+    }
+
+    private static func createDatabase(at url: URL, oldRowCount: Int = 0) throws {
         var database: OpaquePointer?
         guard sqlite3_open(url.path, &database) == SQLITE_OK, let database else {
             throw SQLiteFixtureError.open
@@ -74,6 +102,22 @@ struct MiniMaxSessionScannerTests {
         """
         guard sqlite3_exec(database, sql, nil, nil, nil) == SQLITE_OK else {
             throw SQLiteFixtureError.schema
+        }
+        guard oldRowCount > 0 else { return }
+        for index in 0..<oldRowCount {
+            let oldSQL = """
+            INSERT INTO local_runtime_token_usage (
+              session_id, agent_name, framework_type, turn_id, model, ts,
+              input_tokens, output_tokens, reasoning_tokens, cache_read_tokens,
+              cache_write_tokens, cost_usd
+            ) VALUES (
+              'old-\(index)', 'main', 'agent', 'turn-\(index)', 'minimax/MiniMax-M3', 1609459200000,
+              100, 50, 20, 200, 0, 0
+            );
+            """
+            guard sqlite3_exec(database, oldSQL, nil, nil, nil) == SQLITE_OK else {
+                throw SQLiteFixtureError.schema
+            }
         }
     }
 

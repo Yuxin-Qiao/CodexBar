@@ -101,6 +101,39 @@ struct KimiCodeSessionScannerTests {
             calendar: Self.calendar) == nil)
     }
 
+    @Test
+    func `streaming scanner cancels without loading the remaining transcript`() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let agent = root
+            .appendingPathComponent("sessions/workspace/session-a/agents/main", isDirectory: true)
+        try FileManager.default.createDirectory(at: agent, withIntermediateDirectories: true)
+        let line = Self.usage(
+            time: 1_784_257_200_000,
+            model: "kimi-code/k3",
+            input: 10,
+            cacheRead: 20,
+            output: 3)
+        try Self.write(Array(repeating: line, count: 20000), to: agent.appendingPathComponent("wire.jsonl"))
+
+        var checks = 0
+        #expect(throws: CancellationError.self) {
+            _ = try KimiCodeSessionScanner.scanCancellable(
+                environment: [KimiSettingsReader.codeHomeEnvironmentKey: root.path],
+                historyDays: 30,
+                now: Date(timeIntervalSince1970: 1_784_347_200),
+                calendar: Self.calendar,
+                checkCancellation: {
+                    checks += 1
+                    if checks >= 4 {
+                        throw CancellationError()
+                    }
+                })
+        }
+        #expect(checks >= 4)
+    }
+
     private static let calendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!

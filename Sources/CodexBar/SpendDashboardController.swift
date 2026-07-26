@@ -525,71 +525,61 @@ enum SpendDashboardSource {
     private static func loadKimiCodeSnapshot(
         _ context: KimiCodeSpendSnapshotLoadContext) async throws -> CostUsageTokenSnapshot?
     {
-        try await Task.detached(priority: .utility) {
-            try Task.checkCancellation()
-            let snapshot = KimiCodeSessionScanner.scan(
+        try await CostUsageScanExecutor.run { checkCancellation in
+            try KimiCodeSessionScanner.scanCancellable(
                 environment: [KimiSettingsReader.codeHomeEnvironmentKey: context.homePath],
                 historyDays: context.historyDays,
-                now: context.now)
-            try Task.checkCancellation()
-            return snapshot
-        }.value
+                now: context.now,
+                checkCancellation: checkCancellation)
+        }
     }
 
     private static func loadGeminiSnapshot(
         _ context: GeminiSpendSnapshotLoadContext) async throws -> CostUsageTokenSnapshot?
     {
-        try await Task.detached(priority: .utility) {
-            try Task.checkCancellation()
-            let snapshot = GeminiSessionScanner.scan(
+        try await CostUsageScanExecutor.run { checkCancellation in
+            try GeminiSessionScanner.scanCancellable(
                 environment: [GeminiSessionScanner.cliHomeEnvironmentKey: context.homePath],
                 historyDays: context.historyDays,
-                now: context.now)
-            try Task.checkCancellation()
-            return snapshot
-        }.value
+                now: context.now,
+                checkCancellation: checkCancellation)
+        }
     }
 
     private static func loadOpenCodeSnapshot(
         _ context: OpenCodeSpendSnapshotLoadContext) async throws -> CostUsageTokenSnapshot?
     {
-        try await Task.detached(priority: .utility) {
-            try Task.checkCancellation()
-            let snapshot = OpenCodeSessionScanner.scan(
+        try await CostUsageScanExecutor.run { checkCancellation in
+            try OpenCodeSessionScanner.scanCancellable(
                 environment: [OpenCodeSessionScanner.dataHomeEnvironmentKey: context.homePath],
                 historyDays: context.historyDays,
-                now: context.now)
-            try Task.checkCancellation()
-            return snapshot
-        }.value
+                now: context.now,
+                checkCancellation: checkCancellation)
+        }
     }
 
     private static func loadMiniMaxSnapshot(
         _ context: MiniMaxSpendSnapshotLoadContext) async throws -> CostUsageTokenSnapshot?
     {
-        try await Task.detached(priority: .utility) {
-            try Task.checkCancellation()
-            let snapshot = MiniMaxSessionScanner.scan(
+        try await CostUsageScanExecutor.run { checkCancellation in
+            try MiniMaxSessionScanner.scanCancellable(
                 environment: [MiniMaxSessionScanner.homeEnvironmentKey: context.homePath],
                 historyDays: context.historyDays,
-                now: context.now)
-            try Task.checkCancellation()
-            return snapshot
-        }.value
+                now: context.now,
+                checkCancellation: checkCancellation)
+        }
     }
 
     private static func loadAntigravitySnapshot(
         _ context: AntigravitySpendSnapshotLoadContext) async throws -> CostUsageTokenSnapshot?
     {
-        try await Task.detached(priority: .utility) {
-            try Task.checkCancellation()
-            let snapshot = AntigravitySessionScanner.scan(
+        try await CostUsageScanExecutor.run { checkCancellation in
+            try AntigravitySessionScanner.scanCancellable(
                 environment: [AntigravitySessionScanner.homeEnvironmentKey: context.homePath],
                 historyDays: context.historyDays,
-                now: context.now)
-            try Task.checkCancellation()
-            return snapshot
-        }.value
+                now: context.now,
+                checkCancellation: checkCancellation)
+        }
     }
 
     /// Main-actor capture of the Gemini CLI home, mirroring `KimiSettingsReader.kimiCodeHomeURL`

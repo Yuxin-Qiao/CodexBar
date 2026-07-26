@@ -310,7 +310,7 @@ struct SpendDashboardDateTruthTests {
             let usd = try #require(groups.first(where: { $0.currencyCode == "USD" }))
 
             #expect(usd.totalCost == 7)
-            #expect(usd.totalTokens == nil)
+            #expect(usd.totalTokens == 10)
             #expect(usd.modelHistoryCompleteness == .complete)
             #expect(usd.models.map(\.totalCost) == [4, 3])
             #expect(usd.models.first(where: { $0.provider == .claude })?.totalTokens == nil)
@@ -396,7 +396,7 @@ struct SpendDashboardDateTruthTests {
             calendar: Self.calendar).groups.first)
 
         #expect(group.totalCost == 20)
-        #expect(group.totalTokens == nil)
+        #expect(group.totalTokens == 62)
         #expect(group.modelHistoryCompleteness == .complete)
         #expect(group.models.map(\.modelName) == ["overflow", "mismatch", "negative", "valid"])
         #expect(group.models.map(\.totalCost) == [7, 6, 5, 2])

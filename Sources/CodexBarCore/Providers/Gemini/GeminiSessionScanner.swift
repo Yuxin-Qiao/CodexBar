@@ -217,6 +217,23 @@ public enum GeminiSessionScanner {
         now: Date = Date(),
         calendar: Calendar = .current) -> CostUsageTokenSnapshot?
     {
+        try? self.scanCancellable(
+            environment: environment,
+            fileManager: fileManager,
+            historyDays: historyDays,
+            now: now,
+            calendar: calendar)
+    }
+
+    public static func scanCancellable(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        fileManager: FileManager = .default,
+        historyDays: Int = defaultHistoryDays,
+        now: Date = Date(),
+        calendar: Calendar = .current,
+        checkCancellation: @escaping () throws -> Void = {}) throws -> CostUsageTokenSnapshot?
+    {
+        try checkCancellation()
         let days = max(1, historyDays)
         let tmp = self.geminiTmpURL(environment: environment)
         guard let enumerator = fileManager.enumerator(
@@ -233,6 +250,7 @@ public enum GeminiSessionScanner {
         let decoder = JSONDecoder()
 
         while let url = enumerator.nextObject() as? URL {
+            try checkCancellation()
             let pathExtension = url.pathExtension.lowercased()
             guard pathExtension == "json" || pathExtension == "jsonl",
                   self.isChatTranscript(url, under: tmp)
@@ -252,6 +270,7 @@ public enum GeminiSessionScanner {
                 ? self.parseStream(data: data, fallbackDate: fallbackDate, decoder: decoder)
                 : self.parseChatRecording(data: data, fallbackDate: fallbackDate, decoder: decoder)
             for turn in turns {
+                try checkCancellation()
                 let day = calendar.startOfDay(for: turn.date)
                 guard day >= start, day <= end else { continue }
                 let key = DayModelKey(day: CostUsageLocalDay.key(from: day, calendar: calendar), model: turn.model)

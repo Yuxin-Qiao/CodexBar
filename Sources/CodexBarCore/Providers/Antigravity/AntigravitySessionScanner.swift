@@ -156,37 +156,51 @@ public enum AntigravitySessionScanner {
         calendar: Calendar = .current,
         modelsDevCacheRoot: URL? = nil) -> CostUsageTokenSnapshot?
     {
+        try? self.scanCancellable(
+            environment: environment,
+            historyDays: historyDays,
+            now: now,
+            calendar: calendar,
+            modelsDevCacheRoot: modelsDevCacheRoot)
+    }
+
+    public static func scanCancellable(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        historyDays: Int = defaultHistoryDays,
+        now: Date = Date(),
+        calendar: Calendar = .current,
+        modelsDevCacheRoot: URL? = nil,
+        checkCancellation: @escaping () throws -> Void = {}) throws -> CostUsageTokenSnapshot?
+    {
+        try checkCancellation()
         let days = max(1, historyDays)
         let conversationsURL = self.conversationsURL(environment: environment)
         let databaseURLs = self.conversationDatabases(under: conversationsURL)
         guard !databaseURLs.isEmpty else { return nil }
 
         let modelsDevCatalog = CostUsagePricing.modelsDevCatalog(now: now, cacheRoot: modelsDevCacheRoot)
-
-        var rows: [UsageRow] = []
-        var seenResponseIDs: Set<String> = []
-        for databaseURL in databaseURLs {
-            self.readRows(
-                databaseURL: databaseURL,
-                catalog: modelsDevCatalog,
-                cacheRoot: modelsDevCacheRoot,
-                into: &rows,
-                seenResponseIDs: &seenResponseIDs)
-        }
-        guard !rows.isEmpty else { return nil }
-
         let end = calendar.startOfDay(for: now)
         let start = calendar.date(byAdding: .day, value: -(days - 1), to: end) ?? end
         var values: [DayModelKey: TokenAccumulator] = [:]
-
-        for row in rows {
-            let date = Date(timeIntervalSince1970: TimeInterval(row.createdMs) / 1000)
-            let day = calendar.startOfDay(for: date)
-            guard day >= start, day <= end else { continue }
-            let key = DayModelKey(day: CostUsageLocalDay.key(from: day, calendar: calendar), model: row.model)
-            var value = values[key] ?? TokenAccumulator()
-            guard value.add(row) else { continue }
-            values[key] = value
+        var seenResponseIDs: Set<String> = []
+        for databaseURL in databaseURLs {
+            try checkCancellation()
+            try self.readRows(
+                databaseURL: databaseURL,
+                pricing: (catalog: modelsDevCatalog, cacheRoot: modelsDevCacheRoot),
+                seenResponseIDs: &seenResponseIDs,
+                checkCancellation: checkCancellation)
+            { row in
+                let date = Date(timeIntervalSince1970: TimeInterval(row.createdMs) / 1000)
+                let day = calendar.startOfDay(for: date)
+                guard day >= start, day <= end else { return }
+                let key = DayModelKey(
+                    day: CostUsageLocalDay.key(from: day, calendar: calendar),
+                    model: row.model)
+                var value = values[key] ?? TokenAccumulator()
+                guard value.add(row) else { return }
+                values[key] = value
+            }
         }
 
         guard !values.isEmpty else { return nil }
@@ -291,10 +305,10 @@ public enum AntigravitySessionScanner {
 
     private static func readRows(
         databaseURL: URL,
-        catalog: ModelsDevCatalog?,
-        cacheRoot: URL?,
-        into rows: inout [UsageRow],
-        seenResponseIDs: inout Set<String>)
+        pricing: (catalog: ModelsDevCatalog?, cacheRoot: URL?),
+        seenResponseIDs: inout Set<String>,
+        checkCancellation: () throws -> Void,
+        onRow: (UsageRow) -> Void) throws
     {
         var db: OpaquePointer?
         // Read the main database file directly (immutable=1) to avoid WAL -shm/-wal setup on a
@@ -316,6 +330,7 @@ public enum AntigravitySessionScanner {
         defer { sqlite3_finalize(stmt) }
 
         while true {
+            try checkCancellation()
             let step = sqlite3_step(stmt)
             if step == SQLITE_DONE { break }
             guard step == SQLITE_ROW else { return }
@@ -323,11 +338,11 @@ public enum AntigravitySessionScanner {
             if let row = self.parseGeneration(
                 blob,
                 sessionTimestampMs: sessionTimestampMs,
-                catalog: catalog,
-                cacheRoot: cacheRoot,
+                catalog: pricing.catalog,
+                cacheRoot: pricing.cacheRoot,
                 seenResponseIDs: &seenResponseIDs)
             {
-                rows.append(row)
+                onRow(row)
             }
         }
     }

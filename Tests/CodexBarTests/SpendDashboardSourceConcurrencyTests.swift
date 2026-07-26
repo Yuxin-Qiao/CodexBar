@@ -331,7 +331,7 @@ struct SpendDashboardSourceConcurrencyTests {
     }
 
     @Test
-    func `Codex removal relabels retained failed account from second to first`() async throws {
+    func `Codex removal retains failed account across billing aggregation`() async throws {
         let gate = SpendDashboardResultBatchGate()
         let requestGate = SpendDashboardProviderBatchGate()
         let initialRequests = [
@@ -384,10 +384,9 @@ struct SpendDashboardSourceConcurrencyTests {
 
         controller.update(configuration: replacement)
         let pendingRows = try #require(controller.model.groups.first?.providers)
-        #expect(Dictionary(uniqueKeysWithValues: pendingRows.map { ($0.id, $0.displayName) }) == [
-            "codex:b": "Codex · #1",
-            "codex:c": "Codex · #2",
-        ])
+        #expect(pendingRows.count == 1)
+        #expect(pendingRows.first?.displayName == "Codex")
+        #expect(pendingRows.first?.totalCost == 12)
         await Self.waitForProviderGate(requestGate)
         #expect(await gate.pendingCount == 0)
         await requestGate.resume()
@@ -398,11 +397,9 @@ struct SpendDashboardSourceConcurrencyTests {
         await Self.waitUntil { !controller.isRefreshing }
 
         let finalRows = try #require(controller.model.groups.first?.providers)
-        #expect(Dictionary(uniqueKeysWithValues: finalRows.map { ($0.id, $0.displayName) }) == [
-            "codex:b": "Codex · #1",
-            "codex:c": "Codex · #2",
-        ])
-        #expect(finalRows.first { $0.id == "codex:b" }?.totalCost == 5)
+        #expect(finalRows.count == 1)
+        #expect(finalRows.first?.displayName == "Codex")
+        #expect(finalRows.first?.totalCost == 13)
         #expect(controller.failedSourceCount == 1)
     }
 

@@ -163,17 +163,44 @@ public enum MiniMaxSessionScanner {
         calendar: Calendar = .current,
         modelsDevCacheRoot: URL? = nil) -> CostUsageTokenSnapshot?
     {
+        try? self.scanCancellable(
+            environment: environment,
+            historyDays: historyDays,
+            now: now,
+            calendar: calendar,
+            modelsDevCacheRoot: modelsDevCacheRoot)
+    }
+
+    public static func scanCancellable(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        historyDays: Int = defaultHistoryDays,
+        now: Date = Date(),
+        calendar: Calendar = .current,
+        modelsDevCacheRoot: URL? = nil,
+        checkCancellation: @escaping () throws -> Void = {}) throws -> CostUsageTokenSnapshot?
+    {
+        try checkCancellation()
         let days = max(1, historyDays)
         let databaseURL = self.runtimeDatabaseURL(environment: environment)
         guard FileManager.default.fileExists(atPath: databaseURL.path) else { return nil }
-        guard let rows = self.readRows(databaseURL: databaseURL), !rows.isEmpty else { return nil }
-
-        let modelsDevCatalog = CostUsagePricing.modelsDevCatalog(now: now, cacheRoot: modelsDevCacheRoot)
         let end = calendar.startOfDay(for: now)
         let start = calendar.date(byAdding: .day, value: -(days - 1), to: end) ?? end
+        let until = calendar.date(byAdding: .day, value: 1, to: end) ?? now
+        guard let rows = try self.readRows(
+            databaseURL: databaseURL,
+            sinceMs: Int64(start.timeIntervalSince1970 * 1000),
+            untilMs: Int64(until.timeIntervalSince1970 * 1000),
+            checkCancellation: checkCancellation),
+            !rows.isEmpty
+        else {
+            return nil
+        }
+
+        let modelsDevCatalog = CostUsagePricing.modelsDevCatalog(now: now, cacheRoot: modelsDevCacheRoot)
         var values: [DayModelKey: TokenAccumulator] = [:]
 
         for row in rows {
+            try checkCancellation()
             let date = Date(timeIntervalSince1970: TimeInterval(row.createdMs) / 1000)
             let day = calendar.startOfDay(for: date)
             guard day >= start, day <= end else { continue }
@@ -273,7 +300,12 @@ public enum MiniMaxSessionScanner {
 
     // MARK: - SQLite
 
-    private static func readRows(databaseURL: URL) -> [UsageRow]? {
+    private static func readRows(
+        databaseURL: URL,
+        sinceMs: Int64,
+        untilMs: Int64,
+        checkCancellation: () throws -> Void) throws -> [UsageRow]?
+    {
         var db: OpaquePointer?
         // The runtime database is WAL-journaled. A plain read-only open cannot create the shared
         // -shm/-wal files and may surface an empty or stale snapshot; `immutable=1` tells SQLite the
@@ -299,14 +331,19 @@ public enum MiniMaxSessionScanner {
           cache_write_tokens,
           cost_usd
         FROM local_runtime_token_usage
+        WHERE ts >= ? AND ts < ?
+        ORDER BY ts
         """
 
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
         defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_int64(stmt, 1, sinceMs)
+        sqlite3_bind_int64(stmt, 2, untilMs)
 
         var rows: [UsageRow] = []
         while true {
+            try checkCancellation()
             let step = sqlite3_step(stmt)
             if step == SQLITE_DONE { break }
             guard step == SQLITE_ROW else { return nil }
