@@ -130,6 +130,9 @@ struct CostUsageCache: Codable {
 struct CostUsageFileUsage: Codable {
     var mtimeUnixMs: Int64
     var size: Int64
+    /// Sampling fingerprint recorded at scan time; nil on pre-fingerprint cache entries,
+    /// which are treated as stale and rescanned once.
+    var fingerprint: CostUsageSourceFingerprint?
     var days: [String: [String: [Int]]]
     var parsedBytes: Int64?
     var lastModel: String?
@@ -162,4 +165,7 @@ struct CostUsageCodexTotals: Codable, Equatable {
     var input: Int
     var cached: Int
     var output: Int
+    /// Reasoning output tokens (`reasoning_output_tokens`); a sub-bucket of `output`, mirroring
+    /// tokscale's `CodexTotals`. Component-wise delta math carries it exactly like `output`.
+    var reasoning: Int = 0
 }

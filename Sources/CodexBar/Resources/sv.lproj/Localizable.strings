@@ -1267,14 +1267,17 @@
 "By subscription" = "Per abonnemang";
 "No model-level history" = "Ingen historik på modellnivå";
 "Tokens" = "Tokens";
-"Tracked model tokens" = "Tracked model tokens";
-"Priced model spend" = "Priced model spend";
+"Tracked model tokens" = "Spårade modelltoken";
+"Priced model spend" = "Prissatta modellutgifter";
 "Partial model history: incomplete source-days are excluded." = "Partial model history: incomplete source-days are excluded.";
-"No priced model history" = "No priced model history";
+"No priced model history" = "Ingen historik för prissatta modeller";
 "Other" = "Other";
-"Show all %d models" = "Show all %d models";
-"Show top 20" = "Show top 20";
+"Show all %d models" = "Visa alla %d modeller";
+"Show top 20" = "Visa topp 20";
 "Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers." = "Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers.";
+"Metric" = "Mått";
+"%d days of usage data across %d models" = "%d dagar med användningsdata för %d modeller";
+"%@ in · %@ out" = "%@ in · %@ ut";
 "Daily estimated spend" = "Uppskattade dagliga utgifter";
 "≈%d full 5h windows of weekly left · %d windows until reset" = "≈%d fulla 5-timmarsfönster av veckokvoten kvar · %d fönster till återställning";
 "Weekly cannot run out before reset at this pace" = "Veckokvoten kan inte ta slut före återställningen i den här takten";
@@ -1283,6 +1286,20 @@
 "Coding Plan" = "Kodningsplan";
 "Agent Plan" = "Agentplan";
 "Team" = "Team";
+
+"7-day average" = "7-dagars medelvärde";
+"Input" = "Indata";
+"Output" = "Utdata";
+"Cache write" = "Cacheskrivning";
+"Reasoning" = "Resonemang";
+"%@ in" = "%@ indata";
+"%@ out" = "%@ utdata";
+"%@ cache read" = "%@ cacheläsning";
+"%@ cache write" = "%@ cacheskrivning";
+"%@ reasoning" = "%@ resonemang";
+"estimated" = "uppskattat";
+"Estimated costs are priced from local logs and may differ from provider bills." = "Uppskattade kostnader beräknas från lokala loggar till listpriser och kan skilja sig från leverantörernas fakturor.";
+"Usage details for %@" = "Användningsdetaljer för %@";
 
 /* Menu bar layout editor */
 "menu_bar_layout_title" = "Layout";
@@ -1349,3 +1366,22 @@
 "Cost today unavailable" = "Kostnad idag: Inte tillgänglig";
 "30-day cost unavailable" = "Kostnad 30 dagar: Inte tillgänglig";
 "Resets" = "Återställningar";
+"Cumulative" = "Kumulativt";
+
+/* Token usage dashboard (usage & spend) */
+"Token activity" = "Token-aktivitet";
+"By model" = "Per modell";
+"By tool" = "Per verktyg";
+"View" = "Vy";
+"7-day avg" = "7-dagars snitt";
+"in the last year" = "det senaste året";
+"No activity in the last 12 months" = "Ingen aktivitet de senaste 12 månaderna";
+"Each column = 1 week" = "Varje kolumn = 1 vecka";
+"Running total" = "Löpande summa";
+"Less" = "Mindre";
+"More" = "Mer";
+"Mo" = "må";
+"We" = "on";
+"Fr" = "fr";
+"Estimated" = "Uppskattat";
+"No per-client model history" = "Ingen modellhistorik per klient";

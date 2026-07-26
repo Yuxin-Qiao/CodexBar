@@ -8,7 +8,7 @@ func spendDashboardDayRangeText(_ days: Int) -> String {
     switch days {
     case 7: template = L("7d")
     case 30: template = L("30d")
-    case 365: return L("All")
+    case 365: return L("Cumulative")
     default: return codexBarLocalizedInteger(days)
     }
     return template.replacingOccurrences(
@@ -49,7 +49,9 @@ struct SpendDashboardPane: View {
     @Bindable var settings: SettingsStore
     @Bindable var store: UsageStore
     @State private var controller: SpendDashboardController
-    @State private var selectedModelDays = 365
+    private var selectedModelDays: Int {
+        self.controller.selectedDays
+    }
 
     init(settings: SettingsStore, store: UsageStore) {
         self.settings = settings
@@ -108,10 +110,11 @@ struct SpendDashboardPane: View {
             Picker(L("Time range"), selection: self.daysBinding) {
                 Text(spendDashboardDayRangeText(7)).tag(7)
                 Text(spendDashboardDayRangeText(30)).tag(30)
+                Text(spendDashboardDayRangeText(365)).tag(365)
             }
             .labelsHidden()
             .pickerStyle(.segmented)
-            .frame(width: 116)
+            .fixedSize()
 
             Button {
                 self.controller.refresh()
@@ -158,7 +161,9 @@ struct SpendDashboardPane: View {
                     modelChartDomain: group.id == modelHostGroupID
                         ? self.controller.model.modelChartDomain(for: self.selectedModelDays)
                         : nil,
-                    selectedModelDays: self.$selectedModelDays)
+                    activityAnalysis: group.id == modelHostGroupID
+                        ? self.controller.model.modelAnalysis(for: 365)
+                        : nil)
             }
         }
 
@@ -243,7 +248,7 @@ private struct SpendCurrencySection: View {
     let requestedDays: Int
     let modelAnalysis: SpendDashboardModel.ModelAnalysis?
     let modelChartDomain: ClosedRange<Date>?
-    @Binding var selectedModelDays: Int
+    let activityAnalysis: SpendDashboardModel.ModelAnalysis?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -288,9 +293,14 @@ private struct SpendCurrencySection: View {
                 SpendModelsSection(
                     analysis: modelAnalysis,
                     chartDomain: self.modelChartDomain,
-                    selectedDays: self.$selectedModelDays)
+                    selectedDays: self.requestedDays)
             }
             SpendDailyChart(group: self.group)
+            if let activityAnalysis {
+                SpendDashboardPanel {
+                    SpendActivityHeatmapView(analysis: activityAnalysis)
+                }
+            }
         }
     }
 }

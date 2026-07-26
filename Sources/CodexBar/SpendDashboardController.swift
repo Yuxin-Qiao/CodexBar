@@ -63,6 +63,9 @@ struct SpendDashboardLoadRequest: Sendable {
     let confirmedEmptySourceIDs: Set<String>
     let codexRequests: [CodexSpendScanRequest]
     let kimiCodeHomePath: String?
+    let geminiCLIHomePath: String?
+    let openCodeDataHomePath: String?
+    let miniMaxHomePath: String?
     let now: Date
     let force: Bool
 
@@ -73,6 +76,9 @@ struct SpendDashboardLoadRequest: Sendable {
         confirmedEmptySourceIDs: Set<String> = [],
         codexRequests: [CodexSpendScanRequest],
         kimiCodeHomePath: String? = nil,
+        geminiCLIHomePath: String? = nil,
+        openCodeDataHomePath: String? = nil,
+        miniMaxHomePath: String? = nil,
         now: Date,
         force: Bool)
     {
@@ -82,6 +88,9 @@ struct SpendDashboardLoadRequest: Sendable {
         self.confirmedEmptySourceIDs = confirmedEmptySourceIDs
         self.codexRequests = codexRequests
         self.kimiCodeHomePath = kimiCodeHomePath
+        self.geminiCLIHomePath = geminiCLIHomePath
+        self.openCodeDataHomePath = openCodeDataHomePath
+        self.miniMaxHomePath = miniMaxHomePath
         self.now = now
         self.force = force
     }
@@ -123,10 +132,34 @@ struct KimiCodeSpendSnapshotLoadContext: Sendable {
     let historyDays: Int
 }
 
+struct GeminiSpendSnapshotLoadContext: Sendable {
+    let homePath: String
+    let now: Date
+    let historyDays: Int
+}
+
+struct OpenCodeSpendSnapshotLoadContext: Sendable {
+    let homePath: String
+    let now: Date
+    let historyDays: Int
+}
+
+struct MiniMaxSpendSnapshotLoadContext: Sendable {
+    let homePath: String
+    let now: Date
+    let historyDays: Int
+}
+
 enum SpendDashboardSource {
     typealias CodexSnapshotLoader = @Sendable (CodexSpendSnapshotLoadContext) async throws
         -> CostUsageTokenSnapshot
     typealias KimiCodeSnapshotLoader = @Sendable (KimiCodeSpendSnapshotLoadContext) async throws
+        -> CostUsageTokenSnapshot?
+    typealias GeminiSnapshotLoader = @Sendable (GeminiSpendSnapshotLoadContext) async throws
+        -> CostUsageTokenSnapshot?
+    typealias OpenCodeSnapshotLoader = @Sendable (OpenCodeSpendSnapshotLoadContext) async throws
+        -> CostUsageTokenSnapshot?
+    typealias MiniMaxSnapshotLoader = @Sendable (MiniMaxSpendSnapshotLoadContext) async throws
         -> CostUsageTokenSnapshot?
 
     static let scanDays = 365
@@ -256,6 +289,15 @@ enum SpendDashboardSource {
             kimiCodeHomePath: self.localModelHistoryProviders(store: store).contains(.kimi)
                 ? KimiSettingsReader.kimiCodeHomeURL().path
                 : nil,
+            geminiCLIHomePath: self.localModelHistoryProviders(store: store).contains(.gemini)
+                ? Self.geminiCLIHomeURL().path
+                : nil,
+            openCodeDataHomePath: self.localModelHistoryProviders(store: store).contains(.opencode)
+                ? Self.openCodeDataHomeURL().path
+                : nil,
+            miniMaxHomePath: self.localModelHistoryProviders(store: store).contains(.minimax)
+                ? Self.miniMaxHomeURL().path
+                : nil,
             now: captureNow,
             force: mode.forcesLoader)
     }
@@ -268,14 +310,54 @@ enum SpendDashboardSource {
             },
             kimiCodeSnapshotLoader: { context in
                 try await self.loadKimiCodeSnapshot(context)
+            },
+            geminiSnapshotLoader: { context in
+                try await self.loadGeminiSnapshot(context)
+            },
+            openCodeSnapshotLoader: { context in
+                try await self.loadOpenCodeSnapshot(context)
+            },
+            miniMaxSnapshotLoader: { context in
+                try await self.loadMiniMaxSnapshot(context)
             })
+    }
+
+    /// A local CLI provider (Kimi/Gemini/OpenCode/MiniMax) whose usage snapshot is loaded
+    /// from a home directory via an injectable loader closure.
+    private struct LocalSnapshotSource {
+        let homePath: String?
+        let sourceID: String
+        let provider: UsageProvider
+        let displayName: String
+        let load: (String) async throws -> CostUsageTokenSnapshot?
+
+        func loadInput() async throws -> SpendDashboardModel.ProviderInput? {
+            guard let homePath else { return nil }
+            guard let snapshot = try await self.load(homePath) else { return nil }
+            return SpendDashboardModel.ProviderInput(
+                id: self.sourceID,
+                provider: self.provider,
+                displayName: self.displayName,
+                modelProviderName: ProviderDescriptorRegistry.descriptor(for: self.provider)
+                    .metadata.displayName,
+                snapshot: snapshot)
+        }
     }
 
     static func load(
         _ request: SpendDashboardLoadRequest,
         codexSnapshotLoader: CodexSnapshotLoader,
-        kimiCodeSnapshotLoader: KimiCodeSnapshotLoader = { context in
+        kimiCodeSnapshotLoader: @escaping KimiCodeSnapshotLoader = { context in
             try await Self.loadKimiCodeSnapshot(context)
+        },
+        geminiSnapshotLoader: @escaping GeminiSnapshotLoader = { context in
+            try await Self.loadGeminiSnapshot(context)
+        },
+        openCodeSnapshotLoader: @escaping OpenCodeSnapshotLoader = { context in
+            try await Self.loadOpenCodeSnapshot(context)
+        },
+        miniMaxSnapshotLoader: @escaping MiniMaxSnapshotLoader = { context in
+            try await Self.loadMiniMaxSnapshot(context)
         }) async -> SpendDashboardLoadResult
     {
         var inputs = request.capturedInputs
@@ -322,28 +404,57 @@ enum SpendDashboardSource {
                 failedSourceIDs.insert(sourceID)
             }
         }
-        if let homePath = request.kimiCodeHomePath {
+        let localSources: [LocalSnapshotSource] = [
+            LocalSnapshotSource(
+                homePath: request.kimiCodeHomePath,
+                sourceID: "kimi:local",
+                provider: .kimi,
+                displayName: "Kimi Code CLI",
+                load: { homePath in
+                    try await kimiCodeSnapshotLoader(KimiCodeSpendSnapshotLoadContext(
+                        homePath: homePath, now: request.now, historyDays: Self.scanDays))
+                }),
+            LocalSnapshotSource(
+                homePath: request.geminiCLIHomePath,
+                sourceID: "gemini:local",
+                provider: .gemini,
+                displayName: "Gemini CLI",
+                load: { homePath in
+                    try await geminiSnapshotLoader(GeminiSpendSnapshotLoadContext(
+                        homePath: homePath, now: request.now, historyDays: Self.scanDays))
+                }),
+            LocalSnapshotSource(
+                homePath: request.openCodeDataHomePath,
+                sourceID: "opencode:local",
+                provider: .opencode,
+                displayName: "OpenCode",
+                load: { homePath in
+                    try await openCodeSnapshotLoader(OpenCodeSpendSnapshotLoadContext(
+                        homePath: homePath, now: request.now, historyDays: Self.scanDays))
+                }),
+            LocalSnapshotSource(
+                homePath: request.miniMaxHomePath,
+                sourceID: "minimax:local",
+                provider: .minimax,
+                displayName: "MiniMax",
+                load: { homePath in
+                    try await miniMaxSnapshotLoader(MiniMaxSpendSnapshotLoadContext(
+                        homePath: homePath, now: request.now, historyDays: Self.scanDays))
+                }),
+        ]
+        for source in localSources {
             do {
-                if let snapshot = try await kimiCodeSnapshotLoader(KimiCodeSpendSnapshotLoadContext(
-                    homePath: homePath,
-                    now: request.now,
-                    historyDays: Self.scanDays))
-                {
-                    inputs.append(SpendDashboardModel.ProviderInput(
-                        id: "kimi:local",
-                        provider: .kimi,
-                        displayName: "Kimi Code CLI",
-                        modelProviderName: ProviderDescriptorRegistry.descriptor(for: .kimi).metadata.displayName,
-                        snapshot: snapshot))
+                if let input = try await source.loadInput() {
+                    inputs.append(input)
                 }
             } catch is CancellationError {
-                failedSourceIDs.insert("kimi:local")
+                failedSourceIDs.insert(source.sourceID)
                 return SpendDashboardLoadResult(
                     inputs: [],
                     failedSourceIDs: failedSourceIDs,
                     invalidatedSourceIDs: invalidatedSourceIDs)
             } catch {
-                failedSourceIDs.insert("kimi:local")
+                failedSourceIDs.insert(source.sourceID)
             }
         }
         let lateInvalidatedSourceIDs = Set(request.codexRequests.compactMap { account in
@@ -388,6 +499,94 @@ enum SpendDashboardSource {
         }.value
     }
 
+    private static func loadGeminiSnapshot(
+        _ context: GeminiSpendSnapshotLoadContext) async throws -> CostUsageTokenSnapshot?
+    {
+        try await Task.detached(priority: .utility) {
+            try Task.checkCancellation()
+            let snapshot = GeminiSessionScanner.scan(
+                environment: [GeminiSessionScanner.cliHomeEnvironmentKey: context.homePath],
+                historyDays: context.historyDays,
+                now: context.now)
+            try Task.checkCancellation()
+            return snapshot
+        }.value
+    }
+
+    private static func loadOpenCodeSnapshot(
+        _ context: OpenCodeSpendSnapshotLoadContext) async throws -> CostUsageTokenSnapshot?
+    {
+        try await Task.detached(priority: .utility) {
+            try Task.checkCancellation()
+            let snapshot = OpenCodeSessionScanner.scan(
+                environment: [OpenCodeSessionScanner.dataHomeEnvironmentKey: context.homePath],
+                historyDays: context.historyDays,
+                now: context.now)
+            try Task.checkCancellation()
+            return snapshot
+        }.value
+    }
+
+    private static func loadMiniMaxSnapshot(
+        _ context: MiniMaxSpendSnapshotLoadContext) async throws -> CostUsageTokenSnapshot?
+    {
+        try await Task.detached(priority: .utility) {
+            try Task.checkCancellation()
+            let snapshot = MiniMaxSessionScanner.scan(
+                environment: [MiniMaxSessionScanner.homeEnvironmentKey: context.homePath],
+                historyDays: context.historyDays,
+                now: context.now)
+            try Task.checkCancellation()
+            return snapshot
+        }.value
+    }
+
+    /// Main-actor capture of the Gemini CLI home, mirroring `KimiSettingsReader.kimiCodeHomeURL`
+    /// (the scanner itself appends `tmp` to whatever `GEMINI_CLI_HOME` resolves to).
+    private static func geminiCLIHomeURL(
+        environment: [String: String] = ProcessInfo.processInfo.environment) -> URL
+    {
+        if let override = environment[GeminiSessionScanner.cliHomeEnvironmentKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !override.isEmpty
+        {
+            return URL(fileURLWithPath: override, isDirectory: true)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".gemini", isDirectory: true)
+    }
+
+    /// Main-actor capture of the XDG data home feeding `OpenCodeSessionScanner` (the scanner
+    /// itself appends `opencode/storage/message` to whatever `XDG_DATA_HOME` resolves to).
+    private static func openCodeDataHomeURL(
+        environment: [String: String] = ProcessInfo.processInfo.environment) -> URL
+    {
+        if let override = environment[OpenCodeSessionScanner.dataHomeEnvironmentKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !override.isEmpty
+        {
+            return URL(fileURLWithPath: override, isDirectory: true)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".local", isDirectory: true)
+            .appendingPathComponent("share", isDirectory: true)
+    }
+
+    /// Main-actor capture of the MiniMax home feeding `MiniMaxSessionScanner` (the scanner itself
+    /// appends `v2/sqlite/runtime-state.sqlite` to whatever `MINIMAX_HOME` resolves to).
+    private static func miniMaxHomeURL(
+        environment: [String: String] = ProcessInfo.processInfo.environment) -> URL
+    {
+        if let override = environment[MiniMaxSessionScanner.homeEnvironmentKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !override.isEmpty
+        {
+            return URL(fileURLWithPath: override, isDirectory: true)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".minimax", isDirectory: true)
+    }
+
     @MainActor
     static func costCapableProviders(store: UsageStore) -> [UsageProvider] {
         store.enabledProvidersForDisplay().filter {
@@ -397,7 +596,9 @@ enum SpendDashboardSource {
 
     @MainActor
     static func localModelHistoryProviders(store: UsageStore) -> [UsageProvider] {
-        store.enabledProvidersForDisplay().filter { $0 == .kimi }
+        store.enabledProvidersForDisplay().filter {
+            $0 == .kimi || $0 == .gemini || $0 == .opencode || $0 == .minimax
+        }
     }
 
     @MainActor

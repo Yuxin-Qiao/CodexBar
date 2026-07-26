@@ -9,6 +9,11 @@ struct SpendDashboardModel: Equatable, Sendable {
         let modelProviderName: String
         let snapshot: CostUsageTokenSnapshot
 
+        /// Origin of this source's cost figures (provider-billed vs locally estimated).
+        var costSource: CostUsageCostSource {
+            self.snapshot.costSource
+        }
+
         init(
             id: String? = nil,
             provider: UsageProvider,
@@ -97,6 +102,46 @@ struct SpendDashboardModel: Equatable, Sendable {
         let inputTokens: Int?
         let outputTokens: Int?
         let estimatedCost: Double?
+        /// Non-cached input bucket complement: cache reads/writes, reported separately when every
+        /// contributing breakdown carries them (nil means "unknown", not zero).
+        let cacheReadTokens: Int?
+        let cacheCreationTokens: Int?
+        /// Reasoning sub-bucket of `outputTokens` (never add it on top of output).
+        let reasoningTokens: Int?
+        /// True when any contributing cost was locally estimated rather than provider-billed.
+        let costIsEstimated: Bool
+
+        init(
+            id: String,
+            displayName: String,
+            rawModelNames: [String],
+            providers: [UsageProvider],
+            providerNames: [String],
+            contributions: [ModelSourceContribution],
+            totalTokens: Int?,
+            inputTokens: Int?,
+            outputTokens: Int?,
+            estimatedCost: Double?,
+            cacheReadTokens: Int? = nil,
+            cacheCreationTokens: Int? = nil,
+            reasoningTokens: Int? = nil,
+            costIsEstimated: Bool = false)
+        {
+            self.id = id
+            self.displayName = displayName
+            self.rawModelNames = rawModelNames
+            self.providers = providers
+            self.providerNames = providerNames
+            self.contributions = contributions
+            self.totalTokens = totalTokens
+            self.inputTokens = inputTokens
+            self.outputTokens = outputTokens
+            self.estimatedCost = estimatedCost
+            self.cacheReadTokens = cacheReadTokens
+            self.cacheCreationTokens = cacheCreationTokens
+            self.reasoningTokens = reasoningTokens
+            self.costIsEstimated = costIsEstimated
+        }
     }
 
     struct ModelDailyValue: Identifiable, Equatable, Sendable {
@@ -107,9 +152,37 @@ struct SpendDashboardModel: Equatable, Sendable {
         let inputTokens: Int?
         let outputTokens: Int?
         let estimatedCost: Double?
+        let cacheReadTokens: Int?
+        let cacheCreationTokens: Int?
+        /// Reasoning sub-bucket of `outputTokens` (never add it on top of output).
+        let reasoningTokens: Int?
 
         var id: String {
             "\(self.modelID):\(Int(self.day.timeIntervalSince1970))"
+        }
+
+        init(
+            modelID: String,
+            modelName: String,
+            day: Date,
+            totalTokens: Int?,
+            inputTokens: Int?,
+            outputTokens: Int?,
+            estimatedCost: Double?,
+            cacheReadTokens: Int? = nil,
+            cacheCreationTokens: Int? = nil,
+            reasoningTokens: Int? = nil)
+        {
+            self.modelID = modelID
+            self.modelName = modelName
+            self.day = day
+            self.totalTokens = totalTokens
+            self.inputTokens = inputTokens
+            self.outputTokens = outputTokens
+            self.estimatedCost = estimatedCost
+            self.cacheReadTokens = cacheReadTokens
+            self.cacheCreationTokens = cacheCreationTokens
+            self.reasoningTokens = reasoningTokens
         }
     }
 
@@ -303,7 +376,7 @@ struct SpendDashboardModel: Equatable, Sendable {
         let completeness: ModelHistoryCompleteness
     }
 
-    private struct ModelAnalysisAccumulator {
+    fileprivate struct ModelAnalysisAccumulator {
         var rawNames: Set<String> = []
         var displayNames: Set<String> = []
         var providerNames: [UsageProvider: String] = [:]
@@ -311,18 +384,31 @@ struct SpendDashboardModel: Equatable, Sendable {
         var tokens: Int? = 0
         var inputTokens: Int? = 0
         var outputTokens: Int? = 0
+        var cacheReadTokens: Int? = 0
+        var cacheCreationTokens: Int? = 0
+        var reasoningTokens: Int? = 0
         var cost: Double? = 0
         var sawTokens = false
         var sawTokenSplit = false
+        var sawCacheReadTokens = false
+        var missingCacheReadTokens = false
+        var sawCacheCreationTokens = false
+        var missingCacheCreationTokens = false
+        var sawReasoningTokens = false
+        var missingReasoningTokens = false
         var sawCost = false
+        var sawEstimatedCost = false
         var invalidTokenSplit = false
         var overflowedTokens = false
         var overflowedInputTokens = false
         var overflowedOutputTokens = false
+        var overflowedCacheReadTokens = false
+        var overflowedCacheCreationTokens = false
+        var overflowedReasoningTokens = false
         var overflowedCost = false
     }
 
-    private struct ModelAnalysisSourceAccumulator {
+    fileprivate struct ModelAnalysisSourceAccumulator {
         let provider: UsageProvider
         let sourceName: String
         let providerName: String
@@ -340,18 +426,30 @@ struct SpendDashboardModel: Equatable, Sendable {
         let day: Date
     }
 
-    private struct ModelAnalysisDailyAccumulator {
+    fileprivate struct ModelAnalysisDailyAccumulator {
         var tokens: Int? = 0
         var inputTokens: Int? = 0
         var outputTokens: Int? = 0
+        var cacheReadTokens: Int? = 0
+        var cacheCreationTokens: Int? = 0
+        var reasoningTokens: Int? = 0
         var cost: Double? = 0
         var sawTokens = false
         var sawTokenSplit = false
+        var sawCacheReadTokens = false
+        var missingCacheReadTokens = false
+        var sawCacheCreationTokens = false
+        var missingCacheCreationTokens = false
+        var sawReasoningTokens = false
+        var missingReasoningTokens = false
         var sawCost = false
         var invalidTokenSplit = false
         var overflowedTokens = false
         var overflowedInputTokens = false
         var overflowedOutputTokens = false
+        var overflowedCacheReadTokens = false
+        var overflowedCacheCreationTokens = false
+        var overflowedReasoningTokens = false
         var overflowedCost = false
     }
 
@@ -442,11 +540,20 @@ extension SpendDashboardModel {
         let hasCompleteCostHistory = Self.hasCompleteCostHistory(input, displayCalendar: calendar)
         let costAggregateIsConsistent = input.snapshot.last30DaysCostUSD == nil || hasCompleteCostHistory
         let invalidCostHistory = hasInvalidCostHistory || !costAggregateIsConsistent
-        let totalCost = invalidCostHistory
-            ? nil
-            : entries.isEmpty
-            ? (coveredDayCount > 0 && hasCompleteCostHistory ? 0 : nil)
-            : Self.completeCostSum(entries.map { Self.validCost($0.entry.costUSD) })
+        // Daily-sum fallback: when the provider's aggregate cost figure uses a different window or
+        // accounting than the local per-day logs (so the strict consistency check fails), fall back
+        // to summing the per-day costs instead of voiding the whole provider. This keeps the spend
+        // figure available as long as every in-range day was individually priceable.
+        let dailyCostSum = Self.completeCostSum(entries.map { Self.validCost($0.entry.costUSD) })
+        let totalCost: Double? = if !invalidCostHistory {
+            entries.isEmpty
+                ? (coveredDayCount > 0 && hasCompleteCostHistory ? 0 : nil)
+                : dailyCostSum
+        } else if !hasInvalidCostHistory, dailyCostSum != nil {
+            dailyCostSum
+        } else {
+            nil
+        }
         return InputSummary(
             input: input,
             entries: entries,
@@ -610,6 +717,9 @@ extension SpendDashboardModel {
                     if costBreakdownIsComplete, let cost = Self.validCost(breakdown.costUSD) {
                         aggregate.sawCost = true
                         aggregate.cost = Self.add(cost, to: aggregate.cost, overflowed: &aggregate.overflowedCost)
+                        if input.costSource == .estimated {
+                            aggregate.sawEstimatedCost = true
+                        }
                         source.sawCost = true
                         source.cost = Self.add(cost, to: source.cost, overflowed: &source.overflowedCost)
                         let key = ModelAnalysisDailyKey(modelID: identity, day: windowEntry.day)
@@ -627,12 +737,7 @@ extension SpendDashboardModel {
 
         let rows = models.compactMap { identity, aggregate -> ModelAnalysisRow? in
             let totalTokens = aggregate.sawTokens && !aggregate.overflowedTokens ? aggregate.tokens : nil
-            let hasCompleteTokenSplit = aggregate.sawTokenSplit
-                && !aggregate.invalidTokenSplit
-                && !aggregate.overflowedInputTokens
-                && !aggregate.overflowedOutputTokens
-            let inputTokens = hasCompleteTokenSplit ? aggregate.inputTokens : nil
-            let outputTokens = hasCompleteTokenSplit ? aggregate.outputTokens : nil
+            let buckets = aggregate.resolvedTokenBuckets()
             let estimatedCost = aggregate.sawCost && !aggregate.overflowedCost ? aggregate.cost : nil
             guard totalTokens != nil || estimatedCost != nil else { return nil }
             let rawNames = aggregate.rawNames.sorted(by: Self.modelNameOrder)
@@ -666,21 +771,20 @@ extension SpendDashboardModel {
                 providerNames: providers.map { aggregate.providerNames[$0] ?? $0.rawValue },
                 contributions: contributions,
                 totalTokens: totalTokens,
-                inputTokens: inputTokens,
-                outputTokens: outputTokens,
-                estimatedCost: estimatedCost)
+                inputTokens: buckets.inputTokens,
+                outputTokens: buckets.outputTokens,
+                estimatedCost: estimatedCost,
+                cacheReadTokens: buckets.cacheReadTokens,
+                cacheCreationTokens: buckets.cacheCreationTokens,
+                reasoningTokens: buckets.reasoningTokens,
+                costIsEstimated: aggregate.sawEstimatedCost)
         }
         .sorted(by: Self.modelAnalysisRowOrder)
 
         let namesByID: [String: String] = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0.displayName) })
         let dailyValues = daily.compactMap { key, value -> ModelDailyValue? in
             let tokens = value.sawTokens && !value.overflowedTokens ? value.tokens : nil
-            let hasCompleteTokenSplit = value.sawTokenSplit
-                && !value.invalidTokenSplit
-                && !value.overflowedInputTokens
-                && !value.overflowedOutputTokens
-            let inputTokens = hasCompleteTokenSplit ? value.inputTokens : nil
-            let outputTokens = hasCompleteTokenSplit ? value.outputTokens : nil
+            let buckets = value.resolvedTokenBuckets()
             let cost = value.sawCost && !value.overflowedCost ? value.cost : nil
             guard tokens != nil || cost != nil, let name = namesByID[key.modelID] else { return nil }
             return ModelDailyValue(
@@ -688,9 +792,12 @@ extension SpendDashboardModel {
                 modelName: name,
                 day: key.day,
                 totalTokens: tokens,
-                inputTokens: inputTokens,
-                outputTokens: outputTokens,
-                estimatedCost: cost)
+                inputTokens: buckets.inputTokens,
+                outputTokens: buckets.outputTokens,
+                estimatedCost: cost,
+                cacheReadTokens: buckets.cacheReadTokens,
+                cacheCreationTokens: buckets.cacheCreationTokens,
+                reasoningTokens: buckets.reasoningTokens)
         }
         .sorted { lhs, rhs in
             if lhs.day != rhs.day { return lhs.day < rhs.day }
@@ -752,6 +859,42 @@ extension SpendDashboardModel {
                 split.output,
                 to: dailyValue.outputTokens,
                 overflowed: &dailyValue.overflowedOutputTokens)
+            Self.addOptionalTokenBucket(
+                split.cacheRead,
+                into: &aggregate.cacheReadTokens,
+                saw: &aggregate.sawCacheReadTokens,
+                missing: &aggregate.missingCacheReadTokens,
+                overflowed: &aggregate.overflowedCacheReadTokens)
+            Self.addOptionalTokenBucket(
+                split.cacheRead,
+                into: &dailyValue.cacheReadTokens,
+                saw: &dailyValue.sawCacheReadTokens,
+                missing: &dailyValue.missingCacheReadTokens,
+                overflowed: &dailyValue.overflowedCacheReadTokens)
+            Self.addOptionalTokenBucket(
+                split.cacheCreation,
+                into: &aggregate.cacheCreationTokens,
+                saw: &aggregate.sawCacheCreationTokens,
+                missing: &aggregate.missingCacheCreationTokens,
+                overflowed: &aggregate.overflowedCacheCreationTokens)
+            Self.addOptionalTokenBucket(
+                split.cacheCreation,
+                into: &dailyValue.cacheCreationTokens,
+                saw: &dailyValue.sawCacheCreationTokens,
+                missing: &dailyValue.missingCacheCreationTokens,
+                overflowed: &dailyValue.overflowedCacheCreationTokens)
+            Self.addOptionalTokenBucket(
+                split.reasoning,
+                into: &aggregate.reasoningTokens,
+                saw: &aggregate.sawReasoningTokens,
+                missing: &aggregate.missingReasoningTokens,
+                overflowed: &aggregate.overflowedReasoningTokens)
+            Self.addOptionalTokenBucket(
+                split.reasoning,
+                into: &dailyValue.reasoningTokens,
+                saw: &dailyValue.sawReasoningTokens,
+                missing: &dailyValue.missingReasoningTokens,
+                overflowed: &dailyValue.overflowedReasoningTokens)
         } else {
             aggregate.invalidTokenSplit = true
             dailyValue.invalidTokenSplit = true
@@ -759,24 +902,122 @@ extension SpendDashboardModel {
         return true
     }
 
+    /// Accumulates one optional split bucket (cache read/creation, reasoning). Mirrors the
+    /// `merged()` breakdown rule: the bucket is only known when *every* contributing breakdown
+    /// reports it, so a single missing value poisons the aggregate to nil.
+    private static func addOptionalTokenBucket(
+        _ value: Int?,
+        into bucket: inout Int?,
+        saw: inout Bool,
+        missing: inout Bool,
+        overflowed: inout Bool)
+    {
+        guard let value else {
+            missing = true
+            return
+        }
+        saw = true
+        bucket = Self.add(value, to: bucket, overflowed: &overflowed)
+    }
+
+    fileprivate static func optionalTokenBucket(
+        _ bucket: Int?,
+        saw: Bool,
+        missing: Bool,
+        overflowed: Bool,
+        splitIsComplete: Bool) -> Int?
+    {
+        guard splitIsComplete, saw, !missing, !overflowed else { return nil }
+        return bucket
+    }
+
+    /// Resolved per-model token buckets for one analysis row or daily value.
+    fileprivate struct ModelTokenSplitBuckets: Equatable, Sendable {
+        let inputTokens: Int?
+        let outputTokens: Int?
+        let cacheReadTokens: Int?
+        let cacheCreationTokens: Int?
+        let reasoningTokens: Int?
+    }
+
     private static func modelMetricCoverage(hasValue: Bool, isPartial: Bool) -> ModelMetricCoverage {
         guard hasValue else { return .unavailable }
         return isPartial ? .partial : .complete
     }
 
+    /// Per-breakdown token buckets for the model analysis. `input` is always the non-cached
+    /// input, so `input + cacheRead + cacheCreation + output == total` holds whenever every
+    /// bucket is known. `reasoning` is a sub-bucket of `output` (billing-inclusive) and must
+    /// never be added on top. Optional buckets are nil when the source does not report them.
+    private struct ModelTokenSplit {
+        let input: Int
+        let output: Int
+        let cacheRead: Int?
+        let cacheCreation: Int?
+        let reasoning: Int?
+    }
+
     private static func modelTokenSplit(
-        _ breakdown: CostUsageDailyReport.ModelBreakdown) -> (input: Int, output: Int)?
+        _ breakdown: CostUsageDailyReport.ModelBreakdown) -> ModelTokenSplit?
     {
-        guard self.nonnegative(breakdown.inputTokens) != nil,
-              breakdown.cacheReadTokens.map({ $0 >= 0 }) ?? true,
+        guard breakdown.cacheReadTokens.map({ $0 >= 0 }) ?? true,
               breakdown.cacheCreationTokens.map({ $0 >= 0 }) ?? true,
               let total = nonnegative(breakdown.totalTokens),
               let output = nonnegative(breakdown.outputTokens),
-              output <= total
+              output <= total,
+              // Reasoning is billed as output, so it can never exceed the output bucket.
+              breakdown.reasoningTokens.map({ $0 >= 0 && $0 <= output }) ?? true
         else {
             return nil
         }
-        return (total - output, output)
+
+        if let input = nonnegative(breakdown.inputTokens) {
+            let cacheRead = breakdown.cacheReadTokens ?? 0
+            let cacheCreation = breakdown.cacheCreationTokens ?? 0
+            if let explicitSum = Self.sumTokenBuckets([input, cacheRead, cacheCreation, output]),
+               explicitSum == total
+            {
+                // Cache-exclusive input (Claude/Gemini/OpenCode shape): carry every bucket as-is.
+                return ModelTokenSplit(
+                    input: input,
+                    output: output,
+                    cacheRead: breakdown.cacheReadTokens,
+                    cacheCreation: breakdown.cacheCreationTokens,
+                    reasoning: breakdown.reasoningTokens)
+            }
+            // Cache-inclusive input (Codex shape, where input + output == total): subtract the
+            // cache read overlap so the explicit buckets sum to the total, mirroring tokscale.
+            if input + output == total, cacheRead <= input {
+                return ModelTokenSplit(
+                    input: input - cacheRead,
+                    output: output,
+                    cacheRead: breakdown.cacheReadTokens,
+                    cacheCreation: breakdown.cacheCreationTokens,
+                    reasoning: breakdown.reasoningTokens)
+            }
+            // Mixed-source merges (e.g. Codex native + Pi) fit neither shape exactly; fall
+            // through to the legacy inference so the row keeps a consistent input/output split.
+        }
+
+        // Legacy inference: everything non-output counts as input and the cache buckets stay
+        // unknown. Reasoning is shape-independent (a validated sub-bucket of output), so it is
+        // carried whenever the source reports it.
+        return ModelTokenSplit(
+            input: total - output,
+            output: output,
+            cacheRead: nil,
+            cacheCreation: nil,
+            reasoning: breakdown.reasoningTokens)
+    }
+
+    private static func sumTokenBuckets(_ values: [Int]) -> Int? {
+        var result = 0
+        for value in values {
+            let addition = result.addingReportingOverflow(value)
+            guard !addition.overflow else { return nil }
+            result = addition.partialValue
+        }
+        return result
     }
 
     private static func modelNameOrder(_ lhs: String, _ rhs: String) -> Bool {
@@ -786,19 +1027,9 @@ extension SpendDashboardModel {
         return lhs < rhs
     }
 
-    private static func modelIdentity(rawName: String, provider _: UsageProvider) -> (id: String, displayName: String) {
-        let normalizedName = rawName.lowercased().hasPrefix("kimi-code/")
-            ? String(rawName.dropFirst("kimi-code/".count))
-            : rawName
-        let displayName = switch normalizedName.lowercased() {
-        case "k3", "kimi-k3": "Kimi K3"
-        case "k2.5", "kimi-k2.5": "Kimi K2.5"
-        case "k2", "kimi-k2": "Kimi K2"
-        case "kimi-for-coding": "Kimi for Coding"
-        case "kimi-for-coding-highspeed": "Kimi for Coding High-Speed"
-        default: normalizedName
-        }
-        return (displayName.lowercased(), displayName)
+    private static func modelIdentity(rawName: String, provider: UsageProvider) -> (id: String, displayName: String) {
+        let identity = SpendModelIdentity(rawName: rawName, provider: provider)
+        return (identity.id, identity.displayName)
     }
 
     private static func modelAnalysisRowOrder(_ lhs: ModelAnalysisRow, _ rhs: ModelAnalysisRow) -> Bool {
@@ -1153,3 +1384,58 @@ extension SpendDashboardModel {
         return result
     }
 }
+
+/// Shared split-resolution state of the model-analysis accumulators.
+private protocol ModelTokenSplitAccumulating {
+    var inputTokens: Int? { get }
+    var outputTokens: Int? { get }
+    var cacheReadTokens: Int? { get }
+    var cacheCreationTokens: Int? { get }
+    var reasoningTokens: Int? { get }
+    var sawTokenSplit: Bool { get }
+    var sawCacheReadTokens: Bool { get }
+    var missingCacheReadTokens: Bool { get }
+    var sawCacheCreationTokens: Bool { get }
+    var missingCacheCreationTokens: Bool { get }
+    var sawReasoningTokens: Bool { get }
+    var missingReasoningTokens: Bool { get }
+    var invalidTokenSplit: Bool { get }
+    var overflowedInputTokens: Bool { get }
+    var overflowedOutputTokens: Bool { get }
+    var overflowedCacheReadTokens: Bool { get }
+    var overflowedCacheCreationTokens: Bool { get }
+    var overflowedReasoningTokens: Bool { get }
+}
+
+extension ModelTokenSplitAccumulating {
+    func resolvedTokenBuckets() -> SpendDashboardModel.ModelTokenSplitBuckets {
+        let hasCompleteTokenSplit = self.sawTokenSplit
+            && !self.invalidTokenSplit
+            && !self.overflowedInputTokens
+            && !self.overflowedOutputTokens
+        return SpendDashboardModel.ModelTokenSplitBuckets(
+            inputTokens: hasCompleteTokenSplit ? self.inputTokens : nil,
+            outputTokens: hasCompleteTokenSplit ? self.outputTokens : nil,
+            cacheReadTokens: SpendDashboardModel.optionalTokenBucket(
+                self.cacheReadTokens,
+                saw: self.sawCacheReadTokens,
+                missing: self.missingCacheReadTokens,
+                overflowed: self.overflowedCacheReadTokens,
+                splitIsComplete: hasCompleteTokenSplit),
+            cacheCreationTokens: SpendDashboardModel.optionalTokenBucket(
+                self.cacheCreationTokens,
+                saw: self.sawCacheCreationTokens,
+                missing: self.missingCacheCreationTokens,
+                overflowed: self.overflowedCacheCreationTokens,
+                splitIsComplete: hasCompleteTokenSplit),
+            reasoningTokens: SpendDashboardModel.optionalTokenBucket(
+                self.reasoningTokens,
+                saw: self.sawReasoningTokens,
+                missing: self.missingReasoningTokens,
+                overflowed: self.overflowedReasoningTokens,
+                splitIsComplete: hasCompleteTokenSplit))
+    }
+}
+
+extension SpendDashboardModel.ModelAnalysisAccumulator: ModelTokenSplitAccumulating {}
+extension SpendDashboardModel.ModelAnalysisDailyAccumulator: ModelTokenSplitAccumulating {}

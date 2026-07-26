@@ -1272,14 +1272,17 @@
 "By subscription" = "بر اساس اشتراک";
 "No model-level history" = "تاریخچه‌ای در سطح مدل وجود ندارد";
 "Tokens" = "Tokens";
-"Tracked model tokens" = "Tracked model tokens";
-"Priced model spend" = "Priced model spend";
+"Tracked model tokens" = "توکن های مدل ردیابی شده";
+"Priced model spend" = "هزینه مدل های قیمت گذاری شده";
 "Partial model history: incomplete source-days are excluded." = "Partial model history: incomplete source-days are excluded.";
-"No priced model history" = "No priced model history";
+"No priced model history" = "تاریخچه مدل قیمت گذاری شده وجود ندارد";
 "Other" = "Other";
-"Show all %d models" = "Show all %d models";
-"Show top 20" = "Show top 20";
+"Show all %d models" = "نمایش هر %d مدل";
+"Show top 20" = "نمایش 20 مورد برتر";
 "Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers." = "Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers.";
+"Metric" = "متریک";
+"%d days of usage data across %d models" = "%d روز داده های استفاده در مدل های %d";
+"%@ in · %@ out" = "%@ ورودی · %@ خروجی";
 "Daily estimated spend" = "برآورد هزینه روزانه";
 "≈%d full 5h windows of weekly left · %d windows until reset" = "حدود %d بازه کامل ۵ ساعته از سهم هفتگی مانده · %d بازه تا بازنشانی";
 "Weekly cannot run out before reset at this pace" = "با این روند، سهم هفتگی پیش از بازنشانی تمام نمی‌شود";
@@ -1288,6 +1291,20 @@
 "Coding Plan" = "طرح کدنویسی";
 "Agent Plan" = "طرح عامل";
 "Team" = "تیم";
+
+"7-day average" = "میانگین ۷ روزه";
+"Input" = "ورودی";
+"Output" = "خروجی";
+"Cache write" = "نوشتن حافظه پنهان";
+"Reasoning" = "استدلال";
+"%@ in" = "%@ ورودی";
+"%@ out" = "%@ خروجی";
+"%@ cache read" = "%@ خواندن حافظه پنهان";
+"%@ cache write" = "%@ نوشتن حافظه پنهان";
+"%@ reasoning" = "%@ استدلال";
+"estimated" = "تخمینی";
+"Estimated costs are priced from local logs and may differ from provider bills." = "هزینه‌های تخمینی از گزارش‌های محلی با قیمت‌های فهرست محاسبه می‌شوند و ممکن است با صورت‌حساب ارائه‌دهندگان متفاوت باشند.";
+"Usage details for %@" = "جزئیات استفاده برای %@";
 
 /* Menu bar layout editor */
 "menu_bar_layout_title" = "چیدمان";
@@ -1354,3 +1371,22 @@
 "Cost today unavailable" = "هزینهٔ امروز: در دسترس نیست";
 "30-day cost unavailable" = "هزینهٔ ۳۰ روز: در دسترس نیست";
 "Resets" = "بازنشانی‌ها";
+"Cumulative" = "تجمعی";
+
+/* Token usage dashboard (usage & spend) */
+"Token activity" = "فعالیت توکن";
+"By model" = "بر اساس مدل";
+"By tool" = "بر اساس ابزار";
+"View" = "نمایش";
+"7-day avg" = "میانگین ۷ روز";
+"in the last year" = "در سال گذشته";
+"No activity in the last 12 months" = "هیچ فعالیتی در ۱۲ ماه گذشته وجود ندارد";
+"Each column = 1 week" = "هر ستون = ۱ هفته";
+"Running total" = "مجموع تجمعی";
+"Less" = "کمتر";
+"More" = "بیشتر";
+"Mo" = "دو";
+"We" = "چه";
+"Fr" = "جم";
+"Estimated" = "تخمینی";
+"No per-client model history" = "بدون سابقه مدل برای هر کلاینت";

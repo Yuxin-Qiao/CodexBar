@@ -124,7 +124,7 @@ struct SpendDashboardTokenProvenanceTests {
         store.activateCachedTokenAccountSnapshot(provider: .mistral, accountID: account.id)
         #expect(store.tokenSnapshotPublicationRevision(for: .mistral) == baselineRevision)
         store._test_providerRefreshOverride = { _ in }
-        let controller = SpendDashboardController(requestBuilder: { mode in
+        let controller = SpendDashboardController(userDefaults: dashboardDefaults(), requestBuilder: { mode in
             await SpendDashboardSource.makeRequest(settings: settings, store: store, mode: mode)
         })
         controller.update(configuration: SpendDashboardSource.configuration(settings: settings, store: store))
@@ -148,7 +148,7 @@ struct SpendDashboardTokenProvenanceTests {
             return loadCount == 1 ? Self.tokenSnapshot(cost: 4) : Self.emptyTokenSnapshot()
         }
         await store.refreshTokenUsageNow(for: .bedrock, force: true)
-        let controller = SpendDashboardController(requestBuilder: { mode in
+        let controller = SpendDashboardController(userDefaults: dashboardDefaults(), requestBuilder: { mode in
             await SpendDashboardSource.makeRequest(settings: settings, store: store, mode: mode)
         })
         controller.update(configuration: SpendDashboardSource.configuration(settings: settings, store: store))
@@ -177,7 +177,7 @@ struct SpendDashboardTokenProvenanceTests {
         }
         await store.refreshTokenUsageNow(for: .bedrock, force: true)
         let publicationRevision = store.tokenSnapshotPublicationRevision(for: .bedrock)
-        let controller = SpendDashboardController(requestBuilder: { mode in
+        let controller = SpendDashboardController(userDefaults: dashboardDefaults(), requestBuilder: { mode in
             await SpendDashboardSource.makeRequest(settings: settings, store: store, mode: mode)
         })
 
@@ -427,4 +427,14 @@ private actor SpendDashboardProvenanceGate {
         self.releaseContinuations.removeAll()
         continuations.forEach { $0.resume() }
     }
+}
+
+/// Isolated defaults for controllers under test. `UserDefaults.standard` is process-wide in the
+/// test runner and other suites persist a 7-day window selection into it, which would shrink the
+/// reporting window these fixtures rely on (default 30 days).
+private func dashboardDefaults() -> UserDefaults {
+    let suite = "SpendDashboardTokenProvenanceTests-controller"
+    let defaults = UserDefaults(suiteName: suite)!
+    defaults.removePersistentDomain(forName: suite)
+    return defaults
 }

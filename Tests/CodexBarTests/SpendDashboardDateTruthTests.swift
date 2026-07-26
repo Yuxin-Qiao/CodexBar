@@ -518,11 +518,15 @@ struct SpendDashboardDateTruthTests {
             now: Self.now,
             calendar: Self.calendar).groups.first)
 
-        #expect(costGroup.totalCost == nil)
+        // The provider's aggregate cost figure (10) contradicts the local per-day logs (3).
+        // The daily-sum fallback keeps the spend figure available by summing the per-day costs
+        // instead of voiding the whole provider, so cost stays visible while tokens stay intact.
+        #expect(costGroup.totalCost == 3)
         #expect(costGroup.totalTokens == 30)
         #expect(costGroup.dailyPoints.isEmpty)
-        #expect(costGroup.modelHistoryCompleteness == .incomplete)
-        #expect(costGroup.models.isEmpty)
+        #expect(costGroup.modelHistoryCompleteness == .complete)
+        #expect(costGroup.models.map(\.totalCost) == [3])
+        #expect(costGroup.models.map(\.totalTokens) == [30])
 
         #expect(tokenGroup.totalCost == 3)
         #expect(tokenGroup.totalTokens == nil)

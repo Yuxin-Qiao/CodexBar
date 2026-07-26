@@ -618,6 +618,8 @@ public struct CostUsageFetcher: Sendable {
             historyDays: historyDays,
             useCurrentLocalDayForSession: true,
             meteredCostUSD: report.meteredCostUSD,
+            // The Cursor dashboard API returns the account's actual billed usage events.
+            costSource: .providerReported,
             credentialScopeFingerprint: report.credentialScopeFingerprint)
     }
     #endif
@@ -628,6 +630,7 @@ public struct CostUsageFetcher: Sendable {
         historyDays: Int = 30,
         useCurrentLocalDayForSession: Bool = true,
         meteredCostUSD: Double? = nil,
+        costSource: CostUsageCostSource = .estimated,
         credentialScopeFingerprint: String? = nil,
         historyLabel: String? = nil,
         projects: [CostUsageProjectBreakdown] = [],
@@ -668,6 +671,7 @@ public struct CostUsageFetcher: Sendable {
             historyDays: historyDays,
             historyLabel: historyLabel,
             meteredCostUSD: meteredCostUSD,
+            costSource: costSource,
             credentialScopeFingerprint: credentialScopeFingerprint,
             daily: daily.data,
             projects: projects,
@@ -907,7 +911,9 @@ extension CostUsageFetcher {
                 from: daily,
                 now: now,
                 historyDays: historyDays,
-                useCurrentLocalDayForSession: false)
+                useCurrentLocalDayForSession: false,
+                // Bedrock Cost Explorer reports actual billed spend, not a rate-card estimate.
+                costSource: .providerReported)
         }
 
         #if os(macOS)

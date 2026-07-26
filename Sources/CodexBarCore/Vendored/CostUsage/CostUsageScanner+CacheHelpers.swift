@@ -274,6 +274,7 @@ extension CostUsageScanner {
     static func makeFileUsage(
         mtimeUnixMs: Int64,
         size: Int64,
+        fingerprint: CostUsageSourceFingerprint? = nil,
         days: [String: [String: [Int]]],
         parsedBytes: Int64?,
         lastModel: String? = nil,
@@ -304,6 +305,7 @@ extension CostUsageScanner {
         CostUsageFileUsage(
             mtimeUnixMs: mtimeUnixMs,
             size: size,
+            fingerprint: fingerprint,
             days: days,
             parsedBytes: parsedBytes,
             lastModel: lastModel,
@@ -625,6 +627,7 @@ extension CostUsageScanner {
             String(row.input),
             String(row.cached),
             String(row.output),
+            String(row.reasoning),
         ].joined(separator: "\u{1F}")
     }
 
@@ -665,9 +668,13 @@ extension CostUsageScanner {
         var days: [String: [String: [Int]]] = [:]
         for row in rows {
             let packed = days[row.day]?[row.model] ?? []
+            // Sparse layout matching the live-scan packing: no reasoning slot when it is zero.
+            let delta = row.reasoning == 0
+                ? [row.input, row.cached, row.output]
+                : [row.input, row.cached, row.output, row.reasoning]
             days[row.day, default: [:]][row.model] = Self.addPacked(
                 a: packed,
-                b: [row.input, row.cached, row.output],
+                b: delta,
                 sign: 1)
         }
         return days
@@ -696,6 +703,7 @@ extension CostUsageScanner {
         return Self.makeFileUsage(
             mtimeUnixMs: usage.mtimeUnixMs,
             size: usage.size,
+            fingerprint: usage.fingerprint,
             days: days,
             parsedBytes: usage.parsedBytes,
             lastModel: usage.lastModel,
@@ -820,6 +828,7 @@ extension CostUsageScanner {
     struct CodexFileMetadata {
         let path: String
         let mtimeUnixMs: Int64
+        let mtimeUnixNs: Int64
         let size: Int64
         let fileId: String?
     }
@@ -834,7 +843,7 @@ extension CostUsageScanner {
         let path = fileURL.path
         var info = stat()
         guard path.withCString({ fstatat(AT_FDCWD, $0, &info, 0) }) == 0 else {
-            return CodexFileMetadata(path: path, mtimeUnixMs: 0, size: 0, fileId: nil)
+            return CodexFileMetadata(path: path, mtimeUnixMs: 0, mtimeUnixNs: 0, size: 0, fileId: nil)
         }
         #if os(Linux)
         let modifiedSeconds = Int64(info.st_mtim.tv_sec)
@@ -846,6 +855,7 @@ extension CostUsageScanner {
         return CodexFileMetadata(
             path: path,
             mtimeUnixMs: modifiedSeconds * 1000 + modifiedNanoseconds / 1_000_000,
+            mtimeUnixNs: modifiedSeconds * 1_000_000_000 + modifiedNanoseconds,
             size: Int64(info.st_size),
             fileId: "\(info.st_dev):\(info.st_ino)")
     }
@@ -886,17 +896,30 @@ extension CostUsageScanner {
 
     static func keepCachedCodexFileIfFresh(
         input: CodexFileScanInput,
+        freshness: CostUsageSourceFingerprint.Freshness,
         context: CodexFileScanContext,
         cache: inout CostUsageCache,
         state: inout CodexScanState) throws -> Bool
     {
-        guard let cached = input.cached else { return false }
-        let needsSessionId = cached.sessionId == nil
-        guard cached.mtimeUnixMs == input.metadata.mtimeUnixMs,
-              cached.size == input.metadata.size,
-              !needsSessionId,
+        guard let cachedEntry = input.cached else { return false }
+        let needsSessionId = cachedEntry.sessionId == nil
+        guard !needsSessionId,
               !context.forceFullScan
         else { return false }
+
+        // Sampling fingerprint freshness (tokscale-style): an exact size+mtime+samples match is
+        // a hit; a metadata-only touch (same whole-file hash) is a hit with a refreshed
+        // fingerprint; anything else falls through to incremental/full parsing.
+        var cached = cachedEntry
+        switch freshness {
+        case .unchanged:
+            break
+        case let .touched(fresh):
+            cached.fingerprint = fresh
+            cached.mtimeUnixMs = input.metadata.mtimeUnixMs
+        case .changed:
+            return false
+        }
 
         guard !Self.cachedCodexFileNeedsPriorityRescan(cached, context: context) else { return false }
 
@@ -966,6 +989,7 @@ extension CostUsageScanner {
 
     static func appendCodexFileIncrementIfPossible(
         input: CodexFileScanInput,
+        freshness: CostUsageSourceFingerprint.Freshness,
         context: CodexFileScanContext,
         cache: inout CostUsageCache,
         state: inout CodexScanState) throws -> Bool
@@ -1000,6 +1024,14 @@ extension CostUsageScanner {
             && cached.forkedFromId == nil
             && !hasIncompleteInterleaveState
         guard canIncremental else { return false }
+
+        // Fingerprint the post-append content before parsing the delta so a concurrent rewrite
+        // invalidates the entry on the next scan instead of being absorbed silently. Reuse the
+        // fingerprint already computed during freshness validation when available.
+        let fingerprint = freshness.freshFingerprint ?? CostUsageSourceFingerprint.make(
+            fileURL: input.fileURL,
+            size: input.metadata.size,
+            mtimeUnixNs: input.metadata.mtimeUnixNs)
 
         let delta = try Self.parseCodexFileCancellable(
             fileURL: input.fileURL,
@@ -1075,6 +1107,7 @@ extension CostUsageScanner {
         cache.files[input.metadata.path] = Self.makeFileUsage(
             mtimeUnixMs: input.metadata.mtimeUnixMs,
             size: input.metadata.size,
+            fingerprint: fingerprint,
             days: mergedDays,
             parsedBytes: delta.parsedBytes,
             lastModel: delta.lastModel,
@@ -1123,6 +1156,7 @@ extension CostUsageScanner {
 
     static func rescanCodexFile(
         input: CodexFileScanInput,
+        freshness: CostUsageSourceFingerprint.Freshness,
         context: CodexFileScanContext,
         cache: inout CostUsageCache,
         state: inout CodexScanState) throws
@@ -1135,6 +1169,14 @@ extension CostUsageScanner {
         var usageDays = context.dropDeferredCodexRows
             ? [:]
             : Self.fileDaysOutsideScanWindow(migratedCached?.days ?? [:], range: context.range)
+
+        // Fingerprint before the full parse: any concurrent rewrite then invalidates the entry
+        // on the next scan instead of leaving a stale fingerprint behind. Reuse the fingerprint
+        // already computed during freshness validation when available.
+        let fingerprint = freshness.freshFingerprint ?? CostUsageSourceFingerprint.make(
+            fileURL: input.fileURL,
+            size: input.metadata.size,
+            mtimeUnixNs: input.metadata.mtimeUnixNs)
 
         let parsed = try Self.parseCodexFileCancellable(
             fileURL: input.fileURL,
@@ -1176,6 +1218,7 @@ extension CostUsageScanner {
         cache.files[input.metadata.path] = Self.makeFileUsage(
             mtimeUnixMs: input.metadata.mtimeUnixMs,
             size: input.metadata.size,
+            fingerprint: fingerprint,
             days: usageDays,
             parsedBytes: parsed.parsedBytes,
             lastModel: parsed.lastModel,
@@ -1405,6 +1448,9 @@ extension CostUsageScanner {
                 let input = packed[safe: 0] ?? 0
                 let cached = packed[safe: 1] ?? 0
                 let output = packed[safe: 2] ?? 0
+                // Reasoning is a sub-bucket of output (billing-inclusive), surfaced separately.
+                // A zero reads as "none recorded" and stays nil, matching the day-entry cache style.
+                let reasoning = packed[safe: 3] ?? 0
                 let totalTokens = input + output
 
                 dayInput += input
@@ -1451,6 +1497,7 @@ extension CostUsageScanner {
                         inputTokens: input,
                         cacheReadTokens: cached,
                         outputTokens: output,
+                        reasoningTokens: reasoning > 0 ? reasoning : nil,
                         standardCostUSD: hasModeSplit ? standardCost : nil,
                         priorityCostUSD: hasModeSplit ? priorityCost : nil,
                         standardTokens: hasModeSplit ? cachedStandardTokens : nil,

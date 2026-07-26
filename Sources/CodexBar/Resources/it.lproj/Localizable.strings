@@ -1272,14 +1272,17 @@
 "By subscription" = "Per abbonamento";
 "No model-level history" = "Nessuna cronologia a livello di modello";
 "Tokens" = "Tokens";
-"Tracked model tokens" = "Tracked model tokens";
-"Priced model spend" = "Priced model spend";
+"Tracked model tokens" = "Token dei modelli tracciati";
+"Priced model spend" = "Spesa dei modelli con prezzo";
 "Partial model history: incomplete source-days are excluded." = "Partial model history: incomplete source-days are excluded.";
-"No priced model history" = "No priced model history";
+"No priced model history" = "Nessuno storico dei modelli con prezzo";
 "Other" = "Other";
-"Show all %d models" = "Show all %d models";
-"Show top 20" = "Show top 20";
+"Show all %d models" = "Mostra tutti i %d modelli";
+"Show top 20" = "Mostra i primi 20";
 "Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers." = "Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers.";
+"Metric" = "Metrica";
+"%d days of usage data across %d models" = "%d giorni di dati di utilizzo su %d modelli";
+"%@ in · %@ out" = "%@ in ingresso · %@ in uscita";
 "Daily estimated spend" = "Spesa giornaliera stimata";
 "≈%d full 5h windows of weekly left · %d windows until reset" = "≈%d finestre complete da 5 h di quota settimanale · %d finestre al reset";
 "Weekly cannot run out before reset at this pace" = "La quota settimanale non può esaurirsi prima del reset a questo ritmo";
@@ -1288,6 +1291,20 @@
 "Coding Plan" = "Piano di codifica";
 "Agent Plan" = "Piano agente";
 "Team" = "Squadra";
+
+"7-day average" = "Media a 7 giorni";
+"Input" = "Input";
+"Output" = "Output";
+"Cache write" = "Scrittura cache";
+"Reasoning" = "Ragionamento";
+"%@ in" = "%@ input";
+"%@ out" = "%@ output";
+"%@ cache read" = "%@ lettura cache";
+"%@ cache write" = "%@ scrittura cache";
+"%@ reasoning" = "%@ ragionamento";
+"estimated" = "stimato";
+"Estimated costs are priced from local logs and may differ from provider bills." = "I costi stimati sono calcolati dai log locali ai prezzi di listino e possono differire dalle fatture dei provider.";
+"Usage details for %@" = "Dettagli di utilizzo per %@";
 
 /* Menu bar layout editor */
 "menu_bar_layout_title" = "Disposizione";
@@ -1354,3 +1371,22 @@
 "Cost today unavailable" = "Costo oggi: Non disponibile";
 "30-day cost unavailable" = "Costo 30 gg: Non disponibile";
 "Resets" = "Ripristini";
+"Cumulative" = "Cumulativo";
+
+/* Token usage dashboard (usage & spend) */
+"Token activity" = "Attività token";
+"By model" = "Per modello";
+"By tool" = "Per strumento";
+"View" = "Vista";
+"7-day avg" = "Media 7 gg";
+"in the last year" = "nell'ultimo anno";
+"No activity in the last 12 months" = "Nessuna attività negli ultimi 12 mesi";
+"Each column = 1 week" = "Ogni colonna = 1 settimana";
+"Running total" = "Totale progressivo";
+"Less" = "Meno";
+"More" = "Più";
+"Mo" = "lu";
+"We" = "me";
+"Fr" = "ve";
+"Estimated" = "Stimato";
+"No per-client model history" = "Nessuna cronologia modelli per client";

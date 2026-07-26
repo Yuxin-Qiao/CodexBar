@@ -1299,14 +1299,17 @@
 "By subscription" = "依訂閱";
 "No model-level history" = "尚無模型層級歷史";
 "Tokens" = "Tokens";
-"Tracked model tokens" = "Tracked model tokens";
-"Priced model spend" = "Priced model spend";
+"Tracked model tokens" = "已追蹤的模型 token";
+"Priced model spend" = "已計價模型支出";
 "Partial model history: incomplete source-days are excluded." = "Partial model history: incomplete source-days are excluded.";
-"No priced model history" = "No priced model history";
+"No priced model history" = "沒有已計價模型歷史記錄";
 "Other" = "Other";
-"Show all %d models" = "Show all %d models";
-"Show top 20" = "Show top 20";
+"Show all %d models" = "顯示全部 %d 個模型";
+"Show top 20" = "僅顯示前 20 個";
 "Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers." = "Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers.";
+"Metric" = "指標";
+"%d days of usage data across %d models" = "%d 天使用量資料，涵蓋 %d 個模型";
+"%@ in · %@ out" = "%@ 輸入 · %@ 輸出";
 "Daily estimated spend" = "每日預估支出";
 "≈%d full 5h windows of weekly left · %d windows until reset" = "每週額度約剩 %d 個完整 5 小時視窗 · 距重置還有 %d 個視窗";
 "Weekly cannot run out before reset at this pace" = "依此速度，每週額度無法在重置前用完";
@@ -1315,6 +1318,20 @@
 "Coding Plan" = "程式設計方案";
 "Agent Plan" = "智慧體方案";
 "Team" = "團隊";
+
+"7-day average" = "7 天平均";
+"Input" = "輸入";
+"Output" = "輸出";
+"Cache write" = "快取寫入";
+"Reasoning" = "推理";
+"%@ in" = "%@ 輸入";
+"%@ out" = "%@ 輸出";
+"%@ cache read" = "%@ 快取讀取";
+"%@ cache write" = "%@ 快取寫入";
+"%@ reasoning" = "%@ 推理";
+"estimated" = "估算";
+"Estimated costs are priced from local logs and may differ from provider bills." = "估算費用依本地日誌以牌價計算，可能與供應商帳單不同。";
+"Usage details for %@" = "%@ 的用量詳情";
 
 /* Menu bar layout editor */
 "menu_bar_layout_title" = "佈局";
@@ -1381,3 +1398,23 @@
 "Cost today unavailable" = "今日費用: 無法使用";
 "30-day cost unavailable" = "30 天費用: 無法使用";
 "Resets" = "重設";
+"Cumulative" = "累計";
+
+/* Token usage dashboard (usage & spend) */
+"Token activity" = "Token 活動";
+"By model" = "按模型";
+"By tool" = "按工具";
+"View" = "檢視";
+"Day" = "日";
+"7-day avg" = "7 天平均";
+"in the last year" = "近一年";
+"No activity in the last 12 months" = "近 12 個月暫無活動";
+"Each column = 1 week" = "每列 = 1 週";
+"Running total" = "累計總量";
+"Less" = "少";
+"More" = "多";
+"Mo" = "一";
+"We" = "三";
+"Fr" = "五";
+"Estimated" = "估算";
+"No per-client model history" = "暫無按工具劃分的模型歷史";

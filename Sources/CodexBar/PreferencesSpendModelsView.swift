@@ -1,3 +1,4 @@
+import AppKit
 import Charts
 import CodexBarCore
 import SwiftUI
@@ -12,18 +13,25 @@ enum SpendModelMetric: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .tokens: "Tokens"
-        case .estimatedSpend: "Estimated spend"
+        case .tokens: L("Tokens")
+        case .estimatedSpend: L("Estimated spend")
         }
     }
 }
 
-func spendModelsDayRangeText(_ days: Int) -> String {
-    switch days {
-    case 7: "7d"
-    case 30: "30d"
-    case 365: "All"
-    default: "\(days)d"
+enum SpendModelsViewMode: String, CaseIterable, Identifiable {
+    case models
+    case clients
+
+    var id: Self {
+        self
+    }
+
+    var title: String {
+        switch self {
+        case .models: L("By model")
+        case .clients: L("By tool")
+        }
     }
 }
 
@@ -43,11 +51,30 @@ func spendModelsRowDetailText(_ row: SpendModelsPresentation.Row) -> String {
                             let inputTokens = row.source.inputTokens,
                             let outputTokens = row.source.outputTokens
     {
-        "\(UsageFormatter.tokenCountString(inputTokens)) in · \(UsageFormatter.tokenCountString(outputTokens)) out"
+        L(
+            "%@ in · %@ out",
+            UsageFormatter.tokenCountString(inputTokens),
+            UsageFormatter.tokenCountString(outputTokens))
     } else {
         UsageFormatter.tokenCountString(Int(value.rounded()))
     }
     return providers.isEmpty ? metric : "\(metric) · \(providers)"
+}
+
+enum SpendModelsRanking {
+    static let collapsedRowLimit = 20
+
+    static func showsDisclosure(rowCount: Int) -> Bool {
+        rowCount > self.collapsedRowLimit
+    }
+
+    static func visibleRows(
+        _ rows: [SpendModelsPresentation.Row],
+        showsAll: Bool) -> [SpendModelsPresentation.Row]
+    {
+        guard !showsAll, self.showsDisclosure(rowCount: rows.count) else { return rows }
+        return Array(rows.prefix(self.collapsedRowLimit))
+    }
 }
 
 struct SpendModelsPresentation: Equatable {
@@ -145,6 +172,76 @@ struct SpendModelsPresentation: Equatable {
                     stackEnd: cursor)
             }
         }
+    }
+
+    private init(
+        metric: SpendModelMetric,
+        rows: [Row],
+        series: [Series],
+        points: [Point],
+        coverage: SpendDashboardModel.ModelMetricCoverage,
+        metricTotal: Double?)
+    {
+        self.metric = metric
+        self.rows = rows
+        self.series = series
+        self.points = points
+        self.coverage = coverage
+        self.metricTotal = metricTotal
+    }
+
+    // MARK: Trailing average
+
+    static let trailingAverageWindow = 7
+
+    /// Returns a copy whose stacked points are smoothed with a per-series trailing moving average
+    /// over the visible day window (tokens.ci style). Days at the window edge average over fewer
+    /// samples. Rows and series stay raw, so ranking and day details are unaffected; this is
+    /// meant for the chart only.
+    func applyingTrailingAverage(window: Int = Self.trailingAverageWindow) -> SpendModelsPresentation {
+        guard window > 1, !self.points.isEmpty else { return self }
+
+        let days = Array(Set(self.points.map(\.day))).sorted()
+        var rawValues: [String: [Date: Double]] = [:]
+        for point in self.points {
+            rawValues[point.seriesID, default: [:]][point.day, default: 0] += point.value
+        }
+
+        var smoothed: [Point] = []
+        for (index, day) in days.enumerated() {
+            let firstSample = max(0, index - window + 1)
+            let samples = days[firstSample...index]
+            var cursor = 0.0
+            for series in self.series {
+                let total = samples.reduce(0.0) { $0 + (rawValues[series.id]?[$1] ?? 0) }
+                let value = total / Double(samples.count)
+                guard value > 0 else { continue }
+                let start = cursor
+                cursor += value
+                smoothed.append(Point(
+                    day: day,
+                    seriesID: series.id,
+                    seriesName: series.name,
+                    value: value,
+                    stackStart: start,
+                    stackEnd: cursor))
+            }
+        }
+
+        return SpendModelsPresentation(
+            metric: self.metric,
+            rows: self.rows,
+            series: self.series,
+            points: smoothed,
+            coverage: self.coverage,
+            metricTotal: self.metricTotal)
+    }
+
+    // MARK: Selection
+
+    /// Returns the charted day matching `day`, or nil when it falls outside the visible range.
+    func day(matching day: Date, calendar: Calendar = .current) -> Date? {
+        self.points.map(\.day).first { calendar.isDate($0, inSameDayAs: day) }
     }
 
     private static func compare(
@@ -285,30 +382,111 @@ struct SpendModelsAxisDates {
 struct SpendModelsSection: View {
     let analysis: SpendDashboardModel.ModelAnalysis
     let chartDomain: ClosedRange<Date>?
-    @Binding var selectedDays: Int
+    /// Global dashboard range, passed read-only: the single top-level time-range picker drives all
+    /// sections now, so this block no longer renders its own 7d/30d/All selector.
+    let selectedDays: Int
+    @AppStorage("spendModelsMetric") private var selectedMetric: SpendModelMetric = .tokens
+    @AppStorage("spendModelsTrailingAverage") private var trailingAverage = false
+    @AppStorage("spendModelsViewMode") private var viewMode: SpendModelsViewMode = .models
     @State private var selectedDay: Date?
+    @State private var pinnedDay: Date?
+    @State private var showsAllModels = false
+    @State private var cachedPresentation: SpendModelsPresentation?
+    @State private var cachedChartPresentation: SpendModelsPresentation?
+    // Hover lookup caches (rebuilt alongside the presentations): a sorted unique-day list for the
+    // nearest-day snap, and points grouped by start-of-day for the tooltip. Both replace an
+    // O(points) scan with Calendar.isDate(inSameDayAs:) per hover tick.
+    @State private var cachedSortedDays: [Date] = []
+    @State private var cachedPointsByDay: [Date: [SpendModelsPresentation.Point]] = [:]
 
+    /// Memoized presentations. Building these sorts + aggregates every model row, and the chart
+    /// variant also runs the trailing-average smoothing; recomputing them on every hover tick
+    /// (selectedDay changes re-evaluate body) is the hover lag. Cache and only rebuild when the
+    /// inputs change, never on hover.
     private var presentation: SpendModelsPresentation {
-        SpendModelsPresentation(analysis: self.analysis, metric: .tokens)
+        if let cached = self.cachedPresentation { return cached }
+        return SpendModelsPresentation(analysis: self.analysis, metric: self.selectedMetric)
+    }
+
+    private var chartPresentation: SpendModelsPresentation {
+        if let cached = self.cachedChartPresentation { return cached }
+        let base = self.presentation
+        return self.trailingAverage ? base.applyingTrailingAverage() : base
+    }
+
+    private func rebuildPresentations() {
+        let base = SpendModelsPresentation(analysis: self.analysis, metric: self.selectedMetric)
+        self.cachedPresentation = base
+        let chart = self.trailingAverage ? base.applyingTrailingAverage() : base
+        self.cachedChartPresentation = chart
+        self.cachedSortedDays = Array(Set(chart.points.map(\.day))).sorted()
+        self.cachedPointsByDay = Dictionary(grouping: chart.points) {
+            Calendar.current.startOfDay(for: $0.day)
+        }
     }
 
     var body: some View {
         SpendDashboardPanel {
             VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                HStack(alignment: .firstTextBaseline) {
                     Text(L("Models"))
                         .font(.headline)
                     Spacer()
-                    ForEach([7, 30, 365], id: \.self) { days in
-                        self.rangeButton(days)
+                    Picker(L("View"), selection: self.$viewMode) {
+                        ForEach(SpendModelsViewMode.allCases) { mode in
+                            Text(mode.title).tag(mode)
+                        }
                     }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .fixedSize()
                 }
-                if self.presentation.points.isEmpty {
-                    Text(L("No model-level history"))
-                        .foregroundStyle(.secondary)
-                        .padding(.vertical, 10)
+                HStack(spacing: 10) {
+                    if self.viewMode == .models {
+                        Picker(L("Metric"), selection: self.$selectedMetric) {
+                            ForEach(SpendModelMetric.allCases) { metric in
+                                Text(metric.title).tag(metric)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.segmented)
+                        .fixedSize()
+                        Toggle(isOn: self.$trailingAverage) {
+                            Text(L("7-day avg"))
+                                .font(.callout)
+                                .lineLimit(1)
+                                .fixedSize()
+                        }
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                    }
+                    Spacer()
+                }
+                if self.viewMode == .clients {
+                    SpendClientsView(analysis: self.analysis)
+                } else if self.chartPresentation.points.isEmpty {
+                    if self.presentation.metric == .estimatedSpend {
+                        Text(L("No priced model history"))
+                            .foregroundStyle(.secondary)
+                            .padding(.vertical, 10)
+                    } else {
+                        Text(L("No model-level history"))
+                            .foregroundStyle(.secondary)
+                            .padding(.vertical, 10)
+                    }
                 } else {
                     self.chart
+                    if let pinnedDay = self.pinnedDay,
+                       let detail = SpendModelsDayDetailPresentation(
+                           analysis: self.analysis,
+                           day: pinnedDay,
+                           metric: self.selectedMetric)
+                    {
+                        SpendModelsDayDetailView(
+                            detail: detail,
+                            metric: self.selectedMetric,
+                            colorForModel: { self.modelColor(for: $0) })
+                    }
                     self.ranking
                 }
                 if self.presentation.coverage == .partial {
@@ -316,24 +494,54 @@ struct SpendModelsSection: View {
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
+                if self.showsEstimatedCostFootnote {
+                    Text(L("Estimated costs are priced from local logs and may differ from provider bills."))
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
             }
         }
+        .onAppear {
+            if self.cachedPresentation == nil { self.rebuildPresentations() }
+        }
+        .onChange(of: self.analysis) { _, _ in self.rebuildPresentations() }
+        .onChange(of: self.selectedMetric) { _, _ in self.rebuildPresentations() }
+        .onChange(of: self.trailingAverage) { _, isOn in
+            // Day pinning is disabled while smoothing is on (documented tokens.ci behavior:
+            // the chart shows averages, so a raw per-day panel would be misleading).
+            if isOn { self.pinnedDay = nil }
+            self.rebuildPresentations()
+        }
+        .onChange(of: self.chartPresentation.points) { _, points in
+            guard let pinnedDay = self.pinnedDay else { return }
+            if !Set(points.map(\.day)).contains(pinnedDay) { self.pinnedDay = nil }
+        }
+    }
+
+    private var showsEstimatedCostFootnote: Bool {
+        self.presentation.metric == .estimatedSpend &&
+            self.presentation.rows.contains { $0.value != nil && $0.source.costIsEstimated }
     }
 
     private var chart: some View {
         Chart {
-            ForEach(self.presentation.points) { point in
+            ForEach(self.chartPresentation.points) { point in
                 BarMark(
-                    x: .value("Day", point.day, unit: .day),
-                    yStart: .value("Tokens", point.stackStart),
-                    yEnd: .value("Tokens", point.stackEnd),
+                    x: .value(L("Day"), point.day, unit: .day),
+                    yStart: .value(self.chartPresentation.metric.title, point.stackStart),
+                    yEnd: .value(self.chartPresentation.metric.title, point.stackEnd),
                     width: .ratio(0.68))
-                    .foregroundStyle(by: .value("Models", point.seriesName))
+                    .foregroundStyle(by: .value(L("Models"), point.seriesName))
                     .accessibilityLabel(Text("\(point.seriesName), \(self.dayText(point.day))"))
                     .accessibilityValue(Text(self.metricText(point.value)))
             }
+            if let pinnedDay = self.pinnedDay {
+                RuleMark(x: .value(L("Day"), pinnedDay, unit: .day))
+                    .foregroundStyle(Color.secondary.opacity(0.4))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
+            }
             if let selectedDay {
-                RuleMark(x: .value("Day", selectedDay, unit: .day))
+                RuleMark(x: .value(L("Day"), selectedDay, unit: .day))
                     .foregroundStyle(.clear)
                     .annotation(position: .top, overflowResolution: .init(
                         x: .fit(to: .chart),
@@ -366,21 +574,28 @@ struct SpendModelsSection: View {
             AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { value in
                 AxisValueLabel {
                     if let amount = value.as(Double.self) {
-                        Text(self.metricText(amount))
+                        Text(self.axisMetricText(amount))
                             .foregroundStyle(.secondary)
                     }
                 }
             }
         }
         .frame(height: 220)
-        .accessibilityLabel("Models")
+        .accessibilityLabel(L("Models"))
         .accessibilityValue(self.chartAccessibilityValue)
         .chartOverlay { proxy in
             GeometryReader { geo in
-                MouseLocationReader { location in
-                    self.updateSelectedDay(location: location, proxy: proxy, geo: geo)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                SpendModelsChartMouseReader(
+                    onMoved: { location in
+                        self.updateSelectedDay(location: location, proxy: proxy, geo: geo)
+                    },
+                    onClicked: { location in
+                        self.handleChartClick(location: location, proxy: proxy, geo: geo)
+                    },
+                    onEscape: {
+                        self.pinnedDay = nil
+                    })
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
     }
@@ -391,7 +606,7 @@ struct SpendModelsSection: View {
 
     private var rankingContent: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ForEach(self.presentation.rows) { row in
+            ForEach(SpendModelsRanking.visibleRows(self.presentation.rows, showsAll: self.showsAllModels)) { row in
                 HStack(spacing: 9) {
                     RoundedRectangle(cornerRadius: 2, style: .continuous)
                         .fill(self.color(for: row))
@@ -411,6 +626,20 @@ struct SpendModelsSection: View {
                         .frame(width: 58, alignment: .trailing)
                 }
             }
+            if SpendModelsRanking.showsDisclosure(rowCount: self.presentation.rows.count) {
+                Button {
+                    self.showsAllModels.toggle()
+                } label: {
+                    Text(self.showsAllModels
+                        ? L("Show top 20")
+                        : L("Show all %d models", self.presentation.rows.count))
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 2)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
         }
     }
 
@@ -418,8 +647,10 @@ struct SpendModelsSection: View {
         guard self.presentation.metric == .tokens else {
             guard let value = row.value else { return "—" }
             let providers = row.source.providerNames.joined(separator: " · ")
-            let metric = self.metricText(value)
-            return providers.isEmpty ? metric : "\(metric) · \(providers)"
+            var parts = [self.metricText(value)]
+            if !providers.isEmpty { parts.append(providers) }
+            if row.source.costIsEstimated { parts.append(L("estimated")) }
+            return parts.joined(separator: " · ")
         }
         return spendModelsRowDetailText(row)
     }
@@ -431,8 +662,7 @@ struct SpendModelsSection: View {
     }
 
     private func tooltip(_ day: Date) -> some View {
-        let points = self.presentation.points
-            .filter { Calendar.current.isDate($0.day, inSameDayAs: day) }
+        let points = (self.cachedPointsByDay[Calendar.current.startOfDay(for: day)] ?? [])
             .sorted { $0.value > $1.value }
         return VStack(alignment: .leading, spacing: 5) {
             Text(self.dayText(day))
@@ -456,12 +686,12 @@ struct SpendModelsSection: View {
     }
 
     private var chartAccessibilityValue: String {
-        let days = Set(self.presentation.points.map(\.day)).count
-        return "\(days) days · \(self.presentation.series.count) models"
+        let days = Set(self.chartPresentation.points.map(\.day)).count
+        return L("%d days of usage data across %d models", days, self.chartPresentation.series.count)
     }
 
     private var fallbackDomain: ClosedRange<Date> {
-        let days = self.presentation.points.map(\.day)
+        let days = self.chartPresentation.points.map(\.day)
         let start = days.min() ?? Date()
         let end = days.max() ?? start
         return start...Calendar.current.date(byAdding: .day, value: 1, to: end)!
@@ -470,29 +700,8 @@ struct SpendModelsSection: View {
     private var xAxisDates: [Date] {
         SpendModelsAxisDates.make(
             selectedDays: self.selectedDays,
-            dataDays: self.presentation.points.map(\.day),
+            dataDays: self.chartPresentation.points.map(\.day),
             domain: self.chartDomain ?? self.fallbackDomain)
-    }
-
-    private func rangeButton(_ days: Int) -> some View {
-        Button {
-            self.selectedDays = days
-            self.selectedDay = nil
-        } label: {
-            Text(spendModelsDayRangeText(days))
-                .font(.body)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background {
-                    if self.selectedDays == days {
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(Color.secondary.opacity(0.12))
-                    }
-                }
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(self.selectedDays == days ? .isSelected : [])
     }
 
     private func xAxisLabelAnchor(for date: Date) -> UnitPoint {
@@ -506,7 +715,17 @@ struct SpendModelsSection: View {
     }
 
     private func metricText(_ value: Double) -> String {
-        UsageFormatter.tokenCountString(Int(value.rounded()))
+        switch self.presentation.metric {
+        case .tokens: UsageFormatter.tokenCountString(Int(value.rounded()))
+        case .estimatedSpend: UsageFormatter.currencyString(value, currencyCode: "USD")
+        }
+    }
+
+    private func axisMetricText(_ value: Double) -> String {
+        switch self.presentation.metric {
+        case .tokens: self.metricText(value)
+        case .estimatedSpend: UsageFormatter.compactCurrencyString(value, currencyCode: "USD")
+        }
     }
 
     private func dayText(_ day: Date) -> String {
@@ -530,6 +749,13 @@ struct SpendModelsSection: View {
         return self.color(for: index)
     }
 
+    private func modelColor(for id: String) -> Color {
+        guard let index = self.presentation.series.firstIndex(where: { $0.id == id }) else {
+            return Color(nsColor: .tertiaryLabelColor).opacity(0.55)
+        }
+        return self.color(for: index)
+    }
+
     private func seriesIndex(_ id: String) -> Int {
         self.presentation.series.firstIndex(where: { $0.id == id }) ?? 0
     }
@@ -546,8 +772,135 @@ struct SpendModelsSection: View {
         }
         let xInPlot = location.x - plotFrame.origin.x
         guard let date: Date = proxy.value(atX: xInPlot) else { return }
-        self.selectedDay = Set(self.presentation.points.map(\.day)).min {
-            abs($0.timeIntervalSince(date)) < abs($1.timeIntervalSince(date))
+        self.selectedDay = self.nearestDay(to: date)
+    }
+
+    /// Binary search over the cached sorted day list; avoids rebuilding a Set + linear scan each
+    /// hover tick.
+    private func nearestDay(to date: Date) -> Date? {
+        let days = self.cachedSortedDays
+        guard !days.isEmpty else { return nil }
+        var lo = 0, hi = days.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if days[mid] < date { lo = mid + 1 } else { hi = mid }
+        }
+        if lo == 0 { return days[0] }
+        if lo == days.count { return days[days.count - 1] }
+        let before = days[lo - 1], after = days[lo]
+        return abs(before.timeIntervalSince(date)) <= abs(after.timeIntervalSince(date)) ? before : after
+    }
+
+    /// Clicking a bar day pins it (clicking the same day again clears); clicking empty space clears.
+    /// Pinning is disabled while the trailing average smooths the chart.
+    private func handleChartClick(location: CGPoint, proxy: ChartProxy, geo: GeometryProxy) {
+        guard !self.trailingAverage else { return }
+        guard let plotAnchor = proxy.plotFrame else {
+            self.pinnedDay = nil
+            return
+        }
+        let plotFrame = geo[plotAnchor]
+        guard plotFrame.contains(location),
+              let date: Date = proxy.value(atX: location.x - plotFrame.origin.x)
+        else {
+            self.pinnedDay = nil
+            return
+        }
+        guard let day = self.nearestDay(to: date), abs(day.timeIntervalSince(date)) <= 43200 else {
+            self.pinnedDay = nil
+            return
+        }
+        self.pinnedDay = self.pinnedDay == day ? nil : day
+    }
+}
+
+/// Hover/click/Escape reader for the models chart. Mirrors `MouseLocationReader` (which has no
+/// click support) and adds day pinning: mouse-down reports the location, and once the view holds
+/// first responder, Escape clears the pinned day.
+@MainActor
+private struct SpendModelsChartMouseReader: NSViewRepresentable {
+    let onMoved: (CGPoint?) -> Void
+    let onClicked: (CGPoint) -> Void
+    let onEscape: () -> Void
+
+    func makeNSView(context: Context) -> TrackingView {
+        let view = TrackingView()
+        view.onMoved = self.onMoved
+        view.onClicked = self.onClicked
+        view.onEscape = self.onEscape
+        return view
+    }
+
+    func updateNSView(_ nsView: TrackingView, context: Context) {
+        nsView.onMoved = self.onMoved
+        nsView.onClicked = self.onClicked
+        nsView.onEscape = self.onEscape
+    }
+
+    final class TrackingView: NSView {
+        var onMoved: ((CGPoint?) -> Void)?
+        var onClicked: ((CGPoint) -> Void)?
+        var onEscape: (() -> Void)?
+        private var trackingArea: NSTrackingArea?
+
+        override var isFlipped: Bool {
+            true
+        }
+
+        override var acceptsFirstResponder: Bool {
+            true
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            self.window?.acceptsMouseMovedEvents = true
+            self.updateTrackingAreas()
+        }
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            if let trackingArea {
+                self.removeTrackingArea(trackingArea)
+            }
+
+            let options: NSTrackingArea.Options = [
+                .activeAlways,
+                .inVisibleRect,
+                .mouseEnteredAndExited,
+                .mouseMoved,
+            ]
+            let area = NSTrackingArea(rect: .zero, options: options, owner: self, userInfo: nil)
+            self.addTrackingArea(area)
+            self.trackingArea = area
+        }
+
+        override func mouseEntered(with event: NSEvent) {
+            super.mouseEntered(with: event)
+            self.onMoved?(self.convert(event.locationInWindow, from: nil))
+        }
+
+        override func mouseMoved(with event: NSEvent) {
+            super.mouseMoved(with: event)
+            self.onMoved?(self.convert(event.locationInWindow, from: nil))
+        }
+
+        override func mouseExited(with event: NSEvent) {
+            super.mouseExited(with: event)
+            self.onMoved?(nil)
+        }
+
+        override func mouseDown(with event: NSEvent) {
+            self.window?.makeFirstResponder(self)
+            self.onClicked?(self.convert(event.locationInWindow, from: nil))
+        }
+
+        override func keyDown(with event: NSEvent) {
+            if event.keyCode == 53 { // Escape
+                self.onEscape?()
+                self.window?.makeFirstResponder(nil)
+            } else {
+                super.keyDown(with: event)
+            }
         }
     }
 }

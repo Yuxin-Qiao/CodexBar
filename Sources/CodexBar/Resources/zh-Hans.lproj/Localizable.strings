@@ -1252,6 +1252,9 @@
 "Show all %d models" = "显示全部 %d 个模型";
 "Show top 20" = "仅显示前 20 个";
 "Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers." = "模型名称会在去除首尾空白并忽略大小写后精确合并；不同提供商之间不会自动去重。";
+"Metric" = "指标";
+"%d days of usage data across %d models" = "%d 天用量数据，涵盖 %d 个模型";
+"%@ in · %@ out" = "%@ 输入 · %@ 输出";
 "Daily estimated spend" = "每日估算支出";
 "≈%d full 5h windows of weekly left · %d windows until reset" = "每周额度约剩 %d 个完整 5 小时窗口 · 距重置还有 %d 个窗口";
 "Weekly cannot run out before reset at this pace" = "按此速度，每周额度无法在重置前用完";
@@ -1260,6 +1263,20 @@
 "Coding Plan" = "编程套餐";
 "Agent Plan" = "智能体套餐";
 "Team" = "团队";
+
+"7-day average" = "7 天平均";
+"Input" = "输入";
+"Output" = "输出";
+"Cache write" = "缓存写入";
+"Reasoning" = "推理";
+"%@ in" = "%@ 输入";
+"%@ out" = "%@ 输出";
+"%@ cache read" = "%@ 缓存读取";
+"%@ cache write" = "%@ 缓存写入";
+"%@ reasoning" = "%@ 推理";
+"estimated" = "估算";
+"Estimated costs are priced from local logs and may differ from provider bills." = "估算费用基于本地日志按刊例价计算，可能与提供商账单不一致。";
+"Usage details for %@" = "%@ 的用量详情";
 
 /* Menu bar layout editor */
 "menu_bar_layout_title" = "布局";
@@ -1326,3 +1343,23 @@
 "Cost today unavailable" = "今日费用: 不可用";
 "30-day cost unavailable" = "30 天费用: 不可用";
 "Resets" = "重置";
+"Cumulative" = "累计";
+
+/* Token usage dashboard (usage & spend) */
+"Token activity" = "Token 活动";
+"By model" = "按模型";
+"By tool" = "按工具";
+"View" = "视图";
+"Day" = "日";
+"7-day avg" = "7 天平均";
+"in the last year" = "近一年";
+"No activity in the last 12 months" = "近 12 个月暂无活动";
+"Each column = 1 week" = "每列 = 1 周";
+"Running total" = "累计总量";
+"Less" = "少";
+"More" = "多";
+"Mo" = "一";
+"We" = "三";
+"Fr" = "五";
+"Estimated" = "估算";
+"No per-client model history" = "暂无按工具划分的模型历史";

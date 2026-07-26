@@ -1268,14 +1268,17 @@
 "By subscription" = "Par abonnement";
 "No model-level history" = "Aucun historique au niveau des modèles";
 "Tokens" = "Tokens";
-"Tracked model tokens" = "Tracked model tokens";
-"Priced model spend" = "Priced model spend";
+"Tracked model tokens" = "Jetons de modèles suivis";
+"Priced model spend" = "Dépenses des modèles tarifés";
 "Partial model history: incomplete source-days are excluded." = "Partial model history: incomplete source-days are excluded.";
-"No priced model history" = "No priced model history";
+"No priced model history" = "Aucun historique de modèles tarifés";
 "Other" = "Other";
-"Show all %d models" = "Show all %d models";
-"Show top 20" = "Show top 20";
+"Show all %d models" = "Afficher les %d modèles";
+"Show top 20" = "Afficher le top 20";
 "Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers." = "Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers.";
+"Metric" = "Métrique";
+"%d days of usage data across %d models" = "%d jours de données d'utilisation sur %d modèles";
+"%@ in · %@ out" = "%@ en entrée · %@ en sortie";
 "Daily estimated spend" = "Dépenses quotidiennes estimées";
 "≈%d full 5h windows of weekly left · %d windows until reset" = "≈%d fenêtres complètes de 5 h de quota hebdomadaire · %d fenêtres avant réinitialisation";
 "Weekly cannot run out before reset at this pace" = "Le quota hebdomadaire ne peut pas être épuisé avant la réinitialisation à ce rythme";
@@ -1284,6 +1287,20 @@
 "Coding Plan" = "Plan de codage";
 "Agent Plan" = "Plan d'agent";
 "Team" = "Équipe";
+
+"7-day average" = "Moyenne sur 7 jours";
+"Input" = "Entrée";
+"Output" = "Sortie";
+"Cache write" = "Écriture de cache";
+"Reasoning" = "Raisonnement";
+"%@ in" = "%@ entrée";
+"%@ out" = "%@ sortie";
+"%@ cache read" = "%@ lecture de cache";
+"%@ cache write" = "%@ écriture de cache";
+"%@ reasoning" = "%@ raisonnement";
+"estimated" = "estimé";
+"Estimated costs are priced from local logs and may differ from provider bills." = "Les coûts estimés sont calculés à partir des journaux locaux aux tarifs officiels et peuvent différer des factures des fournisseurs.";
+"Usage details for %@" = "Détails d'utilisation pour %@";
 
 /* Menu bar layout editor */
 "menu_bar_layout_title" = "Disposition";
@@ -1350,3 +1367,22 @@
 "Cost today unavailable" = "Coût aujourd’hui: Indisponible";
 "30-day cost unavailable" = "Coût sur 30 j: Indisponible";
 "Resets" = "Réinitialisations";
+"Cumulative" = "Cumulé";
+
+/* Token usage dashboard (usage & spend) */
+"Token activity" = "Activité des tokens";
+"By model" = "Par modèle";
+"By tool" = "Par outil";
+"View" = "Vue";
+"7-day avg" = "Moy. 7 j";
+"in the last year" = "sur l'année écoulée";
+"No activity in the last 12 months" = "Aucune activité au cours des 12 derniers mois";
+"Each column = 1 week" = "Chaque colonne = 1 semaine";
+"Running total" = "Total cumulé";
+"Less" = "Moins";
+"More" = "Plus";
+"Mo" = "lu";
+"We" = "me";
+"Fr" = "ve";
+"Estimated" = "Estimé";
+"No per-client model history" = "Aucun historique de modèle par client";

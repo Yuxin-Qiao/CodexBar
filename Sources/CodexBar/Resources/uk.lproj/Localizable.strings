@@ -1268,14 +1268,17 @@
 "By subscription" = "За підписками";
 "No model-level history" = "Немає історії за моделями";
 "Tokens" = "Tokens";
-"Tracked model tokens" = "Tracked model tokens";
-"Priced model spend" = "Priced model spend";
+"Tracked model tokens" = "Відстежувані токени моделей";
+"Priced model spend" = "Витрати на моделі з ціною";
 "Partial model history: incomplete source-days are excluded." = "Partial model history: incomplete source-days are excluded.";
-"No priced model history" = "No priced model history";
+"No priced model history" = "Немає історії моделей з ціною";
 "Other" = "Other";
-"Show all %d models" = "Show all %d models";
-"Show top 20" = "Show top 20";
+"Show all %d models" = "Показати всі моделі (%d)";
+"Show top 20" = "Показати перші 20";
 "Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers." = "Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers.";
+"Metric" = "Метрика";
+"%d days of usage data across %d models" = "%d днів використання даних у %d моделях";
+"%@ in · %@ out" = "%@ вх. · %@ вих.";
 "Daily estimated spend" = "Орієнтовні щоденні витрати";
 "≈%d full 5h windows of weekly left · %d windows until reset" = "≈%d повних 5-годинних вікон тижневого ліміту · %d вікон до скидання";
 "Weekly cannot run out before reset at this pace" = "За такого темпу тижневий ліміт не може вичерпатися до скидання";
@@ -1284,6 +1287,20 @@
 "Coding Plan" = "План кодування";
 "Agent Plan" = "План агента";
 "Team" = "Команда";
+
+"7-day average" = "Середнє за 7 днів";
+"Input" = "Вхідні";
+"Output" = "Вихідні";
+"Cache write" = "Запис кешу";
+"Reasoning" = "Міркування";
+"%@ in" = "%@ вхідні";
+"%@ out" = "%@ вихідні";
+"%@ cache read" = "%@ читання кешу";
+"%@ cache write" = "%@ запис кешу";
+"%@ reasoning" = "%@ міркування";
+"estimated" = "оцінка";
+"Estimated costs are priced from local logs and may differ from provider bills." = "Оціночні витрати обчислюються з локальних журналів за прейскурантними цінами й можуть відрізнятися від рахунків постачальників.";
+"Usage details for %@" = "Деталі використання за %@";
 
 /* Menu bar layout editor */
 "menu_bar_layout_title" = "Компонування";
@@ -1350,3 +1367,22 @@
 "Cost today unavailable" = "Вартість сьогодні: Недоступний";
 "30-day cost unavailable" = "Вартість за 30 днів: Недоступний";
 "Resets" = "Скидання";
+"Cumulative" = "Наростаючим підсумком";
+
+/* Token usage dashboard (usage & spend) */
+"Token activity" = "Активність токенів";
+"By model" = "За моделлю";
+"By tool" = "За інструментом";
+"View" = "Вигляд";
+"7-day avg" = "Сер. за 7 дн.";
+"in the last year" = "за останній рік";
+"No activity in the last 12 months" = "Немає активності за останні 12 місяців";
+"Each column = 1 week" = "Кожен стовпець = 1 тиждень";
+"Running total" = "Накопичений підсумок";
+"Less" = "Менше";
+"More" = "Більше";
+"Mo" = "пн";
+"We" = "ср";
+"Fr" = "пт";
+"Estimated" = "Оціночно";
+"No per-client model history" = "Немає історії моделей за клієнтами";

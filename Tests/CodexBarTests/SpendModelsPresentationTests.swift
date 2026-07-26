@@ -4,8 +4,8 @@ import Testing
 
 struct SpendModelsPresentationTests {
     @Test
-    func `model card range labels stay English and preserve compact order`() {
-        #expect([7, 30, 365].map(spendModelsDayRangeText) == ["7d", "30d", "All"])
+    func `dashboard range labels stay English and preserve compact order`() {
+        #expect([7, 30, 365].map(spendDashboardDayRangeText) == ["7d", "30d", "Cumulative"])
     }
 
     @Test
@@ -165,13 +165,240 @@ struct SpendModelsPresentationTests {
         #expect(presentation.coverage == .partial)
     }
 
+    @Test
+    func `ranking keeps every row visible at the collapsed limit`() {
+        let rows = Self.rankingRows(count: SpendModelsRanking.collapsedRowLimit)
+
+        #expect(!SpendModelsRanking.showsDisclosure(rowCount: rows.count))
+        #expect(SpendModelsRanking.visibleRows(rows, showsAll: false).map(\.id) == rows.map(\.id))
+        #expect(SpendModelsRanking.visibleRows(rows, showsAll: true).map(\.id) == rows.map(\.id))
+    }
+
+    @Test
+    func `ranking truncates rows beyond the collapsed limit until expanded`() {
+        let rows = Self.rankingRows(count: SpendModelsRanking.collapsedRowLimit + 5)
+
+        #expect(SpendModelsRanking.showsDisclosure(rowCount: rows.count))
+
+        let collapsed = SpendModelsRanking.visibleRows(rows, showsAll: false)
+        #expect(collapsed.count == SpendModelsRanking.collapsedRowLimit)
+        #expect(collapsed.map(\.id) == rows.prefix(SpendModelsRanking.collapsedRowLimit).map(\.id))
+        #expect(collapsed.last?.rank == SpendModelsRanking.collapsedRowLimit)
+
+        let expanded = SpendModelsRanking.visibleRows(rows, showsAll: true)
+        #expect(expanded.map(\.id) == rows.map(\.id))
+    }
+
+    @Test
+    func `dashboard range labels localize with the app language`() {
+        CodexBarLocalizationOverride.$appLanguage.withValue("zh-Hans") {
+            #expect([7, 30, 365].map(spendDashboardDayRangeText) == ["7 天", "30 天", "累计"])
+        }
+    }
+
+    @Test
+    func `token row detail localizes the in and out split`() {
+        let row = SpendModelsPresentation.Row(
+            source: Self.row(
+                id: "complete",
+                tokens: 100,
+                inputTokens: 80,
+                outputTokens: 20,
+                cost: nil,
+                providers: ["Codex"]),
+            rank: 1,
+            value: 100,
+            share: 1)
+
+        CodexBarLocalizationOverride.$appLanguage.withValue("zh-Hans") {
+            #expect(spendModelsRowDetailText(row) == "80 输入 · 20 输出 · Codex")
+        }
+    }
+
+    @Test
+    func `trailing average smooths each series over fewer samples at the window edge`() {
+        let days = (0..<4).map { Self.day.addingTimeInterval(Double($0) * 86400) }
+        let analysis = SpendDashboardModel.ModelAnalysis(
+            rows: [Self.row(id: "model-a", tokens: 100, cost: nil)],
+            dailyValues: zip(days, [10, 20, 30, 40]).map { day, tokens in
+                Self.dailyValue(modelID: "model-a", day: day, totalTokens: tokens)
+            },
+            trackedTokenTotal: 100,
+            pricedCostTotal: nil,
+            sourceCount: 1,
+            tokenCoverage: .complete,
+            costCoverage: .partial)
+
+        let smoothed = SpendModelsPresentation(analysis: analysis, metric: .tokens).applyingTrailingAverage()
+
+        #expect(SpendModelsPresentation.trailingAverageWindow == 7)
+        #expect(smoothed.points.map(\.day) == days)
+        #expect(smoothed.points.map(\.value) == [10, 15, 20, 25])
+        #expect(smoothed.points.map(\.stackStart) == [0, 0, 0, 0])
+        #expect(smoothed.points.map(\.stackEnd) == [10, 15, 20, 25])
+        // Ranking stays raw: only the chart points are smoothed.
+        #expect(smoothed.rows.map(\.value) == [100])
+        #expect(smoothed.series.map(\.value) == [100])
+    }
+
+    @Test
+    func `trailing average treats days without series data as zero samples`() {
+        let days = (0..<4).map { Self.day.addingTimeInterval(Double($0) * 86400) }
+        let analysis = SpendDashboardModel.ModelAnalysis(
+            rows: [
+                Self.row(id: "model-a", tokens: 70, cost: nil),
+                Self.row(id: "model-b", tokens: 40, cost: nil),
+            ],
+            dailyValues: [
+                Self.dailyValue(modelID: "model-a", day: days[0], totalTokens: 10),
+                Self.dailyValue(modelID: "model-a", day: days[1], totalTokens: 20),
+                Self.dailyValue(modelID: "model-a", day: days[3], totalTokens: 40),
+                Self.dailyValue(modelID: "model-b", day: days[0], totalTokens: 4),
+                Self.dailyValue(modelID: "model-b", day: days[1], totalTokens: 8),
+                Self.dailyValue(modelID: "model-b", day: days[2], totalTokens: 12),
+                Self.dailyValue(modelID: "model-b", day: days[3], totalTokens: 16),
+            ],
+            trackedTokenTotal: 110,
+            pricedCostTotal: nil,
+            sourceCount: 1,
+            tokenCoverage: .complete,
+            costCoverage: .partial)
+
+        let smoothed = SpendModelsPresentation(analysis: analysis, metric: .tokens)
+            .applyingTrailingAverage(window: 2)
+
+        // model-a: [10, 15, 10, 20]; model-b: [4, 6, 10, 14]. Series stack in ranking order.
+        #expect(smoothed.points.map(\.seriesID) == [
+            "model-a", "model-b",
+            "model-a", "model-b",
+            "model-a", "model-b",
+            "model-a", "model-b",
+        ])
+        #expect(smoothed.points.map(\.value) == [10, 4, 15, 6, 10, 10, 20, 14])
+        #expect(smoothed.points.map(\.stackStart) == [0, 10, 0, 15, 0, 10, 0, 20])
+        #expect(smoothed.points.map(\.stackEnd) == [10, 14, 15, 21, 10, 20, 20, 34])
+    }
+
+    @Test
+    func `day detail aggregates buckets and sorts models by tokens`() throws {
+        let analysis = SpendDashboardModel.ModelAnalysis(
+            rows: [
+                Self.row(
+                    id: "model-a",
+                    tokens: 130,
+                    cost: 1.5,
+                    providers: ["Codex"],
+                    costIsEstimated: true),
+                Self.row(id: "model-b", tokens: 50, cost: 0.5, providers: ["Kimi"]),
+            ],
+            dailyValues: [
+                Self.dailyValue(
+                    modelID: "model-a",
+                    day: Self.day,
+                    totalTokens: 100,
+                    inputTokens: 80,
+                    outputTokens: 20,
+                    cost: 1.5,
+                    cacheReadTokens: 15,
+                    cacheCreationTokens: 5,
+                    reasoningTokens: 4),
+                Self.dailyValue(
+                    modelID: "model-b",
+                    day: Self.day,
+                    totalTokens: 50,
+                    inputTokens: 30,
+                    outputTokens: 20,
+                    cost: 0.5),
+            ],
+            trackedTokenTotal: 180,
+            pricedCostTotal: 2,
+            sourceCount: 2,
+            tokenCoverage: .complete,
+            costCoverage: .complete)
+
+        let detail = try #require(SpendModelsDayDetailPresentation(
+            analysis: analysis,
+            day: Self.day,
+            metric: .estimatedSpend))
+
+        #expect(detail.totalTokens == 150)
+        #expect(detail.totalCost == 2)
+        #expect(detail.buckets.map(\.kind) == [.input, .output, .cacheRead, .cacheWrite, .reasoning])
+        #expect(detail.buckets.map(\.tokens) == [110, 40, 15, 5, 4])
+
+        #expect(detail.models.map(\.id) == ["model-a", "model-b"])
+        let first = try #require(detail.models.first)
+        #expect(first.providerNames == ["Codex"])
+        #expect(first.costIsEstimated)
+        #expect(first.buckets.map(\.kind) == [.input, .output, .cacheRead, .cacheWrite, .reasoning])
+        #expect(first.buckets.map(\.tokens) == [80, 20, 15, 5, 4])
+        #expect(detail.models.last?.buckets.map(\.kind) == [.input, .output])
+    }
+
+    @Test
+    func `day detail hides the category bar when no bucket data exists`() throws {
+        let analysis = SpendDashboardModel.ModelAnalysis(
+            rows: [Self.row(id: "model-a", tokens: 50, cost: nil)],
+            dailyValues: [
+                Self.dailyValue(modelID: "model-a", day: Self.day, totalTokens: 50),
+            ],
+            trackedTokenTotal: 50,
+            pricedCostTotal: nil,
+            sourceCount: 1,
+            tokenCoverage: .complete,
+            costCoverage: .partial)
+
+        let detail = try #require(SpendModelsDayDetailPresentation(
+            analysis: analysis,
+            day: Self.day,
+            metric: .tokens))
+
+        #expect(detail.buckets.isEmpty)
+        let model = try #require(detail.models.first)
+        #expect(model.buckets.isEmpty)
+        #expect(spendModelsDayDetailModelSplitText(model) == "50")
+    }
+
+    @Test
+    func `day detail is nil outside the charted range and matches inside`() {
+        let analysis = SpendDashboardModel.ModelAnalysis(
+            rows: [Self.row(id: "model-a", tokens: 10, cost: nil)],
+            dailyValues: [
+                Self.dailyValue(modelID: "model-a", day: Self.day, totalTokens: 10),
+            ],
+            trackedTokenTotal: 10,
+            pricedCostTotal: nil,
+            sourceCount: 1,
+            tokenCoverage: .complete,
+            costCoverage: .partial)
+        let presentation = SpendModelsPresentation(analysis: analysis, metric: .tokens)
+        let outside = Self.day.addingTimeInterval(10 * 86400)
+
+        #expect(presentation.day(matching: Self.day) == Self.day)
+        #expect(presentation.day(matching: outside) == nil)
+        #expect(SpendModelsDayDetailPresentation(analysis: analysis, day: outside, metric: .tokens) == nil)
+    }
+
+    @Test
+    func `day detail bucket text localizes the cache read label`() {
+        let bucket = SpendModelsDayDetailPresentation.Bucket(kind: .cacheRead, tokens: 15)
+
+        CodexBarLocalizationOverride.$appLanguage.withValue("zh-Hans") {
+            #expect(spendModelsDayDetailBucketText(bucket) == "15 缓存读取")
+        }
+    }
+
     private static func row(
         id: String,
         tokens: Int?,
         inputTokens: Int? = nil,
         outputTokens: Int? = nil,
         cost: Double?,
-        providers: [String] = []) -> SpendDashboardModel.ModelAnalysisRow
+        providers: [String] = [],
+        cacheReadTokens: Int? = nil,
+        cacheCreationTokens: Int? = nil,
+        reasoningTokens: Int? = nil,
+        costIsEstimated: Bool = false) -> SpendDashboardModel.ModelAnalysisRow
     {
         SpendDashboardModel.ModelAnalysisRow(
             id: id,
@@ -183,7 +410,45 @@ struct SpendModelsPresentationTests {
             totalTokens: tokens,
             inputTokens: inputTokens,
             outputTokens: outputTokens,
-            estimatedCost: cost)
+            estimatedCost: cost,
+            cacheReadTokens: cacheReadTokens,
+            cacheCreationTokens: cacheCreationTokens,
+            reasoningTokens: reasoningTokens,
+            costIsEstimated: costIsEstimated)
+    }
+
+    private static func dailyValue(
+        modelID: String,
+        day: Date,
+        totalTokens: Int?,
+        inputTokens: Int? = nil,
+        outputTokens: Int? = nil,
+        cost: Double? = nil,
+        cacheReadTokens: Int? = nil,
+        cacheCreationTokens: Int? = nil,
+        reasoningTokens: Int? = nil) -> SpendDashboardModel.ModelDailyValue
+    {
+        SpendDashboardModel.ModelDailyValue(
+            modelID: modelID,
+            modelName: modelID,
+            day: day,
+            totalTokens: totalTokens,
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            estimatedCost: cost,
+            cacheReadTokens: cacheReadTokens,
+            cacheCreationTokens: cacheCreationTokens,
+            reasoningTokens: reasoningTokens)
+    }
+
+    private static func rankingRows(count: Int) -> [SpendModelsPresentation.Row] {
+        (1...count).map { index in
+            SpendModelsPresentation.Row(
+                source: Self.row(id: "model-\(index)", tokens: index, cost: nil),
+                rank: index,
+                value: Double(index),
+                share: nil)
+        }
     }
 
     private static let day = Date(timeIntervalSince1970: 1_784_179_200)

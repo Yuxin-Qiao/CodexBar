@@ -1269,14 +1269,17 @@
 "By subscription" = "サブスクリプション別";
 "No model-level history" = "モデル別の履歴はありません";
 "Tokens" = "Tokens";
-"Tracked model tokens" = "Tracked model tokens";
-"Priced model spend" = "Priced model spend";
+"Tracked model tokens" = "追跡されたモデルトークン";
+"Priced model spend" = "価格設定済みモデルの支出";
 "Partial model history: incomplete source-days are excluded." = "Partial model history: incomplete source-days are excluded.";
-"No priced model history" = "No priced model history";
+"No priced model history" = "価格設定済みモデルの履歴がありません";
 "Other" = "Other";
-"Show all %d models" = "Show all %d models";
-"Show top 20" = "Show top 20";
+"Show all %d models" = "すべての %d モデルを表示";
+"Show top 20" = "上位 20 件を表示";
 "Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers." = "Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers.";
+"Metric" = "指標";
+"%d days of usage data across %d models" = "%2$dモデルにわたる%1$d日間の使用状況データ";
+"%@ in · %@ out" = "%@ 入力 · %@ 出力";
 "Daily estimated spend" = "日別推定支出";
 "≈%d full 5h windows of weekly left · %d windows until reset" = "週間枠は約%d回分の完全な5時間ウィンドウ · リセットまで%d回";
 "Weekly cannot run out before reset at this pace" = "このペースではリセット前に週間枠を使い切れません";
@@ -1285,6 +1288,20 @@
 "Coding Plan" = "コーディングプラン";
 "Agent Plan" = "エージェントプラン";
 "Team" = "チーム";
+
+"7-day average" = "7日平均";
+"Input" = "入力";
+"Output" = "出力";
+"Cache write" = "キャッシュ書き込み";
+"Reasoning" = "推論";
+"%@ in" = "%@ 入力";
+"%@ out" = "%@ 出力";
+"%@ cache read" = "%@ キャッシュ読み取り";
+"%@ cache write" = "%@ キャッシュ書き込み";
+"%@ reasoning" = "%@ 推論";
+"estimated" = "推定";
+"Estimated costs are priced from local logs and may differ from provider bills." = "推定コストはローカルログから定価で計算されており、プロバイダーの請求と異なる場合があります。";
+"Usage details for %@" = "%@ の使用詳細";
 
 /* Menu bar layout editor */
 "menu_bar_layout_title" = "レイアウト";
@@ -1351,3 +1368,22 @@
 "Cost today unavailable" = "今日のコスト: 利用不可";
 "30-day cost unavailable" = "30日間のコスト: 利用不可";
 "Resets" = "リセット";
+"Cumulative" = "累計";
+
+/* Token usage dashboard (usage & spend) */
+"Token activity" = "トークンアクティビティ";
+"By model" = "モデル別";
+"By tool" = "ツール別";
+"View" = "表示";
+"7-day avg" = "7日平均";
+"in the last year" = "過去1年";
+"No activity in the last 12 months" = "過去12か月にアクティビティなし";
+"Each column = 1 week" = "各列 = 1週間";
+"Running total" = "累計";
+"Less" = "少";
+"More" = "多";
+"Mo" = "月";
+"We" = "水";
+"Fr" = "金";
+"Estimated" = "推定";
+"No per-client model history" = "クライアント別のモデル履歴なし";

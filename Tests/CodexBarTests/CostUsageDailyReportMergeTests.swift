@@ -173,4 +173,59 @@ struct CostUsageDailyReportMergeTests {
         #expect(merged.summary?.totalTokens == 120)
         #expect(abs((merged.data.first?.costUSD ?? 0) - 1.25) < 0.000001)
     }
+
+    @Test
+    func `merged report sums reasoning tokens and drops the bucket when any source misses it`() {
+        func report(day: String, reasoning: Int?) -> CostUsageDailyReport {
+            CostUsageDailyReport(
+                data: [
+                    CostUsageDailyReport.Entry(
+                        date: day,
+                        inputTokens: 100,
+                        outputTokens: 30,
+                        totalTokens: 130,
+                        costUSD: 1.0,
+                        modelsUsed: ["gpt-5.4"],
+                        modelBreakdowns: [
+                            CostUsageDailyReport.ModelBreakdown(
+                                modelName: "gpt-5.4",
+                                costUSD: 1.0,
+                                totalTokens: 130,
+                                inputTokens: 100,
+                                outputTokens: 30,
+                                reasoningTokens: reasoning),
+                        ]),
+                ],
+                summary: nil)
+        }
+
+        let both = report(day: "2026-04-04", reasoning: 12)
+            .merged(with: report(day: "2026-04-04", reasoning: 8))
+        #expect(both.data.first?.modelBreakdowns?.first?.outputTokens == 60)
+        #expect(both.data.first?.modelBreakdowns?.first?.reasoningTokens == 20)
+
+        // Reasoning is a sub-bucket of output: merging must never change the output total.
+        let missing = report(day: "2026-04-04", reasoning: 12)
+            .merged(with: report(day: "2026-04-04", reasoning: nil))
+        #expect(missing.data.first?.modelBreakdowns?.first?.outputTokens == 60)
+        #expect(missing.data.first?.modelBreakdowns?.first?.reasoningTokens == nil)
+    }
+
+    @Test
+    func `model breakdown decodes reasoning tokens from camel and snake case keys`() throws {
+        let camel = try JSONDecoder().decode(
+            CostUsageDailyReport.ModelBreakdown.self,
+            from: Data(#"{"modelName":"gpt-5.4","reasoningTokens":7}"#.utf8))
+        #expect(camel.reasoningTokens == 7)
+
+        let snake = try JSONDecoder().decode(
+            CostUsageDailyReport.ModelBreakdown.self,
+            from: Data(#"{"modelName":"gpt-5.4","reasoning_output_tokens":9}"#.utf8))
+        #expect(snake.reasoningTokens == 9)
+
+        let absent = try JSONDecoder().decode(
+            CostUsageDailyReport.ModelBreakdown.self,
+            from: Data(#"{"modelName":"gpt-5.4"}"#.utf8))
+        #expect(absent.reasoningTokens == nil)
+    }
 }

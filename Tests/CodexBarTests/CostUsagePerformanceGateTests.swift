@@ -29,20 +29,7 @@ struct CostUsagePerformanceGateTests {
             until: day,
             now: day,
             options: options)
-
-        let changedFile = try #require(fileURLs.first)
-        let originalAttributes = try FileManager.default.attributesOfItem(atPath: changedFile.path)
-        let originalModificationDate = try #require(originalAttributes[.modificationDate] as? Date)
-        let original = try String(contentsOf: changedFile, encoding: .utf8)
-        let modified = original.replacingOccurrences(
-            of: #""input_tokens":100,"#,
-            with: #""input_tokens":900,"#)
-        #expect(modified != original)
-        #expect(modified.utf8.count == original.utf8.count)
-        try modified.write(to: changedFile, atomically: false, encoding: .utf8)
-        try FileManager.default.setAttributes(
-            [.modificationDate: originalModificationDate],
-            ofItemAtPath: changedFile.path)
+        CostUsageScanner._test_resetCodexParsedFilePaths()
 
         let warm = CostUsageScanner.loadDailyReport(
             provider: .codex,
@@ -51,8 +38,64 @@ struct CostUsagePerformanceGateTests {
             now: day,
             options: options)
 
+        // Other suites may parse their own fixtures concurrently, so assert on this corpus.
+        let corpusPaths = fileURLs.map(\.standardizedFileURL.path)
+        #expect((CostUsageScanner._test_codexParsedFilePaths ?? []).isDisjoint(with: corpusPaths))
         #expect(cold.data.count == 1)
         #expect(warm.data.first?.totalTokens == cold.data.first?.totalTokens)
+    }
+
+    @Test
+    func `in-place same-size session rewrite invalidates the sampling fingerprint cache`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+        let day = try env.makeLocalNoon(year: 2026, month: 5, day: 10)
+        let fileURLs = try Self.writeSyntheticCodexCorpus(env: env, day: day, files: 2, turnsPerFile: 4)
+
+        var options = CostUsageScanner.Options(
+            codexSessionsRoot: env.codexSessionsRoot,
+            claudeProjectsRoots: nil,
+            cacheRoot: env.cacheRoot,
+            codexTraceDatabaseURL: env.root.appendingPathComponent("missing.sqlite"))
+        options.refreshMinIntervalSeconds = 0
+
+        let cold = CostUsageScanner.loadDailyReport(
+            provider: .codex,
+            since: day,
+            until: day,
+            now: day,
+            options: options)
+
+        // Rewrite one file in place: identical byte length, original mtime restored. Only the
+        // sampling fingerprint can see this edit, and it must invalidate exactly that file.
+        let changedFile = try #require(fileURLs.first)
+        let originalModificationDateNs = Self.statModificationUnixNs(of: changedFile)
+        let original = try String(contentsOf: changedFile, encoding: .utf8)
+        let modified = original.replacingOccurrences(
+            of: #""input_tokens":400,"#,
+            with: #""input_tokens":900,"#)
+        #expect(modified != original)
+        #expect(modified.utf8.count == original.utf8.count)
+        try modified.write(to: changedFile, atomically: false, encoding: .utf8)
+        try Self.setModificationUnixNs(originalModificationDateNs, of: changedFile)
+        #expect(Self.statModificationUnixNs(of: changedFile) == originalModificationDateNs)
+        CostUsageScanner._test_resetCodexParsedFilePaths()
+
+        let warm = CostUsageScanner.loadDailyReport(
+            provider: .codex,
+            since: day,
+            until: day,
+            now: day,
+            options: options)
+
+        // Only the rewritten file is re-parsed; the edited final turn (input 400 -> 900) lifts
+        // that file's cumulative total from 440 to 940 tokens. Other suites may parse their own
+        // fixtures concurrently, so assert on this corpus only.
+        let parsedCorpusPaths = (CostUsageScanner._test_codexParsedFilePaths ?? [])
+            .intersection(fileURLs.map(\.standardizedFileURL.path))
+        #expect(parsedCorpusPaths == [changedFile.standardizedFileURL.path])
+        #expect(cold.data.first?.totalTokens == 880)
+        #expect(warm.data.first?.totalTokens == 1380)
     }
 
     @Test
@@ -316,6 +359,30 @@ struct CostUsagePerformanceGateTests {
             fileURLs.append(fileURL)
         }
         return fileURLs
+    }
+
+    /// stat-level mtime in nanoseconds. `FileManager.attributesOfItem` round-trips through
+    /// `Date` (Double seconds, µs granularity beyond ~±128 years), silently truncating the
+    /// nanosecond tail — which would make an in-place rewrite fixture look mtime-changed even
+    /// after a "restore". These helpers keep the whole round-trip in integer nanoseconds.
+    private static func statModificationUnixNs(of fileURL: URL) -> Int64 {
+        var info = stat()
+        guard fileURL.path.withCString({ fstatat(AT_FDCWD, $0, &info, 0) }) == 0 else { return 0 }
+        #if os(Linux)
+        return Int64(info.st_mtim.tv_sec) * 1_000_000_000 + Int64(info.st_mtim.tv_nsec)
+        #else
+        return Int64(info.st_mtimespec.tv_sec) * 1_000_000_000 + Int64(info.st_mtimespec.tv_nsec)
+        #endif
+    }
+
+    private static func setModificationUnixNs(_ ns: Int64, of fileURL: URL) throws {
+        var times = [
+            timespec(tv_sec: 0, tv_nsec: Int(UTIME_OMIT)),
+            timespec(tv_sec: Int(ns / 1_000_000_000), tv_nsec: Int(ns % 1_000_000_000)),
+        ]
+        guard fileURL.path.withCString({ utimensat(AT_FDCWD, $0, &times, 0) }) == 0 else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+        }
     }
 
     private static func replaceTraceBody(dbURL: URL, rowID: Int64, body: String) throws {

@@ -63,6 +63,8 @@ struct KimiCodeSessionScannerTests {
         #expect(snapshot.daily.flatMap { $0.modelBreakdowns ?? [] }.map(\.cacheReadTokens) == [25, 9])
         #expect(snapshot.daily.flatMap { $0.modelBreakdowns ?? [] }.map(\.cacheCreationTokens) == [6, 0])
         #expect(snapshot.daily.flatMap { $0.modelBreakdowns ?? [] }.map(\.outputTokens) == [10, 10])
+        // Kimi wire.jsonl carries no reasoning field, so the reasoning bucket stays nil.
+        #expect(snapshot.daily.flatMap { $0.modelBreakdowns ?? [] }.map(\.reasoningTokens) == [nil, nil])
     }
 
     @Test

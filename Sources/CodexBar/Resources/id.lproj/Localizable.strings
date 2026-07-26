@@ -1272,14 +1272,17 @@
 "By subscription" = "Berdasarkan langganan";
 "No model-level history" = "Tidak ada riwayat tingkat model";
 "Tokens" = "Tokens";
-"Tracked model tokens" = "Tracked model tokens";
-"Priced model spend" = "Priced model spend";
+"Tracked model tokens" = "Token model terlacak";
+"Priced model spend" = "Pengeluaran model berharga";
 "Partial model history: incomplete source-days are excluded." = "Partial model history: incomplete source-days are excluded.";
-"No priced model history" = "No priced model history";
+"No priced model history" = "Tidak ada riwayat model berharga";
 "Other" = "Other";
-"Show all %d models" = "Show all %d models";
-"Show top 20" = "Show top 20";
+"Show all %d models" = "Tampilkan semua %d model";
+"Show top 20" = "Tampilkan 20 teratas";
 "Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers." = "Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers.";
+"Metric" = "Metrik";
+"%d days of usage data across %d models" = "%d hari data penggunaan di %d model";
+"%@ in · %@ out" = "%@ masuk · %@ keluar";
 "Daily estimated spend" = "Perkiraan pengeluaran harian";
 "≈%d full 5h windows of weekly left · %d windows until reset" = "≈%d jendela 5 jam penuh dari kuota mingguan tersisa · %d jendela hingga reset";
 "Weekly cannot run out before reset at this pace" = "Kuota mingguan tidak dapat habis sebelum reset dengan laju ini";
@@ -1288,6 +1291,20 @@
 "Coding Plan" = "Paket Coding";
 "Agent Plan" = "Paket Agen";
 "Team" = "Tim";
+
+"7-day average" = "Rata-rata 7 hari";
+"Input" = "Input";
+"Output" = "Output";
+"Cache write" = "Tulis cache";
+"Reasoning" = "Penalaran";
+"%@ in" = "%@ input";
+"%@ out" = "%@ output";
+"%@ cache read" = "%@ baca cache";
+"%@ cache write" = "%@ tulis cache";
+"%@ reasoning" = "%@ penalaran";
+"estimated" = "perkiraan";
+"Estimated costs are priced from local logs and may differ from provider bills." = "Biaya perkiraan dihitung dari log lokal dengan harga daftar dan mungkin berbeda dari tagihan penyedia.";
+"Usage details for %@" = "Detail penggunaan untuk %@";
 
 /* Menu bar layout editor */
 "menu_bar_layout_title" = "Tata letak";
@@ -1354,3 +1371,22 @@
 "Cost today unavailable" = "Biaya hari ini: Tidak tersedia";
 "30-day cost unavailable" = "Biaya 30 hari: Tidak tersedia";
 "Resets" = "Reset";
+"Cumulative" = "Kumulatif";
+
+/* Token usage dashboard (usage & spend) */
+"Token activity" = "Aktivitas token";
+"By model" = "Per model";
+"By tool" = "Per alat";
+"View" = "Tampilan";
+"7-day avg" = "Rata-rata 7 hari";
+"in the last year" = "dalam setahun terakhir";
+"No activity in the last 12 months" = "Tidak ada aktivitas dalam 12 bulan terakhir";
+"Each column = 1 week" = "Setiap kolom = 1 minggu";
+"Running total" = "Total berjalan";
+"Less" = "Sedikit";
+"More" = "Banyak";
+"Mo" = "Sen";
+"We" = "Rab";
+"Fr" = "Jum";
+"Estimated" = "Perkiraan";
+"No per-client model history" = "Tidak ada riwayat model per klien";

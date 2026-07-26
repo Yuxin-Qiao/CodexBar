@@ -10,7 +10,17 @@ enum CostUsagePricingKey {
         modelsDevArtifact: ModelsDevCacheArtifact?,
         formulaVersion: Int,
         parserHash: String? = nil,
-        modelsDevProviderIDs: Set<String> = ["openai"]) -> String
+        modelsDevProviderIDs: Set<String> = [
+            "openai",
+            // Third-party models routed through a Codex-compatible endpoint are priced via
+            // `thirdPartyClaudeLookup`, so their catalog entries must also bust the cost cache.
+            "deepseek",
+            "minimax",
+            "minimax-cn",
+            "moonshotai",
+            "moonshotai-cn",
+            "kimi-for-coding",
+        ]) -> String
     {
         var parts = [
             "costFormulaVersion=\(formulaVersion)",

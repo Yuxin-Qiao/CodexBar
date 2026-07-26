@@ -369,12 +369,14 @@ extension CostUsageScanner {
     private static func makeClaudeFileUsage(
         mtimeMs: Int64,
         size: Int64,
+        fingerprint: CostUsageSourceFingerprint? = nil,
         rows: [ClaudeUsageRow],
         parsedBytes: Int64?) -> CostUsageFileUsage
     {
         makeFileUsage(
             mtimeUnixMs: mtimeMs,
             size: size,
+            fingerprint: fingerprint,
             days: [:],
             parsedBytes: parsedBytes,
             claudeRows: rows)
@@ -536,25 +538,47 @@ extension CostUsageScanner {
         url: URL,
         size: Int64,
         mtimeMs: Int64,
+        mtimeUnixNs: Int64,
         state: ClaudeScanState) throws
     {
         try state.checkCancellation?()
         let path = url.path
         state.touched.insert(path)
 
-        if let cached = state.cache.files[path],
-           cached.mtimeUnixMs == mtimeMs,
-           cached.size == size,
-           !state.forceFullScan
-        {
-            return
-        }
-
+        // Reused by the incremental/full parse paths so a changed file is hashed only once.
+        var freshFingerprint: CostUsageSourceFingerprint?
         if let cached = state.cache.files[path], !state.forceFullScan {
+            // Sampling fingerprint freshness (tokscale-style): an exact size+mtime+samples match
+            // is a hit; a metadata-only touch (same whole-file hash) is a hit with a refreshed
+            // fingerprint; anything else falls through to incremental/full parsing.
+            switch CostUsageSourceFingerprint.check(
+                fileURL: url,
+                size: size,
+                mtimeUnixNs: mtimeUnixNs,
+                cached: cached.fingerprint)
+            {
+            case .unchanged:
+                return
+            case let .touched(fresh):
+                var updated = cached
+                updated.fingerprint = fresh
+                updated.mtimeUnixMs = mtimeMs
+                state.cache.files[path] = updated
+                return
+            case let .changed(fresh):
+                freshFingerprint = fresh
+            }
+
             let startOffset = cached.parsedBytes ?? cached.size
             let canIncremental = size > cached.size && startOffset > 0 && startOffset <= size
                 && cached.claudeRows != nil
             if canIncremental {
+                // Fingerprint the post-append content before parsing the delta so a concurrent
+                // rewrite invalidates the entry on the next scan.
+                let fingerprint = freshFingerprint ?? CostUsageSourceFingerprint.make(
+                    fileURL: url,
+                    size: size,
+                    mtimeUnixNs: mtimeUnixNs)
                 let delta = try Self.parseClaudeFileCancellable(
                     fileURL: url,
                     range: state.range,
@@ -567,12 +591,19 @@ extension CostUsageScanner {
                 state.cache.files[path] = Self.makeClaudeFileUsage(
                     mtimeMs: mtimeMs,
                     size: size,
+                    fingerprint: fingerprint,
                     rows: mergedRows,
                     parsedBytes: delta.parsedBytes)
                 return
             }
         }
 
+        // Fingerprint before the full parse: any concurrent rewrite then invalidates the entry
+        // on the next scan instead of leaving a stale fingerprint behind.
+        let fingerprint = freshFingerprint ?? CostUsageSourceFingerprint.make(
+            fileURL: url,
+            size: size,
+            mtimeUnixNs: mtimeUnixNs)
         let parsed = try Self.parseClaudeFileCancellable(
             fileURL: url,
             range: state.range,
@@ -583,6 +614,7 @@ extension CostUsageScanner {
         let usage = Self.makeClaudeFileUsage(
             mtimeMs: mtimeMs,
             size: size,
+            fingerprint: fingerprint,
             rows: parsed.rows,
             parsedBytes: parsed.parsedBytes)
         state.cache.files[path] = usage
@@ -639,10 +671,14 @@ extension CostUsageScanner {
 
             let mtime = values.contentModificationDate?.timeIntervalSince1970 ?? 0
             let mtimeMs = Int64(mtime * 1000)
+            // Derived from the same resource value on every scan, so the conversion is
+            // deterministic for unchanged files even though Date carries sub-ms precision.
+            let mtimeNs = Int64((mtime * 1_000_000_000).rounded())
             try Self.processClaudeFile(
                 url: url,
                 size: size,
                 mtimeMs: mtimeMs,
+                mtimeUnixNs: mtimeNs,
                 state: state)
         }
 

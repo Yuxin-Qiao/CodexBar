@@ -57,6 +57,184 @@ struct SpendDashboardSourceConcurrencyTests {
     }
 
     @Test
+    func `local Gemini and OpenCode histories are appended without entering the cost provider pipeline`() async throws {
+        let now = Date(timeIntervalSince1970: 1_784_179_200)
+        let geminiSnapshot = Self.localHistorySnapshot(tokens: 12, model: "gemini-test-model", now: now)
+        let openCodeSnapshot = Self.localHistorySnapshot(tokens: 8, model: "opencode-test-model", now: now)
+        let recorder = SpendDashboardLocalLoaderRecorder()
+        let request = SpendDashboardLoadRequest(
+            configuration: SpendDashboardConfiguration(
+                costUsageEnabled: true,
+                providerIDs: [UsageProvider.gemini.rawValue, UsageProvider.opencode.rawValue],
+                codexAccountIdentities: []),
+            capturedInputs: [],
+            unavailableSourceIDs: [],
+            codexRequests: [],
+            geminiCLIHomePath: "/synthetic/gemini-cli",
+            openCodeDataHomePath: "/synthetic/opencode-data",
+            now: now,
+            force: false)
+
+        let result = await SpendDashboardSource.load(
+            request,
+            codexSnapshotLoader: { _ in
+                Issue.record("Codex loader should not run")
+                return geminiSnapshot
+            },
+            kimiCodeSnapshotLoader: { _ in
+                Issue.record("Kimi loader should not run")
+                return nil
+            },
+            geminiSnapshotLoader: { context in
+                await recorder.record("gemini")
+                #expect(context.homePath == "/synthetic/gemini-cli")
+                return geminiSnapshot
+            },
+            openCodeSnapshotLoader: { context in
+                await recorder.record("opencode")
+                #expect(context.homePath == "/synthetic/opencode-data")
+                return openCodeSnapshot
+            })
+
+        #expect(await recorder.invokedIDs == ["gemini", "opencode"])
+        let geminiInput = try #require(result.inputs.first { $0.id == "gemini:local" })
+        #expect(geminiInput.provider == .gemini)
+        #expect(geminiInput.displayName == "Gemini CLI")
+        #expect(geminiInput.modelProviderName == "Gemini")
+        #expect(geminiInput.snapshot.currencyCode == "XXX")
+        let openCodeInput = try #require(result.inputs.first { $0.id == "opencode:local" })
+        #expect(openCodeInput.provider == .opencode)
+        #expect(openCodeInput.displayName == "OpenCode")
+        #expect(openCodeInput.modelProviderName == "OpenCode")
+        #expect(openCodeInput.snapshot.currencyCode == "XXX")
+        #expect(result.failedSourceIDs.isEmpty)
+    }
+
+    @Test
+    func `local history failure marks only its own source id`() async {
+        let now = Date(timeIntervalSince1970: 1_784_179_200)
+        let snapshot = Self.localHistorySnapshot(tokens: 8, model: "opencode-test-model", now: now)
+        let request = SpendDashboardLoadRequest(
+            configuration: SpendDashboardConfiguration(
+                costUsageEnabled: true,
+                providerIDs: [UsageProvider.gemini.rawValue, UsageProvider.opencode.rawValue],
+                codexAccountIdentities: []),
+            capturedInputs: [],
+            unavailableSourceIDs: [],
+            codexRequests: [],
+            geminiCLIHomePath: "/synthetic/gemini-cli",
+            openCodeDataHomePath: "/synthetic/opencode-data",
+            now: now,
+            force: false)
+
+        let geminiFailed = await SpendDashboardSource.load(
+            request,
+            codexSnapshotLoader: { _ in
+                Issue.record("Codex loader should not run")
+                return snapshot
+            },
+            geminiSnapshotLoader: { _ in
+                throw SpendDashboardSyntheticError.failed
+            },
+            openCodeSnapshotLoader: { _ in snapshot })
+        #expect(geminiFailed.inputs.map(\.id) == ["opencode:local"])
+        #expect(geminiFailed.failedSourceIDs == ["gemini:local"])
+
+        let openCodeFailed = await SpendDashboardSource.load(
+            request,
+            codexSnapshotLoader: { _ in
+                Issue.record("Codex loader should not run")
+                return snapshot
+            },
+            geminiSnapshotLoader: { _ in snapshot },
+            openCodeSnapshotLoader: { _ in
+                throw SpendDashboardSyntheticError.failed
+            })
+        #expect(openCodeFailed.inputs.map(\.id) == ["gemini:local"])
+        #expect(openCodeFailed.failedSourceIDs == ["opencode:local"])
+    }
+
+    @Test
+    func `local history cancellation marks the source failed and short-circuits remaining local scans`() async {
+        let now = Date(timeIntervalSince1970: 1_784_179_200)
+        let snapshot = Self.localHistorySnapshot(tokens: 8, model: "opencode-test-model", now: now)
+        let recorder = SpendDashboardLocalLoaderRecorder()
+        let request = SpendDashboardLoadRequest(
+            configuration: SpendDashboardConfiguration(
+                costUsageEnabled: true,
+                providerIDs: [UsageProvider.gemini.rawValue, UsageProvider.opencode.rawValue],
+                codexAccountIdentities: []),
+            capturedInputs: [],
+            unavailableSourceIDs: [],
+            codexRequests: [],
+            geminiCLIHomePath: "/synthetic/gemini-cli",
+            openCodeDataHomePath: "/synthetic/opencode-data",
+            now: now,
+            force: false)
+
+        let result = await SpendDashboardSource.load(
+            request,
+            codexSnapshotLoader: { _ in
+                Issue.record("Codex loader should not run")
+                return snapshot
+            },
+            geminiSnapshotLoader: { _ in
+                await recorder.record("gemini")
+                throw CancellationError()
+            },
+            openCodeSnapshotLoader: { _ in
+                await recorder.record("opencode")
+                return snapshot
+            })
+
+        #expect(result.inputs.isEmpty)
+        #expect(result.failedSourceIDs == ["gemini:local"])
+        #expect(await recorder.invokedIDs == ["gemini"])
+    }
+
+    @Test
+    func `local model history providers follow the enabled provider set`() async {
+        let settings = testSettingsStore(suiteName: "SpendDashboardSourceConcurrencyTests-local-history")
+        settings.costUsageEnabled = true
+        for provider in UsageProvider.allCases {
+            guard let metadata = ProviderRegistry.shared.metadata[provider] else { continue }
+            settings.setProviderEnabled(
+                provider: provider,
+                metadata: metadata,
+                enabled: provider == .kimi || provider == .gemini || provider == .opencode)
+        }
+        let store = UsageStore(
+            fetcher: UsageFetcher(environment: [:]),
+            browserDetection: BrowserDetection(cacheTTL: 0),
+            settings: settings,
+            startupBehavior: .testing,
+            environmentBase: [:])
+
+        #expect(Set(SpendDashboardSource.localModelHistoryProviders(store: store)) == [.gemini, .kimi, .opencode])
+        let configuration = SpendDashboardSource.configuration(settings: settings, store: store)
+        #expect(configuration.providerIDs.contains(UsageProvider.gemini.rawValue))
+        #expect(configuration.providerIDs.contains(UsageProvider.kimi.rawValue))
+        #expect(configuration.providerIDs.contains(UsageProvider.opencode.rawValue))
+
+        let request = await SpendDashboardSource.makeRequest(settings: settings, store: store, mode: .captureOnly)
+        #expect(request.kimiCodeHomePath != nil)
+        #expect(request.geminiCLIHomePath != nil)
+        #expect(request.openCodeDataHomePath != nil)
+
+        if let metadata = ProviderRegistry.shared.metadata[.gemini] {
+            settings.setProviderEnabled(provider: .gemini, metadata: metadata, enabled: false)
+        }
+        #expect(!SpendDashboardSource.localModelHistoryProviders(store: store).contains(.gemini))
+        let disabledRequest = await SpendDashboardSource.makeRequest(
+            settings: settings,
+            store: store,
+            mode: .captureOnly)
+        #expect(disabledRequest.geminiCLIHomePath == nil)
+        #expect(disabledRequest.kimiCodeHomePath != nil)
+        #expect(disabledRequest.openCodeDataHomePath != nil)
+    }
+
+    @Test
     func `Codex batch revalidates completed and failed accounts after later scans`() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("SpendDashboardSourceConcurrencyTests-auth-\(UUID().uuidString)", isDirectory: true)
@@ -578,6 +756,30 @@ struct SpendDashboardSourceConcurrencyTests {
             snapshot: snapshot)
     }
 
+    private static func localHistorySnapshot(
+        tokens: Int,
+        model: String,
+        now: Date) -> CostUsageTokenSnapshot
+    {
+        let entry = CostUsageDailyReport.Entry(
+            date: "2026-07-16",
+            inputTokens: tokens,
+            outputTokens: 0,
+            totalTokens: tokens,
+            requestCount: 1,
+            costUSD: nil,
+            modelsUsed: [model],
+            modelBreakdowns: [.init(modelName: model, costUSD: nil, totalTokens: tokens)])
+        return CostUsageTokenSnapshot(
+            sessionTokens: nil,
+            sessionCostUSD: nil,
+            last30DaysTokens: tokens,
+            last30DaysCostUSD: nil,
+            currencyCode: "XXX",
+            daily: [entry],
+            updatedAt: now)
+    }
+
     private static func waitForCodexGate(_ gate: SpendDashboardCodexBatchGate) async {
         for _ in 0..<1000 {
             if await gate.isSuspended {
@@ -634,6 +836,14 @@ struct SpendDashboardSourceConcurrencyTests {
 
 private enum SpendDashboardSyntheticError: Error {
     case failed
+}
+
+private actor SpendDashboardLocalLoaderRecorder {
+    private(set) var invokedIDs: [String] = []
+
+    func record(_ id: String) {
+        self.invokedIDs.append(id)
+    }
 }
 
 @MainActor

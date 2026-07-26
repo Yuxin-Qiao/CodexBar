@@ -1270,14 +1270,17 @@
 "By subscription" = "Aboneliğe göre";
 "No model-level history" = "Model düzeyinde geçmiş yok";
 "Tokens" = "Tokens";
-"Tracked model tokens" = "Tracked model tokens";
-"Priced model spend" = "Priced model spend";
+"Tracked model tokens" = "İzlenen model jetonları";
+"Priced model spend" = "Fiyatlandırılan model harcamaları";
 "Partial model history: incomplete source-days are excluded." = "Partial model history: incomplete source-days are excluded.";
-"No priced model history" = "No priced model history";
+"No priced model history" = "Fiyatlandırılmış model geçmişi yok";
 "Other" = "Other";
-"Show all %d models" = "Show all %d models";
-"Show top 20" = "Show top 20";
+"Show all %d models" = "Tüm %d modeli göster";
+"Show top 20" = "İlk 20'yi göster";
 "Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers." = "Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers.";
+"Metric" = "Ölçüt";
+"%d days of usage data across %d models" = "%2$d model için %1$d günlük kullanım verisi";
+"%@ in · %@ out" = "%@ girdi · %@ çıktı";
 "Daily estimated spend" = "Günlük tahmini harcama";
 "≈%d full 5h windows of weekly left · %d windows until reset" = "Haftalık kotadan ≈%d tam 5 saatlik pencere kaldı · sıfırlamaya %d pencere";
 "Weekly cannot run out before reset at this pace" = "Bu hızda haftalık kota sıfırlamadan önce tükenemez";
@@ -1286,6 +1289,20 @@
 "Coding Plan" = "Kodlama Planı";
 "Agent Plan" = "Ajan Planı";
 "Team" = "Ekip";
+
+"7-day average" = "7 günlük ortalama";
+"Input" = "Girdi";
+"Output" = "Çıktı";
+"Cache write" = "Önbellek yazma";
+"Reasoning" = "Muhakeme";
+"%@ in" = "%@ girdi";
+"%@ out" = "%@ çıktı";
+"%@ cache read" = "%@ önbellek okuma";
+"%@ cache write" = "%@ önbellek yazma";
+"%@ reasoning" = "%@ muhakeme";
+"estimated" = "tahmini";
+"Estimated costs are priced from local logs and may differ from provider bills." = "Tahmini maliyetler yerel günlüklerden liste fiyatlarıyla hesaplanır ve sağlayıcı faturalarından farklı olabilir.";
+"Usage details for %@" = "%@ için kullanım ayrıntıları";
 
 /* Menu bar layout editor */
 "menu_bar_layout_title" = "Düzen";
@@ -1352,3 +1369,22 @@
 "Cost today unavailable" = "Bugünkü maliyet: Kullanılamıyor";
 "30-day cost unavailable" = "30 günlük maliyet: Kullanılamıyor";
 "Resets" = "Sıfırlamalar";
+"Cumulative" = "Kümülatif";
+
+/* Token usage dashboard (usage & spend) */
+"Token activity" = "Token etkinliği";
+"By model" = "Modele göre";
+"By tool" = "Araca göre";
+"View" = "Görünüm";
+"7-day avg" = "7 günlük ort.";
+"in the last year" = "son yılda";
+"No activity in the last 12 months" = "Son 12 ayda etkinlik yok";
+"Each column = 1 week" = "Her sütun = 1 hafta";
+"Running total" = "Birikimli toplam";
+"Less" = "Az";
+"More" = "Çok";
+"Mo" = "Pt";
+"We" = "Ça";
+"Fr" = "Cu";
+"Estimated" = "Tahmini";
+"No per-client model history" = "İstemci başına model geçmişi yok";

@@ -1,5 +1,15 @@
 import Foundation
 
+/// Where a snapshot's `costUSD` figures come from. Local scanners price token counts against
+/// models.dev rate cards, so their cost is an API-rate *estimate* of the real bill; provider
+/// dashboards/APIs (Cursor usage events, Bedrock Cost Explorer) report the actual billed amount.
+public enum CostUsageCostSource: String, Sendable, Equatable {
+    /// Billed spend as reported by the provider itself.
+    case providerReported
+    /// Locally estimated spend (token counts priced against public rate cards).
+    case estimated
+}
+
 public struct CostUsageWindowSummary: Sendable, Equatable {
     public let days: Int
     public let totalTokens: Int?
@@ -77,6 +87,9 @@ public struct CostUsageTokenSnapshot: Sendable, Equatable {
     /// actually deducts, as opposed to the API-rate estimate. Only some providers (e.g. Cursor)
     /// report this; `nil` when unknown.
     public let meteredCostUSD: Double?
+    /// Origin of the cost figures in this snapshot. Defaults to `.estimated` because most
+    /// snapshots are priced locally; provider-billed sources opt into `.providerReported`.
+    public let costSource: CostUsageCostSource
     /// Internal credential scope used to prevent cross-account cache publication. This is a
     /// non-reversible fingerprint, not account identity, and is not emitted by CLI payloads.
     public let credentialScopeFingerprint: String?
@@ -97,6 +110,7 @@ public struct CostUsageTokenSnapshot: Sendable, Equatable {
         historyCoverageIsEstablished: Bool = true,
         historyLabel: String? = nil,
         meteredCostUSD: Double? = nil,
+        costSource: CostUsageCostSource = .estimated,
         credentialScopeFingerprint: String? = nil,
         daily: [CostUsageDailyReport.Entry],
         projects: [CostUsageProjectBreakdown] = [],
@@ -115,6 +129,7 @@ public struct CostUsageTokenSnapshot: Sendable, Equatable {
         self.historyCoverageIsEstablished = historyCoverageIsEstablished
         self.historyLabel = historyLabel
         self.meteredCostUSD = meteredCostUSD
+        self.costSource = costSource
         self.credentialScopeFingerprint = credentialScopeFingerprint
         self.daily = daily
         self.projects = projects
@@ -281,6 +296,11 @@ public struct CostUsageDailyReport: Sendable, Decodable {
         public let cacheReadTokens: Int?
         public let cacheCreationTokens: Int?
         public let outputTokens: Int?
+        /// Reasoning ("thinking") tokens, when the source format reports them separately
+        /// (Codex `reasoning_output_tokens`, Gemini `thoughts`, OpenCode `reasoning`).
+        /// Reasoning is always a sub-bucket of `outputTokens` — output stays billing-inclusive,
+        /// so reasoning must never be added on top of output when summing buckets.
+        public let reasoningTokens: Int?
         public let requestCount: Int?
         public let standardCostUSD: Double?
         public let priorityCostUSD: Double?
@@ -298,6 +318,8 @@ public struct CostUsageDailyReport: Sendable, Decodable {
             case cacheReadInputTokens
             case cacheCreationInputTokens
             case outputTokens
+            case reasoningTokens
+            case reasoningOutputTokens = "reasoning_output_tokens"
             case requestCount
             case requests
             case standardCostUSD
@@ -321,6 +343,9 @@ public struct CostUsageDailyReport: Sendable, Decodable {
                 try container.decodeIfPresent(Int.self, forKey: .cacheCreationTokens)
                 ?? container.decodeIfPresent(Int.self, forKey: .cacheCreationInputTokens)
             self.outputTokens = try container.decodeIfPresent(Int.self, forKey: .outputTokens)
+            self.reasoningTokens =
+                try container.decodeIfPresent(Int.self, forKey: .reasoningTokens)
+                ?? container.decodeIfPresent(Int.self, forKey: .reasoningOutputTokens)
             self.requestCount =
                 try container.decodeIfPresent(Int.self, forKey: .requestCount)
                 ?? container.decodeIfPresent(Int.self, forKey: .requests)
@@ -338,6 +363,7 @@ public struct CostUsageDailyReport: Sendable, Decodable {
             cacheReadTokens: Int? = nil,
             cacheCreationTokens: Int? = nil,
             outputTokens: Int? = nil,
+            reasoningTokens: Int? = nil,
             requestCount: Int? = nil,
             standardCostUSD: Double? = nil,
             priorityCostUSD: Double? = nil,
@@ -351,6 +377,7 @@ public struct CostUsageDailyReport: Sendable, Decodable {
             self.cacheReadTokens = cacheReadTokens
             self.cacheCreationTokens = cacheCreationTokens
             self.outputTokens = outputTokens
+            self.reasoningTokens = reasoningTokens
             self.requestCount = requestCount
             self.standardCostUSD = standardCostUSD
             self.priorityCostUSD = priorityCostUSD
@@ -568,6 +595,9 @@ extension CostUsageDailyReport {
         var outputTokens: Int = 0
         var sawOutputTokens = false
         var missingOutputTokens = false
+        var reasoningTokens: Int = 0
+        var sawReasoningTokens = false
+        var missingReasoningTokens = false
         var costUSD: Double = 0
         var sawCost = false
         var standardCostUSD: Double = 0
@@ -608,6 +638,12 @@ extension CostUsageDailyReport {
             } else {
                 self.missingOutputTokens = true
             }
+            if let reasoningTokens = breakdown.reasoningTokens {
+                self.reasoningTokens += reasoningTokens
+                self.sawReasoningTokens = true
+            } else {
+                self.missingReasoningTokens = true
+            }
             if let costUSD = breakdown.costUSD {
                 self.costUSD += costUSD
                 self.sawCost = true
@@ -641,6 +677,7 @@ extension CostUsageDailyReport {
                     ? self.cacheCreationTokens
                     : nil,
                 outputTokens: self.sawOutputTokens && !self.missingOutputTokens ? self.outputTokens : nil,
+                reasoningTokens: self.sawReasoningTokens && !self.missingReasoningTokens ? self.reasoningTokens : nil,
                 standardCostUSD: self.sawStandardCost ? self.standardCostUSD : nil,
                 priorityCostUSD: self.sawPriorityCost ? self.priorityCostUSD : nil,
                 standardTokens: self.sawStandardTokens ? self.standardTokens : nil,

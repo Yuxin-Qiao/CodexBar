@@ -213,6 +213,17 @@ func L(_ key: String, language: String) -> String {
     return codexBarLocalizedString(key, bundle: bundle, resourceBundle: resourceBundle)
 }
 
+/// Force-English variant of `L`. The token-usage dashboard mixes many inline numeric/metric
+/// labels that were laid out for English; rendering them in CJK breaks the row widths, so the
+/// whole panel pins to English regardless of system language.
+func LEn(_ key: String) -> String {
+    L(key, language: "en")
+}
+
+func LEn(_ key: String, _ arguments: CVarArg...) -> String {
+    String(format: LEn(key), arguments: arguments)
+}
+
 func codexBarLocalizedLocale() -> Locale {
     let language = resolvedAppLanguage()
     guard !language.isEmpty else { return .current }
