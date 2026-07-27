@@ -60,6 +60,7 @@ struct SpendDashboardModel: Equatable, Sendable {
         let sourceID: String
         let provider: UsageProvider
         let providerName: String
+        let toolKind: SpendToolIdentity.Kind
         let day: Date
         let cost: Double
         let stackStart: Double
@@ -67,6 +68,59 @@ struct SpendDashboardModel: Equatable, Sendable {
 
         var id: String {
             "\(self.sourceID):\(Int(self.day.timeIntervalSince1970))"
+        }
+
+        init(
+            sourceID: String,
+            provider: UsageProvider,
+            providerName: String,
+            toolKind: SpendToolIdentity.Kind = .other,
+            day: Date,
+            cost: Double,
+            stackStart: Double,
+            stackEnd: Double)
+        {
+            self.sourceID = sourceID
+            self.provider = provider
+            self.providerName = providerName
+            self.toolKind = toolKind
+            self.day = day
+            self.cost = cost
+            self.stackStart = stackStart
+            self.stackEnd = stackEnd
+        }
+    }
+
+    struct DailySpendModel: Identifiable, Equatable, Sendable {
+        let id: String
+        let displayName: String
+        let modelProvider: UsageProvider
+        let tokens: Int?
+        let cost: Double?
+    }
+
+    struct DailySpendTool: Identifiable, Equatable, Sendable {
+        let sourceID: String
+        let provider: UsageProvider
+        let displayName: String
+        let kind: SpendToolIdentity.Kind
+        let tokens: Int?
+        let cost: Double
+        let models: [DailySpendModel]
+
+        var id: String {
+            self.sourceID
+        }
+    }
+
+    struct DailySpendDetail: Identifiable, Equatable, Sendable {
+        let day: Date
+        let totalTokens: Int?
+        let totalCost: Double
+        let tools: [DailySpendTool]
+
+        var id: Date {
+            self.day
         }
     }
 
@@ -88,6 +142,11 @@ struct SpendDashboardModel: Equatable, Sendable {
         let providerName: String
         let rawModelNames: [String]
         let totalTokens: Int?
+        let inputTokens: Int?
+        let outputTokens: Int?
+        let cacheReadTokens: Int?
+        let cacheCreationTokens: Int?
+        let reasoningTokens: Int?
         let estimatedCost: Double?
 
         var id: String {
@@ -220,6 +279,7 @@ struct SpendDashboardModel: Equatable, Sendable {
         let models: [ModelRow]
         var modelAnalysis: ModelAnalysis = .empty
         let dailyPoints: [DailyPoint]
+        var dailySpendDetails: [DailySpendDetail] = []
         let totalTokens: Int?
         let totalCost: Double?
         let coveredDayCount: Int
@@ -385,7 +445,7 @@ struct SpendDashboardModel: Equatable, Sendable {
         let completeness: ModelHistoryCompleteness
     }
 
-    fileprivate struct ModelAnalysisAccumulator {
+    struct ModelAnalysisAccumulator {
         var rawNames: Set<String> = []
         var displayNames: Set<String> = []
         var providerNames: [UsageProvider: String] = [:]
@@ -417,16 +477,34 @@ struct SpendDashboardModel: Equatable, Sendable {
         var overflowedCost = false
     }
 
-    fileprivate struct ModelAnalysisSourceAccumulator {
+    struct ModelAnalysisSourceAccumulator {
         let provider: UsageProvider
         let sourceName: String
         let providerName: String
         var rawNames: Set<String> = []
         var tokens: Int? = 0
+        var inputTokens: Int? = 0
+        var outputTokens: Int? = 0
+        var cacheReadTokens: Int? = 0
+        var cacheCreationTokens: Int? = 0
+        var reasoningTokens: Int? = 0
         var cost: Double? = 0
         var sawTokens = false
+        var sawTokenSplit = false
+        var sawCacheReadTokens = false
+        var missingCacheReadTokens = false
+        var sawCacheCreationTokens = false
+        var missingCacheCreationTokens = false
+        var sawReasoningTokens = false
+        var missingReasoningTokens = false
+        var invalidTokenSplit = false
         var sawCost = false
         var overflowedTokens = false
+        var overflowedInputTokens = false
+        var overflowedOutputTokens = false
+        var overflowedCacheReadTokens = false
+        var overflowedCacheCreationTokens = false
+        var overflowedReasoningTokens = false
         var overflowedCost = false
     }
 
@@ -435,7 +513,7 @@ struct SpendDashboardModel: Equatable, Sendable {
         let day: Date
     }
 
-    fileprivate struct ModelAnalysisDailyAccumulator {
+    struct ModelAnalysisDailyAccumulator {
         var tokens: Int? = 0
         var inputTokens: Int? = 0
         var outputTokens: Int? = 0
@@ -470,6 +548,7 @@ struct SpendDashboardModel: Equatable, Sendable {
     private struct DailyAccumulator {
         let provider: UsageProvider
         let providerName: String
+        let toolKind: SpendToolIdentity.Kind
         var cost: Double?
         var invalid = false
         var overflowed = false
@@ -506,15 +585,17 @@ extension SpendDashboardModel {
         let modelHistoryCompleteness = completeModelSummaries.count == summaries.count
             ? ModelHistoryCompleteness.complete
             : ModelHistoryCompleteness.incomplete
-        // The spend chart answers the same billing question as "By subscription". Its series must
-        // therefore be the vendor that owns the quota, not the harness that emitted the log.
-        let dailyPoints = Self.dailyPoints(summaries: billingSummaries)
+        // Daily spend is an operational tool view: it answers which local app or harness generated
+        // the usage. Subscription ownership remains isolated to `providers` above.
+        let dailyPoints = Self.dailyPoints(summaries: summaries)
+        let dailySpendDetails = Self.dailySpendDetails(summaries: summaries)
         return CurrencyGroup(
             currencyCode: currencyCode,
             providers: providers,
             models: modelSummary.rows,
             modelAnalysis: modelAnalysis,
             dailyPoints: dailyPoints,
+            dailySpendDetails: dailySpendDetails,
             // "Tracked tokens" is the subtotal we actually parsed, not a completeness assertion.
             // A source without token detail must not erase known tokens from every other source.
             // This mirrors Tokscale's aggregation: parsed token buckets always sum independently
@@ -766,51 +847,7 @@ extension SpendDashboardModel {
             }
         }
 
-        let rows = models.compactMap { identity, aggregate -> ModelAnalysisRow? in
-            let totalTokens = aggregate.sawTokens && !aggregate.overflowedTokens ? aggregate.tokens : nil
-            let buckets = aggregate.resolvedTokenBuckets()
-            let estimatedCost = aggregate.sawCost && !aggregate.overflowedCost ? aggregate.cost : nil
-            guard totalTokens != nil || estimatedCost != nil else { return nil }
-            let rawNames = aggregate.rawNames.sorted(by: Self.modelNameOrder)
-            let displayNames = aggregate.displayNames.sorted(by: Self.modelNameOrder)
-            let contributions = aggregate.sourceContributions.map { sourceID, source in
-                ModelSourceContribution(
-                    sourceID: sourceID,
-                    provider: source.provider,
-                    sourceName: source.sourceName,
-                    providerName: source.providerName,
-                    rawModelNames: source.rawNames.sorted(by: Self.modelNameOrder),
-                    totalTokens: source.sawTokens && !source.overflowedTokens ? source.tokens : nil,
-                    estimatedCost: source.sawCost && !source.overflowedCost ? source.cost : nil)
-            }
-            .sorted { lhs, rhs in
-                if lhs.providerName != rhs.providerName { return lhs.providerName < rhs.providerName }
-                if lhs.sourceName != rhs.sourceName { return lhs.sourceName < rhs.sourceName }
-                return lhs.sourceID < rhs.sourceID
-            }
-            let providers = aggregate.providerNames.keys.sorted { lhs, rhs in
-                let left = aggregate.providerNames[lhs] ?? lhs.rawValue
-                let right = aggregate.providerNames[rhs] ?? rhs.rawValue
-                if left != right { return left < right }
-                return lhs.rawValue < rhs.rawValue
-            }
-            return ModelAnalysisRow(
-                id: identity,
-                displayName: displayNames.first ?? rawNames.first ?? identity,
-                rawModelNames: rawNames,
-                providers: providers,
-                providerNames: providers.map { aggregate.providerNames[$0] ?? $0.rawValue },
-                contributions: contributions,
-                totalTokens: totalTokens,
-                inputTokens: buckets.inputTokens,
-                outputTokens: buckets.outputTokens,
-                estimatedCost: estimatedCost,
-                cacheReadTokens: buckets.cacheReadTokens,
-                cacheCreationTokens: buckets.cacheCreationTokens,
-                reasoningTokens: buckets.reasoningTokens,
-                costIsEstimated: aggregate.sawEstimatedCost)
-        }
-        .sorted(by: Self.modelAnalysisRowOrder)
+        let rows = Self.modelAnalysisRows(models)
 
         let namesByID: [String: String] = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0.displayName) })
         let dailyValues = daily.compactMap { key, value -> ModelDailyValue? in
@@ -849,6 +886,81 @@ extension SpendDashboardModel {
             costCoverage: Self.modelMetricCoverage(hasValue: pricedCostTotal != nil, isPartial: costCoverageIsPartial))
     }
 
+    private static func modelAnalysisRows(
+        _ models: [String: ModelAnalysisAccumulator]) -> [ModelAnalysisRow]
+    {
+        models.compactMap { identity, aggregate -> ModelAnalysisRow? in
+            let totalTokens = aggregate.sawTokens && !aggregate.overflowedTokens ? aggregate.tokens : nil
+            let buckets = aggregate.resolvedTokenBuckets()
+            let estimatedCost = aggregate.sawCost && !aggregate.overflowedCost ? aggregate.cost : nil
+            guard totalTokens != nil || estimatedCost != nil else { return nil }
+            let rawNames = aggregate.rawNames.sorted(by: Self.modelNameOrder)
+            let displayNames = aggregate.displayNames.sorted(by: Self.modelNameOrder)
+            let contributions = aggregate.sourceContributions.map { sourceID, source in
+                let sourceSplitIsComplete = source.sawTokenSplit && !source.invalidTokenSplit
+                return ModelSourceContribution(
+                    sourceID: sourceID,
+                    provider: source.provider,
+                    sourceName: source.sourceName,
+                    providerName: source.providerName,
+                    rawModelNames: source.rawNames.sorted(by: Self.modelNameOrder),
+                    totalTokens: source.sawTokens && !source.overflowedTokens ? source.tokens : nil,
+                    inputTokens: sourceSplitIsComplete && !source.overflowedInputTokens
+                        ? source.inputTokens
+                        : nil,
+                    outputTokens: sourceSplitIsComplete && !source.overflowedOutputTokens
+                        ? source.outputTokens
+                        : nil,
+                    cacheReadTokens: Self.optionalTokenBucket(
+                        source.cacheReadTokens,
+                        saw: source.sawCacheReadTokens,
+                        missing: source.missingCacheReadTokens,
+                        overflowed: source.overflowedCacheReadTokens,
+                        splitIsComplete: sourceSplitIsComplete),
+                    cacheCreationTokens: Self.optionalTokenBucket(
+                        source.cacheCreationTokens,
+                        saw: source.sawCacheCreationTokens,
+                        missing: source.missingCacheCreationTokens,
+                        overflowed: source.overflowedCacheCreationTokens,
+                        splitIsComplete: sourceSplitIsComplete),
+                    reasoningTokens: Self.optionalTokenBucket(
+                        source.reasoningTokens,
+                        saw: source.sawReasoningTokens,
+                        missing: source.missingReasoningTokens,
+                        overflowed: source.overflowedReasoningTokens,
+                        splitIsComplete: sourceSplitIsComplete),
+                    estimatedCost: source.sawCost && !source.overflowedCost ? source.cost : nil)
+            }
+            .sorted { lhs, rhs in
+                if lhs.providerName != rhs.providerName { return lhs.providerName < rhs.providerName }
+                if lhs.sourceName != rhs.sourceName { return lhs.sourceName < rhs.sourceName }
+                return lhs.sourceID < rhs.sourceID
+            }
+            let providers = aggregate.providerNames.keys.sorted { lhs, rhs in
+                let left = aggregate.providerNames[lhs] ?? lhs.rawValue
+                let right = aggregate.providerNames[rhs] ?? rhs.rawValue
+                if left != right { return left < right }
+                return lhs.rawValue < rhs.rawValue
+            }
+            return ModelAnalysisRow(
+                id: identity,
+                displayName: displayNames.first ?? rawNames.first ?? identity,
+                rawModelNames: rawNames,
+                providers: providers,
+                providerNames: providers.map { aggregate.providerNames[$0] ?? $0.rawValue },
+                contributions: contributions,
+                totalTokens: totalTokens,
+                inputTokens: buckets.inputTokens,
+                outputTokens: buckets.outputTokens,
+                estimatedCost: estimatedCost,
+                cacheReadTokens: buckets.cacheReadTokens,
+                cacheCreationTokens: buckets.cacheCreationTokens,
+                reasoningTokens: buckets.reasoningTokens,
+                costIsEstimated: aggregate.sawEstimatedCost)
+        }
+        .sorted(by: self.modelAnalysisRowOrder)
+    }
+
     private static func addModelTokenBreakdown(
         _ breakdown: CostUsageDailyReport.ModelBreakdown,
         isComplete: Bool,
@@ -881,6 +993,15 @@ extension SpendDashboardModel {
                 split.output,
                 to: aggregate.outputTokens,
                 overflowed: &aggregate.overflowedOutputTokens)
+            source.sawTokenSplit = true
+            source.inputTokens = Self.add(
+                split.input,
+                to: source.inputTokens,
+                overflowed: &source.overflowedInputTokens)
+            source.outputTokens = Self.add(
+                split.output,
+                to: source.outputTokens,
+                overflowed: &source.overflowedOutputTokens)
             dailyValue.sawTokenSplit = true
             dailyValue.inputTokens = Self.add(
                 split.input,
@@ -898,6 +1019,12 @@ extension SpendDashboardModel {
                 overflowed: &aggregate.overflowedCacheReadTokens)
             Self.addOptionalTokenBucket(
                 split.cacheRead,
+                into: &source.cacheReadTokens,
+                saw: &source.sawCacheReadTokens,
+                missing: &source.missingCacheReadTokens,
+                overflowed: &source.overflowedCacheReadTokens)
+            Self.addOptionalTokenBucket(
+                split.cacheRead,
                 into: &dailyValue.cacheReadTokens,
                 saw: &dailyValue.sawCacheReadTokens,
                 missing: &dailyValue.missingCacheReadTokens,
@@ -908,6 +1035,12 @@ extension SpendDashboardModel {
                 saw: &aggregate.sawCacheCreationTokens,
                 missing: &aggregate.missingCacheCreationTokens,
                 overflowed: &aggregate.overflowedCacheCreationTokens)
+            Self.addOptionalTokenBucket(
+                split.cacheCreation,
+                into: &source.cacheCreationTokens,
+                saw: &source.sawCacheCreationTokens,
+                missing: &source.missingCacheCreationTokens,
+                overflowed: &source.overflowedCacheCreationTokens)
             Self.addOptionalTokenBucket(
                 split.cacheCreation,
                 into: &dailyValue.cacheCreationTokens,
@@ -922,12 +1055,19 @@ extension SpendDashboardModel {
                 overflowed: &aggregate.overflowedReasoningTokens)
             Self.addOptionalTokenBucket(
                 split.reasoning,
+                into: &source.reasoningTokens,
+                saw: &source.sawReasoningTokens,
+                missing: &source.missingReasoningTokens,
+                overflowed: &source.overflowedReasoningTokens)
+            Self.addOptionalTokenBucket(
+                split.reasoning,
                 into: &dailyValue.reasoningTokens,
                 saw: &dailyValue.sawReasoningTokens,
                 missing: &dailyValue.missingReasoningTokens,
                 overflowed: &dailyValue.overflowedReasoningTokens)
         } else {
             aggregate.invalidTokenSplit = true
+            source.invalidTokenSplit = true
             dailyValue.invalidTokenSplit = true
         }
         return true
@@ -951,7 +1091,7 @@ extension SpendDashboardModel {
         bucket = Self.add(value, to: bucket, overflowed: &overflowed)
     }
 
-    fileprivate static func optionalTokenBucket(
+    static func optionalTokenBucket(
         _ bucket: Int?,
         saw: Bool,
         missing: Bool,
@@ -963,7 +1103,7 @@ extension SpendDashboardModel {
     }
 
     /// Resolved per-model token buckets for one analysis row or daily value.
-    fileprivate struct ModelTokenSplitBuckets: Equatable, Sendable {
+    struct ModelTokenSplitBuckets: Equatable, Sendable {
         let inputTokens: Int?
         let outputTokens: Int?
         let cacheReadTokens: Int?
@@ -1205,9 +1345,14 @@ extension SpendDashboardModel {
                 let day = windowEntry.day
                 let entry = windowEntry.entry
                 let key = DailyKey(day: day, sourceID: input.id)
+                let tool = SpendToolIdentity.resolve(
+                    provider: input.provider,
+                    sourceName: input.displayName,
+                    providerName: input.modelProviderName)
                 var aggregate = aggregates[key] ?? DailyAccumulator(
                     provider: input.provider,
-                    providerName: input.displayName,
+                    providerName: tool.displayName,
+                    toolKind: tool.kind,
                     cost: 0)
                 if let cost = Self.validCost(entry.costUSD) {
                     aggregate.cost = Self.add(cost, to: aggregate.cost, overflowed: &aggregate.overflowed)
@@ -1234,6 +1379,7 @@ extension SpendDashboardModel {
                     sourceID: key.sourceID,
                     provider: value.provider,
                     providerName: value.providerName,
+                    toolKind: value.toolKind,
                     day: day,
                     cost: cost,
                     stackStart: start,
@@ -1241,6 +1387,93 @@ extension SpendDashboardModel {
             }
             return points
         }
+    }
+
+    private static func dailySpendDetails(summaries: [InputSummary]) -> [DailySpendDetail] {
+        struct Key: Hashable {
+            let day: Date
+            let sourceID: String
+        }
+        struct ToolAccum {
+            let input: ProviderInput
+            let identity: SpendToolIdentity
+            var tokens: Int?
+            var cost = 0.0
+            var models: [String: (name: String, provider: UsageProvider, tokens: Int?, cost: Double?)] = [:]
+        }
+
+        var toolsByKey: [Key: ToolAccum] = [:]
+        for summary in summaries where !summary.hasInvalidCostHistory {
+            let input = summary.input
+            let identity = SpendToolIdentity.resolve(
+                provider: input.provider,
+                sourceName: input.displayName,
+                providerName: input.modelProviderName)
+            for windowEntry in summary.entries {
+                guard let entryCost = Self.validCost(windowEntry.entry.costUSD) else { continue }
+                let key = Key(day: windowEntry.day, sourceID: input.id)
+                var tool = toolsByKey[key] ?? ToolAccum(
+                    input: input,
+                    identity: identity,
+                    tokens: 0)
+                tool.cost += entryCost
+                tool.tokens = Self.addAvailable(windowEntry.entry.totalTokens, to: tool.tokens)
+                for breakdown in windowEntry.entry.modelBreakdowns ?? [] {
+                    let modelIdentity = SpendModelIdentity(rawName: breakdown.modelName, provider: input.provider)
+                    let modelProvider = SpendProviderIdentity.modelProvider(
+                        rawName: breakdown.modelName,
+                        fallback: input.provider)
+                    let existing = tool.models[modelIdentity.id]
+                    tool.models[modelIdentity.id] = (
+                        modelIdentity.displayName,
+                        modelProvider,
+                        Self.addAvailable(breakdown.totalTokens, to: existing?.tokens),
+                        Self.addAvailableCost(breakdown.costUSD, to: existing?.cost))
+                }
+                toolsByKey[key] = tool
+            }
+        }
+
+        let byDay = Dictionary(grouping: toolsByKey, by: \.key.day)
+        return byDay.keys.sorted().map { day in
+            let tools = byDay[day, default: []].map { key, value in
+                DailySpendTool(
+                    sourceID: key.sourceID,
+                    provider: value.input.provider,
+                    displayName: value.identity.displayName,
+                    kind: value.identity.kind,
+                    tokens: value.tokens,
+                    cost: value.cost,
+                    models: value.models.map { id, model in
+                        DailySpendModel(
+                            id: id,
+                            displayName: model.name,
+                            modelProvider: model.provider,
+                            tokens: model.tokens,
+                            cost: model.cost)
+                    }
+                    .sorted { ($0.cost ?? 0) > ($1.cost ?? 0) })
+            }
+            .sorted { $0.cost > $1.cost }
+            return DailySpendDetail(
+                day: day,
+                totalTokens: Self.availableIntSum(tools.map(\.tokens)),
+                totalCost: tools.reduce(0) { $0 + $1.cost },
+                tools: tools)
+        }
+    }
+
+    private static func addAvailable(_ value: Int?, to current: Int?) -> Int? {
+        guard let value else { return current }
+        return (current ?? 0).addingReportingOverflow(value).overflow
+            ? current
+            : (current ?? 0) + value
+    }
+
+    private static func addAvailableCost(_ value: Double?, to current: Double?) -> Double? {
+        guard let value = validCost(value) else { return current }
+        let result = (current ?? 0) + value
+        return result.isFinite ? result : current
     }
 
     private static func bounds(days: Int, now: Date, calendar: Calendar) -> ClosedRange<Date> {
@@ -1432,58 +1665,3 @@ extension SpendDashboardModel {
         return result
     }
 }
-
-/// Shared split-resolution state of the model-analysis accumulators.
-private protocol ModelTokenSplitAccumulating {
-    var inputTokens: Int? { get }
-    var outputTokens: Int? { get }
-    var cacheReadTokens: Int? { get }
-    var cacheCreationTokens: Int? { get }
-    var reasoningTokens: Int? { get }
-    var sawTokenSplit: Bool { get }
-    var sawCacheReadTokens: Bool { get }
-    var missingCacheReadTokens: Bool { get }
-    var sawCacheCreationTokens: Bool { get }
-    var missingCacheCreationTokens: Bool { get }
-    var sawReasoningTokens: Bool { get }
-    var missingReasoningTokens: Bool { get }
-    var invalidTokenSplit: Bool { get }
-    var overflowedInputTokens: Bool { get }
-    var overflowedOutputTokens: Bool { get }
-    var overflowedCacheReadTokens: Bool { get }
-    var overflowedCacheCreationTokens: Bool { get }
-    var overflowedReasoningTokens: Bool { get }
-}
-
-extension ModelTokenSplitAccumulating {
-    func resolvedTokenBuckets() -> SpendDashboardModel.ModelTokenSplitBuckets {
-        let hasCompleteTokenSplit = self.sawTokenSplit
-            && !self.invalidTokenSplit
-            && !self.overflowedInputTokens
-            && !self.overflowedOutputTokens
-        return SpendDashboardModel.ModelTokenSplitBuckets(
-            inputTokens: hasCompleteTokenSplit ? self.inputTokens : nil,
-            outputTokens: hasCompleteTokenSplit ? self.outputTokens : nil,
-            cacheReadTokens: SpendDashboardModel.optionalTokenBucket(
-                self.cacheReadTokens,
-                saw: self.sawCacheReadTokens,
-                missing: self.missingCacheReadTokens,
-                overflowed: self.overflowedCacheReadTokens,
-                splitIsComplete: hasCompleteTokenSplit),
-            cacheCreationTokens: SpendDashboardModel.optionalTokenBucket(
-                self.cacheCreationTokens,
-                saw: self.sawCacheCreationTokens,
-                missing: self.missingCacheCreationTokens,
-                overflowed: self.overflowedCacheCreationTokens,
-                splitIsComplete: hasCompleteTokenSplit),
-            reasoningTokens: SpendDashboardModel.optionalTokenBucket(
-                self.reasoningTokens,
-                saw: self.sawReasoningTokens,
-                missing: self.missingReasoningTokens,
-                overflowed: self.overflowedReasoningTokens,
-                splitIsComplete: hasCompleteTokenSplit))
-    }
-}
-
-extension SpendDashboardModel.ModelAnalysisAccumulator: ModelTokenSplitAccumulating {}
-extension SpendDashboardModel.ModelAnalysisDailyAccumulator: ModelTokenSplitAccumulating {}

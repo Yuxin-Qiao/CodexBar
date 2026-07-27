@@ -434,6 +434,9 @@ struct SpendDailyChartPresentation: Equatable {
 
 private struct SpendDailyChart: View {
     let group: SpendDashboardModel.CurrencyGroup
+    @State private var selectedDay: Date?
+    @State private var cachedDays: [Date] = []
+    @State private var cachedDetails: [Date: SpendDashboardModel.DailySpendDetail] = [:]
 
     var body: some View {
         let presentation = SpendDailyChartPresentation(
@@ -458,17 +461,29 @@ private struct SpendDailyChart: View {
                     ContentUnavailableView(L("Spend unavailable"), systemImage: "chart.bar.xaxis")
                         .frame(maxWidth: .infinity, minHeight: 170)
                 } else {
-                    Chart(self.group.dailyPoints) { point in
-                        BarMark(
-                            x: .value(L("Day"), point.day, unit: .day),
-                            yStart: .value(L("Estimated spend"), point.stackStart),
-                            yEnd: .value(L("Estimated spend"), point.stackEnd),
-                            width: .ratio(0.52))
-                            .foregroundStyle(by: .value(L("Provider"), point.providerName))
-                            .accessibilityLabel(Text(self.pointAccessibilityLabel(point)))
-                            .accessibilityValue(Text(UsageFormatter.currencyString(
-                                point.cost,
-                                currencyCode: self.group.currencyCode)))
+                    Chart {
+                        ForEach(self.group.dailyPoints) { point in
+                            BarMark(
+                                x: .value(L("Day"), point.day, unit: .day),
+                                yStart: .value(L("Estimated spend"), point.stackStart),
+                                yEnd: .value(L("Estimated spend"), point.stackEnd),
+                                width: .ratio(0.58))
+                                .foregroundStyle(by: .value(L("Provider"), point.providerName))
+                                .accessibilityLabel(Text(self.pointAccessibilityLabel(point)))
+                                .accessibilityValue(Text(UsageFormatter.currencyString(
+                                    point.cost,
+                                    currencyCode: self.group.currencyCode)))
+                        }
+                        if let selectedDay {
+                            RuleMark(x: .value(L("Day"), selectedDay, unit: .day))
+                                .foregroundStyle(.clear)
+                                .annotation(position: .top, overflowResolution: .init(
+                                    x: .fit(to: .chart),
+                                    y: .fit(to: .chart)))
+                                {
+                                    self.dayTooltip(selectedDay)
+                                }
+                        }
                     }
                     .chartXScale(domain: self.activeChartDomain)
                     .chartForegroundStyleScale(
@@ -509,6 +524,17 @@ private struct SpendDailyChart: View {
                     .frame(height: 188)
                     .accessibilityLabel(L("Daily estimated spend"))
                     .accessibilityValue(presentation.accessibilityValue)
+                    .chartOverlay { proxy in
+                        GeometryReader { geo in
+                            SpendModelsChartMouseReader(
+                                onMoved: { location in
+                                    self.updateSelectedDay(location: location, proxy: proxy, geo: geo)
+                                },
+                                onClicked: { _ in },
+                                onEscape: { self.selectedDay = nil })
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                    }
 
                     LazyVGrid(
                         columns: [GridItem(.adaptive(minimum: 118), spacing: 12, alignment: .leading)],
@@ -518,16 +544,25 @@ private struct SpendDailyChart: View {
                         ForEach(presentation.series, id: \.name) { series in
                             HStack(spacing: 7) {
                                 SpendProviderIcon(provider: series.provider, size: 13)
-                                Text(series.name)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
+                                    .frame(width: 20, height: 20)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(series.name)
+                                        .font(.caption)
+                                        .lineLimit(1)
+                                    if let kind = self.toolKind(for: series.name) {
+                                        Text(kind.displayName)
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
         }
+        .onAppear { self.rebuildHoverCache() }
+        .onChange(of: self.group.dailySpendDetails) { _, _ in self.rebuildHoverCache() }
     }
 
     private var totalCostText: String {
@@ -565,6 +600,111 @@ private struct SpendDailyChart: View {
     private func providerColor(_ provider: UsageProvider) -> Color {
         let color = ProviderDescriptorRegistry.descriptor(for: provider).branding.color
         return Color(red: color.red, green: color.green, blue: color.blue)
+    }
+
+    private func rebuildHoverCache() {
+        self.cachedDays = self.group.dailySpendDetails.map(\.day).sorted()
+        self.cachedDetails = Dictionary(uniqueKeysWithValues: self.group.dailySpendDetails.map { ($0.day, $0) })
+    }
+
+    private func toolKind(for name: String) -> SpendToolIdentity.Kind? {
+        self.group.dailyPoints.first { $0.providerName == name }?.toolKind
+    }
+
+    private func updateSelectedDay(location: CGPoint?, proxy: ChartProxy, geo: GeometryProxy) {
+        guard let location, let plotAnchor = proxy.plotFrame else {
+            self.selectedDay = nil
+            return
+        }
+        let plotFrame = geo[plotAnchor]
+        guard plotFrame.contains(location),
+              let date: Date = proxy.value(atX: location.x - plotFrame.origin.x)
+        else {
+            self.selectedDay = nil
+            return
+        }
+        self.selectedDay = self.nearestDay(to: date)
+    }
+
+    private func nearestDay(to date: Date) -> Date? {
+        let days = self.cachedDays
+        guard !days.isEmpty else { return nil }
+        var lower = 0
+        var upper = days.count
+        while lower < upper {
+            let middle = (lower + upper) / 2
+            if days[middle] < date {
+                lower = middle + 1
+            } else {
+                upper = middle
+            }
+        }
+        let nearest: Date
+        if lower == 0 {
+            nearest = days[0]
+        } else if lower == days.count {
+            nearest = days[days.count - 1]
+        } else {
+            let before = days[lower - 1]
+            let after = days[lower]
+            nearest = abs(before.timeIntervalSince(date)) <= abs(after.timeIntervalSince(date))
+                ? before
+                : after
+        }
+        guard abs(nearest.timeIntervalSince(date)) <= 43200 else { return nil }
+        return nearest
+    }
+
+    private func dayTooltip(_ day: Date) -> some View {
+        let detail = self.cachedDetails[Calendar.current.startOfDay(for: day)]
+            ?? self.cachedDetails[day]
+        return VStack(alignment: .leading, spacing: 7) {
+            if let detail {
+                HStack {
+                    Text(day.formatted(
+                        .dateTime.month(.abbreviated).day().locale(codexBarLocalizedLocale())))
+                        .font(.body.weight(.semibold))
+                    Spacer(minLength: 18)
+                    Text(UsageFormatter.currencyString(detail.totalCost, currencyCode: self.group.currencyCode))
+                        .font(.body.weight(.semibold))
+                        .monospacedDigit()
+                }
+                ForEach(detail.tools.prefix(5)) { tool in
+                    HStack(alignment: .top, spacing: 8) {
+                        SpendProviderIcon(provider: tool.provider, size: 15)
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                Text(tool.displayName)
+                                Text(tool.kind.displayName)
+                                    .font(.caption2.weight(.medium))
+                                    .foregroundStyle(.secondary)
+                            }
+                            ForEach(tool.models.prefix(3)) { model in
+                                HStack(spacing: 5) {
+                                    SpendProviderIcon(provider: model.modelProvider, size: 11)
+                                    Text(model.displayName)
+                                    Spacer(minLength: 8)
+                                    Text(model.cost.map {
+                                        UsageFormatter.currencyString($0, currencyCode: self.group.currencyCode)
+                                    } ?? model.tokens.map(UsageFormatter.tokenCountString) ?? "—")
+                                        .monospacedDigit()
+                                }
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer(minLength: 10)
+                        Text(UsageFormatter.currencyString(tool.cost, currencyCode: self.group.currencyCode))
+                            .monospacedDigit()
+                    }
+                    .font(.body)
+                }
+            }
+        }
+        .padding(11)
+        .frame(minWidth: 260)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .shadow(color: .black.opacity(0.10), radius: 10, y: 3)
     }
 }
 

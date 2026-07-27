@@ -63,6 +63,12 @@ enum SpendProviderIdentity {
                 .mistral),
             (normalized.contains("qwen"), .alibaba),
             (normalized.contains("glm") || first == "zai", .zai),
+            (normalized.contains("doubao") || normalized.hasPrefix("seed-"), .doubao),
+            (normalized.contains("stepfun") || normalized.hasPrefix("step-"), .stepfun),
+            (normalized.contains("mimo"), .mimo),
+            (normalized.contains("longcat"), .longcat),
+            (normalized.contains("nova-") || normalized.hasPrefix("amazon.nova"), .bedrock),
+            (normalized.contains("perplexity") || normalized.hasPrefix("sonar-"), .perplexity),
         ]
         if let explicit = aliases.first(where: \.matches) {
             return explicit.provider

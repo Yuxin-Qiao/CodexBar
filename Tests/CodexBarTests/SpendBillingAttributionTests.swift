@@ -295,6 +295,10 @@ struct SpendBillingAttributionTests {
         #expect(SpendProviderIdentity.modelProvider(rawName: "k3", fallback: .cursor) == .kimi)
         #expect(SpendProviderIdentity.modelProvider(rawName: "gpt-5.6-terra", fallback: .codex) == .openai)
         #expect(SpendProviderIdentity.modelProvider(rawName: "future-model", fallback: .cursor) == .cursor)
+        #expect(SpendProviderIdentity.modelProvider(rawName: "qwen3-coder", fallback: .cursor) == .alibaba)
+        #expect(SpendProviderIdentity.modelProvider(rawName: "glm-5", fallback: .cursor) == .zai)
+        #expect(SpendProviderIdentity.modelProvider(rawName: "amazon.nova-pro", fallback: .cursor) == .bedrock)
+        #expect(SpendProviderIdentity.modelProvider(rawName: "sonar-pro", fallback: .cursor) == .perplexity)
     }
 
     private static func entry(

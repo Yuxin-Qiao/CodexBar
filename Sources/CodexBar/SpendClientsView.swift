@@ -3,26 +3,20 @@ import SwiftUI
 
 // MARK: - 按工具分组数据
 
-/// A model's usage attributed to one tool (client), with the five-bucket token breakdown
-/// taken from the parent model row (buckets are tracked per model, so the per-client split
-/// shares them proportionally by that client's token contribution).
+/// A model's usage attributed to one tool (client).
 struct SpendClientModel: Identifiable, Equatable {
     let id: String
     let displayName: String
     let tokens: Int
     let cost: Double?
     let costIsEstimated: Bool
-    let inputTokens: Int?
-    let outputTokens: Int?
-    let cacheReadTokens: Int?
-    let cacheCreationTokens: Int?
-    let reasoningTokens: Int?
 }
 
 /// One tool (client) with its models, sorted by tokens descending.
 struct SpendClientGroup: Identifiable, Equatable {
     let sourceID: String
     let provider: UsageProvider
+    let kind: SpendToolIdentity.Kind
     /// Tool name, e.g. "Claude Code", "Codex Desktop", "Kimi Code CLI".
     let toolName: String
     /// Product family name, e.g. "Claude", "Codex", "Kimi".
@@ -30,54 +24,31 @@ struct SpendClientGroup: Identifiable, Equatable {
     let totalTokens: Int
     let totalCost: Double?
     let costIsEstimated: Bool
+    let inputTokens: Int?
+    let outputTokens: Int?
+    let cacheReadTokens: Int?
+    let cacheCreationTokens: Int?
+    let reasoningTokens: Int?
     let models: [SpendClientModel]
 
     var id: String {
         self.sourceID
     }
 
-    /// "Tool · Family" when they differ meaningfully, else just the tool name.
     var displayTitle: String {
-        let tool = self.toolName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let family = self.providerName.trimmingCharacters(in: .whitespacesAndNewlines)
-        if family.isEmpty || tool.localizedCaseInsensitiveContains(family) {
-            return tool
-        }
-        return "\(tool) · \(family)"
+        self.toolName
     }
 }
 
 enum SpendClientBreakdown {
-    /// The local tool that produced a provider's usage logs. Providers whose data is read from a
-    /// CLI/desktop app's local files surface under that tool's name; providers with a more specific
-    /// `sourceName` (e.g. a Codex account name, or the explicit "… CLI" names set at load time)
-    /// keep it untouched.
-    private static func toolName(provider: UsageProvider, sourceName: String, providerName: String) -> String {
-        // Only remap when the source name is just the product family (no specific tool identity).
-        guard sourceName.trimmingCharacters(in: .whitespacesAndNewlines)
-            .localizedCaseInsensitiveCompare(providerName.trimmingCharacters(in: .whitespacesAndNewlines))
-            == .orderedSame
-        else { return sourceName }
-        switch provider {
-        case .claude: return "Claude Code"
-        case .codex: return "Codex Desktop"
-        case .kimi: return "Kimi Desktop"
-        case .gemini: return "Gemini CLI"
-        case .opencode, .opencodego: return "OpenCode"
-        case .minimax: return "MiniMax Code"
-        case .cursor: return "Cursor"
-        case .copilot: return "GitHub Copilot"
-        case .antigravity: return "Antigravity"
-        default: return sourceName
-        }
-    }
-
     /// Groups model rows by contributing tool (one card per tool/account, e.g. each Codex
     /// account, Claude Code, Kimi Code CLI). A model used by several tools appears under each,
     /// with that tool's token/cost share (from `contributions`); the five-bucket breakdown is the
     /// model's own, shown for context under each tool it ran in.
     static func groups(from analysis: SpendDashboardModel.ModelAnalysis) -> [SpendClientGroup] {
-        var bySource: [String: (provider: UsageProvider, tool: String, family: String, models: [String: Accum])] = [:]
+        var bySource:
+            [String: (provider: UsageProvider, identity: SpendToolIdentity, family: String, models: [String: Accum])] =
+            [:]
 
         for row in analysis.rows {
             for contribution in row.contributions {
@@ -86,7 +57,7 @@ enum SpendClientBreakdown {
                 var bucket = bySource[contribution.sourceID]
                     ?? (
                         contribution.provider,
-                        Self.toolName(
+                        SpendToolIdentity.resolve(
                             provider: contribution.provider,
                             sourceName: contribution.sourceName,
                             providerName: contribution.providerName),
@@ -99,11 +70,11 @@ enum SpendClientBreakdown {
                 if let cost = contribution.estimatedCost {
                     accum.cost = (accum.cost ?? 0) + cost
                 }
-                accum.inputTokens = row.inputTokens
-                accum.outputTokens = row.outputTokens
-                accum.cacheReadTokens = row.cacheReadTokens
-                accum.cacheCreationTokens = row.cacheCreationTokens
-                accum.reasoningTokens = row.reasoningTokens
+                accum.inputTokens = contribution.inputTokens
+                accum.outputTokens = contribution.outputTokens
+                accum.cacheReadTokens = contribution.cacheReadTokens
+                accum.cacheCreationTokens = contribution.cacheCreationTokens
+                accum.reasoningTokens = contribution.reasoningTokens
                 bucket.models[row.id] = accum
                 bySource[contribution.sourceID] = bucket
             }
@@ -116,12 +87,7 @@ enum SpendClientBreakdown {
                     displayName: accum.displayName,
                     tokens: accum.tokens,
                     cost: accum.cost,
-                    costIsEstimated: accum.costIsEstimated,
-                    inputTokens: accum.inputTokens,
-                    outputTokens: accum.outputTokens,
-                    cacheReadTokens: accum.cacheReadTokens,
-                    cacheCreationTokens: accum.cacheCreationTokens,
-                    reasoningTokens: accum.reasoningTokens)
+                    costIsEstimated: accum.costIsEstimated)
             }
             .sorted { $0.tokens > $1.tokens }
             let totalTokens = models.reduce(0) { $0 + $1.tokens }
@@ -132,11 +98,17 @@ enum SpendClientBreakdown {
             return SpendClientGroup(
                 sourceID: sourceID,
                 provider: bucket.provider,
-                toolName: bucket.tool,
+                kind: bucket.identity.kind,
+                toolName: bucket.identity.displayName,
                 providerName: bucket.family,
                 totalTokens: totalTokens,
                 totalCost: totalCost,
                 costIsEstimated: models.contains { $0.costIsEstimated },
+                inputTokens: Self.completeSum(bucket.models.values.map(\.inputTokens)),
+                outputTokens: Self.completeSum(bucket.models.values.map(\.outputTokens)),
+                cacheReadTokens: Self.completeSum(bucket.models.values.map(\.cacheReadTokens)),
+                cacheCreationTokens: Self.completeSum(bucket.models.values.map(\.cacheCreationTokens)),
+                reasoningTokens: Self.completeSum(bucket.models.values.map(\.reasoningTokens)),
                 models: models)
         }
         .sorted { $0.totalTokens > $1.totalTokens }
@@ -152,6 +124,11 @@ enum SpendClientBreakdown {
         var cacheReadTokens: Int?
         var cacheCreationTokens: Int?
         var reasoningTokens: Int?
+    }
+
+    private static func completeSum(_ values: [Int?]) -> Int? {
+        guard values.allSatisfy({ $0 != nil }) else { return nil }
+        return values.compactMap(\.self).reduce(0, +)
     }
 }
 
@@ -185,6 +162,12 @@ struct SpendClientsView: View {
                     size: SpendModelsListStyle.iconSize)
                 Text(group.displayTitle)
                     .font(SpendModelsListStyle.primaryEmphasizedFont)
+                Text(group.kind.displayName)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.secondary.opacity(0.12), in: Capsule())
                 if group.costIsEstimated {
                     Text(L("Estimated"))
                         .font(.caption2)
@@ -200,6 +183,15 @@ struct SpendClientsView: View {
                     .monospacedDigit()
             }
             .padding(.bottom, 8)
+
+            if let tokenSummary = self.tokenSummary(group) {
+                Text(tokenSummary)
+                    .font(SpendModelsListStyle.secondaryFont)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .lineLimit(2)
+                    .padding(.bottom, 8)
+            }
 
             ForEach(Array(group.models.enumerated()), id: \.element.id) { index, model in
                 if index > 0 { Divider().padding(.vertical, 2) }
@@ -220,13 +212,6 @@ struct SpendClientsView: View {
                 Text(self.modelMetric(model))
                     .font(SpendModelsListStyle.primaryFont)
                     .monospacedDigit()
-            }
-            if let meta = self.metaText(model) {
-                Text(meta)
-                    .font(SpendModelsListStyle.secondaryFont)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                    .lineLimit(2)
             }
             if groupTokens > 0 {
                 GeometryReader { geo in
@@ -256,21 +241,21 @@ struct SpendClientsView: View {
         return UsageFormatter.tokenCountString(model.tokens)
     }
 
-    private func metaText(_ model: SpendClientModel) -> String? {
+    private func tokenSummary(_ group: SpendClientGroup) -> String? {
         var parts: [String] = []
-        if let input = model.inputTokens, input > 0 {
+        if let input = group.inputTokens, input > 0 {
             parts.append("Input \(UsageFormatter.tokenCountString(input))")
         }
-        if let output = model.outputTokens, output > 0 {
+        if let output = group.outputTokens, output > 0 {
             parts.append("Output \(UsageFormatter.tokenCountString(output))")
         }
-        if let cacheRead = model.cacheReadTokens, cacheRead > 0 {
+        if let cacheRead = group.cacheReadTokens, cacheRead > 0 {
             parts.append("Cache read \(UsageFormatter.tokenCountString(cacheRead))")
         }
-        if let cacheWrite = model.cacheCreationTokens, cacheWrite > 0 {
+        if let cacheWrite = group.cacheCreationTokens, cacheWrite > 0 {
             parts.append("Cache write \(UsageFormatter.tokenCountString(cacheWrite))")
         }
-        if let reasoning = model.reasoningTokens, reasoning > 0 {
+        if let reasoning = group.reasoningTokens, reasoning > 0 {
             parts.append("Reasoning \(UsageFormatter.tokenCountString(reasoning))")
         }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")

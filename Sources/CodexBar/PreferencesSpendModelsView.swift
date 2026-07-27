@@ -386,6 +386,85 @@ struct SpendModelsAxisDates {
     }
 }
 
+struct SpendModelsTokenChartPresentation: Equatable {
+    struct Point: Identifiable, Equatable {
+        let day: Date
+        let kind: SpendModelsDayDetailPresentation.BucketKind?
+        let value: Double
+        let stackStart: Double
+        let stackEnd: Double
+
+        var id: String {
+            "\(self.kind?.rawValue ?? "total"):\(Int(self.day.timeIntervalSince1970))"
+        }
+    }
+
+    let points: [Point]
+
+    init(analysis: SpendDashboardModel.ModelAnalysis) {
+        let byDay = Dictionary(grouping: analysis.dailyValues, by: \.day)
+        self.points = byDay.keys.sorted().flatMap { day in
+            let values = byDay[day, default: []]
+            let buckets: [(SpendModelsDayDetailPresentation.BucketKind?, Int)]
+            if values.allSatisfy({ $0.inputTokens != nil && $0.outputTokens != nil }) {
+                let input = values.compactMap(\.inputTokens).reduce(0, +)
+                let output = values.compactMap(\.outputTokens).reduce(0, +)
+                let cacheRead = values.compactMap(\.cacheReadTokens).reduce(0, +)
+                let cacheWrite = values.compactMap(\.cacheCreationTokens).reduce(0, +)
+                let reasoning = values.compactMap(\.reasoningTokens).reduce(0, +)
+                buckets = [
+                    (.input, input),
+                    (.cacheRead, cacheRead),
+                    (.cacheWrite, cacheWrite),
+                    (.output, max(0, output - reasoning)),
+                    (.reasoning, reasoning),
+                ]
+            } else {
+                buckets = [(nil, values.compactMap(\.totalTokens).reduce(0, +))]
+            }
+            var cursor = 0.0
+            return buckets.compactMap { kind, tokens -> Point? in
+                guard tokens > 0 else { return nil }
+                let value = Double(tokens)
+                let start = cursor
+                cursor += value
+                return Point(day: day, kind: kind, value: value, stackStart: start, stackEnd: cursor)
+            }
+        }
+    }
+
+    private init(points: [Point]) {
+        self.points = points
+    }
+
+    func applyingTrailingAverage(window: Int = SpendModelsPresentation.trailingAverageWindow) -> Self {
+        guard window > 1, !self.points.isEmpty else { return self }
+        let days = Array(Set(self.points.map(\.day))).sorted()
+        var kinds: [SpendModelsDayDetailPresentation.BucketKind?] =
+            SpendModelsDayDetailPresentation.BucketKind.allCases.map(\.self)
+        kinds.append(nil)
+        var raw: [String: [Date: Double]] = [:]
+        for point in self.points {
+            raw[point.kind?.rawValue ?? "total", default: [:]][point.day, default: 0] += point.value
+        }
+        var result: [Point] = []
+        for (index, day) in days.enumerated() {
+            let first = max(0, index - window + 1)
+            let samples = days[first...index]
+            var cursor = 0.0
+            for kind in kinds {
+                let id = kind?.rawValue ?? "total"
+                let value = samples.reduce(0.0) { $0 + (raw[id]?[$1] ?? 0) } / Double(samples.count)
+                guard value > 0 else { continue }
+                let start = cursor
+                cursor += value
+                result.append(Point(day: day, kind: kind, value: value, stackStart: start, stackEnd: cursor))
+            }
+        }
+        return Self(points: result)
+    }
+}
+
 struct SpendModelsSection: View {
     let analysis: SpendDashboardModel.ModelAnalysis
     let chartDomain: ClosedRange<Date>?
@@ -400,6 +479,7 @@ struct SpendModelsSection: View {
     @State private var showsAllModels = false
     @State private var cachedPresentation: SpendModelsPresentation?
     @State private var cachedChartPresentation: SpendModelsPresentation?
+    @State private var cachedTokenChartPresentation = SpendModelsTokenChartPresentation(analysis: .empty)
     // Hover lookup caches (rebuilt alongside the presentations): a sorted unique-day list for the
     // nearest-day snap, and points grouped by start-of-day for the tooltip. Both replace an
     // O(points) scan with Calendar.isDate(inSameDayAs:) per hover tick.
@@ -426,6 +506,10 @@ struct SpendModelsSection: View {
         self.cachedPresentation = base
         let chart = self.trailingAverage ? base.applyingTrailingAverage() : base
         self.cachedChartPresentation = chart
+        let tokenChart = SpendModelsTokenChartPresentation(analysis: self.analysis)
+        self.cachedTokenChartPresentation = self.trailingAverage
+            ? tokenChart.applyingTrailingAverage()
+            : tokenChart
         self.cachedSortedDays = Array(Set(chart.points.map(\.day))).sorted()
         self.cachedPointsByDay = Dictionary(grouping: chart.points) {
             Calendar.current.startOfDay(for: $0.day)
@@ -483,6 +567,9 @@ struct SpendModelsSection: View {
                     }
                 } else {
                     self.chart
+                    if self.selectedMetric == .tokens {
+                        self.tokenLegend
+                    }
                     if let pinnedDay = self.pinnedDay,
                        let detail = SpendModelsDayDetailPresentation(
                            analysis: self.analysis,
@@ -532,15 +619,29 @@ struct SpendModelsSection: View {
 
     private var chart: some View {
         Chart {
-            ForEach(self.chartPresentation.points) { point in
-                BarMark(
-                    x: .value(L("Day"), point.day, unit: .day),
-                    yStart: .value(self.chartPresentation.metric.title, point.stackStart),
-                    yEnd: .value(self.chartPresentation.metric.title, point.stackEnd),
-                    width: .ratio(0.56))
-                    .foregroundStyle(Color.accentColor)
-                    .accessibilityLabel(Text("\(point.seriesName), \(self.dayText(point.day))"))
-                    .accessibilityValue(Text(self.metricText(point.value)))
+            if self.selectedMetric == .tokens {
+                ForEach(self.cachedTokenChartPresentation.points) { point in
+                    BarMark(
+                        x: .value(L("Day"), point.day, unit: .day),
+                        yStart: .value(self.chartPresentation.metric.title, point.stackStart),
+                        yEnd: .value(self.chartPresentation.metric.title, point.stackEnd),
+                        width: .ratio(0.62))
+                        .foregroundStyle(point.kind?.color ?? Color.accentColor)
+                        .accessibilityLabel(Text(
+                            "\(point.kind?.title ?? L("Tokens")), \(self.dayText(point.day))"))
+                        .accessibilityValue(Text(self.metricText(point.value)))
+                }
+            } else {
+                ForEach(self.chartPresentation.points) { point in
+                    BarMark(
+                        x: .value(L("Day"), point.day, unit: .day),
+                        yStart: .value(self.chartPresentation.metric.title, point.stackStart),
+                        yEnd: .value(self.chartPresentation.metric.title, point.stackEnd),
+                        width: .ratio(0.62))
+                        .foregroundStyle(Color.accentColor)
+                        .accessibilityLabel(Text("\(point.seriesName), \(self.dayText(point.day))"))
+                        .accessibilityValue(Text(self.metricText(point.value)))
+                }
             }
             if let pinnedDay = self.pinnedDay {
                 RuleMark(x: .value(L("Day"), pinnedDay, unit: .day))
@@ -621,14 +722,17 @@ struct SpendModelsSection: View {
                         provider: row.source.modelProvider,
                         size: SpendModelsListStyle.iconSize)
                         .frame(width: 26, height: 26)
-                    Text(row.source.displayName)
-                        .font(SpendModelsListStyle.primaryFont)
-                        .lineLimit(1)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(row.source.displayName)
+                            .font(SpendModelsListStyle.primaryFont)
+                            .lineLimit(1)
+                        Text(self.rowDetail(row))
+                            .font(SpendModelsListStyle.secondaryFont)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                            .lineLimit(1)
+                    }
                     Spacer()
-                    Text(self.rowDetail(row))
-                        .font(SpendModelsListStyle.primaryFont)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
                     Text(self.shareText(row.value))
                         .font(SpendModelsListStyle.primaryFont.weight(.medium))
                         .monospacedDigit()
@@ -652,6 +756,22 @@ struct SpendModelsSection: View {
         }
     }
 
+    private var tokenLegend: some View {
+        HStack(spacing: 14) {
+            ForEach(SpendModelsDayDetailPresentation.BucketKind.allCases, id: \.rawValue) { kind in
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(kind.color)
+                        .frame(width: 8, height: 8)
+                    Text(kind.title)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
     private func rowDetail(_ row: SpendModelsPresentation.Row) -> String {
         guard self.presentation.metric == .tokens else {
             guard let value = row.value else { return "—" }
@@ -660,16 +780,15 @@ struct SpendModelsSection: View {
             return parts.joined(separator: " · ")
         }
         guard let value = row.value else { return "—" }
-        if row.source.inputTokens != nil,
-           row.source.outputTokens != nil,
-           let inputTokens = row.source.inputTokens,
-           let outputTokens = row.source.outputTokens
-        {
-            return L(
-                "%@ in · %@ out",
-                UsageFormatter.tokenCountString(inputTokens),
-                UsageFormatter.tokenCountString(outputTokens))
+        let buckets = [
+            (L("Input"), row.source.inputTokens),
+            (L("Output"), row.source.outputTokens),
+            (L("Cache read"), row.source.cacheReadTokens),
+            (L("Reasoning"), row.source.reasoningTokens),
+        ].compactMap { label, value in
+            value.map { "\(label) \(UsageFormatter.tokenCountString($0))" }
         }
+        if !buckets.isEmpty { return buckets.joined(separator: " · ") }
         return UsageFormatter.tokenCountString(Int(value.rounded()))
     }
 
@@ -680,22 +799,56 @@ struct SpendModelsSection: View {
     }
 
     private func tooltip(_ day: Date) -> some View {
-        let points = (self.cachedPointsByDay[Calendar.current.startOfDay(for: day)] ?? [])
+        let detail = SpendModelsDayDetailPresentation(
+            analysis: self.analysis,
+            day: day,
+            metric: self.selectedMetric)
+        let averagedPoints = (self.cachedPointsByDay[Calendar.current.startOfDay(for: day)] ?? [])
             .sorted { $0.value > $1.value }
         return VStack(alignment: .leading, spacing: 5) {
-            Text(self.dayText(day))
-                .font(.body.weight(.semibold))
-            ForEach(points) { point in
-                HStack(spacing: 7) {
-                    Circle()
-                        .fill(Color.accentColor)
-                        .frame(width: 8, height: 8)
-                    Text(point.seriesName)
-                    Spacer(minLength: 12)
-                    Text(self.metricText(point.value))
+            if self.trailingAverage {
+                Text("\(self.dayText(day)) · \(L("7-day avg"))")
+                    .font(.body.weight(.semibold))
+                ForEach(averagedPoints.prefix(6)) { point in
+                    HStack(spacing: 7) {
+                        Text(point.seriesName)
+                        Spacer(minLength: 12)
+                        Text(self.metricText(point.value))
+                            .monospacedDigit()
+                    }
+                    .font(.body)
+                }
+            } else if let detail {
+                HStack {
+                    Text(self.dayText(day))
+                        .font(.body.weight(.semibold))
+                    Spacer()
+                    Text(self.selectedMetric == .tokens
+                        ? detail.totalTokens.map(UsageFormatter.tokenCountString) ?? "—"
+                        : detail.totalCost.map {
+                            UsageFormatter.currencyString($0, currencyCode: "USD")
+                        } ?? "—")
+                        .font(.body.weight(.semibold))
                         .monospacedDigit()
                 }
-                .font(.body)
+                ForEach(detail.models.prefix(6)) { model in
+                    HStack(spacing: 7) {
+                        SpendProviderIcon(
+                            provider: SpendProviderIdentity.modelProvider(
+                                rawName: model.name,
+                                fallback: .openai),
+                            size: 14)
+                        Text(model.name)
+                        Spacer(minLength: 12)
+                        Text(self.selectedMetric == .tokens
+                            ? spendModelsDayDetailModelSplitText(model)
+                            : model.cost.map {
+                                UsageFormatter.currencyString($0, currencyCode: "USD")
+                            } ?? "—")
+                            .monospacedDigit()
+                    }
+                    .font(.body)
+                }
             }
         }
         .padding(10)
@@ -808,7 +961,7 @@ struct SpendModelsSection: View {
 /// click support) and adds day pinning: mouse-down reports the location, and once the view holds
 /// first responder, Escape clears the pinned day.
 @MainActor
-private struct SpendModelsChartMouseReader: NSViewRepresentable {
+struct SpendModelsChartMouseReader: NSViewRepresentable {
     let onMoved: (CGPoint?) -> Void
     let onClicked: (CGPoint) -> Void
     let onEscape: () -> Void
