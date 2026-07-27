@@ -35,6 +35,13 @@ enum SpendModelsViewMode: String, CaseIterable, Identifiable {
     }
 }
 
+enum SpendModelsListStyle {
+    static let iconSize: CGFloat = 20
+    static let primaryFont = Font.system(size: 14)
+    static let primaryEmphasizedFont = Font.system(size: 14, weight: .semibold)
+    static let secondaryFont = Font.system(size: 13)
+}
+
 enum SpendModelsEnglishFormatter {
     static func dayText(_ day: Date) -> String {
         day.formatted(.dateTime.month(.abbreviated).day().locale(self.locale))
@@ -610,25 +617,20 @@ struct SpendModelsSection: View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(SpendModelsRanking.visibleRows(self.presentation.rows, showsAll: self.showsAllModels)) { row in
                 HStack(spacing: 10) {
-                    SpendProviderIcon(provider: row.source.modelProvider, size: 20)
-                        .foregroundStyle(.primary)
+                    SpendProviderIcon(
+                        provider: row.source.modelProvider,
+                        size: SpendModelsListStyle.iconSize)
                         .frame(width: 26, height: 26)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(row.source.displayName)
-                            .font(.body)
-                            .lineLimit(1)
-                        Text(SpendProviderIdentity.displayName(for: row.source.modelProvider))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
+                    Text(row.source.displayName)
+                        .font(SpendModelsListStyle.primaryFont)
+                        .lineLimit(1)
                     Spacer()
                     Text(self.rowDetail(row))
-                        .font(.body)
+                        .font(SpendModelsListStyle.primaryFont)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                     Text(self.shareText(row.value))
-                        .font(.body.weight(.medium))
+                        .font(SpendModelsListStyle.primaryFont.weight(.medium))
                         .monospacedDigit()
                         .frame(width: 58, alignment: .trailing)
                 }

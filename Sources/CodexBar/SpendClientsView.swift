@@ -180,13 +180,11 @@ struct SpendClientsView: View {
     private func card(_ group: SpendClientGroup) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
-                if let icon = ProviderBrandIcon.image(for: group.provider) {
-                    Image(nsImage: icon).resizable().scaledToFit()
-                        .frame(width: 16, height: 16)
-                        .accessibilityHidden(true)
-                }
+                SpendProviderIcon(
+                    provider: group.provider,
+                    size: SpendModelsListStyle.iconSize)
                 Text(group.displayTitle)
-                    .font(.body.weight(.semibold))
+                    .font(SpendModelsListStyle.primaryEmphasizedFont)
                 if group.costIsEstimated {
                     Text(L("Estimated"))
                         .font(.caption2)
@@ -197,7 +195,7 @@ struct SpendClientsView: View {
                 }
                 Spacer()
                 Text(self.totalText(group))
-                    .font(.body)
+                    .font(SpendModelsListStyle.primaryFont)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
@@ -216,16 +214,16 @@ struct SpendClientsView: View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(model.displayName)
-                    .font(.body)
+                    .font(SpendModelsListStyle.primaryFont)
                     .lineLimit(1)
                 Spacer()
                 Text(self.modelMetric(model))
-                    .font(.body)
+                    .font(SpendModelsListStyle.primaryFont)
                     .monospacedDigit()
             }
             if let meta = self.metaText(model) {
                 Text(meta)
-                    .font(.caption)
+                    .font(SpendModelsListStyle.secondaryFont)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
                     .lineLimit(2)
