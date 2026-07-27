@@ -222,6 +222,69 @@ struct SpendBillingAttributionTests {
     }
 
     @Test
+    func `merged MiniMax sources preserve their union of history windows`() throws {
+        let now = Date(timeIntervalSince1970: 1_785_427_200) // 2026-07-29 00:00:00 UTC
+        let routedEntry = Self.entry(
+            date: "2026-06-30",
+            model: "MiniMax-M3",
+            cost: 1,
+            tokens: 1000)
+        let localEntry = Self.entry(
+            date: "2026-07-12",
+            model: "minimax/MiniMax-M3",
+            cost: 0.23,
+            tokens: 1_738_342)
+        let routed = CostUsageTokenSnapshot(
+            sessionTokens: nil,
+            sessionCostUSD: nil,
+            last30DaysTokens: routedEntry.totalTokens,
+            last30DaysCostUSD: routedEntry.costUSD,
+            currencyCode: "USD",
+            historyDays: 30,
+            historyCoverageIsEstablished: true,
+            daily: [routedEntry],
+            updatedAt: Date(timeIntervalSince1970: 1_783_396_800)) // 2026-07-05 UTC
+        let local = CostUsageTokenSnapshot(
+            sessionTokens: nil,
+            sessionCostUSD: nil,
+            last30DaysTokens: localEntry.totalTokens,
+            last30DaysCostUSD: localEntry.costUSD,
+            currencyCode: "USD",
+            historyDays: 365,
+            historyCoverageIsEstablished: true,
+            daily: [localEntry],
+            updatedAt: now)
+        let inputs = [
+            SpendDashboardModel.ProviderInput(
+                id: "codex",
+                provider: .codex,
+                displayName: "Codex",
+                snapshot: routed),
+            SpendDashboardModel.ProviderInput(
+                id: "minimax:local",
+                provider: .minimax,
+                displayName: "MiniMax",
+                snapshot: local),
+        ]
+
+        let recent = try #require(SpendDashboardModel.build(
+            inputs: inputs,
+            requestedDays: 7,
+            now: now,
+            calendar: Self.calendar).groups.first?.providers.first { $0.provider == .minimax })
+        let cumulative = try #require(SpendDashboardModel.build(
+            inputs: inputs,
+            requestedDays: 365,
+            now: now,
+            calendar: Self.calendar).groups.first?.providers.first { $0.provider == .minimax })
+
+        #expect(recent.totalTokens == 0)
+        #expect(recent.totalCost == 0)
+        #expect(cumulative.totalTokens == 1_739_342)
+        #expect(abs((cumulative.totalCost ?? 0) - 1.23) < 0.000_001)
+    }
+
+    @Test
     func `model provider identity follows the model vendor instead of its harness`() {
         #expect(SpendProviderIdentity.modelProvider(
             rawName: "claude-opus-4-6-thinking",
@@ -234,9 +297,14 @@ struct SpendBillingAttributionTests {
         #expect(SpendProviderIdentity.modelProvider(rawName: "future-model", fallback: .cursor) == .cursor)
     }
 
-    private static func entry(model: String, cost: Double, tokens: Int) -> CostUsageDailyReport.Entry {
+    private static func entry(
+        date: String = "2026-07-24",
+        model: String,
+        cost: Double,
+        tokens: Int) -> CostUsageDailyReport.Entry
+    {
         CostUsageDailyReport.Entry(
-            date: "2026-07-24",
+            date: date,
             inputTokens: tokens / 2,
             outputTokens: tokens - tokens / 2,
             totalTokens: tokens,

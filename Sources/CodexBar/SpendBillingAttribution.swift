@@ -182,8 +182,14 @@ enum SpendBillingAttribution {
         }
 
         let daily = Self.mergeByDay(historyInputs.flatMap(\.snapshot.daily))
-        let historyDays = historyInputs.map(\.snapshot.historyDays).min() ?? first.snapshot.historyDays
-        let updatedAt = historyInputs.map(\.snapshot.updatedAt).min() ?? first.snapshot.updatedAt
+        // These inputs are independent histories billed by the same vendor (for example, Codex
+        // routing MiniMax plus MiniMax Code's native SQLite history). The merged snapshot contains
+        // the union of their daily entries, so its coverage bounds must describe that union too.
+        // Using the shortest history and oldest refresh time makes valid entries from the newer or
+        // longer source fall outside `sourceCoverageInterval`; the dashboard then downgrades both
+        // an inactive recent window and cumulative spend to "unavailable".
+        let historyDays = historyInputs.map(\.snapshot.historyDays).max() ?? first.snapshot.historyDays
+        let updatedAt = historyInputs.map(\.snapshot.updatedAt).max() ?? first.snapshot.updatedAt
         let snapshot = CostUsageTokenSnapshot(
             sessionTokens: nil,
             sessionCostUSD: nil,
