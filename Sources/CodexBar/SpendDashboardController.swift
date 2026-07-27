@@ -1045,6 +1045,7 @@ final class SpendDashboardController {
     private var loadTask: Task<Void, Never>?
     private var loadedInputs: [SpendDashboardModel.ProviderInput] = []
     private var loadedAt = Date()
+    private var lastCompletedLoadAt: Date?
     private var lastSuccessfulConfiguration: SpendDashboardConfiguration?
     private var phase = LoadPhase.ordinary
 
@@ -1268,6 +1269,7 @@ final class SpendDashboardController {
         self.configuration = request.configuration
         self.loadedInputs = nextInputs
         self.loadedAt = request.now
+        self.lastCompletedLoadAt = self.nowProvider()
         self.lastSuccessfulConfiguration = request.configuration
         self.failedSourceCount = result.failedSourceCount
         self.failedSourceIDs = result.failedSourceIDs
@@ -1341,10 +1343,20 @@ final class SpendDashboardController {
         self.rebuildModel()
     }
 
-    func refreshDateWindow(now: Date? = nil) {
-        self.loadedAt = now ?? self.nowProvider()
+    func refreshDateWindow(
+        now: Date? = nil,
+        reloadIfOlderThan minimumReloadInterval: TimeInterval? = 0)
+    {
+        let now = now ?? self.nowProvider()
+        self.loadedAt = now
         self.rebuildModel()
         guard let configuration else { return }
+        guard let minimumReloadInterval else { return }
+        if let lastCompletedLoadAt,
+           now.timeIntervalSince(lastCompletedLoadAt) < minimumReloadInterval
+        {
+            return
+        }
         let nextPhase: LoadPhase = self.phase.manualRefreshOutstanding ? .forcing : .ordinary
         self.startLoad(configuration: configuration, phase: nextPhase)
     }

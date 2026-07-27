@@ -44,7 +44,8 @@ struct AppDelegateTests {
             account: account,
             selection: PreferencesSelection(),
             managedCodexAccountCoordinator: managedCodexAccountCoordinator,
-            codexAccountPromotionCoordinator: promotionCoordinator))
+            codexAccountPromotionCoordinator: promotionCoordinator,
+            spendDashboardController: nil))
         #expect(factoryCalls == 0)
 
         // construction happens once after launch

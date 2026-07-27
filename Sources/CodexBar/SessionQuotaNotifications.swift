@@ -334,6 +334,30 @@ enum SessionQuotaTransitionReducer {
     }
 }
 
+extension UsageStore {
+    private static let sessionQuotaDepletionProvidersDefaultsKey =
+        "sessionQuotaDepletionProviders"
+
+    func persistedSessionQuotaDepletionProviders() -> Set<UsageProvider> {
+        let rawValues = self.settings.userDefaults
+            .stringArray(forKey: Self.sessionQuotaDepletionProvidersDefaultsKey) ?? []
+        return Set(rawValues.compactMap(UsageProvider.init(rawValue:)))
+    }
+
+    func persistSessionQuotaDepletion(provider: UsageProvider, isDepleted: Bool) {
+        var providers = self.persistedSessionQuotaDepletionProviders()
+        guard providers.contains(provider) != isDepleted else { return }
+        if isDepleted {
+            providers.insert(provider)
+        } else {
+            providers.remove(provider)
+        }
+        self.settings.userDefaults.set(
+            providers.map(\.rawValue).sorted(),
+            forKey: Self.sessionQuotaDepletionProvidersDefaultsKey)
+    }
+}
+
 enum QuotaWarningNotificationLogic {
     static func notificationIDPrefix(provider: UsageProvider, event: QuotaWarningEvent) -> String {
         let windowSegment = event.windowID.map { "-\($0)" } ?? ""

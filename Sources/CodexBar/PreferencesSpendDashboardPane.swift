@@ -49,17 +49,10 @@ func spendDashboardModelHistoryPresentation(
 struct SpendDashboardPane: View {
     @Bindable var settings: SettingsStore
     @Bindable var store: UsageStore
-    @State private var controller: SpendDashboardController
+    @Bindable var controller: SpendDashboardController
+    private static let automaticReloadInterval: TimeInterval = 5 * 60
     private var selectedModelDays: Int {
         self.controller.selectedDays
-    }
-
-    init(settings: SettingsStore, store: UsageStore) {
-        self.settings = settings
-        self.store = store
-        self._controller = State(initialValue: SpendDashboardController(requestBuilder: { mode in
-            await SpendDashboardSource.makeRequest(settings: settings, store: store, mode: mode)
-        }))
     }
 
     var body: some View {
@@ -74,23 +67,21 @@ struct SpendDashboardPane: View {
         }
         .background(FocusResigningBackground())
         .onAppear {
-            self.controller.refreshDateWindow()
+            self.controller.refreshDateWindow(reloadIfOlderThan: Self.automaticReloadInterval)
             self.controller.update(configuration: self.configuration)
         }
         .onChange(of: self.configuration) { _, configuration in
             self.controller.update(configuration: configuration)
         }
-        .onDisappear {
-            self.controller.stop()
-        }
         .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
-            self.controller.refreshDateWindow()
+            self.controller.refreshDateWindow(reloadIfOlderThan: nil)
         }
         .onReceive(NotificationCenter.default.publisher(for: .NSSystemTimeZoneDidChange)) { _ in
-            self.controller.refreshDateWindow()
+            self.controller.refreshDateWindow(reloadIfOlderThan: nil)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            self.controller.refreshDateWindow()
+            self.controller.refreshDateWindow(reloadIfOlderThan: Self.automaticReloadInterval)
+            self.controller.update(configuration: self.configuration)
         }
     }
 
