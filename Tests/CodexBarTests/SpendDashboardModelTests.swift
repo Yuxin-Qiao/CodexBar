@@ -502,7 +502,7 @@ struct SpendDashboardModelTests {
 
         #expect(group.modelAnalysis.rows.count == 1)
         #expect(row.id == "claude-sonnet-4-5")
-        #expect(row.displayName == "claude-sonnet-4-5")
+        #expect(row.displayName == "Claude Sonnet 4.5")
         #expect(row.rawModelNames == ["claude-sonnet-4-5", "anthropic/claude-sonnet-4-5-20250929"])
         #expect(row.providers == [.claude, .vertexai])
         #expect(row.providerNames == ["Claude", "Vertex AI"])

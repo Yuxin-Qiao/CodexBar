@@ -23,7 +23,7 @@ struct SpendDashboardKimiModelTests {
             calendar: Self.calendar)
 
         #expect(model.groups.map(\.currencyCode) == ["USD"])
-        #expect(model.modelAnalysis.rows.map(\.displayName) == ["Kimi K3", "gpt-test"])
+        #expect(model.modelAnalysis.rows.map(\.displayName) == ["Kimi K3", "GPT-test"])
         #expect(model.modelAnalysis.rows.map(\.totalTokens) == [90, 10])
         #expect(model.modelAnalysis.rows.first?.rawModelNames == ["kimi-code/k3"])
         #expect(model.modelAnalysis.rows.first?.providerNames == ["Kimi"])

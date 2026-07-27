@@ -485,7 +485,7 @@ struct SpendModelsSection: View {
                         SpendModelsDayDetailView(
                             detail: detail,
                             metric: self.selectedMetric,
-                            colorForModel: { self.modelColor(for: $0) })
+                            colorForModel: { _ in Color.accentColor })
                     }
                     self.ranking
                 }
@@ -531,7 +531,7 @@ struct SpendModelsSection: View {
                     yStart: .value(self.chartPresentation.metric.title, point.stackStart),
                     yEnd: .value(self.chartPresentation.metric.title, point.stackEnd),
                     width: .ratio(0.56))
-                    .foregroundStyle(by: .value(L("Models"), point.seriesName))
+                    .foregroundStyle(Color.accentColor)
                     .accessibilityLabel(Text("\(point.seriesName), \(self.dayText(point.day))"))
                     .accessibilityValue(Text(self.metricText(point.value)))
             }
@@ -554,9 +554,6 @@ struct SpendModelsSection: View {
         .chartXScale(
             domain: self.chartDomain ?? self.fallbackDomain,
             range: .plotDimension(startPadding: 10, endPadding: 30))
-        .chartForegroundStyleScale(
-            domain: self.presentation.series.map(\.name),
-            range: self.presentation.series.map { self.modelColor(for: $0.id) })
         .chartLegend(.hidden)
         .chartXAxis {
             AxisMarks(values: self.xAxisDates) { value in
@@ -613,12 +610,9 @@ struct SpendModelsSection: View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(SpendModelsRanking.visibleRows(self.presentation.rows, showsAll: self.showsAllModels)) { row in
                 HStack(spacing: 10) {
-                    ZStack {
-                        Circle()
-                            .fill(self.color(for: row).opacity(0.13))
-                        SpendProviderIcon(provider: row.source.modelProvider, size: 14)
-                    }
-                    .frame(width: 26, height: 26)
+                    SpendProviderIcon(provider: row.source.modelProvider, size: 20)
+                        .foregroundStyle(.primary)
+                        .frame(width: 26, height: 26)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(row.source.displayName)
                             .font(.body)
@@ -692,7 +686,7 @@ struct SpendModelsSection: View {
             ForEach(points) { point in
                 HStack(spacing: 7) {
                     Circle()
-                        .fill(self.modelColor(for: point.seriesID))
+                        .fill(Color.accentColor)
                         .frame(width: 8, height: 8)
                     Text(point.seriesName)
                     Spacer(minLength: 12)
@@ -752,18 +746,6 @@ struct SpendModelsSection: View {
 
     private func dayText(_ day: Date) -> String {
         SpendModelsEnglishFormatter.dayText(day)
-    }
-
-    /// Brand color of the model's vendor, independent of whichever harness recorded the usage.
-    private func color(for row: SpendModelsPresentation.Row) -> Color {
-        SpendProviderColor.color(for: row.source.modelProvider)
-    }
-
-    private func modelColor(for id: String) -> Color {
-        guard let row = self.presentation.rows.first(where: { $0.id == id }) else {
-            return Color(nsColor: .tertiaryLabelColor).opacity(0.55)
-        }
-        return self.color(for: row)
     }
 
     private func updateSelectedDay(location: CGPoint?, proxy: ChartProxy, geo: GeometryProxy) {

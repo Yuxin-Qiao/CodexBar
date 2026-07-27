@@ -72,6 +72,17 @@ struct SpendModelIdentityTests {
     }
 
     @Test
+    func `identity applies official brand casing to model ids`() {
+        #expect(SpendModelIdentity(rawName: "gpt-5-mini", provider: .openai).displayName == "GPT-5 mini")
+        #expect(SpendModelIdentity(rawName: "gpt-5-codex", provider: .codex).displayName == "GPT-5-Codex")
+        #expect(SpendModelIdentity(rawName: "codex-auto-review", provider: .codex).displayName == "Codex Auto Review")
+        #expect(SpendModelIdentity(rawName: "claude-sonnet-4-5", provider: .claude)
+            .displayName == "Claude Sonnet 4.5")
+        #expect(SpendModelIdentity(rawName: "minimax-m3", provider: .minimax).displayName == "MiniMax M3")
+        #expect(SpendModelIdentity(rawName: "deepseek-v3", provider: .deepseek).displayName == "DeepSeek-V3")
+    }
+
+    @Test
     func `identity names Antigravity aliases by their public model tier`() {
         #expect(SpendModelIdentity(
             rawName: "gemini-pro-default",

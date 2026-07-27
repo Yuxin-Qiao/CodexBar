@@ -3,14 +3,6 @@ import SwiftUI
 
 // MARK: - 按工具分组数据
 
-/// Official per-provider brand color (matches the "Daily estimated spend" chart legend).
-enum SpendProviderColor {
-    static func color(for provider: UsageProvider) -> Color {
-        let rgb = ProviderDescriptorRegistry.descriptor(for: provider).branding.color
-        return Color(red: rgb.red, green: rgb.green, blue: rgb.blue)
-    }
-}
-
 /// A model's usage attributed to one tool (client), with the five-bucket token breakdown
 /// taken from the parent model row (buckets are tracked per model, so the per-client split
 /// shares them proportionally by that client's token contribution).
@@ -213,14 +205,14 @@ struct SpendClientsView: View {
 
             ForEach(Array(group.models.enumerated()), id: \.element.id) { index, model in
                 if index > 0 { Divider().padding(.vertical, 2) }
-                self.modelRow(model, groupTokens: group.totalTokens, provider: group.provider)
+                self.modelRow(model, groupTokens: group.totalTokens)
             }
         }
         .padding(12)
         .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
-    private func modelRow(_ model: SpendClientModel, groupTokens: Int, provider: UsageProvider) -> some View {
+    private func modelRow(_ model: SpendClientModel, groupTokens: Int) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(model.displayName)
@@ -242,7 +234,7 @@ struct SpendClientsView: View {
                 GeometryReader { geo in
                     let share = CGFloat(model.tokens) / CGFloat(groupTokens)
                     RoundedRectangle(cornerRadius: 2, style: .continuous)
-                        .fill(SpendProviderColor.color(for: provider).opacity(0.85))
+                        .fill(Color.accentColor)
                         .frame(width: max(geo.size.width * share, 2), height: 3)
                 }
                 .frame(height: 3)

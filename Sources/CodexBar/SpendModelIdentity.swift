@@ -36,7 +36,7 @@ struct SpendModelIdentity: Equatable, Sendable {
             self.displayName = alias
         } else {
             self.id = canonical
-            self.displayName = pretty
+            self.displayName = Self.brandStyledDisplayName(pretty, canonicalID: canonical)
         }
     }
 
@@ -217,6 +217,77 @@ struct SpendModelIdentity: Equatable, Sendable {
         "claude-sonnet-4-6-thinking": "Claude Sonnet 4.6",
         "claude-haiku-4-6-thinking": "Claude Haiku 4.6",
     ]
+
+    /// Applies the public brand's casing and version style while preserving the canonical model
+    /// identity. This is intentionally structural instead of a list of current model releases, so
+    /// newly scanned models inherit a recognizable label without requiring a dashboard update.
+    private static func brandStyledDisplayName(_ original: String, canonicalID: String) -> String {
+        let parts = canonicalID.split(separator: "-", omittingEmptySubsequences: false).map(String.init)
+        guard let family = parts.first, parts.count > 1 else { return original }
+        let tail = Array(parts.dropFirst())
+
+        switch family {
+        case "gpt":
+            return self.gptDisplayName(tail)
+        case "codex":
+            return "Codex \(tail.map(self.modelTokenDisplayName).joined(separator: " "))"
+        case "claude":
+            return self.claudeDisplayName(tail)
+        case "gemini":
+            return "Gemini \(tail.map(self.modelTokenDisplayName).joined(separator: " "))"
+        case "minimax":
+            return "MiniMax \(tail.map(self.modelTokenDisplayName).joined(separator: " "))"
+        case "deepseek":
+            return "DeepSeek-\(tail.map(self.modelTokenDisplayName).joined(separator: "-"))"
+        case "kimi":
+            return "Kimi \(tail.map(self.modelTokenDisplayName).joined(separator: " "))"
+        default:
+            return original
+        }
+    }
+
+    private static func gptDisplayName(_ parts: [String]) -> String {
+        guard let version = parts.first else { return "GPT" }
+        var result = "GPT-\(version)"
+        for token in parts.dropFirst() {
+            if token == "codex" {
+                result += "-Codex"
+            } else {
+                result += " \(self.modelTokenDisplayName(token))"
+            }
+        }
+        return result
+    }
+
+    private static func claudeDisplayName(_ parts: [String]) -> String {
+        var result = ["Claude"]
+        var index = 0
+        while index < parts.count {
+            if index + 1 < parts.count,
+               self.isASCIINumber(parts[index]),
+               self.isASCIINumber(parts[index + 1])
+            {
+                result.append("\(parts[index]).\(parts[index + 1])")
+                index += 2
+            } else {
+                result.append(self.modelTokenDisplayName(parts[index]))
+                index += 1
+            }
+        }
+        return result.joined(separator: " ")
+    }
+
+    private static func modelTokenDisplayName(_ token: String) -> String {
+        guard !token.isEmpty else { return token }
+        if token == "mini" { return token }
+        if let first = token.first,
+           ["k", "m", "r", "v"].contains(String(first)),
+           token.dropFirst().first?.isNumber == true
+        {
+            return token.uppercased()
+        }
+        return token.prefix(1).uppercased() + token.dropFirst()
+    }
 
     /// Parses an ASCII digit run of exactly `digits` characters, rejecting anything else.
     private static func paddedNumber(_ text: some StringProtocol, digits: Int) -> Int? {
