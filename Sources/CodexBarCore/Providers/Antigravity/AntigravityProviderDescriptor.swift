@@ -27,6 +27,7 @@ public enum AntigravityProviderDescriptor {
             branding: ProviderBranding(
                 iconStyle: .antigravity,
                 iconResourceName: "ProviderIcon-antigravity",
+                iconRenderingMode: .original,
                 color: ProviderColor(red: 96 / 255, green: 186 / 255, blue: 126 / 255),
                 confettiPalette: [
                     ProviderColor(hex: 0x4285F4),

@@ -26,6 +26,7 @@ public enum KimiProviderDescriptor {
             branding: ProviderBranding(
                 iconStyle: .kimi,
                 iconResourceName: "ProviderIcon-kimi",
+                iconRenderingMode: .original,
                 color: ProviderColor(red: 254 / 255, green: 96 / 255, blue: 60 / 255),
                 confettiPalette: [
                     ProviderColor(hex: 0x000000),

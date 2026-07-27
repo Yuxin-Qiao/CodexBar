@@ -19,9 +19,17 @@ public struct ProviderColor: Sendable, Equatable {
     }
 }
 
+public enum ProviderIconRenderingMode: Sendable, Equatable {
+    /// A monochrome official mark that follows the surrounding foreground color.
+    case template
+    /// An official asset whose embedded colors must be preserved.
+    case original
+}
+
 public struct ProviderBranding: Sendable {
     public let iconStyle: IconStyle
     public let iconResourceName: String
+    public let iconRenderingMode: ProviderIconRenderingMode
     public let color: ProviderColor
     public let confettiPalette: [ProviderColor]
 
@@ -39,12 +47,14 @@ public struct ProviderBranding: Sendable {
     public init(
         iconStyle: IconStyle,
         iconResourceName: String,
+        iconRenderingMode: ProviderIconRenderingMode = .template,
         color: ProviderColor,
         confettiPalette: [ProviderColor])
     {
         precondition((2...3).contains(confettiPalette.count), "Provider confetti palettes require 2–3 colors.")
         self.iconStyle = iconStyle
         self.iconResourceName = iconResourceName
+        self.iconRenderingMode = iconRenderingMode
         self.color = color
         self.confettiPalette = confettiPalette
     }

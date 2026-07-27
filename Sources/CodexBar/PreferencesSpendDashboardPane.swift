@@ -611,14 +611,9 @@ struct SpendProviderIcon: View {
                 Image(systemName: "circle.dotted")
             }
         }
-        .foregroundStyle(self.brandColor)
+        .foregroundStyle(.primary)
         .frame(width: self.size, height: self.size)
         .accessibilityHidden(true)
-    }
-
-    private var brandColor: Color {
-        let color = ProviderDescriptorRegistry.descriptor(for: self.provider).branding.color
-        return Color(red: color.red, green: color.green, blue: color.blue)
     }
 }
 

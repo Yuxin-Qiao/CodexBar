@@ -26,6 +26,7 @@ public enum MoonshotProviderDescriptor {
             branding: ProviderBranding(
                 iconStyle: .kimi,
                 iconResourceName: "ProviderIcon-kimi",
+                iconRenderingMode: .original,
                 color: ProviderColor(red: 32 / 255, green: 93 / 255, blue: 235 / 255),
                 confettiPalette: [
                     ProviderColor(hex: 0x121212),

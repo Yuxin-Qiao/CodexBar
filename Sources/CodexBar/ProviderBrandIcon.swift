@@ -26,18 +26,23 @@ enum ProviderBrandIcon {
             return cached
         }
 
-        let baseName = ProviderDescriptorRegistry.descriptor(for: provider).branding.iconResourceName
+        let branding = ProviderDescriptorRegistry.descriptor(for: provider).branding
+        let baseName = branding.iconResourceName
         guard let bundle = self.resourceBundle else {
             return nil
         }
-        guard let url = bundle.url(forResource: baseName, withExtension: "svg"),
-              let image = NSImage(contentsOf: url)
-        else {
+        let extensions = branding.iconRenderingMode == .original ? ["png", "svg"] : ["svg", "png"]
+        guard let url = extensions.lazy.compactMap({
+            bundle.url(forResource: baseName, withExtension: $0)
+        }).first else {
+            return nil
+        }
+        guard let image = NSImage(contentsOf: url) else {
             return nil
         }
 
         image.size = self.size
-        image.isTemplate = true
+        image.isTemplate = branding.iconRenderingMode == .template
         self.cache[provider] = image
         return image
     }
