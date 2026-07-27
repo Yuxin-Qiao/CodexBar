@@ -1,12 +1,30 @@
 import Foundation
 
+public enum ProviderLocalHistorySource: String, CaseIterable, Sendable {
+    case antigravity
+    case geminiCLI
+    case kimiCode
+    case miniMax
+    case openCode
+}
+
 public struct ProviderTokenCostConfig: Sendable {
     public let supportsTokenCost: Bool
+    public let localHistorySources: [ProviderLocalHistorySource]
     public let noDataMessage: @Sendable () -> String
 
-    public init(supportsTokenCost: Bool, noDataMessage: @escaping @Sendable () -> String) {
+    public init(
+        supportsTokenCost: Bool,
+        localHistorySources: [ProviderLocalHistorySource] = [],
+        noDataMessage: @escaping @Sendable () -> String)
+    {
         self.supportsTokenCost = supportsTokenCost
+        self.localHistorySources = localHistorySources
         self.noDataMessage = noDataMessage
+    }
+
+    public var supportsDashboardHistory: Bool {
+        self.supportsTokenCost || !self.localHistorySources.isEmpty
     }
 }
 

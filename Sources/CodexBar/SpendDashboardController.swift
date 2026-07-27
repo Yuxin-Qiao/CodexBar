@@ -38,6 +38,12 @@ struct CodexSpendScanRequest: Equatable, Sendable {
     let cacheIdentity: String
 }
 
+struct LocalSpendHistoryRequest: Equatable, Sendable {
+    let source: ProviderLocalHistorySource
+    let provider: UsageProvider
+    let homePath: String
+}
+
 enum SpendDashboardRequestBuildMode: Equatable, Sendable {
     case refreshMissing
     case forceRefresh
@@ -62,13 +68,29 @@ struct SpendDashboardLoadRequest: Sendable {
     let unavailableSourceIDs: Set<String>
     let confirmedEmptySourceIDs: Set<String>
     let codexRequests: [CodexSpendScanRequest]
-    let kimiCodeHomePath: String?
-    let geminiCLIHomePath: String?
-    let openCodeDataHomePath: String?
-    let miniMaxHomePath: String?
-    let antigravityHomePath: String?
+    let localHistoryRequests: [LocalSpendHistoryRequest]
     let now: Date
     let force: Bool
+
+    var kimiCodeHomePath: String? {
+        self.localHistoryRequests.first { $0.source == .kimiCode }?.homePath
+    }
+
+    var geminiCLIHomePath: String? {
+        self.localHistoryRequests.first { $0.source == .geminiCLI }?.homePath
+    }
+
+    var openCodeDataHomePath: String? {
+        self.localHistoryRequests.first { $0.source == .openCode }?.homePath
+    }
+
+    var miniMaxHomePath: String? {
+        self.localHistoryRequests.first { $0.source == .miniMax }?.homePath
+    }
+
+    var antigravityHomePath: String? {
+        self.localHistoryRequests.first { $0.source == .antigravity }?.homePath
+    }
 
     init(
         configuration: SpendDashboardConfiguration,
@@ -76,6 +98,7 @@ struct SpendDashboardLoadRequest: Sendable {
         unavailableSourceIDs: Set<String>,
         confirmedEmptySourceIDs: Set<String> = [],
         codexRequests: [CodexSpendScanRequest],
+        localHistoryRequests: [LocalSpendHistoryRequest]? = nil,
         kimiCodeHomePath: String? = nil,
         geminiCLIHomePath: String? = nil,
         openCodeDataHomePath: String? = nil,
@@ -89,11 +112,23 @@ struct SpendDashboardLoadRequest: Sendable {
         self.unavailableSourceIDs = unavailableSourceIDs
         self.confirmedEmptySourceIDs = confirmedEmptySourceIDs
         self.codexRequests = codexRequests
-        self.kimiCodeHomePath = kimiCodeHomePath
-        self.geminiCLIHomePath = geminiCLIHomePath
-        self.openCodeDataHomePath = openCodeDataHomePath
-        self.miniMaxHomePath = miniMaxHomePath
-        self.antigravityHomePath = antigravityHomePath
+        self.localHistoryRequests = localHistoryRequests ?? [
+            kimiCodeHomePath.map {
+                LocalSpendHistoryRequest(source: .kimiCode, provider: .kimi, homePath: $0)
+            },
+            geminiCLIHomePath.map {
+                LocalSpendHistoryRequest(source: .geminiCLI, provider: .gemini, homePath: $0)
+            },
+            openCodeDataHomePath.map {
+                LocalSpendHistoryRequest(source: .openCode, provider: .opencode, homePath: $0)
+            },
+            miniMaxHomePath.map {
+                LocalSpendHistoryRequest(source: .miniMax, provider: .minimax, homePath: $0)
+            },
+            antigravityHomePath.map {
+                LocalSpendHistoryRequest(source: .antigravity, provider: .antigravity, homePath: $0)
+            },
+        ].compactMap(\.self)
         self.now = now
         self.force = force
     }
@@ -300,21 +335,7 @@ enum SpendDashboardSource {
             unavailableSourceIDs: unavailableSourceIDs,
             confirmedEmptySourceIDs: confirmedEmptySourceIDs,
             codexRequests: codexRequests,
-            kimiCodeHomePath: self.localModelHistoryProviders(store: store).contains(.kimi)
-                ? KimiSettingsReader.kimiCodeHomeURL().path
-                : nil,
-            geminiCLIHomePath: self.localModelHistoryProviders(store: store).contains(.gemini)
-                ? Self.geminiCLIHomeURL().path
-                : nil,
-            openCodeDataHomePath: self.localModelHistoryProviders(store: store).contains(.opencode)
-                ? Self.openCodeDataHomeURL().path
-                : nil,
-            miniMaxHomePath: self.localModelHistoryProviders(store: store).contains(.minimax)
-                ? Self.miniMaxHomeURL().path
-                : nil,
-            antigravityHomePath: self.localModelHistoryProviders(store: store).contains(.antigravity)
-                ? Self.antigravityHomeURL().path
-                : nil,
+            localHistoryRequests: self.localHistoryRequests(store: store),
             now: captureNow,
             force: mode.forcesLoader)
     }
@@ -428,53 +449,60 @@ enum SpendDashboardSource {
                 failedSourceIDs.insert(sourceID)
             }
         }
-        let localSources: [LocalSnapshotSource] = [
-            LocalSnapshotSource(
-                homePath: request.kimiCodeHomePath,
-                sourceID: "kimi:local",
-                provider: .kimi,
-                displayName: "Kimi Code CLI",
-                load: { homePath in
-                    try await kimiCodeSnapshotLoader(KimiCodeSpendSnapshotLoadContext(
-                        homePath: homePath, now: request.now, historyDays: Self.scanDays))
-                }),
-            LocalSnapshotSource(
-                homePath: request.geminiCLIHomePath,
-                sourceID: "gemini:local",
-                provider: .gemini,
-                displayName: "Gemini CLI",
-                load: { homePath in
-                    try await geminiSnapshotLoader(GeminiSpendSnapshotLoadContext(
-                        homePath: homePath, now: request.now, historyDays: Self.scanDays))
-                }),
-            LocalSnapshotSource(
-                homePath: request.openCodeDataHomePath,
-                sourceID: "opencode:local",
-                provider: .opencode,
-                displayName: "OpenCode",
-                load: { homePath in
-                    try await openCodeSnapshotLoader(OpenCodeSpendSnapshotLoadContext(
-                        homePath: homePath, now: request.now, historyDays: Self.scanDays))
-                }),
-            LocalSnapshotSource(
-                homePath: request.miniMaxHomePath,
-                sourceID: "minimax:local",
-                provider: .minimax,
-                displayName: "MiniMax",
-                load: { homePath in
-                    try await miniMaxSnapshotLoader(MiniMaxSpendSnapshotLoadContext(
-                        homePath: homePath, now: request.now, historyDays: Self.scanDays))
-                }),
-            LocalSnapshotSource(
-                homePath: request.antigravityHomePath,
-                sourceID: "antigravity:local",
-                provider: .antigravity,
-                displayName: "Antigravity",
-                load: { homePath in
-                    try await antigravitySnapshotLoader(AntigravitySpendSnapshotLoadContext(
-                        homePath: homePath, now: request.now, historyDays: Self.scanDays))
-                }),
-        ]
+        let localSources: [LocalSnapshotSource] = request.localHistoryRequests.map { localRequest in
+            switch localRequest.source {
+            case .kimiCode:
+                LocalSnapshotSource(
+                    homePath: localRequest.homePath,
+                    sourceID: "\(localRequest.provider.rawValue):local",
+                    provider: localRequest.provider,
+                    displayName: "Kimi Code CLI",
+                    load: { homePath in
+                        try await kimiCodeSnapshotLoader(KimiCodeSpendSnapshotLoadContext(
+                            homePath: homePath, now: request.now, historyDays: Self.scanDays))
+                    })
+            case .geminiCLI:
+                LocalSnapshotSource(
+                    homePath: localRequest.homePath,
+                    sourceID: "\(localRequest.provider.rawValue):local",
+                    provider: localRequest.provider,
+                    displayName: "Gemini CLI",
+                    load: { homePath in
+                        try await geminiSnapshotLoader(GeminiSpendSnapshotLoadContext(
+                            homePath: homePath, now: request.now, historyDays: Self.scanDays))
+                    })
+            case .openCode:
+                LocalSnapshotSource(
+                    homePath: localRequest.homePath,
+                    sourceID: "\(localRequest.provider.rawValue):local",
+                    provider: localRequest.provider,
+                    displayName: "OpenCode",
+                    load: { homePath in
+                        try await openCodeSnapshotLoader(OpenCodeSpendSnapshotLoadContext(
+                            homePath: homePath, now: request.now, historyDays: Self.scanDays))
+                    })
+            case .miniMax:
+                LocalSnapshotSource(
+                    homePath: localRequest.homePath,
+                    sourceID: "\(localRequest.provider.rawValue):local",
+                    provider: localRequest.provider,
+                    displayName: "MiniMax",
+                    load: { homePath in
+                        try await miniMaxSnapshotLoader(MiniMaxSpendSnapshotLoadContext(
+                            homePath: homePath, now: request.now, historyDays: Self.scanDays))
+                    })
+            case .antigravity:
+                LocalSnapshotSource(
+                    homePath: localRequest.homePath,
+                    sourceID: "\(localRequest.provider.rawValue):local",
+                    provider: localRequest.provider,
+                    displayName: "Antigravity",
+                    load: { homePath in
+                        try await antigravitySnapshotLoader(AntigravitySpendSnapshotLoadContext(
+                            homePath: homePath, now: request.now, historyDays: Self.scanDays))
+                    })
+            }
+        }
         for source in localSources {
             do {
                 if let input = try await source.loadInput() {
@@ -654,7 +682,37 @@ enum SpendDashboardSource {
     @MainActor
     static func localModelHistoryProviders(store: UsageStore) -> [UsageProvider] {
         store.enabledProvidersForDisplay().filter {
-            $0 == .kimi || $0 == .gemini || $0 == .opencode || $0 == .minimax || $0 == .antigravity
+            !ProviderDescriptorRegistry.descriptor(for: $0).tokenCost.localHistorySources.isEmpty
+        }
+    }
+
+    @MainActor
+    static func localHistoryRequests(store: UsageStore) -> [LocalSpendHistoryRequest] {
+        self.localModelHistoryProviders(store: store).flatMap { provider in
+            ProviderDescriptorRegistry.descriptor(for: provider).tokenCost.localHistorySources.map { source in
+                LocalSpendHistoryRequest(
+                    source: source,
+                    provider: provider,
+                    homePath: self.localHistoryHomeURL(for: source).path)
+            }
+        }
+    }
+
+    private static func localHistoryHomeURL(
+        for source: ProviderLocalHistorySource,
+        environment: [String: String] = ProcessInfo.processInfo.environment) -> URL
+    {
+        switch source {
+        case .kimiCode:
+            KimiSettingsReader.kimiCodeHomeURL(environment: environment)
+        case .geminiCLI:
+            self.geminiCLIHomeURL(environment: environment)
+        case .openCode:
+            self.openCodeDataHomeURL(environment: environment)
+        case .miniMax:
+            self.miniMaxHomeURL(environment: environment)
+        case .antigravity:
+            self.antigravityHomeURL(environment: environment)
         }
     }
 

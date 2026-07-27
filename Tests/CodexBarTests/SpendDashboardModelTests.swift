@@ -119,6 +119,25 @@ struct SpendDashboardModelTests {
     }
 
     @Test
+    func `dashboard history capability is declared by provider descriptors`() {
+        let descriptors = ProviderDescriptorRegistry.all
+        let localDescriptors = descriptors.filter { !$0.tokenCost.localHistorySources.isEmpty }
+        let declaredSources = localDescriptors.flatMap(\.tokenCost.localHistorySources)
+
+        #expect(Set(declaredSources) == Set(ProviderLocalHistorySource.allCases))
+        #expect(declaredSources.count == Set(declaredSources).count)
+        #expect(Set(localDescriptors.map(\.id)) == [.antigravity, .gemini, .kimi, .minimax, .opencode])
+
+        let dashboardProviders = Set(descriptors
+            .filter(\.tokenCost.supportsDashboardHistory)
+            .map(\.id))
+        let expectedProviders = Set(descriptors
+            .filter { $0.tokenCost.supportsTokenCost || !$0.tokenCost.localHistorySources.isEmpty }
+            .map(\.id))
+        #expect(dashboardProviders == expectedProviders)
+    }
+
+    @Test
     func `native currencies stay separate and rank only within their currency`() throws {
         let model = SpendDashboardModel.build(
             inputs: [

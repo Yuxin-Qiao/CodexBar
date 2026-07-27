@@ -36,6 +36,7 @@ public enum GeminiProviderDescriptor {
                 ]),
             tokenCost: ProviderTokenCostConfig(
                 supportsTokenCost: false,
+                localHistorySources: [.geminiCLI],
                 noDataMessage: { "Gemini cost summary is not supported." }),
             fetchPlan: ProviderFetchPlan(
                 sourceModes: [.auto, .api],
