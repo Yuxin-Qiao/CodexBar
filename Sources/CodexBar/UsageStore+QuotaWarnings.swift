@@ -199,7 +199,10 @@ extension UsageStore {
             self.clearQuotaWarningState(provider: provider, window: window)
             return
         }
-        guard let rateWindow else { return }
+        guard let rateWindow else {
+            self.clearQuotaWarningState(provider: provider, window: window)
+            return
+        }
         guard !rateWindow.isSyntheticPlaceholder else { return }
 
         let thresholds = self.settings.resolvedQuotaWarningThresholds(provider: provider, window: window)
