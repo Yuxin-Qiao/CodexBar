@@ -166,7 +166,81 @@ struct SpendModelsPresentationTests {
     }
 
     @Test
+    func `ranking primary value uses the selected metric unit`() {
+        let row = SpendModelsPresentation.Row(
+            source: Self.row(id: "priced", tokens: 632_000_000, cost: 89.29),
+            rank: 1,
+            value: 89.29,
+            share: 1)
+
+        #expect(spendModelsRankingValueText(row, metric: .tokens) == "632M")
+        #expect(spendModelsRankingValueText(row, metric: .estimatedSpend) == "$89.29")
+    }
+
+    @Test
+    func `ranking context keeps only the complementary metric`() {
+        let bucketed = SpendModelsPresentation.Row(
+            source: Self.row(
+                id: "bucketed",
+                tokens: 500_000_000,
+                inputTokens: 19_000_000,
+                outputTokens: 930_000,
+                cost: 405.12),
+            rank: 1,
+            value: 500_000_000,
+            share: 1)
+        let aggregateOnly = SpendModelsPresentation.Row(
+            source: Self.row(id: "aggregate", tokens: 632_000_000, cost: 89.29),
+            rank: 2,
+            value: 632_000_000,
+            share: 1)
+
+        #expect(spendModelsRankingContextText(bucketed, metric: .tokens) == "$405.12")
+        #expect(spendModelsRankingContextText(aggregateOnly, metric: .tokens) == "$89.29")
+        #expect(spendModelsRankingContextText(aggregateOnly, metric: .estimatedSpend) == "632M tokens")
+        CodexBarLocalizationOverride.$appLanguage.withValue("zh-Hans") {
+            #expect(spendModelsRankingContextText(aggregateOnly, metric: .estimatedSpend) == "632M 令牌")
+        }
+    }
+
+    @Test
+    func `chart values follow the selected metric unit`() {
+        #expect(spendModelsChartMetricText(632_000_000, metric: .tokens) == "632M")
+        #expect(spendModelsChartMetricText(89.29, metric: .estimatedSpend) == "$89.29")
+    }
+
+    @Test
+    func `estimated spend chart uses daily costs for bar heights`() {
+        let analysis = SpendDashboardModel.ModelAnalysis(
+            rows: [
+                Self.row(id: "expensive", tokens: 10, cost: 8),
+                Self.row(id: "token-heavy", tokens: 1000, cost: 2),
+            ],
+            dailyValues: [
+                Self.dailyValue(modelID: "expensive", day: Self.day, totalTokens: 10, cost: 8),
+                Self.dailyValue(modelID: "token-heavy", day: Self.day, totalTokens: 1000, cost: 2),
+            ],
+            trackedTokenTotal: 1010,
+            pricedCostTotal: 10,
+            sourceCount: 1,
+            tokenCoverage: .complete,
+            costCoverage: .complete)
+
+        let tokens = SpendModelsPresentation(analysis: analysis, metric: .tokens)
+        let spend = SpendModelsPresentation(analysis: analysis, metric: .estimatedSpend)
+
+        #expect(tokens.points.map(\.value) == [1000, 10])
+        #expect(tokens.points.last?.stackEnd == 1010)
+        #expect(spend.points.map(\.value) == [8, 2])
+        #expect(spend.points.last?.stackEnd == 10)
+        #expect(spend.dailyTotals.map(\.value) == [10])
+        #expect(spend.dailyTotals.first?.stackStart == 0)
+        #expect(spend.dailyTotals.first?.stackEnd == 10)
+    }
+
+    @Test
     func `ranking keeps every row visible at the collapsed limit`() {
+        #expect(SpendModelsRanking.collapsedRowLimit == 5)
         let rows = Self.rankingRows(count: SpendModelsRanking.collapsedRowLimit)
 
         #expect(!SpendModelsRanking.showsDisclosure(rowCount: rows.count))
@@ -327,12 +401,63 @@ struct SpendModelsPresentationTests {
         #expect(detail.buckets.map(\.tokens) == [110, 40, 15, 5, 4])
 
         #expect(detail.models.map(\.id) == ["model-a", "model-b"])
+        #expect(detail.pricedModelCount == 2)
         let first = try #require(detail.models.first)
+        #expect(first.modelProvider == .openai)
         #expect(first.providerNames == ["Codex"])
         #expect(first.costIsEstimated)
         #expect(first.buckets.map(\.kind) == [.input, .output, .cacheRead, .cacheWrite, .reasoning])
         #expect(first.buckets.map(\.tokens) == [80, 20, 15, 5, 4])
         #expect(detail.models.last?.buckets.map(\.kind) == [.input, .output])
+    }
+
+    @Test
+    func `day detail model summary keeps bucket splits behind disclosure`() {
+        let priced = SpendModelsDayDetailPresentation.Model(
+            id: "priced",
+            name: "Priced",
+            modelProvider: .openai,
+            providerNames: ["Codex"],
+            totalTokens: 80,
+            cost: 8,
+            costIsEstimated: true,
+            buckets: [
+                .init(kind: .input, tokens: 60),
+                .init(kind: .output, tokens: 20),
+            ])
+        let unpriced = SpendModelsDayDetailPresentation.Model(
+            id: "unpriced",
+            name: "Unpriced",
+            modelProvider: .gemini,
+            providerNames: ["Antigravity"],
+            totalTokens: 20,
+            cost: nil,
+            costIsEstimated: false,
+            buckets: [])
+
+        #expect(spendModelsDayDetailModelSummaryText(
+            priced,
+            metric: .tokens,
+            totalTokens: 100,
+            totalCost: 8) == "80 · 80%")
+        #expect(spendModelsDayDetailModelSummaryText(
+            priced,
+            metric: .estimatedSpend,
+            totalTokens: 100,
+            totalCost: 8) == "$8.00 · 100%")
+        #expect(spendModelsDayDetailModelSummaryText(
+            unpriced,
+            metric: .estimatedSpend,
+            totalTokens: 100,
+            totalCost: 8) == "20 · Unavailable")
+        CodexBarLocalizationOverride.$appLanguage.withValue("zh-Hans") {
+            #expect(spendModelsDayDetailModelSummaryText(
+                unpriced,
+                metric: .estimatedSpend,
+                totalTokens: 100,
+                totalCost: 8) == "20 · 不可用")
+        }
+        #expect(spendModelsDayDetailModelSplitText(priced) == "60 in · 20 out")
     }
 
     @Test

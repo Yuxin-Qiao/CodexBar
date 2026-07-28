@@ -1392,6 +1392,20 @@
 "Fr" = "Fr";
 "Estimated" = "Estimated";
 "No per-client model history" = "No per-client model history";
+"Same-model comparison" = "Same-model comparison";
+"Observed history for the same model and time range; workload differences still apply." = "Observed history for the same model and time range; workload differences still apply.";
+"Show fewer models" = "Show fewer models";
+"Show all %d models" = "Show all %d models";
+"%d models" = "%d models";
+"%@ requests" = "%@ requests";
+"%d%% context reuse" = "%d%% context reuse";
+"%d projects" = "%d projects";
+"%d sessions" = "%d sessions";
+"%d days covered" = "%d days covered";
+"%d%% reuse" = "%d%% reuse";
+"Reuse unavailable" = "Reuse unavailable";
+"%@ per 1M tokens" = "%@ per 1M tokens";
+"%d days" = "%d days";
 
 "Cumulative %@ tokens as of %@" = "Cumulative %@ tokens as of %@";
 "%@ tokens in the week of %@" = "%@ tokens in the week of %@";

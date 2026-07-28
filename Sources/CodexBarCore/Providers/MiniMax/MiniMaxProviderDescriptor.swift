@@ -26,7 +26,6 @@ public enum MiniMaxProviderDescriptor {
             branding: ProviderBranding(
                 iconStyle: .minimax,
                 iconResourceName: "ProviderIcon-minimax",
-                iconRenderingMode: .original,
                 color: ProviderColor(red: 254 / 255, green: 96 / 255, blue: 60 / 255),
                 confettiPalette: [
                     ProviderColor(hex: 0x181E25),

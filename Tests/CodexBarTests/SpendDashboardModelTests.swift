@@ -250,6 +250,7 @@ struct SpendDashboardModelTests {
     func `all model chart starts at earliest available model day`() throws {
         let earlier = try Self.calendar.startOfDay(for: #require(
             Self.calendar.date(byAdding: .day, value: -74, to: Self.now)))
+        let paddedStart = try #require(Self.calendar.date(byAdding: .day, value: -3, to: earlier))
         let input = SpendDashboardModel.ProviderInput(
             provider: .claude,
             displayName: "Claude",
@@ -269,14 +270,131 @@ struct SpendDashboardModelTests {
         let today = Self.calendar.startOfDay(for: Self.now)
         let end = try #require(Self.calendar.date(byAdding: .day, value: 1, to: today))
 
-        #expect(domain == earlier...end)
+        #expect(domain == paddedStart...end)
         #expect(model.modelAnalysis.rows.map(\.displayName) == ["early", "current"])
+    }
+
+    @Test
+    func `cumulative model chart ignores zero-only edges and follows observed activity`() throws {
+        let input = SpendDashboardModel.ProviderInput(
+            provider: .claude,
+            displayName: "Claude",
+            snapshot: Self.snapshot(
+                currency: "USD",
+                entries: [
+                    Self.entry(day: "2026-02-01", cost: 0, tokens: 0, model: "idle-start"),
+                    Self.entry(day: "2026-05-01", cost: 1, model: "active"),
+                    Self.entry(day: "2026-05-10", cost: 1, model: "active"),
+                    Self.entry(day: "2026-07-16", cost: 0, tokens: 0, model: "idle-end"),
+                ],
+                historyDays: 365))
+        let model = SpendDashboardModel.build(
+            inputs: [input],
+            requestedDays: 365,
+            now: Self.now,
+            calendar: Self.calendar)
+        let domain = try #require(model.modelChartDomain)
+        let expectedStart = try #require(Self.calendar.date(
+            from: DateComponents(year: 2026, month: 4, day: 30)))
+        let expectedEnd = try #require(Self.calendar.date(
+            from: DateComponents(year: 2026, month: 5, day: 12)))
+
+        #expect(domain == expectedStart...expectedEnd)
+    }
+
+    @Test
+    func `cumulative model chart drops a negligible legacy island before a long empty gap`() throws {
+        let input = SpendDashboardModel.ProviderInput(
+            provider: .claude,
+            displayName: "Claude",
+            snapshot: Self.snapshot(
+                currency: "USD",
+                entries: [
+                    Self.entry(day: "2026-02-08", cost: 0.01, tokens: 1000, model: "legacy"),
+                    // This later gap is larger than the leading legacy gap. The chart must still
+                    // evaluate the leading sparse island instead of looking only at the maximum gap.
+                    Self.entry(day: "2026-04-01", cost: 10, tokens: 1_000_000, model: "active"),
+                    Self.entry(day: "2026-06-15", cost: 10, tokens: 1_000_000, model: "active"),
+                    Self.entry(day: "2026-07-16", cost: 10, tokens: 1_000_000, model: "active"),
+                ],
+                historyDays: 365))
+        let model = SpendDashboardModel.build(
+            inputs: [input],
+            requestedDays: 365,
+            now: Self.now,
+            calendar: Self.calendar)
+        let domain = try #require(model.modelChartDomain)
+        let expectedStart = try #require(Self.calendar.date(
+            from: DateComponents(year: 2026, month: 3, day: 27)))
+        let expectedEnd = try #require(Self.calendar.date(
+            from: DateComponents(year: 2026, month: 7, day: 17)))
+
+        #expect(domain == expectedStart...expectedEnd)
+        #expect(model.modelAnalysis.rows.map(\.displayName).contains("legacy"))
+    }
+
+    @Test
+    func `cumulative model chart keeps an old island with meaningful contribution`() throws {
+        let input = SpendDashboardModel.ProviderInput(
+            provider: .claude,
+            displayName: "Claude",
+            snapshot: Self.snapshot(
+                currency: "USD",
+                entries: [
+                    Self.entry(day: "2026-02-08", cost: 10, tokens: 1_000_000, model: "legacy"),
+                    Self.entry(day: "2026-05-01", cost: 10, tokens: 1_000_000, model: "active"),
+                    Self.entry(day: "2026-06-15", cost: 10, tokens: 1_000_000, model: "active"),
+                    Self.entry(day: "2026-07-16", cost: 10, tokens: 1_000_000, model: "active"),
+                ],
+                historyDays: 365))
+        let model = SpendDashboardModel.build(
+            inputs: [input],
+            requestedDays: 365,
+            now: Self.now,
+            calendar: Self.calendar)
+        let domain = try #require(model.modelChartDomain)
+        let expectedStart = try #require(Self.calendar.date(
+            from: DateComponents(year: 2026, month: 2, day: 1)))
+        let expectedEnd = try #require(Self.calendar.date(
+            from: DateComponents(year: 2026, month: 7, day: 17)))
+
+        #expect(domain == expectedStart...expectedEnd)
+    }
+
+    @Test
+    func `cumulative model chart keeps a compact seven day fallback without activity`() throws {
+        let input = SpendDashboardModel.ProviderInput(
+            provider: .claude,
+            displayName: "Claude",
+            snapshot: Self.snapshot(
+                currency: "USD",
+                entries: [
+                    Self.entry(day: "2026-02-01", cost: 0, tokens: 0, model: "idle"),
+                ],
+                historyDays: 365))
+        let model = SpendDashboardModel.build(
+            inputs: [input],
+            requestedDays: 365,
+            now: Self.now,
+            calendar: Self.calendar)
+        let domain = try #require(model.modelChartDomain)
+        let expectedStart = try #require(Self.calendar.date(
+            byAdding: .day,
+            value: -6,
+            to: Self.calendar.startOfDay(for: Self.now)))
+        let expectedEnd = try #require(Self.calendar.date(
+            byAdding: .day,
+            value: 1,
+            to: Self.calendar.startOfDay(for: Self.now)))
+
+        #expect(domain == expectedStart...expectedEnd)
     }
 
     @Test
     func `model range stays independent from overview range`() throws {
         let earlier = try Self.calendar.startOfDay(for: #require(
             Self.calendar.date(byAdding: .day, value: -74, to: Self.now)))
+        let paddedStart = try #require(Self.calendar.date(byAdding: .day, value: -3, to: earlier))
         let input = SpendDashboardModel.ProviderInput(
             provider: .claude,
             displayName: "Claude",
@@ -299,7 +417,7 @@ struct SpendDashboardModelTests {
         #expect(model.groups.first?.modelAnalysis.rows.map(\.displayName) == ["current"])
         #expect(model.modelAnalysis(for: 30).rows.map(\.displayName) == ["current"])
         #expect(model.modelAnalysis(for: 365).rows.map(\.displayName) == ["early", "current"])
-        #expect(allDomain == earlier...end)
+        #expect(allDomain == paddedStart...end)
     }
 
     @Test

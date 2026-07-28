@@ -147,6 +147,10 @@ struct SpendDashboardModel: Equatable, Sendable {
         let cacheReadTokens: Int?
         let cacheCreationTokens: Int?
         let reasoningTokens: Int?
+        let requestCount: Int?
+        let coveredDayCount: Int
+        let projectCount: Int?
+        let sessionCount: Int?
         let estimatedCost: Double?
 
         var id: String {
@@ -415,6 +419,8 @@ struct SpendDashboardModel: Equatable, Sendable {
         let totalCost: Double?
         let coveredInterval: ClosedRange<Date>?
         let coveredDayCount: Int
+        let projectCount: Int?
+        let sessionCount: Int?
         let hasInvalidCostHistory: Bool
     }
 
@@ -443,69 +449,6 @@ struct SpendDashboardModel: Equatable, Sendable {
     private struct ModelSummary {
         let rows: [ModelRow]
         let completeness: ModelHistoryCompleteness
-    }
-
-    struct ModelAnalysisAccumulator {
-        var rawNames: Set<String> = []
-        var displayNames: Set<String> = []
-        var providerNames: [UsageProvider: String] = [:]
-        var sourceContributions: [String: ModelAnalysisSourceAccumulator] = [:]
-        var tokens: Int? = 0
-        var inputTokens: Int? = 0
-        var outputTokens: Int? = 0
-        var cacheReadTokens: Int? = 0
-        var cacheCreationTokens: Int? = 0
-        var reasoningTokens: Int? = 0
-        var cost: Double? = 0
-        var sawTokens = false
-        var sawTokenSplit = false
-        var sawCacheReadTokens = false
-        var missingCacheReadTokens = false
-        var sawCacheCreationTokens = false
-        var missingCacheCreationTokens = false
-        var sawReasoningTokens = false
-        var missingReasoningTokens = false
-        var sawCost = false
-        var sawEstimatedCost = false
-        var invalidTokenSplit = false
-        var overflowedTokens = false
-        var overflowedInputTokens = false
-        var overflowedOutputTokens = false
-        var overflowedCacheReadTokens = false
-        var overflowedCacheCreationTokens = false
-        var overflowedReasoningTokens = false
-        var overflowedCost = false
-    }
-
-    struct ModelAnalysisSourceAccumulator {
-        let provider: UsageProvider
-        let sourceName: String
-        let providerName: String
-        var rawNames: Set<String> = []
-        var tokens: Int? = 0
-        var inputTokens: Int? = 0
-        var outputTokens: Int? = 0
-        var cacheReadTokens: Int? = 0
-        var cacheCreationTokens: Int? = 0
-        var reasoningTokens: Int? = 0
-        var cost: Double? = 0
-        var sawTokens = false
-        var sawTokenSplit = false
-        var sawCacheReadTokens = false
-        var missingCacheReadTokens = false
-        var sawCacheCreationTokens = false
-        var missingCacheCreationTokens = false
-        var sawReasoningTokens = false
-        var missingReasoningTokens = false
-        var invalidTokenSplit = false
-        var sawCost = false
-        var overflowedTokens = false
-        var overflowedInputTokens = false
-        var overflowedOutputTokens = false
-        var overflowedCacheReadTokens = false
-        var overflowedCacheCreationTokens = false
-        var overflowedReasoningTokens = false
-        var overflowedCost = false
     }
 
     private struct ModelAnalysisDailyKey: Hashable {
@@ -665,6 +608,32 @@ extension SpendDashboardModel {
         } else {
             nil
         }
+        // Project/session evidence is currently produced only by the Codex session scanner.
+        // Count it inside the selected dashboard window instead of exposing the snapshot's
+        // broader 30-day totals under a shorter range.
+        let projectCount: Int? = if input.provider == .codex, !input.snapshot.projects.isEmpty {
+            input.snapshot.projects.count { project in
+                project.daily.contains { entry in
+                    guard let day = Self.day(
+                        entry.date,
+                        provider: input.provider,
+                        displayCalendar: calendar)
+                    else {
+                        return false
+                    }
+                    return bounds.contains(day)
+                }
+            }
+        } else {
+            nil
+        }
+        let sessionCount: Int? = if input.provider == .codex, !input.snapshot.sessions.isEmpty {
+            input.snapshot.sessions.count { session in
+                bounds.contains(calendar.startOfDay(for: session.lastActivity))
+            }
+        } else {
+            nil
+        }
         return InputSummary(
             input: input,
             entries: entries,
@@ -672,6 +641,8 @@ extension SpendDashboardModel {
             totalCost: totalCost,
             coveredInterval: coveredInterval,
             coveredDayCount: coveredDayCount,
+            projectCount: projectCount,
+            sessionCount: sessionCount,
             hasInvalidCostHistory: invalidCostHistory)
     }
 
@@ -811,7 +782,10 @@ extension SpendDashboardModel {
                     var source = aggregate.sourceContributions[input.id] ?? ModelAnalysisSourceAccumulator(
                         provider: input.provider,
                         sourceName: input.displayName,
-                        providerName: input.modelProviderName)
+                        providerName: input.modelProviderName,
+                        coveredDayCount: summary.coveredDayCount,
+                        projectCount: summary.projectCount,
+                        sessionCount: summary.sessionCount)
                     source.rawNames.insert(rawName)
 
                     let dailyKey = ModelAnalysisDailyKey(modelID: identity, day: windowEntry.day)
@@ -929,6 +903,13 @@ extension SpendDashboardModel {
                         missing: source.missingReasoningTokens,
                         overflowed: source.overflowedReasoningTokens,
                         splitIsComplete: sourceSplitIsComplete),
+                    requestCount: source.sawRequestCount && !source.missingRequestCount
+                        && !source.overflowedRequestCount
+                        ? source.requestCount
+                        : nil,
+                    coveredDayCount: source.coveredDayCount,
+                    projectCount: source.projectCount,
+                    sessionCount: source.sessionCount,
                     estimatedCost: source.sawCost && !source.overflowedCost ? source.cost : nil)
             }
             .sorted { lhs, rhs in
@@ -977,6 +958,21 @@ extension SpendDashboardModel {
         aggregate.tokens = Self.add(tokens, to: aggregate.tokens, overflowed: &aggregate.overflowedTokens)
         source.sawTokens = true
         source.tokens = Self.add(tokens, to: source.tokens, overflowed: &source.overflowedTokens)
+        if let requestCount = nonnegative(breakdown.requestCount) {
+            aggregate.sawRequestCount = true
+            aggregate.requestCount = Self.add(
+                requestCount,
+                to: aggregate.requestCount,
+                overflowed: &aggregate.overflowedRequestCount)
+            source.sawRequestCount = true
+            source.requestCount = Self.add(
+                requestCount,
+                to: source.requestCount,
+                overflowed: &source.overflowedRequestCount)
+        } else {
+            aggregate.missingRequestCount = true
+            source.missingRequestCount = true
+        }
 
         dailyValue.sawTokens = true
         dailyValue.tokens = Self.add(
@@ -1491,16 +1487,6 @@ extension SpendDashboardModel {
     private static func chartDomain(bounds: ClosedRange<Date>, calendar: Calendar) -> ClosedRange<Date> {
         let end = calendar.date(byAdding: .day, value: 1, to: bounds.upperBound) ?? bounds.upperBound
         return bounds.lowerBound...end
-    }
-
-    private static func allModelChartDomain(
-        analysis: ModelAnalysis,
-        bounds: ClosedRange<Date>,
-        calendar: Calendar) -> ClosedRange<Date>
-    {
-        let start = analysis.dailyValues.map(\.day).min() ?? bounds.lowerBound
-        let end = calendar.date(byAdding: .day, value: 1, to: bounds.upperBound) ?? bounds.upperBound
-        return min(start, bounds.upperBound)...end
     }
 
     private static func coverageInterval(

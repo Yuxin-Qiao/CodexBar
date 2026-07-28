@@ -1389,3 +1389,17 @@
 
 "Cumulative %@ tokens as of %@" = "Cumulatief %@ tokens tot %@";
 "%@ tokens in the week of %@" = "%@ tokens in de week van %@";
+
+/* Tool comparison evidence (English fallback) */
+"Same-model comparison" = "Same-model comparison";
+"Observed history for the same model and time range; workload differences still apply." = "Observed history for the same model and time range; workload differences still apply.";
+"Show fewer models" = "Show fewer models";
+"Reuse unavailable" = "Reuse unavailable";
+"%d models" = "%d models";
+"%d projects" = "%d projects";
+"%d sessions" = "%d sessions";
+"%d days" = "%d days";
+"%d days covered" = "%d days covered";
+"%d%% context reuse" = "%d%% context reuse";
+"%d%% reuse" = "%d%% reuse";
+"%@ per 1M tokens" = "%@ per 1M tokens";

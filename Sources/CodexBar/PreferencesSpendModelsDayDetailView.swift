@@ -55,6 +55,7 @@ struct SpendModelsDayDetailPresentation: Equatable {
     struct Model: Identifiable, Equatable {
         let id: String
         let name: String
+        let modelProvider: UsageProvider
         let providerNames: [String]
         let totalTokens: Int?
         let cost: Double?
@@ -70,6 +71,10 @@ struct SpendModelsDayDetailPresentation: Equatable {
     let buckets: [Bucket]
     /// Per-model rows sorted by tokens descending.
     let models: [Model]
+
+    var pricedModelCount: Int {
+        self.models.count(where: { $0.cost != nil })
+    }
 
     init?(
         analysis: SpendDashboardModel.ModelAnalysis,
@@ -92,6 +97,8 @@ struct SpendModelsDayDetailPresentation: Equatable {
             return Model(
                 id: value.modelID,
                 name: value.modelName,
+                modelProvider: row?.modelProvider
+                    ?? SpendProviderIdentity.modelProvider(rawName: value.modelName, fallback: .openai),
                 providerNames: row?.providerNames ?? [],
                 totalTokens: value.totalTokens,
                 cost: value.estimatedCost,
@@ -172,28 +179,57 @@ func spendModelsDayDetailModelSplitText(_ model: SpendModelsDayDetailPresentatio
     return model.buckets.map(spendModelsDayDetailBucketText).joined(separator: " · ")
 }
 
+func spendModelsDayDetailModelSummaryText(
+    _ model: SpendModelsDayDetailPresentation.Model,
+    metric: SpendModelMetric,
+    totalTokens: Int?,
+    totalCost: Double?,
+    currencyCode: String = "USD") -> String
+{
+    switch metric {
+    case .tokens:
+        guard let tokens = model.totalTokens else { return "—" }
+        let value = UsageFormatter.tokenCountString(tokens)
+        guard let totalTokens, totalTokens > 0 else { return value }
+        let share = UsageFormatter.percentString(Double(tokens) / Double(totalTokens) * 100)
+        return "\(value) · \(share)"
+    case .estimatedSpend:
+        guard let cost = model.cost else {
+            guard let tokens = model.totalTokens else { return L("Unavailable") }
+            return "\(UsageFormatter.tokenCountString(tokens)) · \(L("Unavailable"))"
+        }
+        let value = UsageFormatter.currencyString(cost, currencyCode: currencyCode)
+        guard let totalCost, totalCost > 0 else { return value }
+        let share = UsageFormatter.percentString(cost / totalCost * 100)
+        return "\(value) · \(share)"
+    }
+}
+
 // MARK: - Day detail view
 
 struct SpendModelsDayDetailView: View {
     let detail: SpendModelsDayDetailPresentation
     let metric: SpendModelMetric
-    let colorForModel: (String) -> Color
+    @State private var expandedModelID: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
                 Text(self.dayText)
-                    .font(.body.weight(.semibold))
+                    .font(SpendModelsListStyle.primaryEmphasizedFont)
                 Spacer()
                 Text(self.totalText)
-                    .font(.body.weight(.semibold))
+                    .font(SpendModelsListStyle.primaryEmphasizedFont)
                     .monospacedDigit()
             }
-            if !self.detail.buckets.isEmpty {
+            if self.metric == .tokens, !self.detail.buckets.isEmpty {
                 self.categoryBar
                 self.legend
+            } else if self.metric == .estimatedSpend {
+                self.pricingCoverageBar
+                self.pricingCoverageLegend
             }
-            VStack(alignment: .leading, spacing: 7) {
+            VStack(alignment: .leading, spacing: 4) {
                 ForEach(self.detail.models) { model in
                     self.modelRow(model)
                 }
@@ -203,6 +239,12 @@ struct SpendModelsDayDetailView: View {
         .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(L("Usage details for %@", self.dayText)))
+        .onChange(of: self.detail.day) { _, _ in
+            self.expandedModelID = nil
+        }
+        .onChange(of: self.metric) { _, _ in
+            self.expandedModelID = nil
+        }
     }
 
     // MARK: Category bar
@@ -234,7 +276,7 @@ struct SpendModelsDayDetailView: View {
                         .frame(width: 8, height: 8)
                         .accessibilityHidden(true)
                     Text("\(bucket.kind.title) \(UsageFormatter.tokenCountString(bucket.tokens))")
-                        .font(.caption)
+                        .font(SpendModelsListStyle.secondaryFont)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                         .lineLimit(1)
@@ -256,41 +298,113 @@ struct SpendModelsDayDetailView: View {
         return max(0, bucket.tokens - reasoning)
     }
 
-    // MARK: Model rows
+    // MARK: Pricing coverage
 
-    private func modelRow(_ model: SpendModelsDayDetailPresentation.Model) -> some View {
-        HStack(spacing: 9) {
-            RoundedRectangle(cornerRadius: 2, style: .continuous)
-                .fill(self.colorForModel(model.id))
-                .frame(width: 10, height: 10)
-                .accessibilityHidden(true)
-            Text(model.name)
-                .font(.body)
-                .lineLimit(1)
-            if !model.providerNames.isEmpty {
-                Text(model.providerNames.joined(separator: " · "))
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
+    private var pricingCoverageBar: some View {
+        GeometryReader { geo in
+            let total = max(1, self.detail.models.count)
+            let hasPriced = self.detail.pricedModelCount > 0
+            let hasUnpriced = self.detail.pricedModelCount < total
+            let spacing: CGFloat = hasPriced && hasUnpriced ? 1 : 0
+            let pricedWidth = (geo.size.width - spacing)
+                * CGFloat(self.detail.pricedModelCount)
+                / CGFloat(total)
+            HStack(spacing: 1) {
+                if hasPriced {
+                    Rectangle()
+                        .fill(Color.accentColor)
+                        .frame(width: max(2, pricedWidth))
+                }
+                if hasUnpriced {
+                    Rectangle()
+                        .fill(Color.secondary.opacity(0.16))
+                }
             }
-            Spacer()
-            Text(spendModelsDayDetailModelSplitText(model))
-                .font(.body)
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        }
+        .frame(height: 12)
+        .accessibilityHidden(true)
+    }
+
+    private var pricingCoverageLegend: some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(Color.accentColor)
+                .frame(width: 8, height: 8)
+                .accessibilityHidden(true)
+            Text("\(L("Priced model spend")) · \(self.detail.pricedModelCount)/\(self.detail.models.count)")
+                .font(SpendModelsListStyle.secondaryFont)
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
-            if self.metric == .estimatedSpend {
-                Text(self.costText(for: model))
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
+                .lineLimit(1)
         }
     }
 
-    private func costText(for model: SpendModelsDayDetailPresentation.Model) -> String {
-        guard let cost = model.cost else { return "—" }
-        let formatted = UsageFormatter.currencyString(cost, currencyCode: "USD")
-        return model.costIsEstimated ? "\(formatted) · \(L("estimated"))" : formatted
+    // MARK: Model rows
+
+    private func modelRow(_ model: SpendModelsDayDetailPresentation.Model) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Button {
+                guard !model.buckets.isEmpty else { return }
+                withAnimation(.easeInOut(duration: 0.16)) {
+                    self.expandedModelID = self.expandedModelID == model.id ? nil : model.id
+                }
+            } label: {
+                HStack(spacing: 9) {
+                    SpendProviderIcon(provider: model.modelProvider, size: SpendModelsListStyle.modelIconSize)
+                        .frame(
+                            width: SpendModelsListStyle.modelIconFrameSize,
+                            height: SpendModelsListStyle.modelIconFrameSize)
+                        .accessibilityHidden(true)
+                    Text(model.name)
+                        .font(SpendModelsListStyle.primaryFont)
+                        .lineLimit(1)
+                    if !model.providerNames.isEmpty {
+                        Text(model.providerNames.joined(separator: " · "))
+                            .font(SpendModelsListStyle.secondaryFont)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 10)
+                    Text(spendModelsDayDetailModelSummaryText(
+                        model,
+                        metric: self.metric,
+                        totalTokens: self.detail.totalTokens,
+                        totalCost: self.detail.totalCost))
+                        .font(SpendModelsListStyle.secondaryFont)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                    if !model.buckets.isEmpty {
+                        Image(systemName: self.expandedModelID == model.id ? "chevron.up" : "chevron.down")
+                            .font(SpendModelsListStyle.tertiaryFont.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(model.name)
+            .accessibilityValue(spendModelsDayDetailModelSummaryText(
+                model,
+                metric: self.metric,
+                totalTokens: self.detail.totalTokens,
+                totalCost: self.detail.totalCost))
+            .accessibilityHint(model.buckets.isEmpty
+                ? ""
+                : (self.expandedModelID == model.id ? L("Collapse") : L("Expand")))
+
+            if self.expandedModelID == model.id, !model.buckets.isEmpty {
+                Text(spendModelsDayDetailModelSplitText(model))
+                    .font(SpendModelsListStyle.secondaryFont)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .padding(.leading, SpendModelsListStyle.modelIconFrameSize + 9)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
     }
 
     // MARK: Header

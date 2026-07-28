@@ -28,7 +28,6 @@ public enum GeminiProviderDescriptor {
             branding: ProviderBranding(
                 iconStyle: .gemini,
                 iconResourceName: "ProviderIcon-gemini",
-                iconRenderingMode: .original,
                 color: ProviderColor(red: 171 / 255, green: 135 / 255, blue: 234 / 255),
                 confettiPalette: [
                     ProviderColor(hex: 0x4285F4),

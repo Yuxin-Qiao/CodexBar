@@ -25,6 +25,47 @@ struct CostUsagePricingTests {
     }
 
     @Test
+    func `google pricing normalizes antigravity aliases and stays available offline`() throws {
+        let emptyCacheRoot = try Self.cacheRoot()
+
+        let flash36 = CostUsagePricing.googleCostUSD(
+            model: "gemini-3.6-flash",
+            inputTokens: 1_000_000,
+            cacheReadInputTokens: 1_000_000,
+            outputTokens: 1_000_000,
+            modelsDevCacheRoot: emptyCacheRoot)
+        let flash35Alias = CostUsagePricing.googleCostUSD(
+            model: "gemini-3-flash-agent",
+            inputTokens: 1_000_000,
+            cacheReadInputTokens: 1_000_000,
+            outputTokens: 1_000_000,
+            modelsDevCacheRoot: emptyCacheRoot)
+        let flash3Alias = CostUsagePricing.googleCostUSD(
+            model: "gemini-default",
+            inputTokens: 1_000_000,
+            cacheReadInputTokens: 1_000_000,
+            outputTokens: 1_000_000,
+            modelsDevCacheRoot: emptyCacheRoot)
+
+        #expect(flash36 == 1.50 + 0.15 + 7.50)
+        #expect(flash35Alias == 1.50 + 0.15 + 9.00)
+        #expect(flash3Alias == 0.50 + 0.05 + 3.00)
+    }
+
+    @Test
+    func `google pricing applies gemini31 pro long context rates`() throws {
+        let emptyCacheRoot = try Self.cacheRoot()
+        let cost = CostUsagePricing.googleCostUSD(
+            model: "gemini-3.1-pro-high",
+            inputTokens: 200_001,
+            cacheReadInputTokens: 10,
+            outputTokens: 20,
+            modelsDevCacheRoot: emptyCacheRoot)
+
+        #expect(cost == (200_001.0 * 4e-6) + (10.0 * 0.4e-6) + (20.0 * 18e-6))
+    }
+
+    @Test
     func `unattributed codex usage stays unpriced despite a catalog collision`() throws {
         let root = try Self.seedModelsDevCache("""
         {

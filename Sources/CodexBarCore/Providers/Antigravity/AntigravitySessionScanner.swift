@@ -39,33 +39,7 @@ public enum AntigravitySessionScanner {
     /// this scanner stays self-contained (mirrors `MiniMaxSessionScanner.MINIMAX_HOME`).
     public static let homeEnvironmentKey = "ANTIGRAVITY_HOME"
 
-    /// models.dev providers that carry Gemini / Claude list pricing. Antigravity routes both
-    /// Google (Gemini) and Anthropic (Claude) models, so the pricing provider is picked per model.
-    private static let googleModelsDevProviderID = "google"
-    private static let anthropicModelsDevProviderID = "anthropic"
-
-    /// Maps Antigravity's wire `responseModel` strings (placeholders, tier suffixes, aliases) to
-    /// the models.dev model id used for pricing, mirroring tokscale's antigravity alias table
-    /// (verified against the Antigravity Context Window Monitor models.ts). Only the pricing key is
-    /// rewritten — the raw model name stays in the breakdown for display.
-    private static let modelPricingAliases: [String: String] = [
-        "gemini-pro-default": "gemini-3.1-pro-preview",
-        "gemini-pro-agent": "gemini-3.1-pro-preview",
-        "gemini-3.1-pro": "gemini-3.1-pro-preview",
-        "gemini-3.1-pro-high": "gemini-3.1-pro-preview",
-        "gemini-3.1-pro-low": "gemini-3.1-pro-preview",
-        "gemini-3-pro": "gemini-3-pro-preview",
-        "gemini-3-pro-high": "gemini-3-pro-preview",
-        "gemini-3-pro-low": "gemini-3-pro-preview",
-        "gemini-3-flash": "gemini-3-flash-preview",
-        "gemini-3-flash-c": "gemini-3-flash-preview",
-        "gemini-default": "gemini-3-flash-preview",
-        // The `gemini-3-flash-a`/`-agent`/`-b` family is the High tier of 3.5 Flash, not the
-        // unrelated gemini-3-flash-preview backend; models.dev prices it as `gemini-3.5-flash`.
-        "gemini-3-flash-a": "gemini-3.5-flash",
-        "gemini-3-flash-agent": "gemini-3.5-flash",
-        "gemini-3-flash-b": "gemini-3.5-flash",
-        "gemini-3.5-flash-high": "gemini-3.5-flash",
+    private static let claudePricingAliases: [String: String] = [
         "claude-opus-4-6-thinking": "claude-opus-4-6",
         "claude-sonnet-4-6-thinking": "claude-sonnet-4-6",
         "claude-haiku-4-6-thinking": "claude-haiku-4-6",
@@ -410,12 +384,9 @@ public enum AntigravitySessionScanner {
         let output: Int
     }
 
-    /// Prices a generation at the vendor's official models.dev rate. The wire model name is first
-    /// normalized through `modelPricingAliases`, then the provider is chosen by family: Claude
-    /// models price against the Anthropic catalog, everything else against Google. `reasoning` is
-    /// already folded into `output`, so it is not priced twice. Cache-read tokens use the cheaper
-    /// cache-read rate when the catalog carries one, else the plain input rate. Returns nil when no
-    /// official rate is known.
+    /// Prices a generation against its actual model provider. Known Gemini models use CodexBar's
+    /// official Google pricing snapshot first and models.dev for newly released ids; Claude uses
+    /// the same catalog-plus-bundled fallback as Claude Code. The raw display name is never changed.
     private static func costUSD(
         model: String,
         tokens: TokenBuckets,
@@ -423,24 +394,24 @@ public enum AntigravitySessionScanner {
         cacheRoot: URL?) -> Double?
     {
         let lowered = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let pricingModel = self.modelPricingAliases[lowered] ?? lowered
-        let providerID = pricingModel.hasPrefix("claude-")
-            ? self.anthropicModelsDevProviderID
-            : self.googleModelsDevProviderID
-        guard let lookup = CostUsagePricing.modelsDevLookup(
-            providerID: providerID,
-            model: pricingModel,
-            catalog: catalog,
-            cacheRoot: cacheRoot)
-        else {
-            return nil
+        if lowered.hasPrefix("claude-") {
+            let pricingModel = self.claudePricingAliases[lowered] ?? lowered
+            return CostUsagePricing.claudeCostUSD(
+                model: pricingModel,
+                inputTokens: tokens.input,
+                cacheReadInputTokens: tokens.cacheRead,
+                cacheCreationInputTokens: 0,
+                outputTokens: tokens.output,
+                modelsDevCatalog: catalog,
+                modelsDevCacheRoot: cacheRoot)
         }
-        let pricing = lookup.pricing
-        let cacheReadRate = pricing.cacheReadInputCostPerToken ?? pricing.inputCostPerToken
-        let cost = Double(tokens.input) * pricing.inputCostPerToken
-            + Double(tokens.cacheRead) * cacheReadRate
-            + Double(tokens.output) * pricing.outputCostPerToken
-        return cost.isFinite ? cost : nil
+        return CostUsagePricing.googleCostUSD(
+            model: lowered,
+            inputTokens: tokens.input,
+            cacheReadInputTokens: tokens.cacheRead,
+            outputTokens: tokens.output,
+            modelsDevCatalog: catalog,
+            modelsDevCacheRoot: cacheRoot)
     }
 
     // MARK: - SQLite helpers

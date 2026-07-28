@@ -36,11 +36,44 @@ struct SpendToolPresentationTests {
         #expect(codex.outputTokens == 10)
         #expect(codex.cacheReadTokens == 20)
         #expect(codex.reasoningTokens == 4)
+        #expect(codex.requestCount == 2)
+        #expect(codex.models.first?.modelProvider == .openai)
         #expect(cursor.kind == .ide)
         #expect(cursor.inputTokens == 20)
         #expect(cursor.outputTokens == 10)
         #expect(cursor.cacheReadTokens == 10)
         #expect(cursor.reasoningTokens == 2)
+        #expect(cursor.requestCount == 2)
+        #expect(cursor.models.first?.modelProvider == .openai)
+    }
+
+    @Test
+    func `same model comparison keeps observed tool evidence separate`() throws {
+        let comparisons = SpendToolComparisonPresentation.comparisons(from: Self.model().modelAnalysis)
+        let comparison = try #require(comparisons.first)
+        let codex = try #require(comparison.tools.first { $0.provider == .codex })
+        let cursor = try #require(comparison.tools.first { $0.provider == .cursor })
+
+        #expect(comparisons.count == 1)
+        #expect(comparison.displayName == "GPT-5 Test")
+        #expect(codex.requestCount == 2)
+        #expect(cursor.requestCount == 2)
+        #expect(codex.contextReuseRate == 20.0 / 60.0)
+        #expect(cursor.contextReuseRate == 10.0 / 30.0)
+        #expect(codex.costPerMillionTokens == 1_000_000.0 / 70.0)
+        #expect(cursor.costPerMillionTokens == 2_000_000.0 / 40.0)
+    }
+
+    @Test
+    func `context reuse stays unavailable when any input bucket is unknown`() {
+        #expect(SpendToolComparisonPresentation.contextReuseRate(
+            input: 10,
+            cacheRead: 20,
+            cacheCreation: nil) == nil)
+        #expect(SpendToolComparisonPresentation.contextReuseRate(
+            input: 0,
+            cacheRead: 0,
+            cacheCreation: 0) == nil)
     }
 
     @Test
@@ -55,6 +88,18 @@ struct SpendToolPresentationTests {
         ])
         #expect(presentation.points.map(\.value) == [60, 30, 14, 6])
         #expect(presentation.points.last?.stackEnd == 110)
+    }
+
+    @Test
+    func `token chart exposes one total bar per day while retaining bucket detail`() throws {
+        let presentation = SpendModelsTokenChartPresentation(analysis: Self.model().modelAnalysis)
+        let total = try #require(presentation.dailyTotals.first)
+
+        #expect(presentation.dailyTotals.count == 1)
+        #expect(total.kind == nil)
+        #expect(total.stackStart == 0)
+        #expect(total.stackEnd == 110)
+        #expect(total.value == 110)
     }
 
     @Test
@@ -106,7 +151,8 @@ struct SpendToolPresentationTests {
             cacheReadTokens: tokens.cache,
             cacheCreationTokens: 0,
             outputTokens: tokens.output,
-            reasoningTokens: tokens.reasoning)
+            reasoningTokens: tokens.reasoning,
+            requestCount: 2)
         let entry = CostUsageDailyReport.Entry(
             date: "2026-07-27",
             inputTokens: tokens.input,
@@ -114,6 +160,7 @@ struct SpendToolPresentationTests {
             cacheReadTokens: tokens.cache,
             cacheCreationTokens: 0,
             totalTokens: total,
+            requestCount: 2,
             costUSD: cost,
             modelsUsed: ["gpt-5-test"],
             modelBreakdowns: [breakdown])

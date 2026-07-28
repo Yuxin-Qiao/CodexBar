@@ -31,7 +31,7 @@ enum ProviderBrandIcon {
         guard let bundle = self.resourceBundle else {
             return nil
         }
-        let extensions = branding.iconRenderingMode == .original ? ["png", "svg"] : ["svg", "png"]
+        let extensions = ["svg", "png"]
         guard let url = extensions.lazy.compactMap({
             bundle.url(forResource: baseName, withExtension: $0)
         }).first else {
@@ -42,7 +42,7 @@ enum ProviderBrandIcon {
         }
 
         image.size = self.size
-        image.isTemplate = branding.iconRenderingMode == .template
+        image.isTemplate = true
         self.cache[provider] = image
         return image
     }

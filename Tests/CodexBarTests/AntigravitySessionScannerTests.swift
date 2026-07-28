@@ -49,6 +49,8 @@ struct AntigravitySessionScannerTests {
         #expect(entry.cacheReadTokens == 16000)
         #expect(entry.outputTokens == 350)
         #expect(entry.modelsUsed == ["gemini-3.6-flash"])
+        let expectedCost = (2864.0 * 1.5e-6) + (16000.0 * 0.15e-6) + (350.0 * 7.5e-6)
+        #expect(abs((entry.costUSD ?? 0) - expectedCost) < 1e-12)
     }
 
     @Test

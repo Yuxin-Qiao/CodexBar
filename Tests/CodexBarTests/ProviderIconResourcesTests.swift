@@ -14,7 +14,10 @@ struct ProviderIconResourcesTests {
         let slugs = [
             "codex",
             "clinepass",
-            "zai",
+            "antigravity",
+            "claude",
+            "gemini",
+            "kimi",
             "minimax",
             "cursor",
             "opencode",
@@ -52,20 +55,6 @@ struct ProviderIconResourcesTests {
     }
 
     @Test
-    func `official color provider icons are bundled as PNGs`() throws {
-        let root = try Self.repoRoot()
-        let resources = root.appending(path: "Sources/CodexBar/Resources", directoryHint: .isDirectory)
-
-        for slug in ["antigravity", "claude", "gemini", "kimi"] {
-            let url = resources.appending(path: "ProviderIcon-\(slug).png")
-            #expect(
-                FileManager.default.fileExists(atPath: url.path(percentEncoded: false)),
-                "Missing official-color PNG for \(slug)")
-            #expect(NSImage(contentsOf: url) != nil, "Could not load official-color PNG for \(slug)")
-        }
-    }
-
-    @Test
     func `groq and grok provider icons are distinct`() throws {
         let root = try Self.repoRoot()
         let resources = root.appending(path: "Sources/CodexBar/Resources", directoryHint: .isDirectory)
@@ -89,13 +78,13 @@ struct ProviderIconResourcesTests {
     }
 
     @Test
-    func `official color provider icons preserve embedded colors`() throws {
+    func `official color provider icons preserve template rendering`() throws {
         ProviderBrandIcon.resetCacheForTesting()
         defer { ProviderBrandIcon.resetCacheForTesting() }
 
         for provider in [UsageProvider.antigravity, .claude, .gemini, .kimi, .minimax] {
             let image = try #require(ProviderBrandIcon.image(for: provider))
-            #expect(!image.isTemplate, "\(provider.rawValue) must preserve its official colors")
+            #expect(image.isTemplate, "\(provider.rawValue) must use template rendering for global UI")
         }
     }
 

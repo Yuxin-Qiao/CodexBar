@@ -755,7 +755,7 @@
 "Quit" = "退出";
 "Last %d day" = "近 %d 天";
 "Last %d days" = "近 %d 天";
-"%@ tokens" = "%@ token 用量";
+"%@ tokens" = "%@ 令牌";
 "Latest billing day" = "最近结算日";
 "Latest billing day (%@)" = "最近结算日（%@）";
 "%@ left" = "%@ 剩余";
@@ -1363,6 +1363,20 @@
 "Fr" = "五";
 "Estimated" = "估算";
 "No per-client model history" = "暂无按工具划分的模型历史";
+"Same-model comparison" = "同模型工具对比";
+"Observed history for the same model and time range; workload differences still apply." = "仅对比同一模型与时间范围内的历史表现；不同任务仍会影响结果。";
+"Show fewer models" = "收起模型";
+"Show all %d models" = "显示全部 %d 个模型";
+"%d models" = "%d 个模型";
+"%@ requests" = "%@ 次请求";
+"%d%% context reuse" = "%d%% 上下文复用";
+"%d projects" = "%d 个项目";
+"%d sessions" = "%d 个会话";
+"%d days covered" = "覆盖 %d 天";
+"%d%% reuse" = "%d%% 复用";
+"Reuse unavailable" = "复用数据不可用";
+"%@ per 1M tokens" = "每百万 Token %@";
+"%d days" = "%d 天";
 
 "Cumulative %@ tokens as of %@" = "截至 %2$@ 累计 %1$@ 个 Token";
 "%@ tokens in the week of %@" = "%2$@ 当周使用了 %1$@ 个 Token";
