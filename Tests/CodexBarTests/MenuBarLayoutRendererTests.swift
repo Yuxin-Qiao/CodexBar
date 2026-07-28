@@ -54,6 +54,31 @@ struct MenuBarLayoutRendererTests {
     }
 
     @Test
+    func `icon attachment matches the default template size and appearance`() throws {
+        let renderer = MenuBarLayoutRenderer()
+        let icon = NSImage(size: NSSize(width: 16, height: 16))
+        icon.lockFocus()
+        NSColor.white.setFill()
+        NSBezierPath(ovalIn: NSRect(x: 1, y: 1, width: 14, height: 14)).fill()
+        icon.unlockFocus()
+        icon.isTemplate = true
+
+        let output = renderer.render(
+            layout: MenuBarLayout(lines: [[.icon]]),
+            data: self.data(),
+            icon: icon,
+            options: self.options())
+        let attachment = try #require(
+            output.attributedTitle.attribute(.attachment, at: 0, effectiveRange: nil) as? NSTextAttachment)
+        let attachmentImage = try #require(attachment.image)
+
+        #expect(attachment.bounds.size == NSSize(width: 16, height: 16))
+        #expect(attachmentImage.isTemplate)
+        #expect(try self.averageBrightness(of: output.attributedTitle, appearance: .aqua) < 0.25)
+        #expect(try self.averageBrightness(of: output.attributedTitle, appearance: .darkAqua) > 0.75)
+    }
+
+    @Test
     func `missing token data keeps every sibling visible as a placeholder`() {
         let renderer = MenuBarLayoutRenderer()
         let missingData = MenuBarLayoutRenderData(
@@ -102,6 +127,29 @@ struct MenuBarLayoutRendererTests {
         #expect(output.attributedTitle.string == "5h 25%\nW 60%")
         #expect(output.accessibilityLabel.contains(L("menu_bar_layout_line", 2)))
         #expect(bounds.height <= 22)
+    }
+
+    @Test
+    func `stacked titles apply a vertical centering offset`() throws {
+        let renderer = MenuBarLayoutRenderer()
+        let stacked = renderer.render(
+            layout: MenuBarLayout(lines: [
+                [.percent(window: .automatic)],
+                [.resetCountdown],
+            ]),
+            data: self.data(),
+            icon: nil,
+            options: self.options())
+        let resetIndex = (stacked.attributedTitle.string as NSString).range(of: "in 2h").location
+        let singleLine = renderer.render(
+            layout: MenuBarLayout(lines: [[.percent(window: .automatic), .resetCountdown]]),
+            data: self.data(),
+            icon: nil,
+            options: self.options())
+
+        #expect(try #require(self.baselineOffset(in: stacked.attributedTitle, at: 0)) == -3)
+        #expect(try #require(self.baselineOffset(in: stacked.attributedTitle, at: resetIndex)) == -3)
+        #expect(self.baselineOffset(in: singleLine.attributedTitle, at: 0) == nil)
     }
 
     @Test
@@ -249,5 +297,44 @@ struct MenuBarLayoutRendererTests {
             appearanceName: "aqua",
             isDebugApp: false,
             now: self.now)
+    }
+
+    private func averageBrightness(
+        of title: NSAttributedString,
+        appearance: NSAppearance.Name) throws
+        -> CGFloat
+    {
+        let canvas = NSImage(size: NSSize(width: 24, height: 24))
+        try #require(NSAppearance(named: appearance)).performAsCurrentDrawingAppearance {
+            canvas.lockFocus()
+            NSColor.clear.setFill()
+            NSRect(origin: .zero, size: canvas.size).fill()
+            title.draw(at: NSPoint(x: 4, y: 4))
+            canvas.unlockFocus()
+        }
+
+        let data = try #require(canvas.tiffRepresentation)
+        let bitmap = try #require(NSBitmapImageRep(data: data))
+        var totalBrightness: CGFloat = 0
+        var visiblePixelCount = 0
+        for y in 0..<bitmap.pixelsHigh {
+            for x in 0..<bitmap.pixelsWide {
+                guard let color = bitmap.colorAt(x: x, y: y), color.alphaComponent > 0.1 else { continue }
+                totalBrightness += color.brightnessComponent
+                visiblePixelCount += 1
+            }
+        }
+        return try totalBrightness / CGFloat(#require(visiblePixelCount > 0 ? visiblePixelCount : nil))
+    }
+
+    private func baselineOffset(in title: NSAttributedString, at index: Int) -> CGFloat? {
+        let value = title.attribute(.baselineOffset, at: index, effectiveRange: nil)
+        if let value = value as? CGFloat {
+            return value
+        }
+        if let value = value as? NSNumber {
+            return CGFloat(truncating: value)
+        }
+        return nil
     }
 }

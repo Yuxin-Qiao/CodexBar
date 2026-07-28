@@ -5,6 +5,14 @@ import Testing
 
 struct CodexBarWidgetProviderTests {
     @Test
+    func `widget token counts use compact shared formatting`() {
+        #expect(WidgetFormat.tokenCount(999) == "999 tokens")
+        #expect(WidgetFormat.tokenCount(9_400_000) == "9.4M tokens")
+        #expect(WidgetFormat.tokenCount(94_500_000) == "94M tokens")
+        #expect(WidgetFormat.tokenCount(10_600_000_000) == "11B tokens")
+    }
+
+    @Test
     func `usage display follows remaining and used preference`() {
         #expect(WidgetUsageDisplay.percent(fromRemaining: 48, showUsed: false) == 48)
         #expect(WidgetUsageDisplay.percent(fromRemaining: 48, showUsed: true) == 52)
@@ -818,11 +826,25 @@ struct CodexBarWidgetProviderTests {
             provider: .codex,
             primaryUsed: 20,
             secondaryUsed: 30,
+            primaryReset: now.addingTimeInterval(360),
+            secondaryReset: now.addingTimeInterval(420))
+
+        #expect(BurnDownRefreshSchedule.nextRefresh(snapshot: snapshot, provider: .codex, now: now)
+            == now.addingTimeInterval(361))
+    }
+
+    @Test
+    func `burn down refresh clamps to minimum interval`() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let snapshot = Self.burnSnapshot(
+            provider: .codex,
+            primaryUsed: 20,
+            secondaryUsed: 30,
             primaryReset: now.addingTimeInterval(60),
             secondaryReset: now.addingTimeInterval(120))
 
         #expect(BurnDownRefreshSchedule.nextRefresh(snapshot: snapshot, provider: .codex, now: now)
-            == now.addingTimeInterval(61))
+            == now.addingTimeInterval(300))
     }
 
     @Test

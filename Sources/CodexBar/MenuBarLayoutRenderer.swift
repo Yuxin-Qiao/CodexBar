@@ -91,9 +91,12 @@ final class MenuBarLayoutTitleCache {
 @MainActor
 final class MenuBarLayoutRenderer {
     private static let missingValue = "–"
+    private static let stackedBaselineOffset: CGFloat = -3 // Center multi-line NSStatusBarButton titles.
 
     private struct TokenStyle {
         let font: NSFont
+        let foregroundColor: NSColor
+        let iconHeight: CGFloat
         let attributes: [NSAttributedString.Key: Any]
     }
 
@@ -129,17 +132,21 @@ final class MenuBarLayoutRenderer {
     {
         let isStacked = layout.lines.count == 2
         let font = NSFont.systemFont(ofSize: Self.fontSize(size: options.size, isStacked: isStacked))
+        let foregroundColor = options.highContrast ? NSColor.labelColor : NSColor.controlTextColor
         let paragraphStyle = NSMutableParagraphStyle()
         if isStacked {
             paragraphStyle.minimumLineHeight = 9.5
             paragraphStyle.maximumLineHeight = 9.5
             paragraphStyle.lineSpacing = -1
         }
-        let attributes: [NSAttributedString.Key: Any] = [
+        var attributes: [NSAttributedString.Key: Any] = [
             .font: font,
-            .foregroundColor: options.highContrast ? NSColor.labelColor : NSColor.controlTextColor,
+            .foregroundColor: foregroundColor,
             .paragraphStyle: paragraphStyle,
         ]
+        if isStacked {
+            attributes[.baselineOffset] = Self.stackedBaselineOffset
+        }
         let result = NSMutableAttributedString()
         var accessibilityLines: [String] = []
 
@@ -156,7 +163,11 @@ final class MenuBarLayoutRenderer {
                     token,
                     data: data,
                     icon: icon,
-                    style: TokenStyle(font: font, attributes: attributes),
+                    style: TokenStyle(
+                        font: font,
+                        foregroundColor: foregroundColor,
+                        iconHeight: Self.iconHeight(size: options.size, isStacked: isStacked),
+                        attributes: attributes),
                     options: options)
                 result.append(renderedItem.value)
                 if let accessibilityText = renderedItem.accessibilityText {
@@ -195,10 +206,8 @@ final class MenuBarLayoutRenderer {
                     attributes: style.attributes)
             }
             let attachment = NSTextAttachment()
-            attachment.image = icon
-            let height = options.size == .small
-                ? min(style.font.capHeight + 2, 12)
-                : min(style.font.capHeight + 3, 15)
+            attachment.image = Self.attachmentImage(icon, tint: style.foregroundColor)
+            let height = style.iconHeight
             let width = icon.size.height > 0 ? icon.size.width * height / icon.size.height : height
             attachment.bounds = NSRect(
                 x: 0,
@@ -288,6 +297,22 @@ final class MenuBarLayoutRenderer {
         }
     }
 
+    private static func attachmentImage(_ image: NSImage, tint: NSColor) -> NSImage {
+        guard image.isTemplate else { return image }
+
+        // NSTextAttachment draws an NSImage directly instead of through an image cell, so AppKit does not
+        // apply template tinting here. Keep a template image for status-item semantics while drawing its mask
+        // with the same dynamic foreground color as the surrounding title.
+        let tintedImage = NSImage(size: image.size, flipped: false) { rect in
+            image.draw(in: rect)
+            tint.setFill()
+            rect.fill(using: .sourceAtop)
+            return true
+        }
+        tintedImage.isTemplate = true
+        return tintedImage
+    }
+
     private static func resetToken(
         _ value: String?,
         unavailableLabel: String,
@@ -347,5 +372,12 @@ final class MenuBarLayoutRenderer {
             return size == .small ? 8 : 9
         }
         return size == .small ? 11 : NSFont.systemFontSize
+    }
+
+    private static func iconHeight(size: MenuBarLayoutSize, isStacked: Bool) -> CGFloat {
+        if isStacked {
+            return size == .small ? 8 : 9
+        }
+        return size == .small ? 14 : 16
     }
 }
