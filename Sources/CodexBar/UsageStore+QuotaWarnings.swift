@@ -200,7 +200,9 @@ extension UsageStore {
             return
         }
         guard let rateWindow else {
-            self.clearQuotaWarningState(provider: provider, window: window)
+            if windowID == nil {
+                self.quotaWarningState.removeValue(forKey: key)
+            }
             return
         }
         guard !rateWindow.isSyntheticPlaceholder else { return }
