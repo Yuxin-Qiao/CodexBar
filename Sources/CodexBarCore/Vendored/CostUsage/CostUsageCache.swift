@@ -11,7 +11,7 @@ enum CostUsageCacheIO {
     private static func artifactVersion(for provider: UsageProvider) -> Int {
         switch provider {
         case .codex:
-            10
+            11
         case .claude, .vertexai:
             5
         default:
@@ -130,8 +130,8 @@ struct CostUsageCache: Codable {
 struct CostUsageFileUsage: Codable {
     var mtimeUnixMs: Int64
     var size: Int64
-    /// Sampling fingerprint recorded at scan time; nil on pre-fingerprint cache entries,
-    /// which are treated as stale and rescanned once.
+    /// Sampling fingerprint recorded at scan time; nil on cache entries written before
+    /// bounded content-fingerprint validation was introduced.
     var fingerprint: CostUsageSourceFingerprint?
     var days: [String: [String: [Int]]]
     var parsedBytes: Int64?
@@ -150,6 +150,7 @@ struct CostUsageFileUsage: Codable {
     var projectPath: String?
     var canonicalProjectPath: String?
     var codexCostCacheComplete: Bool?
+    var codexSession: CostUsageCodexSessionMetadata?
     var codexCostNanos: [String: [String: Int64]]?
     var codexPrioritySurchargeNanos: [String: [String: Int64]]?
     var codexStandardCostNanos: [String: [String: Int64]]?
@@ -157,15 +158,75 @@ struct CostUsageFileUsage: Codable {
     var codexStandardTokens: [String: [String: Int]]?
     var codexPriorityTokens: [String: [String: Int]]?
     var codexTurnIDs: [String]?
+    /// Refreshed by Codex normalization paths, never by sidecar cache validation.
+    var codexWorkspaceContentFingerprint: String?
     var codexRows: [CostUsageScanner.CodexUsageRow]?
     var claudeRows: [CostUsageScanner.ClaudeUsageRow]?
+    /// Identity and target size for an in-progress bounded Codex parse.
+    var codexScanFileId: String?
+    var codexScanTargetSize: Int64?
+    var codexScanComplete: Bool?
+    var codexJSONLResumeState: CostUsageJsonl.ResumeState?
+    /// Compact relevant events retained while a subagent rollout awaits full-shape classification.
+    var codexBufferedSubagentLines: [CostUsageScanner.CodexBufferedFastLine]?
+}
+
+struct CostUsageCodexSessionMetadata: Codable, Equatable {
+    var sessionId: String?
+    var forkedFromId: String?
+    var cwd: String?
+    var title: String?
+    var startedAtUnixMs: Int64?
+    var latestActivityUnixMs: Int64?
+
+    var isEmpty: Bool {
+        self.sessionId == nil
+            && self.forkedFromId == nil
+            && self.cwd == nil
+            && self.title == nil
+            && self.startedAtUnixMs == nil
+            && self.latestActivityUnixMs == nil
+    }
+
+    func merging(_ newer: CostUsageCodexSessionMetadata) -> CostUsageCodexSessionMetadata {
+        CostUsageCodexSessionMetadata(
+            sessionId: newer.sessionId ?? self.sessionId,
+            forkedFromId: newer.forkedFromId ?? self.forkedFromId,
+            cwd: newer.cwd ?? self.cwd,
+            title: newer.title ?? self.title,
+            startedAtUnixMs: Self.earlier(self.startedAtUnixMs, newer.startedAtUnixMs),
+            latestActivityUnixMs: Self.later(self.latestActivityUnixMs, newer.latestActivityUnixMs))
+    }
+
+    private static func earlier(_ lhs: Int64?, _ rhs: Int64?) -> Int64? {
+        switch (lhs, rhs) {
+        case let (lhs?, rhs?): min(lhs, rhs)
+        case let (lhs?, nil): lhs
+        case let (nil, rhs?): rhs
+        case (nil, nil): nil
+        }
+    }
+
+    private static func later(_ lhs: Int64?, _ rhs: Int64?) -> Int64? {
+        switch (lhs, rhs) {
+        case let (lhs?, rhs?): max(lhs, rhs)
+        case let (lhs?, nil): lhs
+        case let (nil, rhs?): rhs
+        case (nil, nil): nil
+        }
+    }
 }
 
 struct CostUsageCodexTotals: Codable, Equatable {
     var input: Int
     var cached: Int
     var output: Int
-    /// Reasoning output tokens (`reasoning_output_tokens`); a sub-bucket of `output`, mirroring
-    /// tokscale's `CodexTotals`. Component-wise delta math carries it exactly like `output`.
-    var reasoning: Int = 0
+    var reasoning: Int?
+
+    init(input: Int, cached: Int, output: Int, reasoning: Int? = nil) {
+        self.input = input
+        self.cached = cached
+        self.output = output
+        self.reasoning = reasoning
+    }
 }
