@@ -151,6 +151,7 @@ public enum ProviderDescriptorRegistry {
         .opencodego: OpenCodeGoProviderDescriptor.descriptor,
         .alibaba: AlibabaCodingPlanProviderDescriptor.descriptor,
         .alibabatokenplan: AlibabaTokenPlanProviderDescriptor.descriptor,
+        .qwencloud: QwenCloudProviderDescriptor.descriptor,
         .factory: FactoryProviderDescriptor.descriptor,
         .gemini: GeminiProviderDescriptor.descriptor,
         .antigravity: AntigravityProviderDescriptor.descriptor,

@@ -8,6 +8,24 @@ import Testing
 @Suite(.serialized)
 struct ProviderSettingsDescriptorTests {
     @Test
+    func `provider settings refresh enables explicit browser retry`() async {
+        var observedInteraction: ProviderInteraction?
+        var browserRetryAllowed = false
+
+        await KeychainAccessGate.withTaskOverrideForTesting(false) {
+            await BrowserCookieAccessGate.withDeniedBrowsersForTesting([.chrome]) {
+                await ProviderSettingsRefreshInteraction.perform {
+                    observedInteraction = ProviderInteractionContext.current
+                    browserRetryAllowed = BrowserCookieAccessGate.shouldAttempt(.chrome)
+                }
+            }
+        }
+
+        #expect(observedInteraction == .userInitiated)
+        #expect(browserRetryAllowed)
+    }
+
+    @Test
     func `toggle I ds are unique across providers`() throws {
         let fixture = try self.makeSettingsFixture(suite: "ProviderSettingsDescriptorTests-unique")
         var seenToggleIDs: Set<String> = []
@@ -305,6 +323,25 @@ struct ProviderSettingsDescriptorTests {
         #expect(optionIDs.contains(ClaudeOAuthKeychainPromptMode.onlyOnUserAction.rawValue))
         #expect(optionIDs.contains(ClaudeOAuthKeychainPromptMode.always.rawValue))
         #expect(keychainPicker.isEnabled?() ?? true)
+    }
+
+    @Test
+    func `claude daily routines toggle follows global optional usage setting`() throws {
+        let fixture = try self.makeSettingsFixture(suite: "ProviderSettingsDescriptorTests-claude-routines")
+        let context = fixture.settingsContext(provider: .claude)
+        let toggles = ClaudeProviderImplementation().settingsToggles(context: context)
+        let routinesToggle = try #require(toggles.first {
+            $0.id == "claude-daily-routines-usage-visible"
+        })
+
+        #expect(routinesToggle.binding.wrappedValue)
+        #expect(routinesToggle.isEnabled?() == true)
+
+        routinesToggle.binding.wrappedValue = false
+        #expect(fixture.settings.claudeDailyRoutinesUsageVisible == false)
+
+        fixture.settings.showOptionalCreditsAndExtraUsage = false
+        #expect(routinesToggle.isEnabled?() == false)
     }
 
     @Test
