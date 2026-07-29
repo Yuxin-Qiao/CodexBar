@@ -67,10 +67,14 @@ public enum MiniMaxSessionScanner {
             self.requests = nextRequests
             if let cost = row.estimatedCost(
                 modelsDevCatalog: modelsDevCatalog,
-                modelsDevCacheRoot: modelsDevCacheRoot)
+                modelsDevCacheRoot: modelsDevCacheRoot),
+                cost.isFinite
             {
-                self.cost += cost
-                self.sawCost = true
+                let nextCost = self.cost + cost
+                if nextCost.isFinite {
+                    self.cost = nextCost
+                    self.sawCost = true
+                }
             }
             return true
         }
@@ -92,8 +96,11 @@ public enum MiniMaxSessionScanner {
             self.reasoning = nextReasoning
             self.requests = nextRequests
             if other.sawCost {
-                self.cost += other.cost
-                self.sawCost = true
+                let nextCost = self.cost + other.cost
+                if other.cost.isFinite, nextCost.isFinite {
+                    self.cost = nextCost
+                    self.sawCost = true
+                }
             }
             return true
         }
@@ -181,6 +188,7 @@ public enum MiniMaxSessionScanner {
     {
         try checkCancellation()
         let days = max(1, historyDays)
+        let calendar = CostUsageLocalDay.gregorianCalendar(preserving: calendar)
         let databaseURL = self.runtimeDatabaseURL(environment: environment)
         guard FileManager.default.fileExists(atPath: databaseURL.path) else { return nil }
         let end = calendar.startOfDay(for: now)
@@ -226,6 +234,7 @@ public enum MiniMaxSessionScanner {
                 guard total.merge(value) else { return nil }
                 modelBreakdowns.append(CostUsageDailyReport.ModelBreakdown(
                     modelName: key.model,
+                    billingProviderID: UsageProvider.minimax.rawValue,
                     costUSD: value.sawCost ? value.cost : nil,
                     totalTokens: modelTotal,
                     inputTokens: value.input,
@@ -307,11 +316,19 @@ public enum MiniMaxSessionScanner {
         checkCancellation: () throws -> Void) throws -> [UsageRow]?
     {
         var db: OpaquePointer?
-        // The runtime database is WAL-journaled. A plain read-only open cannot create the shared
-        // -shm/-wal files and may surface an empty or stale snapshot; `immutable=1` tells SQLite the
-        // file won't change under us, so it reads the main database file directly without WAL setup.
-        let uri = "file://\(databaseURL.path)?immutable=1"
-        guard sqlite3_open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) == SQLITE_OK else {
+        // The runtime database is WAL-journaled. `immutable=1` must not be used here: it tells
+        // SQLite the database cannot change and can therefore ignore a live WAL, which made recent
+        // MiniMax turns disappear until a checkpoint. A normal URI read-only connection observes
+        // committed WAL frames while still preventing CodexBar from modifying the provider DB.
+        let encodedPath = databaseURL.path.addingPercentEncoding(
+            withAllowedCharacters: .urlPathAllowed) ?? databaseURL.path
+        let uri = "file:\(encodedPath)?mode=ro"
+        guard sqlite3_open_v2(
+            uri,
+            &db,
+            SQLITE_OPEN_READONLY | SQLITE_OPEN_URI | SQLITE_OPEN_FULLMUTEX,
+            nil) == SQLITE_OK
+        else {
             sqlite3_close(db)
             return nil
         }

@@ -1,5 +1,40 @@
 import Foundation
 
+/// Extracts billing ownership only from an explicit provider namespace retained in a model id.
+///
+/// A plain family label such as `MiniMax-M3` is not evidence because a subscription can bundle
+/// that model. A namespaced id such as `minimax/MiniMax-M3` is routing evidence and can safely be
+/// carried into the dashboard without tool-specific heuristics.
+public enum CostUsageBillingProvider {
+    public static func providerID(fromNamespacedModel model: String) -> String? {
+        let trimmed = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        let components = trimmed
+            .split(separator: "/", omittingEmptySubsequences: true)
+            .dropLast()
+            .map { $0.lowercased() }
+        guard !components.isEmpty else {
+            return nil
+        }
+        let aliases: [String: String] = [
+            "alibaba": UsageProvider.qwencloud.rawValue,
+            "alibabacloud": UsageProvider.qwencloud.rawValue,
+            "anthropic": UsageProvider.claude.rawValue,
+            "google": UsageProvider.gemini.rawValue,
+            "minimax-cn": UsageProvider.minimax.rawValue,
+            "moonshot": UsageProvider.moonshot.rawValue,
+            "moonshotai": UsageProvider.moonshot.rawValue,
+            "openai": UsageProvider.openai.rawValue,
+            "qwen": UsageProvider.qwencloud.rawValue,
+            "z.ai": UsageProvider.zai.rawValue,
+        ]
+        for namespace in components.reversed() {
+            if let alias = aliases[namespace] { return alias }
+            if let provider = UsageProvider(rawValue: namespace) { return provider.rawValue }
+        }
+        return nil
+    }
+}
+
 /// Where a snapshot's `costUSD` figures come from. Local scanners price token counts against
 /// models.dev rate cards, so their cost is an API-rate *estimate* of the real bill; provider
 /// dashboards/APIs (Cursor usage events, Bedrock Cost Explorer) report the actual billed amount.
@@ -290,6 +325,10 @@ public struct CostUsageProjectSourceBreakdown: Sendable, Equatable {
 public struct CostUsageDailyReport: Sendable, Decodable {
     public struct ModelBreakdown: Sendable, Decodable, Equatable {
         public let modelName: String
+        /// Provider/endpoint identity reported by the source record. This is
+        /// billing evidence, unlike a model-name guess. It is intentionally
+        /// optional because many historical formats do not retain routing.
+        public let billingProviderID: String?
         public let costUSD: Double?
         public let totalTokens: Int?
         public let inputTokens: Int?
@@ -309,6 +348,8 @@ public struct CostUsageDailyReport: Sendable, Decodable {
 
         private enum CodingKeys: String, CodingKey {
             case modelName
+            case billingProviderID
+            case providerID
             case costUSD
             case cost
             case totalTokens
@@ -331,6 +372,9 @@ public struct CostUsageDailyReport: Sendable, Decodable {
         public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             self.modelName = try container.decode(String.self, forKey: .modelName)
+            self.billingProviderID =
+                try container.decodeIfPresent(String.self, forKey: .billingProviderID)
+                ?? container.decodeIfPresent(String.self, forKey: .providerID)
             self.costUSD =
                 try container.decodeIfPresent(Double.self, forKey: .costUSD)
                 ?? container.decodeIfPresent(Double.self, forKey: .cost)
@@ -357,6 +401,7 @@ public struct CostUsageDailyReport: Sendable, Decodable {
 
         public init(
             modelName: String,
+            billingProviderID: String? = nil,
             costUSD: Double?,
             totalTokens: Int? = nil,
             inputTokens: Int? = nil,
@@ -371,6 +416,11 @@ public struct CostUsageDailyReport: Sendable, Decodable {
             priorityTokens: Int? = nil)
         {
             self.modelName = modelName
+            let normalizedProviderID = billingProviderID?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            self.billingProviderID = normalizedProviderID?.isEmpty == false
+                ? normalizedProviderID
+                : nil
             self.costUSD = costUSD
             self.totalTokens = totalTokens
             self.inputTokens = inputTokens
@@ -1169,6 +1219,13 @@ enum CostUsageBucketInterval {
 }
 
 enum CostUsageLocalDay {
+    static func gregorianCalendar(preserving calendar: Calendar) -> Calendar {
+        var normalized = Calendar(identifier: .gregorian)
+        normalized.timeZone = calendar.timeZone
+        normalized.locale = calendar.locale
+        return normalized
+    }
+
     static func key(from date: Date, calendar: Calendar = .current) -> String {
         let components = calendar.dateComponents([.year, .month, .day], from: date)
         let year = components.year ?? 0

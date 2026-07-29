@@ -5,7 +5,7 @@ import Testing
 
 struct SpendDashboardKimiModelTests {
     @Test
-    func `token-only Kimi history joins global models without creating a currency group`() {
+    func `token-only Kimi history joins global models and keeps an unpriced usage group`() throws {
         let priced = SpendDashboardModel.ProviderInput(
             provider: .codex,
             displayName: "Codex",
@@ -22,7 +22,13 @@ struct SpendDashboardKimiModelTests {
             now: Self.now,
             calendar: Self.calendar)
 
-        #expect(model.groups.map(\.currencyCode) == ["USD"])
+        #expect(model.groups.map(\.currencyCode) == ["USD", "XXX"])
+        let unpriced = try #require(model.groups.last)
+        #expect(unpriced.totalTokens == 90)
+        #expect(unpriced.totalCost == nil)
+        #expect(unpriced.providers.map(\.totalCost) == [nil])
+        #expect(unpriced.modelAnalysis.pricedCostTotal == nil)
+        #expect(unpriced.dailyPoints.isEmpty)
         #expect(model.modelAnalysis.rows.map(\.displayName) == ["Kimi K3", "GPT-test"])
         #expect(model.modelAnalysis.rows.map(\.totalTokens) == [90, 10])
         #expect(model.modelAnalysis.rows.first?.rawModelNames == ["kimi-code/k3"])

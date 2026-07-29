@@ -37,6 +37,11 @@ struct SpendSubscriptionPlan: Equatable, Sendable {
     private static func looksLikeAuthenticationMethod(_ value: String) -> Bool {
         let normalized = value.lowercased()
         if normalized.contains("@") || normalized.contains("://") { return true }
+        if [
+            "api spend", "balance", "credits", "remaining", "usage", "spent", "this month",
+        ].contains(where: normalized.contains) {
+            return true
+        }
         return [
             "api key", "apikey", "oauth", "browser cookie", "cookie", "access token",
             "bearer token", "service account", "admin api",

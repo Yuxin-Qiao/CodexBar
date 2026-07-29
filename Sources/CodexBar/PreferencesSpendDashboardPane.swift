@@ -222,6 +222,11 @@ struct SpendDashboardPane: View {
             .count { $0.provider == .codex }
         for group in self.controller.model.groups {
             for row in group.providers {
+                if let subscriptionName = row.subscriptionName {
+                    names[row.id] = subscriptionName
+                    continue
+                }
+                guard !row.id.hasPrefix("billing:") else { continue }
                 let snapshots: [UsageSnapshot?] = if row.provider == .codex,
                                                      row.id.hasPrefix("codex:")
                 {
@@ -289,12 +294,12 @@ private struct SpendCurrencySection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
-                Text(self.group.currencyCode)
+                Text(self.group.currencyCode == "XXX" ? L("Unpriced usage") : self.group.currencyCode)
                     .font(SpendModelsListStyle.sectionTitleFont)
                 Spacer()
                 Text(self.group.totalCost.map {
                     UsageFormatter.currencyString($0, currencyCode: self.group.currencyCode)
-                } ?? L("Spend unavailable"))
+                } ?? L("Pricing unavailable"))
                     .font(.title3.weight(.semibold))
                     .monospacedDigit()
             }
@@ -310,7 +315,9 @@ private struct SpendCurrencySection: View {
             SpendDashboardPanel {
                 HStack(spacing: 24) {
                     SpendSummaryValue(
-                        title: L("Estimated spend"),
+                        title: self.group.costCoverage == .partial
+                            ? L("Known estimated spend")
+                            : L("Estimated spend"),
                         value: self.group.totalCost.map {
                             UsageFormatter.currencyString($0, currencyCode: self.group.currencyCode)
                         } ?? "—")
@@ -329,7 +336,8 @@ private struct SpendCurrencySection: View {
                 SpendModelsSection(
                     analysis: modelAnalysis,
                     chartDomain: self.modelChartDomain,
-                    selectedDays: self.requestedDays)
+                    selectedDays: self.requestedDays,
+                    currencyCode: self.group.currencyCode)
             }
             SpendDailyChart(group: self.group)
             if let activityAnalysis {
@@ -394,12 +402,22 @@ private struct SpendProviderPanel: View {
                         Spacer(minLength: 12)
                         Text(row.totalCost.map {
                             UsageFormatter.currencyString($0, currencyCode: self.group.currencyCode)
-                        } ?? L("Spend unavailable"))
+                        } ?? L("Pricing unavailable"))
                             .font(SpendModelsListStyle.controlFont)
                             .foregroundStyle(row.totalCost == nil ? .secondary : .primary)
                             .monospacedDigit()
                     }
                     .padding(.vertical, 5)
+                }
+                if self.group.costCoverage == .partial {
+                    Text(
+                        L(
+                            "%d of %d subscriptions have pricing",
+                            self.group.pricedProviderCount,
+                            self.group.providers.count))
+                        .font(SpendModelsListStyle.tertiaryFont)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 7)
                 }
             }
         }

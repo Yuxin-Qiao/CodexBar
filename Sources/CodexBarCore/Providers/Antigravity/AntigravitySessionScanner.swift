@@ -73,9 +73,12 @@ public enum AntigravitySessionScanner {
             self.output = nextOutput
             self.reasoning = nextReasoning
             self.requests = nextRequests
-            if let cost = row.costUSD {
-                self.cost += cost
-                self.sawCost = true
+            if let cost = row.costUSD, cost.isFinite {
+                let nextCost = self.cost + cost
+                if nextCost.isFinite {
+                    self.cost = nextCost
+                    self.sawCost = true
+                }
             }
             return true
         }
@@ -95,8 +98,11 @@ public enum AntigravitySessionScanner {
             self.reasoning = nextReasoning
             self.requests = nextRequests
             if other.sawCost {
-                self.cost += other.cost
-                self.sawCost = true
+                let nextCost = self.cost + other.cost
+                if other.cost.isFinite, nextCost.isFinite {
+                    self.cost = nextCost
+                    self.sawCost = true
+                }
             }
             return true
         }
@@ -148,6 +154,7 @@ public enum AntigravitySessionScanner {
     {
         try checkCancellation()
         let days = max(1, historyDays)
+        let calendar = CostUsageLocalDay.gregorianCalendar(preserving: calendar)
         let conversationsURL = self.conversationsURL(environment: environment)
         let databaseURLs = self.conversationDatabases(under: conversationsURL)
         guard !databaseURLs.isEmpty else { return nil }
@@ -285,10 +292,17 @@ public enum AntigravitySessionScanner {
         onRow: (UsageRow) -> Void) throws
     {
         var db: OpaquePointer?
-        // Read the main database file directly (immutable=1) to avoid WAL -shm/-wal setup on a
-        // read-only connection.
-        let uri = "file://\(databaseURL.path)?immutable=1"
-        guard sqlite3_open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) == SQLITE_OK else {
+        // Observe committed WAL frames. `immutable=1` is unsafe for a live provider database
+        // because SQLite may assume the WAL can never change and return stale history.
+        let encodedPath = databaseURL.path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+            ?? databaseURL.path
+        let uri = "file:\(encodedPath)?mode=ro"
+        guard sqlite3_open_v2(
+            uri,
+            &db,
+            SQLITE_OPEN_READONLY | SQLITE_OPEN_URI | SQLITE_OPEN_FULLMUTEX,
+            nil) == SQLITE_OK
+        else {
             sqlite3_close(db)
             return
         }
@@ -341,11 +355,17 @@ public enum AntigravitySessionScanner {
             .flatMap { $0 > 0 ? $0 : nil }
             ?? sessionTimestampMs
 
-        let input = Self.clampedInt(WireReader.varintField(usage, 1))
-            + Self.clampedInt(WireReader.varintField(usage, 2))
+        let inputPart1 = Self.clampedInt(WireReader.varintField(usage, 1))
+        let inputPart2 = Self.clampedInt(WireReader.varintField(usage, 2))
+        let inputAddition = inputPart1.addingReportingOverflow(inputPart2)
+        guard !inputAddition.overflow else { return nil }
+        let input = inputAddition.partialValue
         let cacheRead = Self.clampedInt(WireReader.varintField(usage, 5))
-        let output = Self.clampedInt(WireReader.varintField(usage, 9))
+        let visibleOutput = Self.clampedInt(WireReader.varintField(usage, 9))
         let reasoning = Self.clampedInt(WireReader.varintField(usage, 10))
+        let outputAddition = visibleOutput.addingReportingOverflow(reasoning)
+        guard !outputAddition.overflow else { return nil }
+        let output = outputAddition.partialValue
         guard input > 0 || output > 0 || cacheRead > 0 || reasoning > 0 else { return nil }
 
         if let responseID = WireReader.stringField(usage, 11)?

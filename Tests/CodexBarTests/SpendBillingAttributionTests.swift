@@ -14,7 +14,7 @@ struct SpendBillingAttributionTests {
                 snapshot: Self.snapshot([
                     Self.entry(model: "default", cost: 50, tokens: 500),
                     Self.entry(model: "claude-sonnet-4-6", cost: 100, tokens: 1000),
-                    Self.entry(model: "k3", cost: 25, tokens: 250),
+                    Self.entry(model: "k3", cost: 25, tokens: 250, billingProviderID: "kimi"),
                 ])),
             SpendDashboardModel.ProviderInput(
                 id: "antigravity",
@@ -30,15 +30,15 @@ struct SpendBillingAttributionTests {
                 displayName: "Codex",
                 snapshot: Self.snapshot([
                     Self.entry(model: "gpt-5.5", cost: 300, tokens: 3000),
-                    Self.entry(model: "MiniMax-M3", cost: 70, tokens: 700),
+                    Self.entry(model: "MiniMax-M3", cost: 70, tokens: 700, billingProviderID: "minimax"),
                 ])),
             SpendDashboardModel.ProviderInput(
                 id: "claude",
                 provider: .claude,
                 displayName: "Claude Code",
                 snapshot: Self.snapshot([
-                    Self.entry(model: "deepseek-v4-pro", cost: 40, tokens: 400),
-                    Self.entry(model: "kimi-for-coding", cost: 20, tokens: 200),
+                    Self.entry(model: "deepseek-v4-pro", cost: 40, tokens: 400, billingProviderID: "deepseek"),
+                    Self.entry(model: "kimi-for-coding", cost: 20, tokens: 200, billingProviderID: "moonshot"),
                     Self.entry(model: "claude-sonnet-4-6", cost: 5, tokens: 50),
                 ])),
             SpendDashboardModel.ProviderInput(
@@ -68,8 +68,9 @@ struct SpendBillingAttributionTests {
             .cursor,
             .antigravity,
             .minimax,
-            .kimi,
             .deepseek,
+            .kimi,
+            .moonshot,
             .claude,
         ])
         #expect(group.providers.map(\.id) == [
@@ -77,41 +78,58 @@ struct SpendBillingAttributionTests {
             "cursor",
             "antigravity",
             "minimax-native",
+            "billing:deepseek:claude",
             "kimi-native",
-            "billing:deepseek",
+            "billing:moonshot:claude",
             "claude",
         ])
-        #expect(group.providers.map(\.totalCost) == [300, 150, 100, 70.23, 55, 40, 5])
+        #expect(group.providers.map(\.totalCost) == [300, 150, 100, 70.23, 40, 35, 20, 5])
         #expect(group.providers.map(\.displayName) == [
             "Codex",
             "Cursor",
             "Antigravity",
             "MiniMax",
-            "Kimi",
             "DeepSeek",
+            "Kimi",
+            "Moonshot / Kimi API",
             "Claude",
         ])
-        #expect(group.providers.first(where: { $0.provider == .kimi })?.totalTokens == 550)
+        #expect(group.providers.first(where: { $0.provider == .kimi })?.totalTokens == 350)
+        #expect(group.providers.first(where: { $0.provider == .moonshot })?.totalTokens == 200)
         #expect(group.providers.first(where: { $0.provider == .minimax })?.totalTokens == 717)
     }
 
     @Test
-    func `Cursor moves only explicit external models`() {
+    func `model labels alone never change the billing owner`() {
         #expect(SpendBillingAttribution.billingVendor(forModel: "default", defaultProvider: .cursor) == .cursor)
         #expect(SpendBillingAttribution.billingVendor(
             forModel: "claude-sonnet-4-6",
             defaultProvider: .cursor) == .cursor)
         #expect(SpendBillingAttribution.billingVendor(forModel: "gpt-5.6", defaultProvider: .cursor) == .cursor)
-        #expect(SpendBillingAttribution.billingVendor(forModel: "k3", defaultProvider: .cursor) == .kimi)
+        #expect(SpendBillingAttribution.billingVendor(forModel: "k3", defaultProvider: .cursor) == .cursor)
         #expect(SpendBillingAttribution.billingVendor(
             forModel: "kimi-for-coding",
-            defaultProvider: .cursor) == .kimi)
+            defaultProvider: .cursor) == .cursor)
         #expect(SpendBillingAttribution.billingVendor(
             forModel: "MiniMax-M3",
-            defaultProvider: .cursor) == .minimax)
+            defaultProvider: .cursor) == .cursor)
         #expect(SpendBillingAttribution.billingVendor(
             forModel: "deepseek-v4",
-            defaultProvider: .cursor) == .deepseek)
+            defaultProvider: .cursor) == .cursor)
+    }
+
+    @Test
+    func `only explicit model namespaces become billing evidence`() {
+        #expect(CostUsageBillingProvider.providerID(fromNamespacedModel: "MiniMax-M3") == nil)
+        #expect(CostUsageBillingProvider.providerID(fromNamespacedModel: "minimax/MiniMax-M3") == "minimax")
+        #expect(CostUsageBillingProvider.providerID(fromNamespacedModel: "qwen/qwen3-coder") == "qwencloud")
+        #expect(CostUsageBillingProvider.providerID(fromNamespacedModel: "moonshot/kimi-k2") == "moonshot")
+        #expect(CostUsageBillingProvider.providerID(
+            fromNamespacedModel: "gateway/team/moonshot/kimi-k2") == "moonshot")
+        #expect(CostUsageBillingProvider.providerID(
+            fromNamespacedModel: "openrouter/anthropic/claude-sonnet-4") == "claude")
+        #expect(CostUsageBillingProvider.providerID(fromNamespacedModel: "gateway/team/model") == nil)
+        #expect(CostUsageBillingProvider.providerID(fromNamespacedModel: "/unowned") == nil)
     }
 
     @Test
@@ -228,7 +246,8 @@ struct SpendBillingAttributionTests {
             date: "2026-06-30",
             model: "MiniMax-M3",
             cost: 1,
-            tokens: 1000)
+            tokens: 1000,
+            billingProviderID: "minimax")
         let localEntry = Self.entry(
             date: "2026-07-12",
             model: "minimax/MiniMax-M3",
@@ -305,7 +324,8 @@ struct SpendBillingAttributionTests {
         date: String = "2026-07-24",
         model: String,
         cost: Double,
-        tokens: Int) -> CostUsageDailyReport.Entry
+        tokens: Int,
+        billingProviderID: String? = nil) -> CostUsageDailyReport.Entry
     {
         CostUsageDailyReport.Entry(
             date: date,
@@ -316,6 +336,7 @@ struct SpendBillingAttributionTests {
             modelsUsed: [model],
             modelBreakdowns: [CostUsageDailyReport.ModelBreakdown(
                 modelName: model,
+                billingProviderID: billingProviderID,
                 costUSD: cost,
                 totalTokens: tokens,
                 inputTokens: tokens / 2,

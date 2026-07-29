@@ -39,6 +39,9 @@ import CSQLite3
 /// conflict.
 public enum OpenCodeSessionScanner {
     public static let defaultHistoryDays = 30
+    public static let maximumFiles = 20000
+    public static let maximumBytes = 512 * 1024 * 1024
+    public static let maximumFileBytes = 16 * 1024 * 1024
 
     /// Environment override for the XDG data home, resolved directly here (the same way
     /// `KimiSettingsReader` honors `KIMI_CODE_HOME`) so this scanner stays self-contained.
@@ -192,18 +195,21 @@ public enum OpenCodeSessionScanner {
     {
         try checkCancellation()
         let days = max(1, historyDays)
+        let calendar = CostUsageLocalDay.gregorianCalendar(preserving: calendar)
         let end = calendar.startOfDay(for: now)
         let start = calendar.date(byAdding: .day, value: -(days - 1), to: end) ?? end
 
         var context = ScanContext(start: start, end: end, calendar: calendar)
         var records: [UsageRecord] = []
+        // The SQLite row is the richer source after an OpenCode migration because it carries
+        // provider-reported cost. Register it before legacy JSON so duplicates retain pricing.
+        try records.append(contentsOf: self.scanDatabaseMessages(
+            environment: environment,
+            context: &context,
+            checkCancellation: checkCancellation))
         try records.append(contentsOf: self.scanJSONMessages(
             environment: environment,
             fileManager: fileManager,
-            context: &context,
-            checkCancellation: checkCancellation))
-        try records.append(contentsOf: self.scanDatabaseMessages(
-            environment: environment,
             context: &context,
             checkCancellation: checkCancellation))
 
@@ -303,7 +309,7 @@ public enum OpenCodeSessionScanner {
         let storage = self.opencodeMessageStorageURL(environment: environment)
         guard let enumerator = fileManager.enumerator(
             at: storage,
-            includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
+            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey],
             options: [.skipsHiddenFiles])
         else {
             return []
@@ -311,15 +317,28 @@ public enum OpenCodeSessionScanner {
 
         let decoder = JSONDecoder()
         var records: [UsageRecord] = []
+        var visitedFiles = 0
+        var visitedBytes = 0
         while let url = enumerator.nextObject() as? URL {
             try checkCancellation()
             guard url.pathExtension.lowercased() == "json" else { continue }
-            if let modificationDate = try? url.resourceValues(forKeys: [.contentModificationDateKey])
-                .contentModificationDate,
-                modificationDate < start
+            guard visitedFiles < self.maximumFiles else { break }
+            let resourceValues = try? url.resourceValues(
+                forKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey])
+            guard resourceValues?.isRegularFile == true else { continue }
+            if let modificationDate = resourceValues?.contentModificationDate,
+               modificationDate < start
             {
                 continue
             }
+            let size = max(0, resourceValues?.fileSize ?? 0)
+            guard size <= self.maximumFileBytes,
+                  size <= self.maximumBytes - visitedBytes
+            else {
+                continue
+            }
+            visitedFiles += 1
+            visitedBytes += size
             guard let data = try? Data(contentsOf: url),
                   let message = try? decoder.decode(WireMessage.self, from: data)
             else {
@@ -372,9 +391,17 @@ public enum OpenCodeSessionScanner {
         guard FileManager.default.fileExists(atPath: dbURL.path) else { return [] }
 
         var db: OpaquePointer?
-        // WAL-journaled: `immutable=1` reads the main file directly without -shm/-wal setup.
-        let uri = "file://\(dbURL.path)?immutable=1"
-        guard sqlite3_open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) == SQLITE_OK else {
+        // Open the live database read-only without `immutable=1`; immutable mode can ignore
+        // committed WAL frames and publish stale history.
+        let encodedPath = dbURL.path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+            ?? dbURL.path
+        let uri = "file:\(encodedPath)?mode=ro"
+        guard sqlite3_open_v2(
+            uri,
+            &db,
+            SQLITE_OPEN_READONLY | SQLITE_OPEN_URI | SQLITE_OPEN_FULLMUTEX,
+            nil) == SQLITE_OK
+        else {
             sqlite3_close(db)
             return []
         }
@@ -547,15 +574,15 @@ public enum OpenCodeSessionScanner {
         return result
     }
 
-    /// Full-field fingerprint for cross-store dedup (created ts, model, token counts, cost).
+    /// Cross-store fingerprint for one logical message. Cost is deliberately excluded because
+    /// migrated database rows can enrich an otherwise identical legacy JSON record with pricing.
     private static func fingerprint(
         createdMs: Int64,
         model: String,
         usage: NormalizedUsage,
-        cost: Double?) -> String
+        cost _: Double?) -> String
     {
-        let costText = cost.map { String(format: "%.10f", $0) } ?? "nil"
-        return [
+        [
             String(createdMs),
             model,
             String(usage.input),
@@ -563,7 +590,6 @@ public enum OpenCodeSessionScanner {
             String(usage.cacheRead),
             String(usage.cacheCreation),
             String(usage.reasoning),
-            costText,
         ].joined(separator: "|")
     }
 

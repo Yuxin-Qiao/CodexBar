@@ -1,9 +1,4 @@
 import Foundation
-#if canImport(CryptoKit)
-import CryptoKit
-#else
-import Crypto
-#endif
 
 /// One bounded content sample: FNV-1a (64-bit) over up to `sampleBytes` read at a fixed offset.
 struct CostUsageFileSampleHash: Codable, Equatable {
@@ -14,24 +9,24 @@ struct CostUsageFileSampleHash: Codable, Equatable {
 
 /// tokscale-style sampling fingerprint for per-file cache freshness (mirrors `SourceFingerprint`
 /// in tokscale-core's message_cache.rs): size + nanosecond mtime + FNV-1a over 5 fixed sample
-/// points x 4 KiB, plus a whole-file SHA-256 used to tell a pure `touch` apart from a real edit.
+/// points x 4 KiB. Metadata changes are treated as content changes instead of hashing the whole
+/// file: active JSONL logs grow frequently, and an extra full read before parsing doubles disk I/O.
 struct CostUsageSourceFingerprint: Codable, Equatable {
     static let sampleBytes: Int64 = 4096
     static let samplePoints = 5
-    private static let hashBufferBytes = 64 * 1024
 
     var size: Int64
     var mtimeUnixNs: Int64
     var samples: [CostUsageFileSampleHash]
-    /// Whole-file SHA-256 (hex). Compared only when size/mtime moved, so the hot path
-    /// never pays for a full read.
+    /// Legacy cache field retained for decoding caches written by older builds. New fingerprints
+    /// intentionally leave it nil; bounded samples are the only content reads.
     var contentSHA256: String?
 
     enum Freshness: Equatable {
         /// Size, mtime and all bounded samples match; validation read at most
         /// `samplePoints x sampleBytes` and no full-file hash was computed.
         case unchanged
-        /// Metadata moved but the whole-file hash still matches: a pure touch.
+        /// Legacy state retained for callers that can read older cache entries.
         /// Carries the refreshed fingerprint the caller should store.
         case touched(CostUsageSourceFingerprint)
         /// Real content change, an unreadable file, or no usable cached fingerprint.
@@ -53,8 +48,7 @@ struct CostUsageSourceFingerprint: Codable, Equatable {
     // MARK: - Validation
 
     /// Cheap metadata first: when size + mtime match, only the bounded samples are recomputed
-    /// (<=20 KiB). When metadata moved, rebuild the complete fingerprint so a touch (same
-    /// content hash) can be distinguished from a real modification.
+    /// (<=20 KiB). When metadata moved, return changed immediately with a new bounded fingerprint.
     static func check(
         fileURL: URL,
         size: Int64,
@@ -77,30 +71,21 @@ struct CostUsageSourceFingerprint: Codable, Equatable {
                 samples: [],
                 contentSHA256: nil))
         }
-        if let cached,
-           let cachedHash = cached.contentSHA256,
-           cachedHash == fresh.contentSHA256
-        {
-            return .touched(fresh)
-        }
         return .changed(fresh)
     }
 
-    /// Builds a complete fingerprint (samples + whole-file hash) for the current file content.
-    /// Returns nil when the file cannot be read consistently (e.g. truncated mid-read).
+    /// Builds a bounded fingerprint for the current file content.
     static func make(
         fileURL: URL,
         size: Int64,
         mtimeUnixNs: Int64) -> CostUsageSourceFingerprint?
     {
-        guard let samples = self.sampleHashes(fileURL: fileURL, size: size),
-              let contentSHA256 = self.contentHash(fileURL: fileURL, expectedSize: size)
-        else { return nil }
+        guard let samples = self.sampleHashes(fileURL: fileURL, size: size) else { return nil }
         return CostUsageSourceFingerprint(
             size: size,
             mtimeUnixNs: mtimeUnixNs,
             samples: samples,
-            contentSHA256: contentSHA256)
+            contentSHA256: nil)
     }
 
     // MARK: - Sampling
@@ -152,28 +137,5 @@ struct CostUsageSourceFingerprint: Codable, Equatable {
             hash = hash &* 0x0000_0100_0000_01B3
         }
         return hash
-    }
-
-    // MARK: - Whole-file hash
-
-    /// Streams exactly `expectedSize` bytes through SHA-256. Reading a fixed size keeps the
-    /// hash tied to the stat snapshot the caller already validated against.
-    private static func contentHash(fileURL: URL, expectedSize: Int64) -> String? {
-        guard expectedSize >= 0 else { return nil }
-        guard let handle = try? FileHandle(forReadingFrom: fileURL) else { return nil }
-        defer { try? handle.close() }
-        var hasher = SHA256()
-        var remaining = expectedSize
-        while remaining > 0 {
-            let chunk = Int(min(remaining, Int64(self.hashBufferBytes)))
-            do {
-                guard let data = try handle.read(upToCount: chunk), !data.isEmpty else { return nil }
-                hasher.update(data: data)
-                remaining -= Int64(data.count)
-            } catch {
-                return nil
-            }
-        }
-        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 }

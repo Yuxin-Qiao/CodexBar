@@ -115,7 +115,17 @@ struct SpendDashboardModelTests {
         let providers = Set(ProviderDescriptorRegistry.all
             .filter(\.tokenCost.supportsTokenCost)
             .map(\.id))
-        #expect(providers == [.codex, .claude, .vertexai, .openai, .mistral, .bedrock, .cursor, .opencodego])
+        #expect(providers == [
+            .bedrock,
+            .claude,
+            .codex,
+            .cursor,
+            .groq,
+            .mistral,
+            .openai,
+            .opencodego,
+            .vertexai,
+        ])
     }
 
     @Test
@@ -126,7 +136,14 @@ struct SpendDashboardModelTests {
 
         #expect(Set(declaredSources) == Set(ProviderLocalHistorySource.allCases))
         #expect(declaredSources.count == Set(declaredSources).count)
-        #expect(Set(localDescriptors.map(\.id)) == [.antigravity, .gemini, .kimi, .minimax, .opencode])
+        #expect(Set(localDescriptors.map(\.id)) == [
+            .antigravity,
+            .gemini,
+            .kimi,
+            .minimax,
+            .opencode,
+            .qwencloud,
+        ])
 
         let dashboardProviders = Set(descriptors
             .filter(\.tokenCost.supportsDashboardHistory)
@@ -1404,6 +1421,43 @@ extension SpendDashboardModelTests {
         #expect(group.totalCost == nil)
         #expect(group.totalTokens == 12)
         #expect(group.providers.first?.totalCost == nil)
+    }
+
+    @Test
+    func `partial provider pricing is labelled partial without hiding known spend`() throws {
+        let priced = Self.input(id: "priced", provider: .codex, currency: "USD", cost: 4)
+        let unpriced = SpendDashboardModel.ProviderInput(
+            id: "unpriced",
+            provider: .qwencloud,
+            displayName: "Qwen Code",
+            snapshot: Self.snapshot(
+                currency: "USD",
+                entries: [Self.entry(day: "2026-07-16", cost: nil, tokens: 12)]))
+        let group = try #require(SpendDashboardModel.build(
+            inputs: [priced, unpriced],
+            requestedDays: 7,
+            now: Self.now,
+            calendar: Self.calendar).groups.first)
+
+        #expect(group.totalCost == 4)
+        #expect(group.costCoverage == .partial)
+        #expect(group.pricedProviderCount == 1)
+    }
+
+    @Test
+    func `global model analysis never sums costs across currencies`() {
+        let usd = Self.input(id: "usd", provider: .codex, currency: "USD", cost: 4)
+        let eur = Self.input(id: "eur", provider: .claude, currency: "EUR", cost: 3)
+        let model = SpendDashboardModel.build(
+            inputs: [usd, eur],
+            requestedDays: 7,
+            now: Self.now,
+            calendar: Self.calendar)
+
+        #expect(model.groups.count == 2)
+        #expect(model.modelAnalysis.rows.allSatisfy { $0.estimatedCost == nil })
+        #expect(model.modelAnalysis.costCoverage == .unavailable)
+        #expect(model.modelAnalysis.dailyValues.allSatisfy { $0.estimatedCost == nil })
     }
 
     @Test

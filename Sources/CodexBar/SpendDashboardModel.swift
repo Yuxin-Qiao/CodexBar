@@ -152,6 +152,7 @@ struct SpendDashboardModel: Equatable, Sendable {
         let projectCount: Int?
         let sessionCount: Int?
         let estimatedCost: Double?
+        let costIsEstimated: Bool
 
         var id: String {
             "\(self.sourceID):\(self.rawModelNames.joined(separator: "\u{0}"))"
@@ -362,13 +363,18 @@ struct SpendDashboardModel: Equatable, Sendable {
         let globalSummaries = inputs.map {
             Self.inputSummary(input: $0, bounds: bounds, calendar: calculationCalendar)
         }
+        let currencyCodes = Set(inputs.map { Self.currencyCode($0.snapshot.currencyCode) })
+        let pricedCurrencyCodes = currencyCodes.subtracting(["XXX"])
+        let combinesCurrencies = pricedCurrencyCodes.count > 1
         let globalModelAnalysis = Self.modelAnalysis(summaries: globalSummaries)
+            .removingCosts(if: combinesCurrencies)
         let globalModelRanges = Dictionary(uniqueKeysWithValues: Set([7, 30, 365, days]).map { rangeDays in
             let rangeBounds = Self.bounds(days: rangeDays, now: now, calendar: calculationCalendar)
             let summaries = inputs.map {
                 Self.inputSummary(input: $0, bounds: rangeBounds, calendar: calculationCalendar)
             }
             let analysis = Self.modelAnalysis(summaries: summaries)
+                .removingCosts(if: combinesCurrencies)
             let chartDomain = rangeDays == 365
                 ? Self.allModelChartDomain(
                     analysis: analysis,
@@ -377,20 +383,26 @@ struct SpendDashboardModel: Equatable, Sendable {
                 : Self.chartDomain(bounds: rangeBounds, calendar: calculationCalendar)
             return (rangeDays, ModelRange(analysis: analysis, chartDomain: chartDomain))
         })
-        let classifiedInputs = inputs.compactMap { input -> (currencyCode: String, input: ProviderInput)? in
-            guard let currencyCode = Self.currencyCode(input.snapshot.currencyCode) else { return nil }
-            return (currencyCode, input)
+        let classifiedInputs = inputs.map { input -> (currencyCode: String, input: ProviderInput) in
+            (Self.currencyCode(input.snapshot.currencyCode), input)
         }
         let groups = Dictionary(grouping: classifiedInputs, by: { $0.currencyCode })
             .map { currencyCode, inputs in
-                Self.buildCurrencyGroup(
+                let group = Self.buildCurrencyGroup(
                     currencyCode: currencyCode,
                     inputs: inputs.map(\.input),
                     days: days,
                     now: now,
                     calendar: calculationCalendar)
+                // XXX means the source did not establish a billing currency. Preserve its
+                // observed tokens and models, but never render its numeric cost as money.
+                return currencyCode == "XXX" ? group.removingCosts() : group
             }
-            .sorted { $0.currencyCode < $1.currencyCode }
+            .sorted {
+                if $0.currencyCode == "XXX" { return false }
+                if $1.currencyCode == "XXX" { return true }
+                return $0.currencyCode < $1.currencyCode
+            }
         return Self(
             requestedDays: days,
             groups: groups,
@@ -805,6 +817,7 @@ extension SpendDashboardModel {
                         aggregate.cost = Self.add(cost, to: aggregate.cost, overflowed: &aggregate.overflowedCost)
                         if input.costSource == .estimated {
                             aggregate.sawEstimatedCost = true
+                            source.sawEstimatedCost = true
                         }
                         source.sawCost = true
                         source.cost = Self.add(cost, to: source.cost, overflowed: &source.overflowedCost)
@@ -910,7 +923,8 @@ extension SpendDashboardModel {
                     coveredDayCount: source.coveredDayCount,
                     projectCount: source.projectCount,
                     sessionCount: source.sessionCount,
-                    estimatedCost: source.sawCost && !source.overflowedCost ? source.cost : nil)
+                    estimatedCost: source.sawCost && !source.overflowedCost ? source.cost : nil,
+                    costIsEstimated: source.sawEstimatedCost)
             }
             .sorted { lhs, rhs in
                 if lhs.providerName != rhs.providerName { return lhs.providerName < rhs.providerName }
@@ -1568,9 +1582,9 @@ extension SpendDashboardModel {
         return self.gregorianCalendar(timeZone: TimeZone(secondsFromGMT: 0) ?? .gmt)
     }
 
-    private static func currencyCode(_ rawValue: String) -> String? {
+    private static func currencyCode(_ rawValue: String) -> String {
         let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        return value.isEmpty || value == "XXX" ? nil : value
+        return value.isEmpty ? "XXX" : value
     }
 
     private static func validCost(_ value: Double?) -> Double? {

@@ -52,8 +52,15 @@ extension UsageStore {
                     self.requireFreshCodexSessionQuotaBaseline(observedAt: snapshot.updatedAt)
                 }
                 self.sessionQuotaLogger.debug("missing Codex session window; retained notification baseline")
-            } else {
+            } else if provider == .commandcode, !snapshot.commandCodeHasSubscriptionPlan {
+                // A confirmed free-tier response is an authoritative end to the previous paid
+                // subscription cycle. Unlike enrichment failure, a later paid plan is a new cycle.
                 self.clearSessionQuotaTransitionState(provider: provider)
+            } else {
+                // A transient provider response with no session lane is not evidence that a
+                // depleted cycle ended. Preserve the durable marker so the next refresh (or app
+                // restart) cannot replay the same depletion notification.
+                self.clearSessionQuotaTransitionState(provider: provider, clearPersistedDepletion: false)
             }
             return
         }
@@ -69,10 +76,13 @@ extension UsageStore {
             return
         }
         let previousState = self.sessionQuotaTransitionStates[provider]
-        let persistedDepletion = self.persistedSessionQuotaDepletionProviders()
+        let cycleIdentity = self.sessionQuotaDepletionCycleIdentity(
+            source: currentSource,
+            resetBoundary: currentResetBoundary,
+            codexOwnerKey: codexOwnerKey)
         let suppressRepeatedStartupDepletion = previousState == nil &&
             SessionQuotaNotificationLogic.isDepleted(currentRemaining) &&
-            persistedDepletion.contains(provider)
+            self.persistedSessionQuotaDepletionCycle(provider: provider) == cycleIdentity
         let forceBaseline = provider == .codex && self.codexSessionQuotaBaselineRequirement != nil
         let evaluation = SessionQuotaTransitionReducer.evaluate(
             previous: previousState,
@@ -89,7 +99,9 @@ extension UsageStore {
         self.sessionQuotaTransitionStates[provider] = evaluation.state
         self.persistSessionQuotaDepletion(
             provider: provider,
-            isDepleted: SessionQuotaNotificationLogic.isDepleted(currentRemaining))
+            cycleIdentity: SessionQuotaNotificationLogic.isDepleted(currentRemaining)
+                ? cycleIdentity
+                : nil)
         if provider == .codex {
             self.codexSessionQuotaBaselineRequirement = nil
         }

@@ -42,7 +42,7 @@ enum ProviderBrandIcon {
         }
 
         image.size = self.size
-        image.isTemplate = true
+        image.isTemplate = branding.iconRenderingMode == .template
         self.cache[provider] = image
         return image
     }

@@ -9,12 +9,13 @@ struct SpendModelsPresentationTests {
     }
 
     @Test
-    func `model card date labels stay English`() throws {
+    func `model card date labels follow the app locale`() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = try #require(TimeZone(secondsFromGMT: 0))
         let day = try #require(calendar.date(from: DateComponents(year: 2026, month: 5, day: 2)))
 
-        #expect(SpendModelsEnglishFormatter.dayText(day) == "May 2")
+        let expected = day.formatted(.dateTime.month(.abbreviated).day().locale(.autoupdatingCurrent))
+        #expect(SpendModelsDateFormatter.dayText(day) == expected)
     }
 
     @Test

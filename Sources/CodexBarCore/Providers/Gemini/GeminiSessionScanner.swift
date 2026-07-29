@@ -22,6 +22,9 @@ import Foundation
 /// `KimiCodeSessionScanner` robustness style.
 public enum GeminiSessionScanner {
     public static let defaultHistoryDays = 30
+    public static let maximumFiles = 20000
+    public static let maximumBytes = 512 * 1024 * 1024
+    public static let maximumFileBytes = 16 * 1024 * 1024
 
     /// Environment override for the Gemini CLI home directory, resolved directly here (the same
     /// way `KimiSettingsReader` honors `KIMI_CODE_HOME`) so this scanner stays self-contained.
@@ -235,10 +238,11 @@ public enum GeminiSessionScanner {
     {
         try checkCancellation()
         let days = max(1, historyDays)
+        let calendar = CostUsageLocalDay.gregorianCalendar(preserving: calendar)
         let tmp = self.geminiTmpURL(environment: environment)
         guard let enumerator = fileManager.enumerator(
             at: tmp,
-            includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
+            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey],
             options: [.skipsHiddenFiles])
         else {
             return nil
@@ -248,6 +252,8 @@ public enum GeminiSessionScanner {
         let start = calendar.date(byAdding: .day, value: -(days - 1), to: end) ?? end
         var values: [DayModelKey: TokenAccumulator] = [:]
         let decoder = JSONDecoder()
+        var visitedFiles = 0
+        var visitedBytes = 0
 
         while let url = enumerator.nextObject() as? URL {
             try checkCancellation()
@@ -257,11 +263,22 @@ public enum GeminiSessionScanner {
             else {
                 continue
             }
-            let modificationDate = try? url.resourceValues(forKeys: [.contentModificationDateKey])
-                .contentModificationDate
+            guard visitedFiles < self.maximumFiles else { break }
+            let resourceValues = try? url.resourceValues(
+                forKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey])
+            guard resourceValues?.isRegularFile == true else { continue }
+            let modificationDate = resourceValues?.contentModificationDate
             if let modificationDate, modificationDate < start {
                 continue
             }
+            let size = max(0, resourceValues?.fileSize ?? 0)
+            guard size <= self.maximumFileBytes,
+                  size <= self.maximumBytes - visitedBytes
+            else {
+                continue
+            }
+            visitedFiles += 1
+            visitedBytes += size
             guard let data = try? Data(contentsOf: url) else { continue }
             // Messages without a usable timestamp fall back to the file mtime (tokscale rule);
             // epoch zero simply lands outside the window when even the mtime is unavailable.

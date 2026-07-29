@@ -40,16 +40,17 @@ struct AntigravitySessionScannerTests {
             now: now)
 
         let report = try #require(snapshot)
-        #expect(report.last30DaysTokens == 1132 + 500 + 16000 + 300 + 1132 + 100 + 50)
+        #expect(report.last30DaysTokens == 1132 + 500 + 16000 + 300 + 40 + 1132 + 100 + 50)
         #expect(report.last30DaysRequests == 2)
         #expect(report.daily.count == 1)
         let entry = try #require(report.daily.first)
         #expect(entry.requestCount == 2)
         #expect(entry.inputTokens == 1132 + 500 + 1132 + 100)
         #expect(entry.cacheReadTokens == 16000)
-        #expect(entry.outputTokens == 350)
+        #expect(entry.outputTokens == 390)
         #expect(entry.modelsUsed == ["gemini-3.6-flash"])
-        let expectedCost = (2864.0 * 1.5e-6) + (16000.0 * 0.15e-6) + (350.0 * 7.5e-6)
+        #expect(entry.modelBreakdowns?.first?.reasoningTokens == 40)
+        let expectedCost = (2864.0 * 1.5e-6) + (16000.0 * 0.15e-6) + (390.0 * 7.5e-6)
         #expect(abs((entry.costUSD ?? 0) - expectedCost) < 1e-12)
     }
 

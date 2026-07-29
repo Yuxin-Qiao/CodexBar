@@ -79,6 +79,7 @@ struct GroqConsoleFetcherTests {
         let projected = snapshot.toCostUsageTokenSnapshot()
         #expect(projected.last30DaysRequests == 6)
         #expect(abs((projected.last30DaysCostUSD ?? 0) - 0.035) < 1e-9)
+        #expect(projected.costSource == .providerReported)
     }
 
     @Test

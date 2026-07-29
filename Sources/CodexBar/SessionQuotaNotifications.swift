@@ -335,26 +335,40 @@ enum SessionQuotaTransitionReducer {
 }
 
 extension UsageStore {
-    private static let sessionQuotaDepletionProvidersDefaultsKey =
-        "sessionQuotaDepletionProviders"
+    private static let sessionQuotaDepletionCyclesDefaultsKey =
+        "sessionQuotaDepletionCycles"
 
-    func persistedSessionQuotaDepletionProviders() -> Set<UsageProvider> {
-        let rawValues = self.settings.userDefaults
-            .stringArray(forKey: Self.sessionQuotaDepletionProvidersDefaultsKey) ?? []
-        return Set(rawValues.compactMap(UsageProvider.init(rawValue:)))
+    func persistedSessionQuotaDepletionCycle(provider: UsageProvider) -> String? {
+        let cycles = self.settings.userDefaults
+            .dictionary(forKey: Self.sessionQuotaDepletionCyclesDefaultsKey) as? [String: String]
+        return cycles?[provider.rawValue]
     }
 
-    func persistSessionQuotaDepletion(provider: UsageProvider, isDepleted: Bool) {
-        var providers = self.persistedSessionQuotaDepletionProviders()
-        guard providers.contains(provider) != isDepleted else { return }
-        if isDepleted {
-            providers.insert(provider)
+    func persistSessionQuotaDepletion(
+        provider: UsageProvider,
+        cycleIdentity: String?)
+    {
+        var cycles = self.settings.userDefaults
+            .dictionary(forKey: Self.sessionQuotaDepletionCyclesDefaultsKey) as? [String: String] ?? [:]
+        guard cycles[provider.rawValue] != cycleIdentity else { return }
+        if let cycleIdentity {
+            cycles[provider.rawValue] = cycleIdentity
         } else {
-            providers.remove(provider)
+            cycles.removeValue(forKey: provider.rawValue)
         }
         self.settings.userDefaults.set(
-            providers.map(\.rawValue).sorted(),
-            forKey: Self.sessionQuotaDepletionProvidersDefaultsKey)
+            cycles,
+            forKey: Self.sessionQuotaDepletionCyclesDefaultsKey)
+    }
+
+    func sessionQuotaDepletionCycleIdentity(
+        source: SessionQuotaWindowSource,
+        resetBoundary: Date?,
+        codexOwnerKey: CodexSessionQuotaOwnerKey?) -> String
+    {
+        let boundary = resetBoundary.map { String(Int64($0.timeIntervalSince1970.rounded())) } ?? "unbounded"
+        let owner = codexOwnerKey?.rawValue ?? "current-account"
+        return "\(source.rawValue)|\(boundary)|\(owner)"
     }
 }
 
@@ -460,9 +474,14 @@ extension UsageStore {
         return minutes <= 6 * 60
     }
 
-    func clearSessionQuotaTransitionState(provider: UsageProvider) {
+    func clearSessionQuotaTransitionState(
+        provider: UsageProvider,
+        clearPersistedDepletion: Bool = true)
+    {
         let removedState = self.sessionQuotaTransitionStates.removeValue(forKey: provider)
-        self.persistSessionQuotaDepletion(provider: provider, isDepleted: false)
+        if clearPersistedDepletion {
+            self.persistSessionQuotaDepletion(provider: provider, cycleIdentity: nil)
+        }
         // Generic provider cleanup can run while Codex is disabled or temporarily unavailable. Preserve
         // an already-depleted baseline across recovery so depletion cannot refire, but let a newly depleted
         // account notify after a positive baseline was discarded.

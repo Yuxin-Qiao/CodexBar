@@ -19,7 +19,7 @@ struct SpendClientModel: Identifiable, Equatable {
     let id: String
     let displayName: String
     let modelProvider: UsageProvider
-    let tokens: Int
+    let tokens: Int?
     let cost: Double?
     let costIsEstimated: Bool
     let requestCount: Int?
@@ -34,7 +34,7 @@ struct SpendClientGroup: Identifiable, Equatable {
     let toolName: String
     /// Product family name, e.g. "Claude", "Codex", "Kimi".
     let providerName: String
-    let totalTokens: Int
+    let totalTokens: Int?
     let totalCost: Double?
     let costIsEstimated: Bool
     let inputTokens: Int?
@@ -69,8 +69,8 @@ enum SpendClientBreakdown {
 
         for row in analysis.rows {
             for contribution in row.contributions {
-                let tokens = contribution.totalTokens ?? 0
-                guard tokens > 0 || contribution.estimatedCost != nil else { continue }
+                let tokens = contribution.totalTokens
+                guard (tokens ?? 0) > 0 || contribution.estimatedCost != nil else { continue }
                 var bucket = bySource[contribution.sourceID]
                     ?? (
                         contribution.provider,
@@ -83,10 +83,11 @@ enum SpendClientBreakdown {
                 var accum = bucket.models[row.id] ?? Accum(
                     displayName: row.displayName,
                     modelProvider: row.modelProvider,
-                    costIsEstimated: row.costIsEstimated)
-                accum.tokens += tokens
+                    costIsEstimated: contribution.costIsEstimated)
+                accum.tokens = Self.add(accum.tokens, tokens)
                 if let cost = contribution.estimatedCost {
-                    accum.cost = (accum.cost ?? 0) + cost
+                    let nextCost = (accum.cost ?? 0) + cost
+                    accum.cost = nextCost.isFinite ? nextCost : nil
                 }
                 accum.inputTokens = contribution.inputTokens
                 accum.outputTokens = contribution.outputTokens
@@ -113,12 +114,9 @@ enum SpendClientBreakdown {
                     costIsEstimated: accum.costIsEstimated,
                     requestCount: accum.requestCount)
             }
-            .sorted { $0.tokens > $1.tokens }
-            let totalTokens = models.reduce(0) { $0 + $1.tokens }
-            let totalCost = models.reduce(nil as Double?) { partial, model in
-                guard let cost = model.cost else { return partial }
-                return (partial ?? 0) + cost
-            }
+            .sorted { ($0.tokens ?? -1) > ($1.tokens ?? -1) }
+            let totalTokens = Self.completeSum(models.map(\.tokens))
+            let totalCost = Self.completeCostSum(models.map(\.cost))
             return SpendClientGroup(
                 sourceID: sourceID,
                 provider: bucket.provider,
@@ -139,13 +137,13 @@ enum SpendClientBreakdown {
                 sessionCount: bucket.models.values.compactMap(\.sessionCount).max(),
                 models: models)
         }
-        .sorted { $0.totalTokens > $1.totalTokens }
+        .sorted { ($0.totalTokens ?? -1) > ($1.totalTokens ?? -1) }
     }
 
     private struct Accum {
         let displayName: String
         let modelProvider: UsageProvider
-        var tokens = 0
+        var tokens: Int? = 0
         var cost: Double?
         var costIsEstimated: Bool
         var inputTokens: Int?
@@ -161,7 +159,29 @@ enum SpendClientBreakdown {
 
     private static func completeSum(_ values: [Int?]) -> Int? {
         guard values.allSatisfy({ $0 != nil }) else { return nil }
-        return values.compactMap(\.self).reduce(0, +)
+        var total = 0
+        for value in values.compactMap(\.self) {
+            let result = total.addingReportingOverflow(value)
+            guard !result.overflow else { return nil }
+            total = result.partialValue
+        }
+        return total
+    }
+
+    private static func completeCostSum(_ values: [Double?]) -> Double? {
+        guard values.allSatisfy({ $0?.isFinite == true }) else { return nil }
+        var total = 0.0
+        for value in values.compactMap(\.self) {
+            total += value
+            guard total.isFinite else { return nil }
+        }
+        return total
+    }
+
+    private static func add(_ lhs: Int?, _ rhs: Int?) -> Int? {
+        guard let lhs, let rhs else { return nil }
+        let result = lhs.addingReportingOverflow(rhs)
+        return result.overflow ? nil : result.partialValue
     }
 }
 
@@ -220,7 +240,10 @@ enum SpendToolComparisonPresentation {
                 displayName: row.displayName,
                 modelProvider: row.modelProvider,
                 tools: tools,
-                totalTokens: tools.compactMap(\.totalTokens).reduce(0, +))
+                totalTokens: tools.compactMap(\.totalTokens).reduce(0) { total, value in
+                    let result = total.addingReportingOverflow(value)
+                    return result.overflow ? Int.max : result.partialValue
+                })
         }
         .sorted {
             if $0.totalTokens != $1.totalTokens { return $0.totalTokens > $1.totalTokens }
@@ -265,6 +288,7 @@ enum SpendToolComparisonPresentation {
 
 struct SpendClientsView: View {
     let analysis: SpendDashboardModel.ModelAnalysis
+    let currencyCode: String
     @State private var expandedGroupIDs: Set<String> = []
     @State private var selectedComparisonID: String?
 
@@ -457,17 +481,23 @@ struct SpendClientsView: View {
     }
 
     private func totalText(_ group: SpendClientGroup) -> String {
-        var parts = [UsageFormatter.tokenCountString(group.totalTokens)]
+        var parts: [String] = []
+        if let tokens = group.totalTokens {
+            parts.append(UsageFormatter.tokenCountString(tokens))
+        }
         if let cost = group.totalCost {
-            parts.append(UsageFormatter.currencyString(cost, currencyCode: "USD"))
+            parts.append(UsageFormatter.currencyString(cost, currencyCode: self.currencyCode))
         }
         return parts.joined(separator: " · ")
     }
 
     private func modelMetric(_ model: SpendClientModel) -> String {
-        var parts = [UsageFormatter.tokenCountString(model.tokens)]
+        var parts: [String] = []
+        if let tokens = model.tokens {
+            parts.append(UsageFormatter.tokenCountString(tokens))
+        }
         if let cost = model.cost {
-            parts.append(UsageFormatter.currencyString(cost, currencyCode: "USD"))
+            parts.append(UsageFormatter.currencyString(cost, currencyCode: self.currencyCode))
         }
         return parts.joined(separator: " · ")
     }
@@ -509,7 +539,7 @@ struct SpendClientsView: View {
         if let cost = tool.costPerMillionTokens {
             parts.append(String(
                 format: L("%@ per 1M tokens"),
-                UsageFormatter.currencyString(cost, currencyCode: "USD")))
+                UsageFormatter.currencyString(cost, currencyCode: self.currencyCode)))
         }
         if tool.coveredDayCount > 0 {
             parts.append(String(format: L("%d days"), tool.coveredDayCount))

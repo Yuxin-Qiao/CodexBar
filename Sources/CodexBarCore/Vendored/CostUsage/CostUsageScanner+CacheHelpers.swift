@@ -1492,6 +1492,7 @@ extension CostUsageScanner {
                 breakdown.append(
                     CostUsageDailyReport.ModelBreakdown(
                         modelName: model,
+                        billingProviderID: CostUsageBillingProvider.providerID(fromNamespacedModel: model),
                         costUSD: cost,
                         totalTokens: totalTokens,
                         inputTokens: input,

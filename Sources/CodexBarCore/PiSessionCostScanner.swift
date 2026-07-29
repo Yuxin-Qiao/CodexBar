@@ -234,8 +234,7 @@ enum PiSessionCostScanner {
             pricingKey: CostUsagePricingKey.codex(
                 modelsDevArtifact: modelsDevArtifact,
                 formulaVersion: Self.costFormulaVersion,
-                parserHash: CodexParserHash.value,
-                modelsDevProviderIDs: ["anthropic", "openai"]))
+                parserHash: CodexParserHash.value))
     }
 
     private static func requestedWindowExpandsCache(

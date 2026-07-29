@@ -42,7 +42,7 @@ struct SpendActivitySeries {
         var totals: [Date: Int] = [:]
         for value in analysis.dailyValues {
             let day = calendar.startOfDay(for: value.day)
-            totals[day, default: 0] += max(value.totalTokens ?? 0, 0)
+            totals[day] = Self.saturatingAdd(totals[day] ?? 0, max(value.totalTokens ?? 0, 0))
         }
 
         let today = calendar.startOfDay(for: Date())
@@ -75,6 +75,11 @@ struct SpendActivitySeries {
         else { return nil }
         return min(endOfWeek, self.today)
     }
+
+    private static func saturatingAdd(_ lhs: Int, _ rhs: Int) -> Int {
+        let result = lhs.addingReportingOverflow(rhs)
+        return result.overflow ? Int.max : result.partialValue
+    }
 }
 
 enum SpendActivityLevels {
@@ -94,14 +99,21 @@ enum SpendActivityLevels {
     /// Weekly totals (sum each 7-day column).
     static func weeklyTotals(_ daily: [Int]) -> [Int] {
         stride(from: 0, to: daily.count, by: SpendActivitySeries.dayCount).map {
-            daily[$0..<min($0 + SpendActivitySeries.dayCount, daily.count)].reduce(0, +)
+            daily[$0..<min($0 + SpendActivitySeries.dayCount, daily.count)].reduce(0) { total, value in
+                let result = total.addingReportingOverflow(value)
+                return result.overflow ? Int.max : result.partialValue
+            }
         }
     }
 
     /// Running cumulative totals across weeks.
     static func cumulativeTotals(_ weekly: [Int]) -> [Int] {
         var sum = 0
-        return weekly.map { sum += $0; return sum }
+        return weekly.map {
+            let result = sum.addingReportingOverflow($0)
+            sum = result.overflow ? Int.max : result.partialValue
+            return sum
+        }
     }
 
     /// GitHub contribution-graph greens (light mode), as a tribute. Level 0 is the empty track.
@@ -145,7 +157,10 @@ struct SpendActivityHeatmapView: View {
     var body: some View {
         let series = self.series
         let hasActivity = (series.daily.max() ?? 0) > 0
-        let totalTokens = series.daily.reduce(0, +)
+        let totalTokens = series.daily.reduce(0) { total, value in
+            let result = total.addingReportingOverflow(value)
+            return result.overflow ? Int.max : result.partialValue
+        }
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -274,6 +289,13 @@ private struct SpendActivityDailyGrid: View {
                 }
                 .aspectRatio(CGFloat(self.columns) / CGFloat(self.rows), contentMode: .fit)
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(L("Daily token activity"))
+            .accessibilityValue(
+                L(
+                    "%@ tokens across %d active days",
+                    UsageFormatter.tokenCountString(self.accessibilityTokenTotal),
+                    self.series.daily.count(where: { $0 > 0 })))
         }
     }
 
@@ -327,7 +349,7 @@ private struct SpendActivityDailyGrid: View {
         VStack(spacing: 0) {
             ForEach(0..<self.rows, id: \.self) { row in
                 Text(self.weekdayLabel(row))
-                    .font(.system(size: 7))
+                    .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .frame(maxHeight: .infinity, alignment: .center)
             }
@@ -353,7 +375,7 @@ private struct SpendActivityDailyGrid: View {
             ZStack(alignment: .topLeading) {
                 ForEach(self.monthMarkers(pitch: pitch), id: \.offset) { marker in
                     Text(marker.label)
-                        .font(.system(size: 8))
+                        .font(.caption2)
                         .foregroundStyle(.tertiary)
                         .offset(x: marker.offset)
                 }
@@ -370,7 +392,7 @@ private struct SpendActivityDailyGrid: View {
 
     private func monthMarkers(pitch: CGFloat) -> [MonthMarker] {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.locale = .autoupdatingCurrent
         formatter.dateFormat = "MMM"
         var markers: [MonthMarker] = []
         var lastLabel = ""
@@ -384,6 +406,13 @@ private struct SpendActivityDailyGrid: View {
             lastLabel = label
         }
         return markers
+    }
+
+    private var accessibilityTokenTotal: Int {
+        self.series.daily.reduce(into: 0) { total, value in
+            let addition = total.addingReportingOverflow(value)
+            total = addition.overflow ? Int.max : addition.partialValue
+        }
     }
 }
 
@@ -454,6 +483,9 @@ private struct SpendActivityWeekGrid: View {
             }
             .aspectRatio(CGFloat(self.columns) / CGFloat(self.rows), contentMode: .fit)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(self.cumulative ? L("Cumulative token activity") : L("Weekly token activity"))
+        .accessibilityValue(UsageFormatter.tokenCountString(self.accessibilityTokenTotal))
     }
 
     /// Hide week columns that have not started yet (entirely in the future).
@@ -466,6 +498,14 @@ private struct SpendActivityWeekGrid: View {
         let col = Int(location.x / pitch)
         guard col >= 0, col < self.columns else { return nil }
         return self.isVisible(col) ? col : nil
+    }
+
+    private var accessibilityTokenTotal: Int {
+        if self.cumulative { return self.values.last ?? 0 }
+        return self.values.reduce(into: 0) { total, value in
+            let addition = total.addingReportingOverflow(value)
+            total = addition.overflow ? Int.max : addition.partialValue
+        }
     }
 
     @ViewBuilder

@@ -64,6 +64,9 @@ extension CostUsagePricing {
         "gemini-3-flash-agent": "gemini-3.5-flash",
         "gemini-3-flash-b": "gemini-3.5-flash",
         "gemini-3.5-flash-high": "gemini-3.5-flash",
+        "gemini-3.5-flash-medium": "gemini-3.5-flash",
+        "gemini-3.5-flash-low": "gemini-3.5-flash",
+        "gemini-3.5-flash-extra-low": "gemini-3.5-flash",
     ]
 
     static func googleCostUSD(
@@ -92,8 +95,11 @@ extension CostUsagePricing {
             return nil
         }
         let pricing = lookup.pricing
+        let safeInput = max(0, inputTokens)
+        let safeCacheRead = max(0, cacheReadInputTokens)
+        let totalInput = safeInput.addingReportingOverflow(safeCacheRead)
         let usesLongContextRates = pricing.thresholdTokens.map {
-            max(0, inputTokens) + max(0, cacheReadInputTokens) > $0
+            totalInput.overflow || totalInput.partialValue > $0
         } ?? false
         let inputRate = usesLongContextRates
             ? pricing.inputCostPerTokenAboveThreshold ?? pricing.inputCostPerToken
@@ -106,8 +112,8 @@ extension CostUsagePricing {
         let outputRate = usesLongContextRates
             ? pricing.outputCostPerTokenAboveThreshold ?? pricing.outputCostPerToken
             : pricing.outputCostPerToken
-        let cost = Double(max(0, inputTokens)) * inputRate
-            + Double(max(0, cacheReadInputTokens)) * cacheReadRate
+        let cost = Double(safeInput) * inputRate
+            + Double(safeCacheRead) * cacheReadRate
             + Double(max(0, outputTokens)) * outputRate
         return cost.isFinite ? cost : nil
     }
@@ -126,8 +132,9 @@ extension CostUsagePricing {
         let input = max(0, inputTokens)
         let cacheRead = max(0, cacheReadInputTokens)
         let output = max(0, outputTokens)
+        let totalInput = input.addingReportingOverflow(cacheRead)
         let usesLongContextRates = pricing.thresholdTokens.map {
-            input + cacheRead > $0
+            totalInput.overflow || totalInput.partialValue > $0
         } ?? false
         let inputRate = usesLongContextRates
             ? pricing.inputCostPerTokenAboveThreshold ?? pricing.inputCostPerToken

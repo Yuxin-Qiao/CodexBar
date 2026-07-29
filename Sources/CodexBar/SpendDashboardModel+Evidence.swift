@@ -66,6 +66,7 @@ extension SpendDashboardModel {
         var missingRequestCount = false
         var invalidTokenSplit = false
         var sawCost = false
+        var sawEstimatedCost = false
         var overflowedTokens = false
         var overflowedInputTokens = false
         var overflowedOutputTokens = false

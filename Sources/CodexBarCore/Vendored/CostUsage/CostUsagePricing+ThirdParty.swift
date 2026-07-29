@@ -1,6 +1,57 @@
 import Foundation
 
 extension CostUsagePricing {
+    struct ModelsDevCostRequest {
+        let providerIDs: [String]
+        let model: String
+        let inputTokens: Int
+        let cacheReadInputTokens: Int
+        let outputTokens: Int
+    }
+
+    /// Prices a model against an explicit ordered list of models.dev provider IDs.
+    ///
+    /// Callers must supply provider ownership from structured source evidence. This helper never
+    /// guesses a vendor from the model name, so a harness cannot silently bill usage to the wrong
+    /// subscription.
+    static func modelsDevCostUSD(
+        request: ModelsDevCostRequest,
+        catalog: ModelsDevCatalog?,
+        cacheRoot: URL?) -> Double?
+    {
+        let lookup = request.providerIDs.lazy.compactMap {
+            self.modelsDevLookup(
+                providerID: $0,
+                model: request.model,
+                catalog: catalog,
+                cacheRoot: cacheRoot)
+        }.first
+        guard let pricing = lookup?.pricing else { return nil }
+
+        let input = max(0, request.inputTokens)
+        let cacheRead = max(0, request.cacheReadInputTokens)
+        let output = max(0, request.outputTokens)
+        let context = input.addingReportingOverflow(cacheRead)
+        let usesLongContextRates = pricing.thresholdTokens.map {
+            context.overflow || context.partialValue > $0
+        } ?? false
+        let inputRate = usesLongContextRates
+            ? pricing.inputCostPerTokenAboveThreshold ?? pricing.inputCostPerToken
+            : pricing.inputCostPerToken
+        let cacheReadRate = usesLongContextRates
+            ? pricing.cacheReadInputCostPerTokenAboveThreshold
+            ?? pricing.cacheReadInputCostPerToken
+            ?? inputRate
+            : pricing.cacheReadInputCostPerToken ?? inputRate
+        let outputRate = usesLongContextRates
+            ? pricing.outputCostPerTokenAboveThreshold ?? pricing.outputCostPerToken
+            : pricing.outputCostPerToken
+        let cost = Double(input) * inputRate
+            + Double(cacheRead) * cacheReadRate
+            + Double(output) * outputRate
+        return cost.isFinite ? cost : nil
+    }
+
     /// Resolves pricing for third-party models that are routed through the Claude-compatible
     /// endpoint (DeepSeek, Kimi/Moonshot, MiniMax) via the models.dev catalog.
     static func thirdPartyClaudeLookup(
@@ -8,7 +59,12 @@ extension CostUsagePricing {
         catalog: ModelsDevCatalog?,
         cacheRoot: URL?) -> ClaudePricing?
     {
-        let trimmed = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        let routedModel = model
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(separator: "/", omittingEmptySubsequences: true)
+            .last
+            .map(String.init) ?? model
+        let trimmed = routedModel.trimmingCharacters(in: .whitespacesAndNewlines)
         let lower = trimmed.lowercased()
 
         let candidates: [(providerID: String, modelID: String)]

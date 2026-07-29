@@ -146,14 +146,21 @@ struct SpendModelsDayDetailPresentation: Equatable {
 
     private static func sum(_ values: [Int?]) -> Int? {
         let present = values.compactMap(\.self)
-        guard !present.isEmpty else { return nil }
-        return present.reduce(0, +)
+        guard !present.isEmpty, present.count == values.count else { return nil }
+        var total = 0
+        for value in present {
+            let addition = total.addingReportingOverflow(value)
+            guard !addition.overflow else { return nil }
+            total = addition.partialValue
+        }
+        return total
     }
 
     private static func sum(_ values: [Double?]) -> Double? {
         let present = values.compactMap(\.self)
-        guard !present.isEmpty else { return nil }
-        return present.reduce(0, +)
+        guard !present.isEmpty, present.count == values.count else { return nil }
+        let total = present.reduce(0, +)
+        return total.isFinite ? total : nil
     }
 }
 
@@ -210,6 +217,7 @@ func spendModelsDayDetailModelSummaryText(
 struct SpendModelsDayDetailView: View {
     let detail: SpendModelsDayDetailPresentation
     let metric: SpendModelMetric
+    let currencyCode: String
     @State private var expandedModelID: String?
 
     var body: some View {
@@ -410,14 +418,14 @@ struct SpendModelsDayDetailView: View {
     // MARK: Header
 
     private var dayText: String {
-        SpendModelsEnglishFormatter.dayText(self.detail.day)
+        SpendModelsDateFormatter.dayText(self.detail.day)
     }
 
     private var totalText: String {
         switch self.metric {
         case .tokens: self.detail.totalTokens.map(UsageFormatter.tokenCountString) ?? "—"
         case .estimatedSpend: self.detail.totalCost.map {
-                UsageFormatter.currencyString($0, currencyCode: "USD")
+                UsageFormatter.currencyString($0, currencyCode: self.currencyCode)
             } ?? "—"
         }
     }

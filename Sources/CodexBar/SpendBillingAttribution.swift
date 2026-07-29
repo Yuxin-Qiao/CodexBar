@@ -3,28 +3,17 @@ import Foundation
 
 /// Billing-source attribution for the "By subscription" view.
 ///
-/// The dashboard's default grouping attributes spend to the *tool* that consumed it (Codex,
-/// Claude Code, Cursor…). But a tool can act as a harness for another vendor's API: Claude Code
-/// running on `ANTHROPIC_BASE_URL=https://api.kimi.com` is really spending Kimi credit, and Codex
-/// driving `MiniMax-M3` through a third-party endpoint is really spending MiniMax credit. For the
-/// subscription view the user wants to see *which vendor they actually paid*, not which UI happened
-/// to issue the request.
+/// The dashboard's default grouping attributes spend to the *tool* that consumed it. A tool can
+/// also act as a harness for another vendor's API, so the subscription view uses routing evidence
+/// retained by the source record (`billingProviderID`) to show who actually billed the request.
 ///
 /// `SpendBillingAttribution` re-attributes each source's daily usage to the vendor that bills it:
 ///
-/// - **Cursor** keeps its bundled/default models (Claude, GPT…) under Cursor, while models reached
-///   through a user-added Kimi/MiniMax/DeepSeek endpoint move to that endpoint's vendor.
-/// - **Antigravity / Kimi / MiniMax CLI** keep everything under their own name. Antigravity's
-///   Gemini and Claude models ship with the subscription, while the local vendor CLIs call only
-///   their own plans.
-/// - **Codex** is split per model: OpenAI models stay with Codex; third-party models driven through
-///   a user-configured endpoint (`MiniMax-M3`, `deepseek-*`, `kimi-for-coding`) move to that vendor.
-/// - **Claude Code** (used here as a free harness pointed at third-party endpoints) is split per
-///   model: `claude-*` stays with Claude, everything else moves to its vendor.
-///
-/// Attribution currently uses the model id because that is the common field all supported local
-/// scanners retain. Only explicit third-party ids move; unknown/default model ids stay with the
-/// harness so attribution never guesses.
+/// Model names are presentation metadata, not billing proof: Cursor can bundle a model with the
+/// same family name that a user can also add through an external endpoint. Records without routing
+/// evidence therefore stay with their source tool instead of being silently guessed. This rule is
+/// generic across tools and model vendors; MiniMax and Claude Code are regression fixtures, not
+/// special product boundaries.
 enum SpendBillingAttribution {
     /// Splits every input into one attributed input per billing vendor. Vendors are keyed by
     /// `UsageProvider`, so downstream grouping/summing is unchanged — only the provider each entry
@@ -33,26 +22,43 @@ enum SpendBillingAttribution {
     static func attribute(
         _ inputs: [SpendDashboardModel.ProviderInput]) -> [SpendDashboardModel.ProviderInput]
     {
-        let fragments = inputs.flatMap { input -> [Fragment] in
-            switch self.splitPolicy(for: input.provider) {
-            case .keepAll:
-                return [Fragment(input: input, routed: false)]
-            case .splitByModel:
-                return self.splitByVendor(input)
-            }
-        }
+        // Every scanner gets the same attribution behavior. Native/bundled usage simply carries
+        // no different `billingProviderID` and is preserved byte-for-byte; any harness can opt
+        // into external billing by retaining the route evidence on its model breakdown.
+        let fragments = inputs.flatMap(self.splitByVendor)
 
         // This is a provider/subscription ranking, not a tool ranking. Collapse every fragment
         // billed by the same vendor into one row and always use the vendor brand as its title.
         // Scanner labels such as "Kimi Code CLI" and "MiniMax Code" belong only in "By tool".
-        let byVendor = Dictionary(grouping: fragments, by: \.input.provider)
-        return byVendor.keys.sorted(by: { $0.rawValue < $1.rawValue }).map { vendor in
-            let vendorFragments = byVendor[vendor, default: []]
+        let fingerprintsByProvider = Dictionary(grouping: fragments, by: \.input.provider)
+            .mapValues { fragments in
+                Set<String>(fragments.compactMap {
+                    guard let value = $0.input.snapshot.credentialScopeFingerprint?
+                        .trimmingCharacters(in: .whitespacesAndNewlines),
+                        !value.isEmpty
+                    else { return nil }
+                    return value
+                })
+            }
+        let grouped = Dictionary(grouping: fragments) { fragment in
+            Self.groupKey(
+                fragment,
+                uniqueCredentialFingerprint: fingerprintsByProvider[fragment.input.provider]
+                    .flatMap { $0.count == 1 ? $0.first : nil })
+        }
+        return grouped.keys.sorted { lhs, rhs in
+            if lhs.provider != rhs.provider { return lhs.provider.rawValue < rhs.provider.rawValue }
+            return lhs.identity < rhs.identity
+        }.map { key in
+            let vendor = key.provider
+            let vendorFragments = grouped[key, default: []]
             let inputs = vendorFragments.map(\.input)
             let displayName = Self.vendorDisplayName(for: vendor)
             if inputs.count == 1, let input = inputs.first {
                 return SpendDashboardModel.ProviderInput(
-                    id: vendorFragments[0].routed ? "billing:\(vendor.rawValue)" : input.id,
+                    id: vendorFragments[0].routed
+                        ? "billing:\(vendor.rawValue):\(input.id)"
+                        : input.id,
                     provider: vendor,
                     displayName: displayName,
                     modelProviderName: displayName,
@@ -62,33 +68,10 @@ enum SpendBillingAttribution {
             let native = vendorFragments.first { !$0.routed }?.input
             return Self.mergedInput(
                 inputs,
-                id: native?.id ?? "billing:\(vendor.rawValue)",
+                id: native?.id ?? "billing:\(vendor.rawValue):\(key.identity)",
                 provider: vendor,
                 displayName: displayName,
                 modelProviderName: displayName)
-        }
-    }
-
-    // MARK: - Policy
-
-    private enum SplitPolicy {
-        /// Everything the tool consumes is billed by the tool's own vendor (resold quota or bundled
-        /// models) — no split.
-        case keepAll
-        /// The tool can drive third-party APIs directly; attribute each model to its own vendor.
-        case splitByModel
-    }
-
-    private static func splitPolicy(for provider: UsageProvider) -> SplitPolicy {
-        switch provider {
-        case .codex, .claude, .cursor:
-            // These harnesses can be pointed at third-party endpoints. Cursor's bundled Claude/GPT
-            // ids fall back to Cursor; only explicit external-vendor ids move.
-            .splitByModel
-        default:
-            // Antigravity bundles Claude; the local vendor CLIs (Kimi, MiniMax) only ever call
-            // their own models.
-            .keepAll
         }
     }
 
@@ -99,13 +82,51 @@ enum SpendBillingAttribution {
         let routed: Bool
     }
 
+    private struct BillingGroupKey: Hashable {
+        let provider: UsageProvider
+        let identity: String
+    }
+
+    private static func groupKey(
+        _ fragment: Fragment,
+        uniqueCredentialFingerprint: String?) -> BillingGroupKey
+    {
+        let input = fragment.input
+        if let fingerprint = input.snapshot.credentialScopeFingerprint?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !fingerprint.isEmpty
+        {
+            return BillingGroupKey(provider: input.provider, identity: "credential:\(fingerprint)")
+        }
+        if !fragment.routed,
+           input.id.contains(":local"),
+           let uniqueCredentialFingerprint
+        {
+            return BillingGroupKey(
+                provider: input.provider,
+                identity: "credential:\(uniqueCredentialFingerprint)")
+        }
+        // Codex can publish several account-scoped histories simultaneously. Keep those rows
+        // separate even when an old cache predates credential fingerprints.
+        if input.provider == .codex,
+           input.id.hasPrefix("codex:"),
+           !input.id.contains(":local")
+        {
+            return BillingGroupKey(provider: input.provider, identity: "source:\(input.id)")
+        }
+        // Other provider rows represent the currently selected account. Their native local
+        // supplement and explicitly routed fragments therefore belong to the same provider row
+        // unless a credential fingerprint above proves otherwise.
+        return BillingGroupKey(provider: input.provider, identity: "provider-default")
+    }
+
     private static func splitByVendor(_ input: SpendDashboardModel.ProviderInput) -> [Fragment] {
         // Bucket each day's model breakdowns by billing vendor, then rebuild one attributed input
         // per vendor with only that vendor's usage. Days where the source has no breakdowns fall
         // back to the tool's own provider so the totals still add up.
         let explicitVendors = Set(input.snapshot.daily.flatMap { entry in
             (entry.modelBreakdowns ?? []).map {
-                self.billingVendor(forModel: $0.modelName, defaultProvider: input.provider)
+                self.billingVendor(for: $0, defaultProvider: input.provider)
             }
         })
         if explicitVendors.isEmpty || explicitVendors == [input.provider] {
@@ -122,8 +143,14 @@ enum SpendBillingAttribution {
                 dailyByVendor[input.provider, default: []].append(entry)
                 continue
             }
+            guard self.breakdownsReconcile(with: entry, breakdowns: breakdowns) else {
+                // A partial breakdown cannot be split without dropping the residual usage.
+                // Preserve the original aggregate under its source until stronger evidence exists.
+                dailyByVendor[input.provider, default: []].append(entry)
+                continue
+            }
             for breakdown in breakdowns {
-                let vendor = self.billingVendor(forModel: breakdown.modelName, defaultProvider: input.provider)
+                let vendor = self.billingVendor(for: breakdown, defaultProvider: input.provider)
                 let dayEntry = Self.entry(from: entry, keeping: breakdown)
                 dailyByVendor[vendor, default: []].append(dayEntry)
             }
@@ -141,9 +168,7 @@ enum SpendBillingAttribution {
                 historyLabel: Self.vendorDisplayName(for: vendor))
             attributed.append(Fragment(
                 input: SpendDashboardModel.ProviderInput(
-                    id: vendor == input.provider
-                        ? input.id
-                        : "\(input.id)|vendor:\(vendor.rawValue)",
+                    id: input.id,
                     provider: vendor,
                     displayName: Self.vendorDisplayName(for: vendor),
                     modelProviderName: Self.vendorDisplayName(for: vendor),
@@ -152,6 +177,26 @@ enum SpendBillingAttribution {
                 routed: vendor != input.provider))
         }
         return attributed.isEmpty ? [Fragment(input: input, routed: false)] : attributed
+    }
+
+    private static func breakdownsReconcile(
+        with entry: CostUsageDailyReport.Entry,
+        breakdowns: [CostUsageDailyReport.ModelBreakdown]) -> Bool
+    {
+        if let totalTokens = entry.totalTokens,
+           sum(breakdowns.map(\.totalTokens)) != totalTokens
+        {
+            return false
+        }
+        if let cost = entry.costUSD {
+            guard cost.isFinite,
+                  let breakdownCost = Self.sumCost(breakdowns.map(\.costUSD)),
+                  abs(breakdownCost - cost) <= max(0.000_001, abs(cost) * 0.000_001)
+            else {
+                return false
+            }
+        }
+        return true
     }
 
     private static func mergedInput(
@@ -281,22 +326,39 @@ enum SpendBillingAttribution {
 
     // MARK: - Vendor mapping
 
-    /// Maps a model id to the vendor that bills it. `defaultProvider` is used when the model name
-    /// carries no third-party signal (e.g. an OpenAI model inside Codex, a `claude-*` model inside
-    /// Claude Code) — those stay with the tool that consumed them.
+    /// Compatibility helper for callers that only have a model label. A label is
+    /// not routing evidence, so it deliberately keeps the source provider.
     static func billingVendor(forModel model: String, defaultProvider: UsageProvider) -> UsageProvider {
-        let name = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !name.isEmpty, name != "<synthetic>" else { return defaultProvider }
-
-        // Only Codex / Claude Code ever carry third-party models; for any other tool the model is
-        // billed by the tool itself, so short-circuit.
-        guard defaultProvider == .codex || defaultProvider == .claude || defaultProvider == .cursor
-        else { return defaultProvider }
-
-        if name.hasPrefix("minimax") { return .minimax }
-        if name.hasPrefix("deepseek") { return .deepseek }
-        if name.hasPrefix("kimi") || name == "k3" || name.hasPrefix("k3-") { return .kimi }
+        _ = model
         return defaultProvider
+    }
+
+    private static func billingVendor(
+        for breakdown: CostUsageDailyReport.ModelBreakdown,
+        defaultProvider: UsageProvider) -> UsageProvider
+    {
+        guard let rawProviderID = breakdown.billingProviderID?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased(),
+            !rawProviderID.isEmpty
+        else {
+            return defaultProvider
+        }
+        if let exact = UsageProvider(rawValue: rawProviderID) {
+            return exact
+        }
+        let aliases: [String: UsageProvider] = [
+            "anthropic": .claude,
+            "google": .gemini,
+            "google-ai": .gemini,
+            "moonshotai": .kimi,
+            "moonshot": .kimi,
+            "openai": .openai,
+            "qwen": .qwencloud,
+            "alibabacloud": .qwencloud,
+            "z.ai": .zai,
+        ]
+        return aliases[rawProviderID] ?? defaultProvider
     }
 
     private static func vendorDisplayName(for provider: UsageProvider) -> String {
@@ -308,12 +370,19 @@ enum SpendBillingAttribution {
     private static func sum(_ values: [Int?]) -> Int? {
         let present = values.compactMap(\.self)
         guard !present.isEmpty else { return nil }
-        return present.reduce(0, +)
+        var total = 0
+        for value in present {
+            let addition = total.addingReportingOverflow(value)
+            guard !addition.overflow else { return nil }
+            total = addition.partialValue
+        }
+        return total
     }
 
     private static func sumCost(_ values: [Double?]) -> Double? {
-        let present = values.compactMap(\.self)
+        let present = values.compactMap(\.self).filter(\.isFinite)
         guard !present.isEmpty else { return nil }
-        return present.reduce(0, +)
+        let total = present.reduce(0, +)
+        return total.isFinite ? total : nil
     }
 }

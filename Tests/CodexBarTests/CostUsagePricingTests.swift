@@ -4,6 +4,53 @@ import Testing
 
 struct CostUsagePricingTests {
     @Test
+    func `generic catalog pricing stays scoped to explicit provider ownership`() throws {
+        let catalog = try JSONDecoder().decode(ModelsDevCatalog.self, from: Data("""
+        {
+          "alibaba": {
+            "id": "alibaba",
+            "models": {
+              "qwen3-coder-plus": {
+                "id": "qwen3-coder-plus",
+                "cost": { "input": 1, "output": 4, "cache_read": 0.2 }
+              }
+            }
+          },
+          "anthropic": {
+            "id": "anthropic",
+            "models": {
+              "qwen3-coder-plus": {
+                "id": "qwen3-coder-plus",
+                "cost": { "input": 99, "output": 199 }
+              }
+            }
+          }
+        }
+        """.utf8))
+
+        let cost = CostUsagePricing.modelsDevCostUSD(
+            request: .init(
+                providerIDs: ["alibaba", "alibaba-cn"],
+                model: "qwen3-coder-plus",
+                inputTokens: 1_000_000,
+                cacheReadInputTokens: 1_000_000,
+                outputTokens: 1_000_000),
+            catalog: catalog,
+            cacheRoot: nil)
+
+        #expect(cost == 5.2)
+        #expect(CostUsagePricing.modelsDevCostUSD(
+            request: .init(
+                providerIDs: ["missing-provider"],
+                model: "qwen3-coder-plus",
+                inputTokens: 1_000_000,
+                cacheReadInputTokens: 0,
+                outputTokens: 0),
+            catalog: catalog,
+            cacheRoot: nil) == nil)
+    }
+
+    @Test
     func `normalizes codex model variants exactly`() {
         #expect(CostUsagePricing.normalizeCodexModel("openai/gpt-5-codex") == "gpt-5-codex")
         #expect(CostUsagePricing.normalizeCodexModel("gpt-5.2-codex") == "gpt-5.2-codex")
@@ -50,6 +97,19 @@ struct CostUsagePricingTests {
         #expect(flash36 == 1.50 + 0.15 + 7.50)
         #expect(flash35Alias == 1.50 + 0.15 + 9.00)
         #expect(flash3Alias == 0.50 + 0.05 + 3.00)
+        for alias in [
+            "gemini-3.5-flash-medium",
+            "gemini-3.5-flash-low",
+            "gemini-3.5-flash-extra-low",
+        ] {
+            let value = CostUsagePricing.googleCostUSD(
+                model: alias,
+                inputTokens: 1_000_000,
+                cacheReadInputTokens: 1_000_000,
+                outputTokens: 1_000_000,
+                modelsDevCacheRoot: emptyCacheRoot)
+            #expect(value == flash35Alias)
+        }
     }
 
     @Test

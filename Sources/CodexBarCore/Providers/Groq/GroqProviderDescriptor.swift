@@ -34,7 +34,7 @@ public enum GroqProviderDescriptor {
                     ProviderColor(hex: 0x97FCA7),
                 ]),
             tokenCost: ProviderTokenCostConfig(
-                supportsTokenCost: false,
+                supportsTokenCost: true,
                 noDataMessage: { "Sign in at console.groq.com to show Groq spend and token usage." }),
             fetchPlan: ProviderFetchPlan(
                 sourceModes: [.auto, .web, .api],

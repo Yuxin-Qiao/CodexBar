@@ -45,6 +45,7 @@ public enum QwenCloudProviderDescriptor {
                 ]),
             tokenCost: ProviderTokenCostConfig(
                 supportsTokenCost: false,
+                localHistorySources: [.qwenCode],
                 noDataMessage: { "Qwen Cloud cost summary is not supported." }),
             fetchPlan: ProviderFetchPlan(
                 sourceModes: [.auto, .web],

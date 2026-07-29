@@ -41,25 +41,35 @@ enum SpendModelsListStyle {
     static let modelIconSize: CGFloat = 16
     static let modelIconFrameSize: CGFloat = 20
     static let modelIndent: CGFloat = 48
-    static let sectionTitleFont = Font.system(size: 15, weight: .semibold)
-    static let toolTitleFont = Font.system(size: 15, weight: .semibold)
-    static let primaryFont = Font.system(size: 14)
-    static let primaryEmphasizedFont = Font.system(size: 14, weight: .semibold)
-    static let valueFont = Font.system(size: 14, weight: .medium)
-    static let secondaryFont = Font.system(size: 12)
-    static let tertiaryFont = Font.system(size: 11)
-    static let controlFont = Font.system(size: 13, weight: .medium)
-    static let tooltipTitleFont = Font.system(size: 13, weight: .semibold)
-    static let tooltipRowFont = Font.system(size: 12)
+    static let sectionTitleFont = Font.headline
+    static let toolTitleFont = Font.headline
+    static let primaryFont = Font.body
+    static let primaryEmphasizedFont = Font.body.weight(.semibold)
+    static let valueFont = Font.body.weight(.medium)
+    static let secondaryFont = Font.callout
+    static let tertiaryFont = Font.caption
+    static let controlFont = Font.subheadline.weight(.medium)
+    static let tooltipTitleFont = Font.subheadline.weight(.semibold)
+    static let tooltipRowFont = Font.callout
     static let compactChartHeight: CGFloat = 144
 }
 
-enum SpendModelsEnglishFormatter {
+enum SpendModelsDateFormatter {
     static func dayText(_ day: Date) -> String {
         day.formatted(.dateTime.month(.abbreviated).day().locale(self.locale))
     }
 
-    private static let locale = Locale(identifier: "en_US_POSIX")
+    private static var locale: Locale {
+        .autoupdatingCurrent
+    }
+}
+
+private func spendModelsTokenValueText(_ value: Double) -> String {
+    guard value.isFinite, value >= 0 else { return "—" }
+    if value >= Double(Int.max) {
+        return UsageFormatter.tokenCountString(Int.max)
+    }
+    return UsageFormatter.tokenCountString(Int(value.rounded()))
 }
 
 func spendModelsRowDetailText(_ row: SpendModelsPresentation.Row) -> String {
@@ -75,7 +85,7 @@ func spendModelsRowDetailText(_ row: SpendModelsPresentation.Row) -> String {
             UsageFormatter.tokenCountString(inputTokens),
             UsageFormatter.tokenCountString(outputTokens))
     } else {
-        UsageFormatter.tokenCountString(Int(value.rounded()))
+        spendModelsTokenValueText(value)
     }
     return providers.isEmpty ? metric : "\(metric) · \(providers)"
 }
@@ -117,7 +127,7 @@ func spendModelsChartMetricText(
 {
     switch metric {
     case .tokens:
-        UsageFormatter.tokenCountString(Int(value.rounded()))
+        spendModelsTokenValueText(value)
     case .estimatedSpend:
         UsageFormatter.currencyString(value, currencyCode: currencyCode)
     }
@@ -275,13 +285,37 @@ struct SpendModelsPresentation: Equatable {
     /// over the visible day window (tokens.ci style). Days at the window edge average over fewer
     /// samples. Rows and series stay raw, so ranking and day details are unaffected; this is
     /// meant for the chart only.
-    func applyingTrailingAverage(window: Int = Self.trailingAverageWindow) -> SpendModelsPresentation {
+    func applyingTrailingAverage(
+        window: Int = Self.trailingAverageWindow,
+        calendar: Calendar = .current) -> SpendModelsPresentation
+    {
         guard window > 1, !self.points.isEmpty else { return self }
 
-        let days = Array(Set(self.points.map(\.day))).sorted()
+        let observedDays = Array(Set(self.points.map(\.day))).sorted()
+        guard let firstDay = observedDays.first, let lastDay = observedDays.last else { return self }
+        var normalizedCalendar = Calendar(identifier: .gregorian)
+        normalizedCalendar.timeZone = calendar.timeZone
+        normalizedCalendar.locale = calendar.locale
+        let calendar = normalizedCalendar
+        var days: [Date] = []
+        var cursor = calendar.startOfDay(for: firstDay)
+        let end = calendar.startOfDay(for: lastDay)
+        while cursor <= end {
+            days.append(cursor)
+            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor),
+                  next > cursor
+            else {
+                break
+            }
+            cursor = next
+        }
+        let displayDayByNormalizedDay = Dictionary(
+            self.points.map { (calendar.startOfDay(for: $0.day), $0.day) },
+            uniquingKeysWith: { first, _ in first })
         var rawValues: [String: [Date: Double]] = [:]
         for point in self.points {
-            rawValues[point.seriesID, default: [:]][point.day, default: 0] += point.value
+            let normalizedDay = calendar.startOfDay(for: point.day)
+            rawValues[point.seriesID, default: [:]][normalizedDay, default: 0] += point.value
         }
 
         var smoothed: [Point] = []
@@ -296,7 +330,7 @@ struct SpendModelsPresentation: Equatable {
                 let start = cursor
                 cursor += value
                 smoothed.append(Point(
-                    day: day,
+                    day: displayDayByNormalizedDay[day] ?? day,
                     seriesID: series.id,
                     seriesName: series.name,
                     value: value,
@@ -486,11 +520,11 @@ struct SpendModelsTokenChartPresentation: Equatable {
             let values = byDay[day, default: []]
             let buckets: [(SpendModelsDayDetailPresentation.BucketKind?, Int)]
             if values.allSatisfy({ $0.inputTokens != nil && $0.outputTokens != nil }) {
-                let input = values.compactMap(\.inputTokens).reduce(0, +)
-                let output = values.compactMap(\.outputTokens).reduce(0, +)
-                let cacheRead = values.compactMap(\.cacheReadTokens).reduce(0, +)
-                let cacheWrite = values.compactMap(\.cacheCreationTokens).reduce(0, +)
-                let reasoning = values.compactMap(\.reasoningTokens).reduce(0, +)
+                let input = Self.saturatingSum(values.compactMap(\.inputTokens))
+                let output = Self.saturatingSum(values.compactMap(\.outputTokens))
+                let cacheRead = Self.saturatingSum(values.compactMap(\.cacheReadTokens))
+                let cacheWrite = Self.saturatingSum(values.compactMap(\.cacheCreationTokens))
+                let reasoning = Self.saturatingSum(values.compactMap(\.reasoningTokens))
                 buckets = [
                     (.input, input),
                     (.cacheRead, cacheRead),
@@ -499,7 +533,7 @@ struct SpendModelsTokenChartPresentation: Equatable {
                     (.reasoning, reasoning),
                 ]
             } else {
-                buckets = [(nil, values.compactMap(\.totalTokens).reduce(0, +))]
+                buckets = [(nil, Self.saturatingSum(values.compactMap(\.totalTokens)))]
             }
             var cursor = 0.0
             return buckets.compactMap { kind, tokens -> Point? in
@@ -514,6 +548,13 @@ struct SpendModelsTokenChartPresentation: Equatable {
 
     private init(points: [Point]) {
         self.points = points
+    }
+
+    private static func saturatingSum(_ values: [Int]) -> Int {
+        values.reduce(0) { total, value in
+            let result = total.addingReportingOverflow(value)
+            return result.overflow ? Int.max : result.partialValue
+        }
     }
 
     func applyingTrailingAverage(window: Int = SpendModelsPresentation.trailingAverageWindow) -> Self {
@@ -550,6 +591,7 @@ struct SpendModelsSection: View {
     /// Global dashboard range, passed read-only: the single top-level time-range picker drives all
     /// sections now, so this block no longer renders its own 7d/30d/All selector.
     let selectedDays: Int
+    let currencyCode: String
     @AppStorage("spendModelsViewMode") private var viewMode: SpendModelsViewMode = .models
     @AppStorage("spendModelsSortMetric") private var sortMetric: SpendModelMetric = .tokens
     @State private var selectedDay: Date?
@@ -594,11 +636,18 @@ struct SpendModelsSection: View {
 
     private func rebuildPresentations() {
         let base = SpendModelsPresentation(analysis: self.analysis, metric: .tokens)
-        self.cachedTokenPresentation = base
-        self.cachedSpendPresentation = SpendModelsPresentation(
+        let spend = SpendModelsPresentation(
             analysis: self.analysis,
             metric: .estimatedSpend)
+        self.cachedTokenPresentation = base
+        self.cachedSpendPresentation = spend
         self.cachedTokenChartPresentation = SpendModelsTokenChartPresentation(analysis: self.analysis)
+        if self.sortMetric == .tokens,
+           self.cachedTokenChartPresentation.points.isEmpty,
+           !spend.points.isEmpty
+        {
+            self.sortMetric = .estimatedSpend
+        }
         self.syncChartInteractionDays()
     }
 
@@ -621,7 +670,7 @@ struct SpendModelsSection: View {
                     .fixedSize()
                 }
                 if self.viewMode == .clients {
-                    SpendClientsView(analysis: self.analysis)
+                    SpendClientsView(analysis: self.analysis, currencyCode: self.currencyCode)
                 } else if !self.hasChartData {
                     Text(L("No model-level history"))
                         .foregroundStyle(.secondary)
@@ -634,7 +683,10 @@ struct SpendModelsSection: View {
                            day: pinnedDay,
                            metric: self.sortMetric)
                     {
-                        SpendModelsDayDetailView(detail: detail, metric: self.sortMetric)
+                        SpendModelsDayDetailView(
+                            detail: detail,
+                            metric: self.sortMetric,
+                            currencyCode: self.currencyCode)
                     }
                     self.ranking
                 }
@@ -653,7 +705,10 @@ struct SpendModelsSection: View {
         .onAppear {
             if self.cachedTokenPresentation == nil { self.rebuildPresentations() }
         }
-        .onChange(of: self.analysis) { _, _ in self.rebuildPresentations() }
+        .onChange(of: self.analysis) { _, _ in
+            self.showsAllModels = false
+            self.rebuildPresentations()
+        }
         .onChange(of: self.chartPresentation.points) { _, points in
             guard let pinnedDay = self.pinnedDay else { return }
             if !Set(points.map(\.day)).contains(pinnedDay) { self.pinnedDay = nil }
@@ -714,7 +769,7 @@ struct SpendModelsSection: View {
             }
         }
         .chartXScale(
-            domain: self.chartDomain ?? self.fallbackDomain,
+            domain: self.activeDomain,
             range: .plotDimension(startPadding: 10, endPadding: 30))
         .chartLegend(.hidden)
         .chartXAxis {
@@ -814,7 +869,8 @@ struct SpendModelsSection: View {
                         .layoutPriority(1)
                     let context = spendModelsRankingContextText(
                         row,
-                        metric: self.rankingPresentation.metric)
+                        metric: self.rankingPresentation.metric,
+                        currencyCode: self.currencyCode)
                     if !context.isEmpty {
                         Text("· \(context)")
                             .font(SpendModelsListStyle.secondaryFont)
@@ -825,7 +881,8 @@ struct SpendModelsSection: View {
                     Spacer(minLength: 12)
                     Text(spendModelsRankingValueText(
                         row,
-                        metric: self.rankingPresentation.metric))
+                        metric: self.rankingPresentation.metric,
+                        currencyCode: self.currencyCode))
                         .font(SpendModelsListStyle.valueFont)
                     Text("· \(self.shareText(row.value))")
                         .font(SpendModelsListStyle.secondaryFont)
@@ -880,7 +937,7 @@ struct SpendModelsSection: View {
                     self.tooltipSummary(
                         title: L("Estimated spend"),
                         value: detail.totalCost.map {
-                            UsageFormatter.currencyString($0, currencyCode: "USD")
+                            UsageFormatter.currencyString($0, currencyCode: self.currencyCode)
                         } ?? "—")
                 }
             }
@@ -907,17 +964,48 @@ struct SpendModelsSection: View {
     }
 
     private var fallbackDomain: ClosedRange<Date> {
-        let days = self.chartPresentation.points.map(\.day)
+        let days = self.activeDataDays
         let start = days.min() ?? Date()
         let end = days.max() ?? start
         return start...Calendar.current.date(byAdding: .day, value: 1, to: end)!
     }
 
+    /// Token and spend histories can have different priced coverage. In the
+    /// cumulative view, frame the chart from the active metric's observations
+    /// so switching metrics does not reserve months of empty space belonging
+    /// only to the other metric.
+    private var activeDomain: ClosedRange<Date> {
+        guard self.selectedDays >= 365,
+              let first = self.activeDataDays.min(),
+              let last = self.activeDataDays.max()
+        else {
+            return self.chartDomain ?? self.fallbackDomain
+        }
+        let calendar = Calendar.current
+        let observedDays = max(
+            1,
+            (calendar.dateComponents([.day], from: first, to: last).day ?? 0) + 1)
+        let padding = min(14, max(1, Int(ceil(Double(observedDays) * 0.04))))
+        let start = calendar.date(byAdding: .day, value: -padding, to: first) ?? first
+        let paddedLast = calendar.date(byAdding: .day, value: padding, to: last) ?? last
+        let end = calendar.date(byAdding: .day, value: 1, to: paddedLast) ?? paddedLast
+        return start...end
+    }
+
+    private var activeDataDays: [Date] {
+        switch self.sortMetric {
+        case .tokens:
+            self.cachedTokenChartPresentation.dailyTotals.map(\.day)
+        case .estimatedSpend:
+            self.chartPresentation.dailyTotals.map(\.day)
+        }
+    }
+
     private var xAxisDates: [Date] {
         SpendModelsAxisDates.make(
             selectedDays: self.selectedDays,
-            dataDays: self.chartPresentation.points.map(\.day),
-            domain: self.chartDomain ?? self.fallbackDomain)
+            dataDays: self.activeDataDays,
+            domain: self.activeDomain)
     }
 
     private func xAxisLabelAnchor(for date: Date) -> UnitPoint {
@@ -950,7 +1038,7 @@ struct SpendModelsSection: View {
     }
 
     private func dayText(_ day: Date) -> String {
-        SpendModelsEnglishFormatter.dayText(day)
+        SpendModelsDateFormatter.dayText(day)
     }
 
     private func updateSelectedDay(location: CGPoint?, proxy: ChartProxy, geo: GeometryProxy) {

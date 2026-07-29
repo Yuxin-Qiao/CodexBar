@@ -17,12 +17,12 @@ struct SpendToolIdentity: Equatable, Sendable {
 
         var displayName: String {
             switch self {
-            case .desktop: "Desktop"
-            case .cli: "CLI"
-            case .ide: "IDE"
-            case .extensionTool: "Extension"
-            case .api: "API"
-            case .other: "Tool"
+            case .desktop: L("Desktop")
+            case .cli: L("CLI")
+            case .ide: L("IDE")
+            case .extensionTool: L("Extension")
+            case .api: L("API")
+            case .other: L("Tool")
             }
         }
     }

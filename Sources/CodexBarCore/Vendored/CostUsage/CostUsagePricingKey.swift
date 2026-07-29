@@ -11,6 +11,7 @@ enum CostUsagePricingKey {
         formulaVersion: Int,
         parserHash: String? = nil,
         modelsDevProviderIDs: Set<String> = [
+            "anthropic",
             "openai",
             // Third-party models routed through a Codex-compatible endpoint are priced via
             // `thirdPartyClaudeLookup`, so their catalog entries must also bust the cost cache.

@@ -10,6 +10,43 @@ import Testing
 #if canImport(SQLite3) || canImport(CSQLite3)
 struct MiniMaxSessionScannerTests {
     @Test
+    func `scanner observes committed rows still present in the live WAL`() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MiniMaxSessionScannerWALTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let databaseURL = root.appendingPathComponent("v2/sqlite/runtime-state.sqlite")
+        try FileManager.default.createDirectory(
+            at: databaseURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true)
+
+        var writer: OpaquePointer?
+        guard sqlite3_open(databaseURL.path, &writer) == SQLITE_OK, let writer else {
+            throw SQLiteFixtureError.open
+        }
+        defer { sqlite3_close(writer) }
+        guard sqlite3_exec(writer, "PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0;", nil, nil, nil)
+            == SQLITE_OK
+        else {
+            throw SQLiteFixtureError.schema
+        }
+        try Self.createSchema(in: writer)
+        guard sqlite3_wal_checkpoint_v2(writer, nil, SQLITE_CHECKPOINT_TRUNCATE, nil, nil) == SQLITE_OK else {
+            throw SQLiteFixtureError.schema
+        }
+        try Self.insertCurrentRow(in: writer)
+
+        let snapshot = try #require(MiniMaxSessionScanner.scan(
+            environment: [MiniMaxSessionScanner.homeEnvironmentKey: root.path],
+            historyDays: 30,
+            now: Date(timeIntervalSince1970: 1_785_033_600),
+            calendar: Self.calendar,
+            modelsDevCacheRoot: root.appendingPathComponent("empty-pricing", isDirectory: true)))
+
+        #expect(snapshot.last30DaysRequests == 1)
+        #expect(snapshot.last30DaysTokens == 350)
+    }
+
+    @Test
     func `scanner prices MiniMax M3 even when the models catalog is empty`() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("MiniMaxSessionScannerTests-\(UUID().uuidString)", isDirectory: true)
@@ -74,6 +111,27 @@ struct MiniMaxSessionScannerTests {
             throw SQLiteFixtureError.open
         }
         defer { sqlite3_close(database) }
+        try Self.createSchema(in: database)
+        try Self.insertCurrentRow(in: database)
+        guard oldRowCount > 0 else { return }
+        for index in 0..<oldRowCount {
+            let oldSQL = """
+            INSERT INTO local_runtime_token_usage (
+              session_id, agent_name, framework_type, turn_id, model, ts,
+              input_tokens, output_tokens, reasoning_tokens, cache_read_tokens,
+              cache_write_tokens, cost_usd
+            ) VALUES (
+              'old-\(index)', 'main', 'agent', 'turn-\(index)', 'minimax/MiniMax-M3', 1609459200000,
+              100, 50, 20, 200, 0, 0
+            );
+            """
+            guard sqlite3_exec(database, oldSQL, nil, nil, nil) == SQLITE_OK else {
+                throw SQLiteFixtureError.schema
+            }
+        }
+    }
+
+    private static func createSchema(in database: OpaquePointer) throws {
         let sql = """
         CREATE TABLE local_runtime_token_usage (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -91,6 +149,14 @@ struct MiniMaxSessionScannerTests {
           cost_usd REAL,
           raw TEXT
         );
+        """
+        guard sqlite3_exec(database, sql, nil, nil, nil) == SQLITE_OK else {
+            throw SQLiteFixtureError.schema
+        }
+    }
+
+    private static func insertCurrentRow(in database: OpaquePointer) throws {
+        let sql = """
         INSERT INTO local_runtime_token_usage (
           session_id, agent_name, framework_type, turn_id, model, ts,
           input_tokens, output_tokens, reasoning_tokens, cache_read_tokens,
@@ -102,22 +168,6 @@ struct MiniMaxSessionScannerTests {
         """
         guard sqlite3_exec(database, sql, nil, nil, nil) == SQLITE_OK else {
             throw SQLiteFixtureError.schema
-        }
-        guard oldRowCount > 0 else { return }
-        for index in 0..<oldRowCount {
-            let oldSQL = """
-            INSERT INTO local_runtime_token_usage (
-              session_id, agent_name, framework_type, turn_id, model, ts,
-              input_tokens, output_tokens, reasoning_tokens, cache_read_tokens,
-              cache_write_tokens, cost_usd
-            ) VALUES (
-              'old-\(index)', 'main', 'agent', 'turn-\(index)', 'minimax/MiniMax-M3', 1609459200000,
-              100, 50, 20, 200, 0, 0
-            );
-            """
-            guard sqlite3_exec(database, oldSQL, nil, nil, nil) == SQLITE_OK else {
-                throw SQLiteFixtureError.schema
-            }
         }
     }
 

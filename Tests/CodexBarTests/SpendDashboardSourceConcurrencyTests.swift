@@ -201,7 +201,7 @@ struct SpendDashboardSourceConcurrencyTests {
             settings.setProviderEnabled(
                 provider: provider,
                 metadata: metadata,
-                enabled: provider == .kimi || provider == .gemini || provider == .opencode)
+                enabled: provider == .kimi || provider == .gemini || provider == .opencode || provider == .qwencloud)
         }
         let store = UsageStore(
             fetcher: UsageFetcher(environment: [:]),
@@ -210,16 +210,19 @@ struct SpendDashboardSourceConcurrencyTests {
             startupBehavior: .testing,
             environmentBase: [:])
 
-        #expect(Set(SpendDashboardSource.localModelHistoryProviders(store: store)) == [.gemini, .kimi, .opencode])
+        #expect(Set(SpendDashboardSource.localModelHistoryProviders(store: store))
+            == [.gemini, .kimi, .opencode, .qwencloud])
         let configuration = SpendDashboardSource.configuration(settings: settings, store: store)
         #expect(configuration.providerIDs.contains(UsageProvider.gemini.rawValue))
         #expect(configuration.providerIDs.contains(UsageProvider.kimi.rawValue))
         #expect(configuration.providerIDs.contains(UsageProvider.opencode.rawValue))
+        #expect(configuration.providerIDs.contains(UsageProvider.qwencloud.rawValue))
 
         let request = await SpendDashboardSource.makeRequest(settings: settings, store: store, mode: .captureOnly)
         #expect(request.kimiCodeHomePath != nil)
         #expect(request.geminiCLIHomePath != nil)
         #expect(request.openCodeDataHomePath != nil)
+        #expect(request.qwenCodeHomePath != nil)
 
         if let metadata = ProviderRegistry.shared.metadata[.gemini] {
             settings.setProviderEnabled(provider: .gemini, metadata: metadata, enabled: false)
@@ -331,7 +334,7 @@ struct SpendDashboardSourceConcurrencyTests {
     }
 
     @Test
-    func `Codex removal retains failed account across billing aggregation`() async throws {
+    func `Codex removal retains failed account across separate subscription rows`() async throws {
         let gate = SpendDashboardResultBatchGate()
         let requestGate = SpendDashboardProviderBatchGate()
         let initialRequests = [
@@ -384,9 +387,9 @@ struct SpendDashboardSourceConcurrencyTests {
 
         controller.update(configuration: replacement)
         let pendingRows = try #require(controller.model.groups.first?.providers)
-        #expect(pendingRows.count == 1)
-        #expect(pendingRows.first?.displayName == "Codex")
-        #expect(pendingRows.first?.totalCost == 12)
+        #expect(pendingRows.count == 2)
+        #expect(pendingRows.map(\.id) == ["codex:c", "codex:b"])
+        #expect(pendingRows.map(\.totalCost) == [7, 5])
         await Self.waitForProviderGate(requestGate)
         #expect(await gate.pendingCount == 0)
         await requestGate.resume()
@@ -397,9 +400,9 @@ struct SpendDashboardSourceConcurrencyTests {
         await Self.waitUntil { !controller.isRefreshing }
 
         let finalRows = try #require(controller.model.groups.first?.providers)
-        #expect(finalRows.count == 1)
-        #expect(finalRows.first?.displayName == "Codex")
-        #expect(finalRows.first?.totalCost == 13)
+        #expect(finalRows.count == 2)
+        #expect(finalRows.map(\.id) == ["codex:c", "codex:b"])
+        #expect(finalRows.map(\.totalCost) == [8, 5])
         #expect(controller.failedSourceCount == 1)
     }
 

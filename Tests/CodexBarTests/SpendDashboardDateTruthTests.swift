@@ -194,13 +194,18 @@ struct SpendDashboardDateTruthTests {
             now: Self.now,
             calendar: Self.calendar)
 
-        #expect(model.groups.map(\.currencyCode) == ["EUR", "USD"])
+        #expect(model.groups.map(\.currencyCode) == ["EUR", "USD", "XXX"])
         let eur = try #require(model.groups.first(where: { $0.currencyCode == "EUR" }))
         let usd = try #require(model.groups.first(where: { $0.currencyCode == "USD" }))
+        let unpriced = try #require(model.groups.first(where: { $0.currencyCode == "XXX" }))
         #expect(eur.providers.map(\.id) == ["eur"])
         #expect(eur.totalCost == 3)
         #expect(usd.providers.map(\.id) == ["usd"])
         #expect(usd.totalCost == 2)
+        #expect(Set(unpriced.providers.map(\.id)) == ["blank", "unknown"])
+        #expect(unpriced.providers.allSatisfy { $0.totalCost == nil })
+        #expect(unpriced.totalCost == nil)
+        #expect(unpriced.dailyPoints.isEmpty)
     }
 
     @Test

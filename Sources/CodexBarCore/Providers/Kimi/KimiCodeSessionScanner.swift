@@ -2,6 +2,8 @@ import Foundation
 
 public enum KimiCodeSessionScanner {
     public static let defaultHistoryDays = 30
+    public static let maximumFiles = 20000
+    public static let maximumBytes = 512 * 1024 * 1024
 
     private struct WireEvent: Decodable {
         struct Usage: Decodable {
@@ -61,10 +63,14 @@ public enum KimiCodeSessionScanner {
                 usage: usage,
                 pricingDate: pricingDate,
                 modelsDevCatalog: modelsDevCatalog,
-                modelsDevCacheRoot: modelsDevCacheRoot)
+                modelsDevCacheRoot: modelsDevCacheRoot),
+                cost.isFinite
             {
-                self.cost += cost
-                self.sawCost = true
+                let nextCost = self.cost + cost
+                if nextCost.isFinite {
+                    self.cost = nextCost
+                    self.sawCost = true
+                }
             }
             return true
         }
@@ -84,8 +90,11 @@ public enum KimiCodeSessionScanner {
             self.output = nextOutput
             self.requests = nextRequests
             if other.sawCost {
-                self.cost += other.cost
-                self.sawCost = true
+                let nextCost = self.cost + other.cost
+                if other.cost.isFinite, nextCost.isFinite {
+                    self.cost = nextCost
+                    self.sawCost = true
+                }
             }
             return true
         }
@@ -174,11 +183,12 @@ public enum KimiCodeSessionScanner {
     {
         try checkCancellation()
         let days = max(1, historyDays)
+        let calendar = CostUsageLocalDay.gregorianCalendar(preserving: calendar)
         let home = KimiSettingsReader.kimiCodeHomeURL(environment: environment)
         let sessions = home.appendingPathComponent("sessions", isDirectory: true)
         guard let enumerator = fileManager.enumerator(
             at: sessions,
-            includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
+            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey],
             options: [.skipsHiddenFiles])
         else {
             return nil
@@ -189,6 +199,8 @@ public enum KimiCodeSessionScanner {
         var values: [DayModelKey: TokenAccumulator] = [:]
         let decoder = JSONDecoder()
         let modelsDevCatalog = CostUsagePricing.modelsDevCatalog(now: now, cacheRoot: modelsDevCacheRoot)
+        var visitedFiles = 0
+        var visitedBytes = 0
 
         while let url = enumerator.nextObject() as? URL {
             try checkCancellation()
@@ -197,12 +209,19 @@ public enum KimiCodeSessionScanner {
             else {
                 continue
             }
-            if let modificationDate = try? url.resourceValues(forKeys: [.contentModificationDateKey])
-                .contentModificationDate,
-                modificationDate < start
+            guard visitedFiles < self.maximumFiles else { break }
+            let resourceValues = try? url.resourceValues(
+                forKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey])
+            guard resourceValues?.isRegularFile == true else { continue }
+            if let modificationDate = resourceValues?.contentModificationDate,
+               modificationDate < start
             {
                 continue
             }
+            let size = max(0, resourceValues?.fileSize ?? 0)
+            guard size <= self.maximumBytes - visitedBytes else { break }
+            visitedFiles += 1
+            visitedBytes += size
             do {
                 try CostUsageJsonl.scan(
                     fileURL: url,
@@ -213,7 +232,7 @@ public enum KimiCodeSessionScanner {
                     guard !line.wasTruncated,
                           let event = try? decoder.decode(WireEvent.self, from: line.bytes),
                           event.type == "usage.record",
-                          event.usageScope == "turn",
+                          event.usageScope == nil || event.usageScope == "turn",
                           let time = event.time,
                           time.isFinite,
                           let rawModel = event.model?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -260,6 +279,7 @@ public enum KimiCodeSessionScanner {
                 guard total.merge(value) else { return nil }
                 modelBreakdowns.append(CostUsageDailyReport.ModelBreakdown(
                     modelName: key.model,
+                    billingProviderID: UsageProvider.kimi.rawValue,
                     costUSD: value.sawCost ? value.cost : nil,
                     totalTokens: modelTotal,
                     inputTokens: value.input,

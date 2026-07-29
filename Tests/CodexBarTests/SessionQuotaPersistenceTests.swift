@@ -58,6 +58,38 @@ struct SessionQuotaPersistenceTests {
         #expect(nextDepletionNotifier.posts == [.depleted])
     }
 
+    @Test
+    func `new reset cycle can notify after restart even when both observations are depleted`() throws {
+        let suiteName = "SessionQuotaPersistenceTests-reset-cycle"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        let settings = SettingsStore(
+            userDefaults: defaults,
+            configStore: testConfigStore(suiteName: suiteName),
+            zaiTokenStore: NoopZaiTokenStore(),
+            syntheticTokenStore: NoopSyntheticTokenStore())
+        settings.refreshFrequency = .manual
+        settings.statusChecksEnabled = false
+        settings.sessionQuotaNotificationsEnabled = true
+
+        let firstNotifier = NotifierSpy()
+        let firstStore = Self.store(settings: settings, notifier: firstNotifier)
+        firstStore.handleSessionQuotaTransition(
+            provider: .kimi,
+            snapshot: Self.snapshot(usedPercent: 20, resetsAt: Date(timeIntervalSince1970: 100)))
+        firstStore.handleSessionQuotaTransition(
+            provider: .kimi,
+            snapshot: Self.snapshot(usedPercent: 100, resetsAt: Date(timeIntervalSince1970: 100)))
+        #expect(firstNotifier.posts == [.depleted])
+
+        let restartedNotifier = NotifierSpy()
+        let restartedStore = Self.store(settings: settings, notifier: restartedNotifier)
+        restartedStore.handleSessionQuotaTransition(
+            provider: .kimi,
+            snapshot: Self.snapshot(usedPercent: 100, resetsAt: Date(timeIntervalSince1970: 200)))
+        #expect(restartedNotifier.posts == [.depleted])
+    }
+
     private static func store(
         settings: SettingsStore,
         notifier: NotifierSpy) -> UsageStore
@@ -69,12 +101,12 @@ struct SessionQuotaPersistenceTests {
             sessionQuotaNotifier: notifier)
     }
 
-    private static func snapshot(usedPercent: Double) -> UsageSnapshot {
+    private static func snapshot(usedPercent: Double, resetsAt: Date? = nil) -> UsageSnapshot {
         UsageSnapshot(
             primary: RateWindow(
                 usedPercent: usedPercent,
                 windowMinutes: 5 * 60,
-                resetsAt: nil,
+                resetsAt: resetsAt,
                 resetDescription: nil),
             secondary: nil,
             updatedAt: Date())

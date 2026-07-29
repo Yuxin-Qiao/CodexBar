@@ -117,9 +117,11 @@ struct ShareStatsTests {
     func `private dashboard accepts future plan tiers but rejects authentication labels`() {
         let future = Self.snapshot(provider: .cursor, rawName: "Cursor Super Pro")
         let auth = Self.snapshot(provider: .cursor, rawName: "API key")
+        let spend = Self.snapshot(provider: .mistral, rawName: "API spend: $12.34 this month")
 
         #expect(SpendSubscriptionPlan.from(snapshot: future, provider: .cursor)?.displayName == "Cursor Super Pro")
         #expect(SpendSubscriptionPlan.from(snapshot: auth, provider: .cursor) == nil)
+        #expect(SpendSubscriptionPlan.from(snapshot: spend, provider: .mistral) == nil)
     }
 
     @Test
