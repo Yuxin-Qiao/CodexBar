@@ -295,6 +295,73 @@ struct StatusItemIconObservationSignatureTests {
     }
 
     @Test
+    func `store icon observation token invalidates when account snapshots change`() {
+        let (_, store, controller) = self.makeController(
+            suiteName: "StatusItemIconObservationSignatureTests-account-snapshots")
+        defer { controller.releaseStatusItemsForTesting() }
+
+        nonisolated(unsafe) var invalidated = false
+        withObservationTracking {
+            _ = store.iconObservationToken
+        } onChange: {
+            invalidated = true
+        }
+
+        let account = ProviderTokenAccount(
+            id: UUID(),
+            label: "Account 1",
+            token: "token1",
+            addedAt: 1,
+            lastUsed: nil)
+
+        store.accountSnapshots[.claude] = [
+            TokenAccountUsageSnapshot(
+                account: account,
+                snapshot: nil,
+                error: nil,
+                sourceLabel: "fixture",
+                cacheKey: store.tokenAccountSnapshotCacheKey(provider: .claude, account: account)),
+        ]
+
+        #expect(invalidated)
+    }
+
+    @Test
+    func `store icon observation token invalidates when codex account snapshots change`() {
+        let (_, store, controller) = self.makeController(
+            suiteName: "StatusItemIconObservationSignatureTests-codex-account-snapshots")
+        defer { controller.releaseStatusItemsForTesting() }
+
+        nonisolated(unsafe) var invalidated = false
+        withObservationTracking {
+            _ = store.iconObservationToken
+        } onChange: {
+            invalidated = true
+        }
+
+        let visibleAccount = CodexVisibleAccount(
+            id: "test-codex-account",
+            email: "email@example.com",
+            authFingerprint: nil,
+            storedAccountID: nil,
+            selectionSource: .profileHome(path: "/tmp"),
+            isActive: true,
+            isLive: true,
+            canReauthenticate: true,
+            canRemove: true)
+
+        store.codexAccountSnapshots = [
+            CodexAccountUsageSnapshot(
+                account: visibleAccount,
+                snapshot: nil,
+                error: nil,
+                sourceLabel: "cached"),
+        ]
+
+        #expect(invalidated)
+    }
+
+    @Test
     func `store icon observation signature changes when hide critters toggles`() {
         let (settings, _, controller) = self.makeController(
             suiteName: "StatusItemIconObservationSignatureTests-hide-critters")
