@@ -230,8 +230,13 @@ extension CostUsageScanner {
 
                         // Streaming chunks share message.id + requestId inside a file.
                         // Keep overwriting so the final cumulative chunk wins.
-                        if let messageId, let requestId {
-                            let key = "\(messageId):\(requestId)"
+                        let key: String? = {
+                            if let messageId, let requestId {
+                                return "\(messageId):\(requestId)"
+                            }
+                            return messageId ?? requestId
+                        }()
+                        if let key {
                             keyedRows[key] = row
                         } else {
                             // Older logs omit IDs; treat each line as distinct to avoid dropping usage.
