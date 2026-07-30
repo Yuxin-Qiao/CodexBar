@@ -447,25 +447,44 @@ public struct AntigravityStatusSnapshot: Sendable {
     }
 
     private static func rateWindow(for quota: AntigravityModelQuota) -> RateWindow {
-        let windowMinutes: Int? = if let desc = quota.resetDescription?.lowercased() {
-            if desc.contains("weekly") || desc.contains("7-day") || desc.contains("7d") {
-                10080
-            } else if desc.contains("session") || desc.contains("5h") || desc.contains("5-hour") || desc
-                .contains("five hour")
-            {
-                300
-            } else {
-                nil
-            }
-        } else {
-            nil
-        }
+        let windowMinutes = self.windowMinutes(forModelQuota: quota)
         return RateWindow(
             usedPercent: 100 - quota.remainingPercent,
             windowMinutes: windowMinutes,
             resetsAt: quota.resetTime,
             resetDescription: quota.resetDescription)
     }
+
+    private static func windowMinutes(forModelQuota quota: AntigravityModelQuota) -> Int? {
+        var candidates: Set<String> = []
+        for rawValue in [quota.modelId, quota.label, quota.resetDescription ?? ""] {
+            let normalized = rawValue
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+                .replacingOccurrences(of: "_", with: "-")
+            guard !normalized.isEmpty else { continue }
+            candidates.insert(normalized)
+            for token in normalized.components(separatedBy: CharacterSet(charactersIn: " -/")) where !token.isEmpty {
+                candidates.insert(token)
+            }
+        }
+        if !candidates.isDisjoint(with: Self.sessionCadenceAliases) {
+            return 300
+        }
+        if !candidates.isDisjoint(with: Self.weeklyCadenceAliases) {
+            return 10080
+        }
+        return nil
+    }
+
+    private static let weeklyCadenceAliases: Set<String> = [
+        "weekly",
+        "7-day",
+        "7d",
+        "7-days",
+        "seven-day",
+        "seven day",
+    ]
 
     private static func modelOrderPrecedes(
         _ lhs: AntigravityNormalizedModel,
