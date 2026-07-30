@@ -224,9 +224,16 @@ extension ZaiUsageSnapshot {
     }
 
     private static func rateWindow(for limit: ZaiLimitEntry) -> RateWindow {
-        RateWindow(
+        let windowMinutes: Int? = if limit.type == .timeLimit || limit.isMCPMonthlyMarker {
+            ProviderPaceCapability.monthlyWindowSentinelMinutes
+        } else if let minutes = limit.windowMinutes {
+            minutes
+        } else {
+            nil
+        }
+        return RateWindow(
             usedPercent: limit.usedPercent,
-            windowMinutes: limit.type == .tokensLimit ? limit.windowMinutes : nil,
+            windowMinutes: windowMinutes,
             resetsAt: limit.nextResetTime,
             resetDescription: self.resetDescription(for: limit))
     }

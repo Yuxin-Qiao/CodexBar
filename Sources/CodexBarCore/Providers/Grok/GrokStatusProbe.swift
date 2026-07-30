@@ -44,7 +44,7 @@ public struct GrokUsageSnapshot: Sendable {
         {
             primary = RateWindow(
                 usedPercent: percent,
-                windowMinutes: nil,
+                windowMinutes: ProviderPaceCapability.monthlyWindowSentinelMinutes,
                 resetsAt: webBilling.resetsAt,
                 resetDescription: nil)
         }

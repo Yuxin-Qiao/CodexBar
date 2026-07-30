@@ -253,7 +253,7 @@ struct ZaiUsageParsingTests {
         #expect(snapshot.tokenLimit?.percentage == 34.0)
 
         let usage = snapshot.toUsageSnapshot()
-        #expect(usage.secondary?.windowMinutes == nil)
+        #expect(usage.secondary?.windowMinutes == ProviderPaceCapability.monthlyWindowSentinelMinutes)
         #expect(usage.secondary?.resetDescription == "Monthly")
     }
 
@@ -292,7 +292,7 @@ struct ZaiUsageParsingTests {
         let usage = snapshot.toUsageSnapshot()
 
         #expect(snapshot.timeLimit?.windowDescription == "1 minute")
-        #expect(usage.secondary?.windowMinutes == nil)
+        #expect(usage.secondary?.windowMinutes == ProviderPaceCapability.monthlyWindowSentinelMinutes)
         #expect(usage.secondary?.resetDescription == "Monthly")
     }
 

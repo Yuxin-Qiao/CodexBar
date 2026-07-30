@@ -447,9 +447,22 @@ public struct AntigravityStatusSnapshot: Sendable {
     }
 
     private static func rateWindow(for quota: AntigravityModelQuota) -> RateWindow {
-        RateWindow(
+        let windowMinutes: Int? = if let desc = quota.resetDescription?.lowercased() {
+            if desc.contains("weekly") || desc.contains("7-day") || desc.contains("7d") {
+                10080
+            } else if desc.contains("session") || desc.contains("5h") || desc.contains("5-hour") || desc
+                .contains("five hour")
+            {
+                300
+            } else {
+                nil
+            }
+        } else {
+            nil
+        }
+        return RateWindow(
             usedPercent: 100 - quota.remainingPercent,
-            windowMinutes: nil,
+            windowMinutes: windowMinutes,
             resetsAt: quota.resetTime,
             resetDescription: quota.resetDescription)
     }
