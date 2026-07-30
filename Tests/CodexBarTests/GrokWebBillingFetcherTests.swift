@@ -914,7 +914,7 @@ extension GrokWebBillingFetcherTests {
         let usage = snapshot.toUsageSnapshot()
 
         #expect(usage.primary?.usedPercent == 67.25)
-        #expect(usage.primary?.windowMinutes == nil)
+        #expect(usage.primary?.windowMinutes == ProviderPaceCapability.monthlyWindowSentinelMinutes)
         #expect(usage.primary?.resetsAt == Date(timeIntervalSince1970: 1_800_000_003))
         #expect(usage.accountEmail(for: .grok) == "grok@example.com")
         #expect(usage.loginMethod(for: .grok) == "SuperGrok")
