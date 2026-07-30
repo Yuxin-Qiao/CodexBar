@@ -56,6 +56,8 @@ extension UsageStore {
         _ = self.statuses
         _ = self.tokenSnapshotPublications
         _ = self.historicalPaceRevision
+        _ = self.accountSnapshots
+        _ = self.codexAccountSnapshots
         return 0
     }
 
