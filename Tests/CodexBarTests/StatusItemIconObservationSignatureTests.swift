@@ -300,6 +300,8 @@ struct StatusItemIconObservationSignatureTests {
             suiteName: "StatusItemIconObservationSignatureTests-account-snapshots")
         defer { controller.releaseStatusItemsForTesting() }
 
+        let baselineSignature = controller.storeIconObservationSignature()
+
         nonisolated(unsafe) var invalidated = false
         withObservationTracking {
             _ = store.iconObservationToken
@@ -314,16 +316,17 @@ struct StatusItemIconObservationSignatureTests {
             addedAt: 1,
             lastUsed: nil)
 
-        store.accountSnapshots[.claude] = [
+        store.accountSnapshots[.codex] = [
             TokenAccountUsageSnapshot(
                 account: account,
                 snapshot: nil,
                 error: nil,
                 sourceLabel: "fixture",
-                cacheKey: store.tokenAccountSnapshotCacheKey(provider: .claude, account: account)),
+                cacheKey: store.tokenAccountSnapshotCacheKey(provider: .codex, account: account)),
         ]
 
         #expect(invalidated)
+        #expect(controller.storeIconObservationSignature() != baselineSignature)
     }
 
     @Test
@@ -331,6 +334,8 @@ struct StatusItemIconObservationSignatureTests {
         let (_, store, controller) = self.makeController(
             suiteName: "StatusItemIconObservationSignatureTests-codex-account-snapshots")
         defer { controller.releaseStatusItemsForTesting() }
+
+        let baselineSignature = controller.storeIconObservationSignature()
 
         nonisolated(unsafe) var invalidated = false
         withObservationTracking {
@@ -359,6 +364,7 @@ struct StatusItemIconObservationSignatureTests {
         ]
 
         #expect(invalidated)
+        #expect(controller.storeIconObservationSignature() != baselineSignature)
     }
 
     @Test

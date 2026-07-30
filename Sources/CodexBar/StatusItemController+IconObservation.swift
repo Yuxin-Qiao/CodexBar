@@ -64,7 +64,28 @@ extension StatusItemController {
             "text=\(displayText ?? "nil")",
             "layoutCost=\(layoutCostSignature ?? "nil")",
             "layoutAccount=\(layoutAccountSignature ?? "nil")",
+            "accountSnapshots=\(self.accountSnapshotSignature(for: provider))",
         ].joined(separator: "|")
+    }
+
+    private func accountSnapshotSignature(for provider: UsageProvider) -> String {
+        let accountSnapshots = self.store.accountSnapshots[provider] ?? []
+        let accountPart = accountSnapshots.map { snap in
+            let label = snap.account.label
+            return "\(snap.account.id.uuidString):\(label)"
+        }.joined(separator: ",")
+
+        let codexPart: String = if provider == .codex {
+            self.store.codexAccountSnapshots.map { snap in
+                let email = snap.account.email
+                let active = snap.account.isActive ? "1" : "0"
+                return "\(snap.id):\(email):\(active)"
+            }.joined(separator: ",")
+        } else {
+            ""
+        }
+
+        return "\(accountPart)|\(codexPart)"
     }
 
     private func storedMenuBarLayoutAccountSignature(
