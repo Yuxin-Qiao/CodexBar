@@ -121,9 +121,9 @@ extension CodexBarCLI {
 
     static func unsupportedAPIKeyErrorMessage(for provider: UsageProvider, rawProvider: String) -> String {
         if provider == .codex {
-            return "\(rawProvider) does not support config API keys. For OpenAI Platform API keys, use '--provider openai'."
+            "\(rawProvider) does not support config API keys. For OpenAI Platform API keys, use '--provider openai'."
         } else {
-            return "\(rawProvider) does not support config API keys."
+            "\(rawProvider) does not support config API keys."
         }
     }
 

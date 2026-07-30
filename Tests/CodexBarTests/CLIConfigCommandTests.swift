@@ -25,7 +25,8 @@ struct CLIConfigCommandTests {
     func `config set api key for codex provider hints openai provider`() {
         #expect(ProviderConfigEnvironment.supportsAPIKeyOverride(for: .codex) == false)
         let codexMsg = CodexBarCLI.unsupportedAPIKeyErrorMessage(for: .codex, rawProvider: "codex")
-        #expect(codexMsg == "codex does not support config API keys. For OpenAI Platform API keys, use '--provider openai'.")
+        #expect(codexMsg ==
+            "codex does not support config API keys. For OpenAI Platform API keys, use '--provider openai'.")
 
         let claudeMsg = CodexBarCLI.unsupportedAPIKeyErrorMessage(for: .claude, rawProvider: "claude")
         #expect(claudeMsg == "claude does not support config API keys.")
