@@ -89,9 +89,12 @@ enum SpendActivityLevels {
         let maxValue = values.max() ?? 0
         return values.map { value in
             guard value > 0, maxValue > 0 else { return 0 }
-            if value * 4 > maxValue * 3 { return 4 }
-            if value * 2 > maxValue { return 3 }
-            if value * 4 > maxValue { return 2 }
+            // Compare as doubles: token counters can approach Int.max, and `value * 4` /
+            // `maxValue * 3` would otherwise trap while merely rendering the heatmap.
+            let ratio = Double(value) / Double(maxValue)
+            if ratio > 0.75 { return 4 }
+            if ratio > 0.5 { return 3 }
+            if ratio > 0.25 { return 2 }
             return 1
         }
     }

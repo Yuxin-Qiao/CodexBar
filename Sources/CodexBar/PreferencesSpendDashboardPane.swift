@@ -256,6 +256,10 @@ struct SpendDashboardPane: View {
             .count { $0.provider == .codex }
         for group in self.controller.model.groups {
             for row in group.providers {
+                // Synthetic billing rows are reconstructed from routed Codex/Claude/Cursor history,
+                // so the independently configured same-vendor account may belong to a different
+                // user. Never attach that account's plan to a routed-only row.
+                guard !row.id.hasPrefix("billing:") else { continue }
                 let snapshots: [UsageSnapshot?] = if row.provider == .codex,
                                                      row.id.hasPrefix("codex:")
                 {
