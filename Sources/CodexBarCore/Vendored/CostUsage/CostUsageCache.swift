@@ -13,7 +13,9 @@ enum CostUsageCacheIO {
         case .codex:
             11
         case .claude, .vertexai:
-            6
+            // v7: row identity now falls back to a lone nonempty message/request ID, so cached
+            // Claude/Vertex rows must be rebuilt under the shared in-file + incremental rule.
+            7
         default:
             1
         }

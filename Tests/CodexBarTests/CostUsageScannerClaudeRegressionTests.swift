@@ -775,4 +775,124 @@ struct CostUsageScannerClaudeRegressionTests {
         #expect(datedCost != nil)
         #expect(baseCost == datedCost)
     }
+
+    @Test
+    func `claude proxy rows sharing only message id dedup on append refresh`() throws {
+        // #2393: CLIProxyAPI writes thinking/tool_use/text rows with the same message.id and no
+        // requestId. The incremental merge must reuse the same single-ID key as initial parsing.
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2025, month: 12, day: 23)
+        let iso0 = env.isoString(for: day)
+        let iso1 = env.isoString(for: day.addingTimeInterval(1))
+        let iso2 = env.isoString(for: day.addingTimeInterval(2))
+
+        let model = "gpt-5.6-sol"
+        let sessionId = "session-proxy-single-id"
+        let messageId = "msg_proxy_single_id"
+
+        func row(timestamp: String, input: Int, cacheRead: Int, output: Int) -> [String: Any] {
+            [
+                "type": "assistant",
+                "timestamp": timestamp,
+                "sessionId": sessionId,
+                "isSidechain": false,
+                "message": [
+                    "id": messageId,
+                    "model": model,
+                    "usage": [
+                        "input_tokens": input,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": cacheRead,
+                        "output_tokens": output,
+                    ],
+                ],
+            ]
+        }
+
+        let fileURL = try env.writeClaudeProjectFile(
+            relativePath: "project-a/proxy-single-id.jsonl",
+            contents: env.jsonl([
+                row(timestamp: iso0, input: 100, cacheRead: 0, output: 10),
+                row(timestamp: iso1, input: 100, cacheRead: 40, output: 25),
+            ]))
+
+        var options = CostUsageScanner.Options(
+            codexSessionsRoot: nil,
+            claudeProjectsRoots: [env.claudeProjectsRoot],
+            cacheRoot: env.cacheRoot)
+        options.refreshMinIntervalSeconds = 0
+
+        let initial = CostUsageScanner.loadDailyReport(
+            provider: .claude,
+            since: day,
+            until: day,
+            now: day,
+            options: options)
+        #expect(initial.data.count == 1)
+        #expect(initial.data[0].outputTokens == 25)
+        #expect(initial.data[0].totalTokens == 165)
+
+        // Simulate a streaming append: the final cumulative row reclassifies interim input as
+        // cache reads. The incremental refresh must replace, not sum, the earlier snapshot.
+        let appended = try env.jsonl([row(timestamp: iso2, input: 100, cacheRead: 80, output: 50)])
+        let handle = try FileHandle(forWritingTo: fileURL)
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data(appended.utf8))
+        try handle.close()
+
+        let refreshed = CostUsageScanner.loadDailyReport(
+            provider: .claude,
+            since: day,
+            until: day,
+            now: day,
+            options: options)
+        #expect(refreshed.data.count == 1)
+        #expect(refreshed.data[0].outputTokens == 50)
+        #expect(refreshed.data[0].cacheReadTokens == 80)
+        #expect(refreshed.data[0].totalTokens == 230)
+    }
+
+    @Test
+    func `claude proxy rows with empty lone ids stay distinct`() throws {
+        // Empty-string IDs must not be treated as a shared key; unrelated rows stay separate.
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2025, month: 12, day: 23)
+        let iso0 = env.isoString(for: day)
+        let iso1 = env.isoString(for: day.addingTimeInterval(1))
+
+        func row(timestamp: String, input: Int) -> [String: Any] {
+            [
+                "type": "assistant",
+                "timestamp": timestamp,
+                "sessionId": "session-empty-id",
+                "isSidechain": false,
+                "message": [
+                    "id": "",
+                    "model": "claude-sonnet-4-20250514",
+                    "usage": [
+                        "input_tokens": input,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "output_tokens": 1,
+                    ],
+                ],
+            ]
+        }
+
+        let fileURL = try env.writeClaudeProjectFile(
+            relativePath: "project-a/empty-lone-ids.jsonl",
+            contents: env.jsonl([row(timestamp: iso0, input: 11), row(timestamp: iso1, input: 13)]))
+
+        let parsed = CostUsageScanner.parseClaudeFile(
+            fileURL: fileURL,
+            range: CostUsageScanner.CostUsageDayRange(since: day, until: day),
+            providerFilter: .all)
+
+        #expect(parsed.rows.count == 2)
+        #expect(parsed.rows.map(\.input).sorted() == [11, 13])
+    }
 }

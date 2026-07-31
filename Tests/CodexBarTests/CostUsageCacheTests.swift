@@ -39,8 +39,8 @@ struct CostUsageCacheTests {
         let vertexURL = CostUsageCacheIO.cacheFileURL(provider: .vertexai, cacheRoot: root)
 
         #expect(codexURL.lastPathComponent == "codex-v11.json")
-        #expect(claudeURL.lastPathComponent == "claude-v6.json")
-        #expect(vertexURL.lastPathComponent == "vertexai-v6.json")
+        #expect(claudeURL.lastPathComponent == "claude-v7.json")
+        #expect(vertexURL.lastPathComponent == "vertexai-v7.json")
     }
 
     @Test
@@ -171,6 +171,43 @@ struct CostUsageCacheTests {
 
         #expect(loaded.lastScanUnixMs == 0)
         #expect(loaded.days.isEmpty)
+    }
+
+    @Test
+    func `claude cache ignores predecessor artifact after row identity change`() throws {
+        // #2393: single-ID dedup changed row identity, so v6 Claude/Vertex caches must be rebuilt.
+        let root = try self.makeTemporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        for provider in [UsageProvider.claude, .vertexai] {
+            let legacyURL = root
+                .appendingPathComponent("cost-usage", isDirectory: true)
+                .appendingPathComponent("\(provider.rawValue)-v6.json", isDirectory: false)
+            try FileManager.default.createDirectory(
+                at: legacyURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true)
+            let legacy = """
+            {
+              "version": 1,
+              "lastScanUnixMs": 999,
+              "files": {
+                "/tmp/claude-session.jsonl": {
+                  "mtimeUnixMs": 1,
+                  "size": 100,
+                  "days": {},
+                  "parsedBytes": 100
+                }
+              },
+              "days": {}
+            }
+            """
+            try legacy.write(to: legacyURL, atomically: false, encoding: .utf8)
+
+            let loaded = CostUsageCacheIO.load(provider: provider, cacheRoot: root)
+
+            #expect(loaded.lastScanUnixMs == 0)
+            #expect(loaded.files.isEmpty)
+        }
     }
 
     @Test

@@ -229,15 +229,9 @@ extension CostUsageScanner {
                             costNanos: tokens.costNanos,
                             costPriced: tokens.costPriced)
 
-                        // Streaming chunks share message.id + requestId inside a file.
+                        // Streaming chunks share message.id and/or requestId inside a file.
                         // Keep overwriting so the final cumulative chunk wins.
-                        let key: String? = {
-                            if let messageId, let requestId {
-                                return "\(messageId):\(requestId)"
-                            }
-                            return messageId ?? requestId
-                        }()
-                        if let key {
+                        if let key = Self.claudeInFileKey(row) {
                             keyedRows[key] = row
                         } else {
                             // Older logs omit IDs; treat each line as distinct to avoid dropping usage.
@@ -279,10 +273,7 @@ extension CostUsageScanner {
     }
 
     private static func claudeCanonicalRowKey(_ row: ClaudeUsageRow) -> String? {
-        guard let messageId = row.messageId, let requestId = row.requestId else {
-            return nil
-        }
-        return "\(messageId):\(requestId)"
+        self.claudeInFileKey(row)
     }
 
     private static func mergeClaudeRows(existing: [ClaudeUsageRow], delta: [ClaudeUsageRow]) -> [ClaudeUsageRow] {
@@ -308,8 +299,19 @@ extension CostUsageScanner {
     }
 
     private static func claudeInFileKey(_ row: ClaudeUsageRow) -> String? {
-        guard let messageId = row.messageId, let requestId = row.requestId else { return nil }
-        return "\(messageId):\(requestId)"
+        let messageId = row.messageId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let requestId = row.requestId?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let messageId, !messageId.isEmpty {
+            if let requestId, !requestId.isEmpty {
+                return "\(messageId):\(requestId)"
+            }
+            return messageId
+        }
+        if let requestId, !requestId.isEmpty {
+            return requestId
+        }
+        return nil
     }
 
     private static func claudeRowWins(
