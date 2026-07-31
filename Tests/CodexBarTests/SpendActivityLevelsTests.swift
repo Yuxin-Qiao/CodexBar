@@ -1,7 +1,6 @@
 import Testing
 @testable import CodexBar
 
-@Suite
 struct SpendActivityLevelsTests {
     @Test
     func `daily levels stay finite near Int max`() {
