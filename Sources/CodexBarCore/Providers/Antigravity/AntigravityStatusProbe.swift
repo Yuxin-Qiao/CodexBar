@@ -467,6 +467,18 @@ public struct AntigravityStatusSnapshot: Sendable {
             for token in normalized.components(separatedBy: CharacterSet.alphanumerics.inverted) where !token.isEmpty {
                 candidates.insert(token)
             }
+            // Match compound aliases embedded in hyphenated labels, e.g. "gemini-pro-7-day" → "7-day"
+            var normalizedVariants = [normalized]
+            if normalized.hasSuffix(" limit") {
+                normalizedVariants.append(String(normalized.dropLast(" limit".count)))
+            }
+            for variant in normalizedVariants {
+                for alias in Self.sessionCadenceAliases.union(Self.weeklyCadenceAliases) {
+                    if variant == alias || variant.hasSuffix("-\(alias)") {
+                        candidates.insert(alias)
+                    }
+                }
+            }
         }
         if !candidates.isDisjoint(with: Self.sessionCadenceAliases) {
             return 300
