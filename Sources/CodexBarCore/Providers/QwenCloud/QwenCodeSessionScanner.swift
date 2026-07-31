@@ -39,6 +39,10 @@ public enum QwenCodeSessionScanner {
         var requests = 0
         var cost = 0.0
         var sawCost = false
+        /// Set when at least one message in this accumulator carried billable usage but had no
+        /// resolvable price. The merged day/entry cost must then stay nil so the dashboard does not
+        /// present a partial subtotal as the complete day total.
+        var sawUnpricedUsage = false
 
         mutating func add(
             usage: WireMessage.Usage,
@@ -46,12 +50,20 @@ public enum QwenCodeSessionScanner {
             modelsDevCatalog: ModelsDevCatalog?,
             modelsDevCacheRoot: URL?) -> Bool
         {
-            guard let input = Self.valid(usage.promptTokenCount),
+            // Gemini-style `promptTokenCount` already includes the cached prefix
+            // (`cachedContentTokenCount` is a subset of it). Passing the full prompt as input AND the
+            // cached portion again as cache-read would bill the cached tokens twice, so split the
+            // prompt into its uncached remainder.
+            guard let promptTotal = Self.valid(usage.promptTokenCount),
                   let candidates = Self.valid(usage.candidatesTokenCount),
                   let reasoning = Self.valid(usage.thoughtsTokenCount),
                   let cacheRead = Self.valid(usage.cachedContentTokenCount),
-                  let billingOutput = Self.adding(candidates, reasoning),
-                  let nextInput = Self.adding(self.input, input),
+                  let billingOutput = Self.adding(candidates, reasoning)
+            else {
+                return false
+            }
+            let uncachedInput = max(0, promptTotal - cacheRead)
+            guard let nextInput = Self.adding(self.input, uncachedInput),
                   let nextOutput = Self.adding(self.output, billingOutput),
                   let nextCacheRead = Self.adding(self.cacheRead, cacheRead),
                   let nextReasoning = Self.adding(self.reasoning, reasoning),
@@ -59,7 +71,7 @@ public enum QwenCodeSessionScanner {
             else {
                 return false
             }
-            guard input > 0 || billingOutput > 0 || cacheRead > 0 else { return false }
+            guard promptTotal > 0 || billingOutput > 0 || cacheRead > 0 else { return false }
             self.input = nextInput
             self.output = nextOutput
             self.cacheRead = nextCacheRead
@@ -69,7 +81,7 @@ public enum QwenCodeSessionScanner {
                 request: .init(
                     providerIDs: ["alibaba", "alibaba-cn"],
                     model: model,
-                    inputTokens: input,
+                    inputTokens: uncachedInput,
                     cacheReadInputTokens: cacheRead,
                     outputTokens: billingOutput),
                 catalog: modelsDevCatalog,
@@ -81,6 +93,8 @@ public enum QwenCodeSessionScanner {
                     self.cost = nextCost
                     self.sawCost = true
                 }
+            } else {
+                self.sawUnpricedUsage = true
             }
             return true
         }
@@ -106,6 +120,7 @@ public enum QwenCodeSessionScanner {
                     self.sawCost = true
                 }
             }
+            self.sawUnpricedUsage = self.sawUnpricedUsage || other.sawUnpricedUsage
             return true
         }
 
@@ -167,7 +182,15 @@ public enum QwenCodeSessionScanner {
         let end = calendar.startOfDay(for: now)
         let start = calendar.date(byAdding: .day, value: -(days - 1), to: end) ?? end
         let decoder = JSONDecoder()
+        // Qwen emits both whole-second and fractional-second RFC 3339 timestamps. The default
+        // formatter rejects fractional seconds and would silently collapse those messages onto the
+        // file's modification day, so try a fractional-seconds formatter first.
+        let iso8601Fractional = ISO8601DateFormatter()
+        iso8601Fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let iso8601 = ISO8601DateFormatter()
+        let parseTimestamp: (String) -> Date? = { raw in
+            iso8601Fractional.date(from: raw) ?? iso8601.date(from: raw)
+        }
         let modelsDevCatalog = CostUsagePricing.modelsDevCatalog(now: now, cacheRoot: modelsDevCacheRoot)
         var values: [DayModelKey: TokenAccumulator] = [:]
         var visitedFiles = 0
@@ -206,7 +229,7 @@ public enum QwenCodeSessionScanner {
                     else {
                         return
                     }
-                    let eventDate = message.timestamp.flatMap(iso8601.date(from:))
+                    let eventDate = message.timestamp.flatMap(parseTimestamp)
                         ?? resourceValues?.contentModificationDate
                         ?? now
                     let eventDay = calendar.startOfDay(for: eventDate)
@@ -296,6 +319,9 @@ public enum QwenCodeSessionScanner {
                     requestCount: value.requests))
             }
             guard let dayTotal = total.total else { return nil }
+            // Withhold the day cost whenever any contributing model could not be priced, so the
+            // dashboard treats the day as partially priced instead of a confident complete total.
+            let dayCost = total.sawCost && !total.sawUnpricedUsage ? total.cost : nil
             return CostUsageDailyReport.Entry(
                 date: day,
                 inputTokens: total.input,
@@ -304,7 +330,7 @@ public enum QwenCodeSessionScanner {
                 cacheCreationTokens: 0,
                 totalTokens: dayTotal,
                 requestCount: total.requests,
-                costUSD: total.sawCost ? total.cost : nil,
+                costUSD: dayCost,
                 modelsUsed: breakdowns.map(\.modelName),
                 modelBreakdowns: breakdowns)
         }

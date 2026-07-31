@@ -11,11 +11,12 @@ struct QwenCodeSessionScannerTests {
         let chats = root
             .appendingPathComponent("projects/project-a/chats", isDirectory: true)
         try FileManager.default.createDirectory(at: chats, withIntermediateDirectories: true)
+        // promptTokenCount includes the cached prefix, so prompt must be >= cachedContentTokenCount.
         let assistantOne = #"{"type":"assistant","model":"qwen3-coder-plus","# +
-            #""timestamp":"2026-07-28T08:01:00Z","usageMetadata":{"promptTokenCount":100,"# +
+            #""timestamp":"2026-07-28T08:01:00Z","usageMetadata":{"promptTokenCount":300,"# +
             #""candidatesTokenCount":30,"thoughtsTokenCount":20,"cachedContentTokenCount":200}}"#
         let assistantTwo = #"{"type":"assistant","model":"qwen3-coder-plus","# +
-            #""timestamp":"2026-07-28T08:02:00Z","usageMetadata":{"promptTokenCount":10,"# +
+            #""timestamp":"2026-07-28T08:02:00Z","usageMetadata":{"promptTokenCount":30,"# +
             #""candidatesTokenCount":5,"thoughtsTokenCount":2,"cachedContentTokenCount":20}}"#
         let jsonl = [
             #"{"type":"user","timestamp":"2026-07-28T08:00:00Z"}"#,

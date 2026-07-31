@@ -215,6 +215,9 @@ public enum OpenCodeSessionScanner {
 
         var values: [DayModelKey: TokenAccumulator] = [:]
         var costs: [DayModelKey: Double] = [:]
+        // Keys that include at least one billable record with no provider-reported cost (legacy JSON
+        // rows). Their day's cost must be withheld so a priced DB subtotal is not read as complete.
+        var partiallyPricedKeys: Set<DayModelKey> = []
         for record in records {
             try checkCancellation()
             let key = DayModelKey(day: record.day, model: record.model)
@@ -223,6 +226,8 @@ public enum OpenCodeSessionScanner {
             values[key] = value
             if let cost = record.cost, cost.isFinite, cost >= 0 {
                 costs[key] = (costs[key] ?? 0) + cost
+            } else {
+                partiallyPricedKeys.insert(key)
             }
         }
 
@@ -235,12 +240,17 @@ public enum OpenCodeSessionScanner {
             var total = TokenAccumulator()
             var dayCost = 0.0
             var dayCostSeen = false
+            var dayHasUnpricedUsage = false
             var modelBreakdowns: [CostUsageDailyReport.ModelBreakdown] = []
             for (key, value) in models {
                 guard let modelTotal = value.total else { return nil }
                 guard total.merge(value) else { return nil }
-                let modelCost = costs[key]
+                // A model whose records are only partially priced reports no subtotal: pairing the
+                // combined token count with a priced-only cost would read as a complete figure.
+                let modelPriced = costs[key] != nil && !partiallyPricedKeys.contains(key)
+                let modelCost = modelPriced ? costs[key] : nil
                 if let modelCost { dayCost += modelCost; dayCostSeen = true }
+                if !modelPriced { dayHasUnpricedUsage = true }
                 modelBreakdowns.append(CostUsageDailyReport.ModelBreakdown(
                     modelName: key.model,
                     costUSD: modelCost,
@@ -253,6 +263,7 @@ public enum OpenCodeSessionScanner {
                     requestCount: value.requests))
             }
             guard let totalTokens = total.total else { return nil }
+            let dayCostUSD = dayCostSeen && !dayHasUnpricedUsage ? dayCost : nil
             return CostUsageDailyReport.Entry(
                 date: day,
                 inputTokens: total.input,
@@ -261,7 +272,7 @@ public enum OpenCodeSessionScanner {
                 cacheCreationTokens: total.cacheCreation,
                 totalTokens: totalTokens,
                 requestCount: total.requests,
-                costUSD: dayCostSeen ? dayCost : nil,
+                costUSD: dayCostUSD,
                 modelsUsed: modelBreakdowns.map(\.modelName),
                 modelBreakdowns: modelBreakdowns)
         }
