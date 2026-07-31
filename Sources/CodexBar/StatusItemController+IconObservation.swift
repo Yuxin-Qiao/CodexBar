@@ -72,20 +72,36 @@ extension StatusItemController {
         let accountSnapshots = self.store.accountSnapshots[provider] ?? []
         let accountPart = accountSnapshots.map { snap in
             let label = snap.account.label
-            return "\(snap.account.id.uuidString):\(label)"
+            let usage = Self.usageSnapshotSignature(snap.snapshot)
+            return "\(snap.account.id.uuidString):\(label):\(usage):\(snap.error ?? "nil"):\(snap.sourceLabel ?? "nil")"
         }.joined(separator: ",")
 
         let codexPart: String = if provider == .codex {
             self.store.codexAccountSnapshots.map { snap in
                 let email = snap.account.email
                 let active = snap.account.isActive ? "1" : "0"
-                return "\(snap.id):\(email):\(active)"
+                let usage = Self.usageSnapshotSignature(snap.snapshot)
+                return "\(snap.id):\(email):\(active):\(usage):\(snap.error ?? "nil"):\(snap.sourceLabel ?? "nil")"
             }.joined(separator: ",")
         } else {
             ""
         }
 
         return "\(accountPart)|\(codexPart)"
+    }
+
+    private static func usageSnapshotSignature(_ snapshot: UsageSnapshot?) -> String {
+        guard let snapshot else { return "nil" }
+        return [
+            Self.rateWindowSignature(snapshot.primary),
+            Self.rateWindowSignature(snapshot.secondary),
+            Self.rateWindowSignature(snapshot.tertiary),
+        ].joined(separator: ";")
+    }
+
+    private static func rateWindowSignature(_ window: RateWindow?) -> String {
+        guard let window else { return "nil" }
+        return "\(window.usedPercent)/\(window.windowMinutes ?? -1)/\(window.resetsAt?.timeIntervalSince1970 ?? -1)"
     }
 
     private func storedMenuBarLayoutAccountSignature(
