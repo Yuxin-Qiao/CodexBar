@@ -42,21 +42,11 @@ public struct GrokUsageSnapshot: Sendable {
         } else if let webBilling,
                   let percent = webBilling.usedPercent
         {
-            let windowMinutes: Int? = {
-                guard let resetsAt = webBilling.resetsAt else { return nil }
-                let interval = resetsAt.timeIntervalSince(self.updatedAt)
-                guard interval > 0 else { return nil }
-                if interval <= 8 * 86400 {
-                    return 10080
-                } else if interval <= 32 * 86400 {
-                    return ProviderPaceCapability.monthlyWindowSentinelMinutes
-                } else {
-                    return Int(interval / 60)
-                }
-            }()
+            // Do not infer the full quota cadence from the remaining time until reset; a
+            // monthly window near its reset would otherwise be misclassified as weekly.
             primary = RateWindow(
                 usedPercent: percent,
-                windowMinutes: windowMinutes,
+                windowMinutes: nil,
                 resetsAt: webBilling.resetsAt,
                 resetDescription: nil)
         }

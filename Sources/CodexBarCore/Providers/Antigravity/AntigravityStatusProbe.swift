@@ -464,7 +464,7 @@ public struct AntigravityStatusSnapshot: Sendable {
                 .replacingOccurrences(of: "_", with: "-")
             guard !normalized.isEmpty else { continue }
             candidates.insert(normalized)
-            for token in normalized.components(separatedBy: CharacterSet(charactersIn: " -/")) where !token.isEmpty {
+            for token in normalized.components(separatedBy: CharacterSet.alphanumerics.inverted) where !token.isEmpty {
                 candidates.insert(token)
             }
         }
