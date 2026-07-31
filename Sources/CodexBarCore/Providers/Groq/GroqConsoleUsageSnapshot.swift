@@ -161,6 +161,7 @@ public struct GroqConsoleUsageSnapshot: Codable, Equatable, Sendable {
             last30DaysCostUSD: total.costUSD,
             last30DaysRequests: total.requests,
             historyDays: self.historyDays,
+            costSource: .providerReported,
             daily: daily,
             updatedAt: self.updatedAt)
     }

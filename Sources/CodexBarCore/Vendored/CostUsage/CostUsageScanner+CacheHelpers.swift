@@ -276,6 +276,7 @@ extension CostUsageScanner {
     static func makeFileUsage(
         mtimeUnixMs: Int64,
         size: Int64,
+        fingerprint: CostUsageSourceFingerprint? = nil,
         days: [String: [String: [Int]]],
         parsedBytes: Int64?,
         lastModel: String? = nil,
@@ -312,6 +313,7 @@ extension CostUsageScanner {
         CostUsageFileUsage(
             mtimeUnixMs: mtimeUnixMs,
             size: size,
+            fingerprint: fingerprint,
             days: days,
             parsedBytes: parsedBytes,
             lastModel: lastModel,
@@ -730,9 +732,13 @@ extension CostUsageScanner {
         var days: [String: [String: [Int]]] = [:]
         for row in rows {
             let packed = days[row.day]?[row.model] ?? []
+            var delta = [row.input, row.cached, row.output]
+            if let reasoning = row.reasoning {
+                delta.append(reasoning)
+            }
             days[row.day, default: [:]][row.model] = Self.addPacked(
                 a: packed,
-                b: [row.input, row.cached, row.output],
+                b: delta,
                 sign: 1)
         }
         return days
@@ -916,6 +922,20 @@ extension CostUsageScanner {
             fileId: "\(info.st_dev):\(info.st_ino)")
     }
 
+    /// Builds the bounded sampling fingerprint for a Codex session file. `mtimeUnixNs` is derived
+    /// from the metadata's millisecond mtime so it round-trips with the value used at freshness
+    /// check time. Returns nil when the file is unreadable; the caller then stores no fingerprint
+    /// and the next scan fails safe to a reparse.
+    static func codexContentFingerprint(
+        metadata: CodexFileMetadata,
+        fileURL: URL) -> CostUsageSourceFingerprint?
+    {
+        CostUsageSourceFingerprint.make(
+            fileURL: fileURL,
+            size: metadata.size,
+            mtimeUnixNs: metadata.mtimeUnixMs * 1_000_000)
+    }
+
     static func dropCachedCodexFile(
         path: String,
         cached: CostUsageFileUsage?,
@@ -964,6 +984,24 @@ extension CostUsageScanner {
               !needsSessionId,
               !context.forceFullScan
         else { return false }
+
+        // Sampling-fingerprint freshness (tokscale-style): an exact size+mtime match is NOT
+        // sufficient on its own — a rewrite that restores the same byte length and mtime would
+        // otherwise be invisible (see the in-place same-size rewrite regression test). Recompute
+        // the bounded content samples and only treat the entry as fresh when they still match.
+        // A nil cached fingerprint (entries written before bounded validation) fails safe to a
+        // reparse so the entry is upgraded.
+        switch CostUsageSourceFingerprint.check(
+            fileURL: input.fileURL,
+            size: input.metadata.size,
+            mtimeUnixNs: input.metadata.mtimeUnixMs * 1_000_000,
+            cached: cached.fingerprint)
+        {
+        case .unchanged, .touched:
+            break
+        case .changed:
+            return false
+        }
 
         guard !Self.cachedCodexFileNeedsPriorityRescan(cached, context: context) else { return false }
 
@@ -1172,6 +1210,7 @@ extension CostUsageScanner {
         cache.files[input.metadata.path] = Self.makeFileUsage(
             mtimeUnixMs: input.metadata.mtimeUnixMs,
             size: input.metadata.size,
+            fingerprint: Self.codexContentFingerprint(metadata: input.metadata, fileURL: input.fileURL),
             days: mergedDays,
             parsedBytes: delta.parsedBytes,
             lastModel: delta.lastModel,
@@ -1296,6 +1335,7 @@ extension CostUsageScanner {
         cache.files[input.metadata.path] = Self.makeFileUsage(
             mtimeUnixMs: input.metadata.mtimeUnixMs,
             size: input.metadata.size,
+            fingerprint: Self.codexContentFingerprint(metadata: input.metadata, fileURL: input.fileURL),
             days: usageDays,
             parsedBytes: parsed.parsedBytes,
             lastModel: parsed.lastModel,
@@ -1536,6 +1576,7 @@ extension CostUsageScanner {
                 let input = packed[safe: 0] ?? 0
                 let cached = packed[safe: 1] ?? 0
                 let output = packed[safe: 2] ?? 0
+                let reasoning = packed[safe: 3]
                 let totalTokens = input + output
 
                 dayInput += input
@@ -1577,8 +1618,13 @@ extension CostUsageScanner {
                 breakdown.append(
                     CostUsageDailyReport.ModelBreakdown(
                         modelName: model,
+                        billingProviderID: CostUsageBillingProvider.providerID(fromNamespacedModel: model),
                         costUSD: cost,
                         totalTokens: totalTokens,
+                        inputTokens: input,
+                        cacheReadTokens: cached,
+                        outputTokens: output,
+                        reasoningTokens: reasoning,
                         standardCostUSD: hasModeSplit ? standardCost : nil,
                         priorityCostUSD: hasModeSplit ? priorityCost : nil,
                         standardTokens: hasModeSplit ? cachedStandardTokens : nil,

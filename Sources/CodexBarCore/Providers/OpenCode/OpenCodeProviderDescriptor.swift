@@ -34,6 +34,7 @@ public enum OpenCodeProviderDescriptor {
                 ]),
             tokenCost: ProviderTokenCostConfig(
                 supportsTokenCost: false,
+                localHistorySources: [.openCode],
                 noDataMessage: { "OpenCode cost summary is not supported." }),
             fetchPlan: ProviderFetchPlan(
                 sourceModes: [.auto, .web],

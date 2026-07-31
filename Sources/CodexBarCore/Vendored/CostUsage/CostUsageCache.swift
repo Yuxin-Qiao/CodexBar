@@ -137,6 +137,9 @@ struct CostUsageCache: Codable {
 struct CostUsageFileUsage: Codable {
     var mtimeUnixMs: Int64
     var size: Int64
+    /// Sampling fingerprint recorded at scan time; nil on cache entries written before
+    /// bounded content-fingerprint validation was introduced.
+    var fingerprint: CostUsageSourceFingerprint?
     var days: [String: [String: [Int]]]
     var parsedBytes: Int64?
     var lastModel: String?

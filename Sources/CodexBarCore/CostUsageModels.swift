@@ -1,5 +1,50 @@
 import Foundation
 
+/// Extracts billing ownership only from an explicit provider namespace retained in a model id.
+///
+/// A plain family label such as `MiniMax-M3` is not evidence because a subscription can bundle
+/// that model. A namespaced id such as `minimax/MiniMax-M3` is routing evidence and can safely be
+/// carried into the dashboard without tool-specific heuristics.
+public enum CostUsageBillingProvider {
+    public static func providerID(fromNamespacedModel model: String) -> String? {
+        let trimmed = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        let components = trimmed
+            .split(separator: "/", omittingEmptySubsequences: true)
+            .dropLast()
+            .map { $0.lowercased() }
+        guard !components.isEmpty else {
+            return nil
+        }
+        let aliases: [String: String] = [
+            "alibaba": UsageProvider.qwencloud.rawValue,
+            "alibabacloud": UsageProvider.qwencloud.rawValue,
+            "anthropic": UsageProvider.claude.rawValue,
+            "google": UsageProvider.gemini.rawValue,
+            "minimax-cn": UsageProvider.minimax.rawValue,
+            "moonshot": UsageProvider.moonshot.rawValue,
+            "moonshotai": UsageProvider.moonshot.rawValue,
+            "openai": UsageProvider.openai.rawValue,
+            "qwen": UsageProvider.qwencloud.rawValue,
+            "z.ai": UsageProvider.zai.rawValue,
+        ]
+        for namespace in components.reversed() {
+            if let alias = aliases[namespace] { return alias }
+            if let provider = UsageProvider(rawValue: namespace) { return provider.rawValue }
+        }
+        return nil
+    }
+}
+
+/// Where a snapshot's `costUSD` figures come from. Local scanners price token counts against
+/// models.dev rate cards, so their cost is an API-rate *estimate* of the real bill; provider
+/// dashboards/APIs (Cursor usage events, Bedrock Cost Explorer) report the actual billed amount.
+public enum CostUsageCostSource: String, Sendable, Equatable {
+    /// Billed spend as reported by the provider itself.
+    case providerReported
+    /// Locally estimated spend (token counts priced against public rate cards).
+    case estimated
+}
+
 public struct CostUsageWindowSummary: Sendable, Equatable {
     public let days: Int
     public let totalTokens: Int?
@@ -77,6 +122,9 @@ public struct CostUsageTokenSnapshot: Sendable, Equatable {
     /// actually deducts, as opposed to the API-rate estimate. Only some providers (e.g. Cursor)
     /// report this; `nil` when unknown.
     public let meteredCostUSD: Double?
+    /// Origin of the cost figures in this snapshot. Defaults to `.estimated` because most
+    /// snapshots are priced locally; provider-billed sources opt into `.providerReported`.
+    public let costSource: CostUsageCostSource
     /// Internal credential scope used to prevent cross-account cache publication. This is a
     /// non-reversible fingerprint, not account identity, and is not emitted by CLI payloads.
     public let credentialScopeFingerprint: String?
@@ -97,6 +145,7 @@ public struct CostUsageTokenSnapshot: Sendable, Equatable {
         historyCoverageIsEstablished: Bool = true,
         historyLabel: String? = nil,
         meteredCostUSD: Double? = nil,
+        costSource: CostUsageCostSource = .estimated,
         credentialScopeFingerprint: String? = nil,
         daily: [CostUsageDailyReport.Entry],
         projects: [CostUsageProjectBreakdown] = [],
@@ -115,6 +164,7 @@ public struct CostUsageTokenSnapshot: Sendable, Equatable {
         self.historyCoverageIsEstablished = historyCoverageIsEstablished
         self.historyLabel = historyLabel
         self.meteredCostUSD = meteredCostUSD
+        self.costSource = costSource
         self.credentialScopeFingerprint = credentialScopeFingerprint
         self.daily = daily
         self.projects = projects
@@ -275,8 +325,21 @@ public struct CostUsageProjectSourceBreakdown: Sendable, Equatable {
 public struct CostUsageDailyReport: Sendable, Decodable {
     public struct ModelBreakdown: Sendable, Decodable, Equatable {
         public let modelName: String
+        /// Provider/endpoint identity reported by the source record. This is
+        /// billing evidence, unlike a model-name guess. It is intentionally
+        /// optional because many historical formats do not retain routing.
+        public let billingProviderID: String?
         public let costUSD: Double?
         public let totalTokens: Int?
+        public let inputTokens: Int?
+        public let cacheReadTokens: Int?
+        public let cacheCreationTokens: Int?
+        public let outputTokens: Int?
+        /// Reasoning ("thinking") tokens, when the source format reports them separately
+        /// (Codex `reasoning_output_tokens`, Gemini `thoughts`, OpenCode `reasoning`).
+        /// Reasoning is always a sub-bucket of `outputTokens` — output stays billing-inclusive,
+        /// so reasoning must never be added on top of output when summing buckets.
+        public let reasoningTokens: Int?
         public let requestCount: Int?
         public let standardCostUSD: Double?
         public let priorityCostUSD: Double?
@@ -285,9 +348,19 @@ public struct CostUsageDailyReport: Sendable, Decodable {
 
         private enum CodingKeys: String, CodingKey {
             case modelName
+            case billingProviderID
+            case providerID
             case costUSD
             case cost
             case totalTokens
+            case inputTokens
+            case cacheReadTokens
+            case cacheCreationTokens
+            case cacheReadInputTokens
+            case cacheCreationInputTokens
+            case outputTokens
+            case reasoningTokens
+            case reasoningOutputTokens = "reasoning_output_tokens"
             case requestCount
             case requests
             case standardCostUSD
@@ -299,10 +372,24 @@ public struct CostUsageDailyReport: Sendable, Decodable {
         public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             self.modelName = try container.decode(String.self, forKey: .modelName)
+            self.billingProviderID =
+                try container.decodeIfPresent(String.self, forKey: .billingProviderID)
+                ?? container.decodeIfPresent(String.self, forKey: .providerID)
             self.costUSD =
                 try container.decodeIfPresent(Double.self, forKey: .costUSD)
                 ?? container.decodeIfPresent(Double.self, forKey: .cost)
             self.totalTokens = try container.decodeIfPresent(Int.self, forKey: .totalTokens)
+            self.inputTokens = try container.decodeIfPresent(Int.self, forKey: .inputTokens)
+            self.cacheReadTokens =
+                try container.decodeIfPresent(Int.self, forKey: .cacheReadTokens)
+                ?? container.decodeIfPresent(Int.self, forKey: .cacheReadInputTokens)
+            self.cacheCreationTokens =
+                try container.decodeIfPresent(Int.self, forKey: .cacheCreationTokens)
+                ?? container.decodeIfPresent(Int.self, forKey: .cacheCreationInputTokens)
+            self.outputTokens = try container.decodeIfPresent(Int.self, forKey: .outputTokens)
+            self.reasoningTokens =
+                try container.decodeIfPresent(Int.self, forKey: .reasoningTokens)
+                ?? container.decodeIfPresent(Int.self, forKey: .reasoningOutputTokens)
             self.requestCount =
                 try container.decodeIfPresent(Int.self, forKey: .requestCount)
                 ?? container.decodeIfPresent(Int.self, forKey: .requests)
@@ -314,8 +401,14 @@ public struct CostUsageDailyReport: Sendable, Decodable {
 
         public init(
             modelName: String,
+            billingProviderID: String? = nil,
             costUSD: Double?,
             totalTokens: Int? = nil,
+            inputTokens: Int? = nil,
+            cacheReadTokens: Int? = nil,
+            cacheCreationTokens: Int? = nil,
+            outputTokens: Int? = nil,
+            reasoningTokens: Int? = nil,
             requestCount: Int? = nil,
             standardCostUSD: Double? = nil,
             priorityCostUSD: Double? = nil,
@@ -323,8 +416,18 @@ public struct CostUsageDailyReport: Sendable, Decodable {
             priorityTokens: Int? = nil)
         {
             self.modelName = modelName
+            let normalizedProviderID = billingProviderID?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            self.billingProviderID = normalizedProviderID?.isEmpty == false
+                ? normalizedProviderID
+                : nil
             self.costUSD = costUSD
             self.totalTokens = totalTokens
+            self.inputTokens = inputTokens
+            self.cacheReadTokens = cacheReadTokens
+            self.cacheCreationTokens = cacheCreationTokens
+            self.outputTokens = outputTokens
+            self.reasoningTokens = reasoningTokens
             self.requestCount = requestCount
             self.standardCostUSD = standardCostUSD
             self.priorityCostUSD = priorityCostUSD
@@ -530,6 +633,21 @@ extension CostUsageDailyReport {
     private struct BreakdownAccumulator {
         var totalTokens: Int = 0
         var sawTotalTokens = false
+        var inputTokens: Int = 0
+        var sawInputTokens = false
+        var missingInputTokens = false
+        var cacheReadTokens: Int = 0
+        var sawCacheReadTokens = false
+        var missingCacheReadTokens = false
+        var cacheCreationTokens: Int = 0
+        var sawCacheCreationTokens = false
+        var missingCacheCreationTokens = false
+        var outputTokens: Int = 0
+        var sawOutputTokens = false
+        var missingOutputTokens = false
+        var reasoningTokens: Int = 0
+        var sawReasoningTokens = false
+        var missingReasoningTokens = false
         var costUSD: Double = 0
         var sawCost = false
         var standardCostUSD: Double = 0
@@ -545,6 +663,36 @@ extension CostUsageDailyReport {
             if let totalTokens = breakdown.totalTokens {
                 self.totalTokens += totalTokens
                 self.sawTotalTokens = true
+            }
+            if let inputTokens = breakdown.inputTokens {
+                self.inputTokens += inputTokens
+                self.sawInputTokens = true
+            } else {
+                self.missingInputTokens = true
+            }
+            if let cacheReadTokens = breakdown.cacheReadTokens {
+                self.cacheReadTokens += cacheReadTokens
+                self.sawCacheReadTokens = true
+            } else {
+                self.missingCacheReadTokens = true
+            }
+            if let cacheCreationTokens = breakdown.cacheCreationTokens {
+                self.cacheCreationTokens += cacheCreationTokens
+                self.sawCacheCreationTokens = true
+            } else {
+                self.missingCacheCreationTokens = true
+            }
+            if let outputTokens = breakdown.outputTokens {
+                self.outputTokens += outputTokens
+                self.sawOutputTokens = true
+            } else {
+                self.missingOutputTokens = true
+            }
+            if let reasoningTokens = breakdown.reasoningTokens {
+                self.reasoningTokens += reasoningTokens
+                self.sawReasoningTokens = true
+            } else {
+                self.missingReasoningTokens = true
             }
             if let costUSD = breakdown.costUSD {
                 self.costUSD += costUSD
@@ -573,6 +721,13 @@ extension CostUsageDailyReport {
                 modelName: modelName,
                 costUSD: self.sawCost ? self.costUSD : nil,
                 totalTokens: self.sawTotalTokens ? self.totalTokens : nil,
+                inputTokens: self.sawInputTokens && !self.missingInputTokens ? self.inputTokens : nil,
+                cacheReadTokens: self.sawCacheReadTokens && !self.missingCacheReadTokens ? self.cacheReadTokens : nil,
+                cacheCreationTokens: self.sawCacheCreationTokens && !self.missingCacheCreationTokens
+                    ? self.cacheCreationTokens
+                    : nil,
+                outputTokens: self.sawOutputTokens && !self.missingOutputTokens ? self.outputTokens : nil,
+                reasoningTokens: self.sawReasoningTokens && !self.missingReasoningTokens ? self.reasoningTokens : nil,
                 standardCostUSD: self.sawStandardCost ? self.standardCostUSD : nil,
                 priorityCostUSD: self.sawPriorityCost ? self.priorityCostUSD : nil,
                 standardTokens: self.sawStandardTokens ? self.standardTokens : nil,
@@ -1064,6 +1219,13 @@ enum CostUsageBucketInterval {
 }
 
 enum CostUsageLocalDay {
+    static func gregorianCalendar(preserving calendar: Calendar) -> Calendar {
+        var normalized = Calendar(identifier: .gregorian)
+        normalized.timeZone = calendar.timeZone
+        normalized.locale = calendar.locale
+        return normalized
+    }
+
     static func gregorianCalendar(matching calendar: Calendar = .current) -> Calendar {
         var gregorian = Calendar(identifier: .gregorian)
         gregorian.timeZone = calendar.timeZone

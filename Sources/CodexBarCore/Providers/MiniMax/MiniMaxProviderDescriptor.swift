@@ -34,6 +34,7 @@ public enum MiniMaxProviderDescriptor {
                 ]),
             tokenCost: ProviderTokenCostConfig(
                 supportsTokenCost: false,
+                localHistorySources: [.miniMax],
                 noDataMessage: { "MiniMax cost summary is not supported." }),
             fetchPlan: ProviderFetchPlan(
                 sourceModes: [.auto, .web, .api],

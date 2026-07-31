@@ -202,37 +202,57 @@ extension CostUsageScanner {
         var sawStandardTokens = false
         var priorityTokens = 0
         var sawPriorityTokens = false
+        var billingProviderIDs: Set<String> = []
 
         mutating func add(_ breakdown: CostUsageDailyReport.ModelBreakdown) {
             if let totalTokens = breakdown.totalTokens {
-                self.totalTokens += totalTokens
-                self.sawTotalTokens = true
+                let addition = self.totalTokens.addingReportingOverflow(totalTokens)
+                if !addition.overflow {
+                    self.totalTokens = addition.partialValue
+                    self.sawTotalTokens = true
+                }
             }
-            if let costUSD = breakdown.costUSD {
+            if let costUSD = breakdown.costUSD, costUSD.isFinite {
                 self.costUSD += costUSD
                 self.sawCost = true
             }
-            if let standardCostUSD = breakdown.standardCostUSD {
+            if let standardCostUSD = breakdown.standardCostUSD, standardCostUSD.isFinite {
                 self.standardCostUSD += standardCostUSD
                 self.sawStandardCost = true
             }
-            if let priorityCostUSD = breakdown.priorityCostUSD {
+            if let priorityCostUSD = breakdown.priorityCostUSD, priorityCostUSD.isFinite {
                 self.priorityCostUSD += priorityCostUSD
                 self.sawPriorityCost = true
             }
             if let standardTokens = breakdown.standardTokens {
-                self.standardTokens += standardTokens
-                self.sawStandardTokens = true
+                let addition = self.standardTokens.addingReportingOverflow(standardTokens)
+                if !addition.overflow {
+                    self.standardTokens = addition.partialValue
+                    self.sawStandardTokens = true
+                }
             }
             if let priorityTokens = breakdown.priorityTokens {
-                self.priorityTokens += priorityTokens
-                self.sawPriorityTokens = true
+                let addition = self.priorityTokens.addingReportingOverflow(priorityTokens)
+                if !addition.overflow {
+                    self.priorityTokens = addition.partialValue
+                    self.sawPriorityTokens = true
+                }
+            }
+            if let billingProviderID = breakdown.billingProviderID?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+                !billingProviderID.isEmpty
+            {
+                self.billingProviderIDs.insert(billingProviderID)
             }
         }
 
         func build(modelName: String) -> CostUsageDailyReport.ModelBreakdown {
-            CostUsageDailyReport.ModelBreakdown(
+            let billingProviderID = self.billingProviderIDs.count == 1
+                ? self.billingProviderIDs.first
+                : CostUsageBillingProvider.providerID(fromNamespacedModel: modelName)
+            return CostUsageDailyReport.ModelBreakdown(
                 modelName: modelName,
+                billingProviderID: billingProviderID,
                 costUSD: self.sawCost ? self.costUSD : nil,
                 totalTokens: self.sawTotalTokens ? self.totalTokens : nil,
                 standardCostUSD: self.sawStandardCost ? self.standardCostUSD : nil,

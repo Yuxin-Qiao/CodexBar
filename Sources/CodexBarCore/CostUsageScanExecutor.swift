@@ -120,7 +120,14 @@ public enum CostUsageScanExecutor {
                 guard state.install(continuation) else { return }
                 queue.async {
                     guard state.begin() else { return }
-                    state.complete(with: Result { try work(checkCancellation) })
+                    #if canImport(ObjectiveC)
+                    let result = autoreleasepool {
+                        Result { try work(checkCancellation) }
+                    }
+                    #else
+                    let result = Result { try work(checkCancellation) }
+                    #endif
+                    state.complete(with: result)
                 }
             }
         } onCancel: {

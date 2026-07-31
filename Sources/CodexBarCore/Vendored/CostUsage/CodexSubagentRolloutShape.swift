@@ -187,14 +187,16 @@ extension CostUsageScanner {
 
         private static func totalsEqual(_ lhs: CostUsageCodexTotals, _ rhs: CostUsageCodexTotals) -> Bool {
             lhs.input == rhs.input && lhs.cached == rhs.cached && lhs.output == rhs.output
+                && lhs.reasoning == rhs.reasoning
         }
 
         private static func totalsAtLeast(_ lhs: CostUsageCodexTotals, _ rhs: CostUsageCodexTotals) -> Bool {
             lhs.input >= rhs.input && lhs.cached >= rhs.cached && lhs.output >= rhs.output
+                && (lhs.reasoning ?? 0) >= (rhs.reasoning ?? 0)
         }
 
         private static func totalsContainUsage(_ totals: CostUsageCodexTotals) -> Bool {
-            totals.input > 0 || totals.cached > 0 || totals.output > 0
+            totals.input > 0 || totals.cached > 0 || totals.output > 0 || (totals.reasoning ?? 0) > 0
         }
 
         private static func normalizedSessionID(_ value: String?) -> String? {

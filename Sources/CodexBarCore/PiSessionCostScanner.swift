@@ -254,8 +254,7 @@ enum PiSessionCostScanner {
             pricingKey: CostUsagePricingKey.codex(
                 modelsDevArtifact: modelsDevArtifact,
                 formulaVersion: Self.costFormulaVersion,
-                parserHash: CodexParserHash.value,
-                modelsDevProviderIDs: ["anthropic", "openai"]))
+                parserHash: CodexParserHash.value))
     }
 
     private static func requestedWindowExpandsCache(
@@ -942,7 +941,11 @@ extension PiSessionCostScanner {
                 breakdown.append(CostUsageDailyReport.ModelBreakdown(
                     modelName: modelName,
                     costUSD: costNanos.map { Double($0) / Self.costScale },
-                    totalTokens: modelTotalTokens > 0 ? modelTotalTokens : nil))
+                    totalTokens: modelTotalTokens > 0 ? modelTotalTokens : nil,
+                    inputTokens: packed.inputTokens,
+                    cacheReadTokens: packed.cacheReadTokens,
+                    cacheCreationTokens: packed.cacheWriteTokens,
+                    outputTokens: packed.outputTokens))
                 dayInput += packed.inputTokens
                 dayOutput += packed.outputTokens
                 dayCacheRead += packed.cacheReadTokens

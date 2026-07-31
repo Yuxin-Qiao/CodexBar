@@ -35,6 +35,7 @@ public enum AntigravityProviderDescriptor {
                 ]),
             tokenCost: ProviderTokenCostConfig(
                 supportsTokenCost: false,
+                localHistorySources: [.antigravity],
                 noDataMessage: { "Antigravity cost summary is not supported." }),
             fetchPlan: ProviderFetchPlan(
                 sourceModes: [.auto, .cli, .oauth],
