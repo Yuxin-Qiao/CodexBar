@@ -1,3 +1,6 @@
+import CodexBarCore
+import Foundation
+
 extension SpendDashboardModel.ModelAnalysis {
     func removingCosts(if shouldRemove: Bool) -> Self {
         guard shouldRemove else { return self }
@@ -101,5 +104,71 @@ extension SpendDashboardModel.CurrencyGroup {
     var costCoverage: SpendDashboardModel.ModelMetricCoverage {
         guard !self.providers.isEmpty, self.pricedProviderCount > 0 else { return .unavailable }
         return self.pricedProviderCount == self.providers.count ? .complete : .partial
+    }
+}
+
+extension SpendDashboardModel.ProviderInput {
+    /// Returns a copy whose cost figures are pre-converted into the group's display currency by
+    /// `multiplier`. Billing attribution merges inputs from different sources — and therefore from
+    /// different original currencies — into a single vendor row, so the conversion must be baked in
+    /// *before* attribution (after which a single multiplier of 1 applies). Token counts and other
+    /// non-monetary fields pass through unchanged.
+    func preMultipliedCosts(by multiplier: Double) -> Self {
+        guard multiplier != 1 else { return self }
+        let snapshot = self.snapshot
+        let scaledDaily = snapshot.daily.map { entry in
+            CostUsageDailyReport.Entry(
+                date: entry.date,
+                inputTokens: entry.inputTokens,
+                outputTokens: entry.outputTokens,
+                cacheReadTokens: entry.cacheReadTokens,
+                cacheCreationTokens: entry.cacheCreationTokens,
+                totalTokens: entry.totalTokens,
+                requestCount: entry.requestCount,
+                costUSD: entry.costUSD.map { $0 * multiplier },
+                modelsUsed: entry.modelsUsed,
+                modelBreakdowns: entry.modelBreakdowns?.map { breakdown in
+                    CostUsageDailyReport.ModelBreakdown(
+                        modelName: breakdown.modelName,
+                        billingProviderID: breakdown.billingProviderID,
+                        costUSD: breakdown.costUSD.map { $0 * multiplier },
+                        totalTokens: breakdown.totalTokens,
+                        inputTokens: breakdown.inputTokens,
+                        cacheReadTokens: breakdown.cacheReadTokens,
+                        cacheCreationTokens: breakdown.cacheCreationTokens,
+                        outputTokens: breakdown.outputTokens,
+                        reasoningTokens: breakdown.reasoningTokens,
+                        requestCount: breakdown.requestCount,
+                        standardCostUSD: breakdown.standardCostUSD.map { $0 * multiplier },
+                        priorityCostUSD: breakdown.priorityCostUSD.map { $0 * multiplier },
+                        standardTokens: breakdown.standardTokens,
+                        priorityTokens: breakdown.priorityTokens)
+                })
+        }
+        let scaledSnapshot = CostUsageTokenSnapshot(
+            sessionTokens: snapshot.sessionTokens,
+            sessionCostUSD: snapshot.sessionCostUSD.map { $0 * multiplier },
+            sessionRequests: snapshot.sessionRequests,
+            last30DaysTokens: snapshot.last30DaysTokens,
+            last30DaysCostUSD: snapshot.last30DaysCostUSD.map { $0 * multiplier },
+            last30DaysRequests: snapshot.last30DaysRequests,
+            currencyCode: snapshot.currencyCode,
+            historyDays: snapshot.historyDays,
+            historyCoverageIsEstablished: snapshot.historyCoverageIsEstablished,
+            historyLabel: snapshot.historyLabel,
+            meteredCostUSD: snapshot.meteredCostUSD.map { $0 * multiplier },
+            costSource: snapshot.costSource,
+            credentialScopeFingerprint: snapshot.credentialScopeFingerprint,
+            daily: scaledDaily,
+            projects: snapshot.projects,
+            sessions: snapshot.sessions,
+            updatedAt: snapshot.updatedAt)
+        return SpendDashboardModel.ProviderInput(
+            id: self.id,
+            provider: self.provider,
+            displayName: self.displayName,
+            modelProviderName: self.modelProviderName,
+            subscriptionName: self.subscriptionName,
+            snapshot: scaledSnapshot)
     }
 }

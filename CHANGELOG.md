@@ -1,6 +1,11 @@
 # Changelog
 
-## 0.45.3 — Unreleased
+## 0.46.1 — Unreleased
+
+### Changed
+- About: link the Website entry to codex.bar.
+
+## 0.46.0 — 2026-07-29
 
 ### Added
 - Qwen Cloud: new provider for Individual Token Plans with 5-hour and weekly rolling windows (#2361). Thanks @umutkeltek, and @Yach0 for the API investigation!

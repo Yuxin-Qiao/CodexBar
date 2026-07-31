@@ -355,23 +355,46 @@ struct SpendDashboardModel: Equatable, Sendable {
         inputs: [ProviderInput],
         requestedDays: Int,
         now: Date,
-        calendar: Calendar = .current) -> Self
+        calendar: Calendar = .current,
+        preferredCurrencyCode: String = "auto") -> Self
     {
         let days = max(1, min(365, requestedDays))
         let calculationCalendar = Self.gregorianCalendar(timeZone: calendar.timeZone)
         let bounds = Self.bounds(days: days, now: now, calendar: calculationCalendar)
-        let globalSummaries = inputs.map {
-            Self.inputSummary(input: $0, bounds: bounds, calendar: calculationCalendar)
+        // Classify each input into its display currency, converting costs into the user's preferred
+        // currency when a rate is available. An unknown currency (XXX) keeps its own group so its
+        // tokens stay visible without being summed into a money total.
+        let classifiedInputs = inputs.map { input -> ClassifiedInput in
+            let sourceCurrencyCode = Self.currencyCode(input.snapshot.currencyCode)
+            let targetCurrencyCode = UsageFormatter.effectiveCurrencyCode(
+                preferred: preferredCurrencyCode,
+                providerCurrency: sourceCurrencyCode)
+            let conversion = CurrencyExchange.shared.convert(
+                amount: 1,
+                from: sourceCurrencyCode,
+                to: targetCurrencyCode)
+            return ClassifiedInput(
+                currencyCode: conversion == nil ? sourceCurrencyCode : targetCurrencyCode,
+                input: input,
+                costMultiplier: conversion ?? 1)
         }
-        let currencyCodes = Set(inputs.map { Self.currencyCode($0.snapshot.currencyCode) })
+        let summaryInputs = classifiedInputs.map { ($0.input, $0.costMultiplier) }
+        let globalSummaries = summaryInputs.map {
+            Self.inputSummary(input: $0.0, costMultiplier: $0.1, bounds: bounds, calendar: calculationCalendar)
+        }
+        let currencyCodes = Set(classifiedInputs.map(\.currencyCode))
         let pricedCurrencyCodes = currencyCodes.subtracting(["XXX"])
         let combinesCurrencies = pricedCurrencyCodes.count > 1
         let globalModelAnalysis = Self.modelAnalysis(summaries: globalSummaries)
             .removingCosts(if: combinesCurrencies)
         let globalModelRanges = Dictionary(uniqueKeysWithValues: Set([7, 30, 365, days]).map { rangeDays in
             let rangeBounds = Self.bounds(days: rangeDays, now: now, calendar: calculationCalendar)
-            let summaries = inputs.map {
-                Self.inputSummary(input: $0, bounds: rangeBounds, calendar: calculationCalendar)
+            let summaries = summaryInputs.map {
+                Self.inputSummary(
+                    input: $0.0,
+                    costMultiplier: $0.1,
+                    bounds: rangeBounds,
+                    calendar: calculationCalendar)
             }
             let analysis = Self.modelAnalysis(summaries: summaries)
                 .removingCosts(if: combinesCurrencies)
@@ -383,14 +406,11 @@ struct SpendDashboardModel: Equatable, Sendable {
                 : Self.chartDomain(bounds: rangeBounds, calendar: calculationCalendar)
             return (rangeDays, ModelRange(analysis: analysis, chartDomain: chartDomain))
         })
-        let classifiedInputs = inputs.map { input -> (currencyCode: String, input: ProviderInput) in
-            (Self.currencyCode(input.snapshot.currencyCode), input)
-        }
         let groups = Dictionary(grouping: classifiedInputs, by: { $0.currencyCode })
             .map { currencyCode, inputs in
                 let group = Self.buildCurrencyGroup(
                     currencyCode: currencyCode,
-                    inputs: inputs.map(\.input),
+                    inputs: inputs,
                     days: days,
                     now: now,
                     calendar: calculationCalendar)
@@ -424,8 +444,15 @@ struct SpendDashboardModel: Equatable, Sendable {
         }
     }
 
+    private struct ClassifiedInput {
+        let currencyCode: String
+        let input: ProviderInput
+        let costMultiplier: Double
+    }
+
     private struct InputSummary {
         let input: ProviderInput
+        let costMultiplier: Double
         let entries: [WindowEntry]
         let totalTokens: Int?
         let totalCost: Double?
@@ -513,22 +540,35 @@ struct SpendDashboardModel: Equatable, Sendable {
 extension SpendDashboardModel {
     private static func buildCurrencyGroup(
         currencyCode: String,
-        inputs: [ProviderInput],
+        inputs: [ClassifiedInput],
         days: Int,
         now: Date,
         calendar: Calendar) -> CurrencyGroup
     {
         let bounds = Self.bounds(days: days, now: now, calendar: calendar)
-        let summaries = inputs.map { input in
-            Self.inputSummary(input: input, bounds: bounds, calendar: calendar)
+        let summaries = inputs.map { classified in
+            Self.inputSummary(
+                input: classified.input,
+                costMultiplier: classified.costMultiplier,
+                bounds: bounds,
+                calendar: calendar)
         }
         // "By subscription" shows which vendor the user actually paid, so re-attribute each source's
         // usage to its billing vendor (Codex driving MiniMax, Claude Code as a third-party harness,
         // …) before ranking. The per-model breakdown, stacked chart and analysis keep the original
         // per-tool attribution.
-        let billingInputs = SpendBillingAttribution.attribute(inputs)
+        // Convert each input's costs into the group's display currency BEFORE attribution: a vendor
+        // row can merge sources that were originally billed in different currencies, so a single
+        // post-attribution multiplier would misconvert all but one of them. After pre-multiplication
+        // the merged vendor costs are already in the display currency (multiplier 1).
+        let billingInputs = SpendBillingAttribution.attribute(
+            inputs.map { $0.input.preMultipliedCosts(by: $0.costMultiplier) })
         let billingSummaries = billingInputs.map { input in
-            Self.inputSummary(input: input, bounds: bounds, calendar: calendar)
+            Self.inputSummary(
+                input: input,
+                costMultiplier: 1,
+                bounds: bounds,
+                calendar: calendar)
         }
         let providers = Self.providerRows(billingSummaries)
         let completeModelSummaries = summaries.filter { summary in
@@ -564,6 +604,7 @@ extension SpendDashboardModel {
 
     private static func inputSummary(
         input: ProviderInput,
+        costMultiplier: Double,
         bounds: ClosedRange<Date>,
         calendar: Calendar) -> InputSummary
     {
@@ -609,8 +650,12 @@ extension SpendDashboardModel {
         // window — the priceable days still carry a meaningful subtotal, matching how the model
         // breakdown ("By tool") already aggregates them. The incomplete coverage is still surfaced
         // via `hasInvalidCostHistory` / `modelHistoryCompleteness`.
-        let dailyCostSum = Self.completeCostSum(entries.map { Self.validCost($0.entry.costUSD) })
-        let availableDailyCostSum = Self.availableCostSum(entries.map { Self.validCost($0.entry.costUSD) })
+        let dailyCostSum = Self.completeCostSum(entries.map {
+            Self.validCost($0.entry.costUSD).map { $0 * costMultiplier }
+        })
+        let availableDailyCostSum = Self.availableCostSum(entries.map {
+            Self.validCost($0.entry.costUSD).map { $0 * costMultiplier }
+        })
         let totalCost: Double? = if !invalidCostHistory {
             entries.isEmpty
                 ? (coveredDayCount > 0 && hasCompleteCostHistory ? 0 : nil)
@@ -648,6 +693,7 @@ extension SpendDashboardModel {
         }
         return InputSummary(
             input: input,
+            costMultiplier: costMultiplier,
             entries: entries,
             totalTokens: totalTokens,
             totalCost: totalCost,
@@ -715,7 +761,7 @@ extension SpendDashboardModel {
                     } else {
                         aggregate.invalidTokens = true
                     }
-                    if let cost = Self.validCost(breakdown.costUSD) {
+                    if let cost = Self.validCost(breakdown.costUSD).map({ $0 * summary.costMultiplier }) {
                         aggregate.sawCost = true
                         aggregate.cost = Self.add(cost, to: aggregate.cost, overflowed: &aggregate.overflowedCost)
                     } else {
@@ -1364,7 +1410,7 @@ extension SpendDashboardModel {
                     providerName: tool.displayName,
                     toolKind: tool.kind,
                     cost: 0)
-                if let cost = Self.validCost(entry.costUSD) {
+                if let cost = Self.validCost(entry.costUSD).map({ $0 * summary.costMultiplier }) {
                     aggregate.cost = Self.add(cost, to: aggregate.cost, overflowed: &aggregate.overflowed)
                 } else {
                     aggregate.invalid = true
