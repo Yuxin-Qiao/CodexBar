@@ -239,6 +239,7 @@ public enum GeminiSessionScanner {
         historyDays: Int = defaultHistoryDays,
         now: Date = Date(),
         calendar: Calendar = .current,
+        maximumFiles: Int = Self.maximumFiles,
         checkCancellation: @escaping () throws -> Void = {}) throws -> CostUsageTokenSnapshot?
     {
         try checkCancellation()
@@ -268,7 +269,7 @@ public enum GeminiSessionScanner {
             else {
                 continue
             }
-            guard visitedFiles < self.maximumFiles else { break }
+            guard visitedFiles < maximumFiles else { throw ScanError.historyLimitExceeded }
             let resourceValues = try? url.resourceValues(
                 forKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey])
             guard resourceValues?.isRegularFile == true else { continue }

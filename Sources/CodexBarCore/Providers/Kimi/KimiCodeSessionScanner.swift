@@ -33,6 +33,7 @@ public enum KimiCodeSessionScanner {
         var requests = 0
         var cost = 0.0
         var sawCost = false
+        var sawUnpricedUsage = false
 
         mutating func add(
             _ usage: WireEvent.Usage,
@@ -71,6 +72,8 @@ public enum KimiCodeSessionScanner {
                     self.cost = nextCost
                     self.sawCost = true
                 }
+            } else {
+                self.sawUnpricedUsage = true
             }
             return true
         }
@@ -95,6 +98,9 @@ public enum KimiCodeSessionScanner {
                     self.cost = nextCost
                     self.sawCost = true
                 }
+            }
+            if other.sawUnpricedUsage {
+                self.sawUnpricedUsage = true
             }
             return true
         }
@@ -274,13 +280,14 @@ public enum KimiCodeSessionScanner {
             var modelBreakdowns: [CostUsageDailyReport.ModelBreakdown] = []
             var dayCost = 0.0
             var daySawCost = false
+            var dayHasUnpricedUsage = false
             for (key, value) in models {
                 guard let modelTotal = value.total else { return nil }
                 guard total.merge(value) else { return nil }
                 modelBreakdowns.append(CostUsageDailyReport.ModelBreakdown(
                     modelName: key.model,
                     billingProviderID: UsageProvider.kimi.rawValue,
-                    costUSD: value.sawCost ? value.cost : nil,
+                    costUSD: value.sawCost && !value.sawUnpricedUsage ? value.cost : nil,
                     totalTokens: modelTotal,
                     inputTokens: value.input,
                     cacheReadTokens: value.cacheRead,
@@ -290,6 +297,9 @@ public enum KimiCodeSessionScanner {
                 if value.sawCost {
                     dayCost += value.cost
                     daySawCost = true
+                }
+                if value.sawUnpricedUsage {
+                    dayHasUnpricedUsage = true
                 }
             }
             guard let totalTokens = total.total else { return nil }
@@ -301,14 +311,22 @@ public enum KimiCodeSessionScanner {
                 cacheCreationTokens: total.cacheCreation,
                 totalTokens: totalTokens,
                 requestCount: total.requests,
-                costUSD: daySawCost ? dayCost : nil,
+                costUSD: daySawCost && !dayHasUnpricedUsage ? dayCost : nil,
                 modelsUsed: modelBreakdowns.map(\.modelName),
                 modelBreakdowns: modelBreakdowns)
         }
         let totalTokens = self.sum(daily.compactMap(\.totalTokens))
         let totalRequests = self.sum(daily.compactMap(\.requestCount))
-        let totalCost = daily.compactMap(\.costUSD).reduce(0, +)
-        let sawCost = daily.contains { $0.costUSD != nil }
+        let pricedDailyCosts = daily.compactMap(\.costUSD)
+        let hasPricedUsage = daily.contains { entry in
+            entry.modelBreakdowns?.contains { $0.costUSD != nil } == true
+        }
+        // Day-level totals are withheld for mixed-price days, so the aggregate only sums days
+        // whose cost is complete. Publishing that known subtotal keeps existing coverage while
+        // never pairing a partial day with a complete-looking figure.
+        let totalCost = pricedDailyCosts.isEmpty
+            ? nil
+            : pricedDailyCosts.reduce(0, +)
         guard let totalTokens, let totalRequests else { return nil }
 
         return CostUsageTokenSnapshot(
@@ -316,9 +334,9 @@ public enum KimiCodeSessionScanner {
             sessionCostUSD: nil,
             sessionRequests: nil,
             last30DaysTokens: totalTokens,
-            last30DaysCostUSD: sawCost ? totalCost : nil,
+            last30DaysCostUSD: totalCost,
             last30DaysRequests: totalRequests,
-            currencyCode: sawCost ? "USD" : "XXX",
+            currencyCode: hasPricedUsage ? "USD" : "XXX",
             historyDays: days,
             historyCoverageIsEstablished: true,
             historyLabel: "Kimi Code CLI",

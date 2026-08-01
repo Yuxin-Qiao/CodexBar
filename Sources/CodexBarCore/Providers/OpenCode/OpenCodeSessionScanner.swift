@@ -39,6 +39,12 @@ import CSQLite3
 /// conflict.
 public enum OpenCodeSessionScanner {
     public static let defaultHistoryDays = 30
+
+    public enum ScanError: Error, Equatable {
+        /// The live provider database could not be read completely (for example, SQLITE_BUSY).
+        case databaseUnavailable
+    }
+
     public static let maximumFiles = 20000
     public static let maximumBytes = 512 * 1024 * 1024
     public static let maximumFileBytes = 16 * 1024 * 1024
@@ -414,12 +420,12 @@ public enum OpenCodeSessionScanner {
             nil) == SQLITE_OK
         else {
             sqlite3_close(db)
-            return []
+            throw ScanError.databaseUnavailable
         }
         defer { sqlite3_close(db) }
         sqlite3_busy_timeout(db, 250)
 
-        guard self.hasTable(named: "message", db: db) else { return [] }
+        guard try self.hasTable(named: "message", db: db) else { return [] }
 
         let sql = """
         SELECT
@@ -441,7 +447,9 @@ public enum OpenCodeSessionScanner {
         """
 
         var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            throw ScanError.databaseUnavailable
+        }
         defer { sqlite3_finalize(stmt) }
         let until = calendar.date(byAdding: .day, value: 1, to: end) ?? end
         sqlite3_bind_int64(stmt, 1, Int64(start.timeIntervalSince1970 * 1000))
@@ -452,7 +460,7 @@ public enum OpenCodeSessionScanner {
             try checkCancellation()
             let step = sqlite3_step(stmt)
             if step == SQLITE_DONE { break }
-            guard step == SQLITE_ROW else { return [] }
+            guard step == SQLITE_ROW else { throw ScanError.databaseUnavailable }
 
             let messageID = self.columnText(stmt, 0)
             guard let model = self.cleaned(self.columnText(stmt, 1)) else { continue }
@@ -606,7 +614,7 @@ public enum OpenCodeSessionScanner {
 
     // MARK: - SQLite helpers
 
-    private static func hasTable(named name: String, db: OpaquePointer?) -> Bool {
+    private static func hasTable(named name: String, db: OpaquePointer?) throws -> Bool {
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(
             db,
@@ -615,12 +623,15 @@ public enum OpenCodeSessionScanner {
             &stmt,
             nil) == SQLITE_OK
         else {
-            return false
+            throw ScanError.databaseUnavailable
         }
         defer { sqlite3_finalize(stmt) }
         let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
         sqlite3_bind_text(stmt, 1, name, -1, transient)
-        return sqlite3_step(stmt) == SQLITE_ROW
+        let step = sqlite3_step(stmt)
+        if step == SQLITE_ROW { return true }
+        if step == SQLITE_DONE { return false }
+        throw ScanError.databaseUnavailable
     }
 
     private static func columnText(_ stmt: OpaquePointer?, _ index: Int32) -> String? {

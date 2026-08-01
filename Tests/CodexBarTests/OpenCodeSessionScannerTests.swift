@@ -333,6 +333,39 @@ struct OpenCodeSessionScannerTests {
         #expect(snapshot.last30DaysCostUSD == 2)
         #expect(snapshot.daily.first?.modelBreakdowns?.first?.costUSD == 2)
     }
+
+    @Test
+    func `scanner propagates a busy database instead of reporting empty history`() throws {
+        let root = try Self.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let databaseURL = root.appendingPathComponent("opencode/opencode.db")
+        try FileManager.default.createDirectory(
+            at: databaseURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true)
+        try Self.createOpenCodeDatabase(at: databaseURL, messages: [
+            Self.assistantMessage(
+                id: "msg-a",
+                modelID: "claude-sonnet-4",
+                created: "2026-07-10T09:00:00Z",
+                tokens: #"{"input":10,"output":5,"cache":{"read":0,"write":0}}"#),
+        ])
+
+        var writer: OpaquePointer?
+        guard sqlite3_open(databaseURL.path, &writer) == SQLITE_OK, let writer else {
+            throw OpenCodeSQLiteFixtureError.open
+        }
+        defer {
+            sqlite3_exec(writer, "ROLLBACK;", nil, nil, nil)
+            sqlite3_close(writer)
+        }
+        guard sqlite3_exec(writer, "BEGIN EXCLUSIVE;", nil, nil, nil) == SQLITE_OK else {
+            throw OpenCodeSQLiteFixtureError.write
+        }
+
+        #expect(throws: OpenCodeSessionScanner.ScanError.databaseUnavailable) {
+            _ = try Self.scanThrowing(root: root, now: Self.date("2026-07-12T12:00:00Z"))
+        }
+    }
     #endif
 
     @Test
@@ -382,6 +415,18 @@ struct OpenCodeSessionScannerTests {
         calendar: Calendar = Self.utcCalendar) -> CostUsageTokenSnapshot?
     {
         OpenCodeSessionScanner.scan(
+            environment: [OpenCodeSessionScanner.dataHomeEnvironmentKey: root.path],
+            historyDays: 30,
+            now: now,
+            calendar: calendar)
+    }
+
+    private static func scanThrowing(
+        root: URL,
+        now: Date,
+        calendar: Calendar = Self.utcCalendar) throws -> CostUsageTokenSnapshot?
+    {
+        try OpenCodeSessionScanner.scanCancellable(
             environment: [OpenCodeSessionScanner.dataHomeEnvironmentKey: root.path],
             historyDays: 30,
             now: now,

@@ -102,6 +102,43 @@ struct KimiCodeSessionScannerTests {
     }
 
     @Test
+    func `mixed priced and unpriced models withhold day and aggregate cost`() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let agent = root
+            .appendingPathComponent("sessions/workspace/session-a/agents/main", isDirectory: true)
+        try FileManager.default.createDirectory(at: agent, withIntermediateDirectories: true)
+        try Self.write([
+            Self.usage(
+                time: 1_784_257_200_000,
+                model: "kimi-code/k3",
+                input: 10,
+                cacheRead: 20,
+                output: 3),
+            Self.usage(
+                time: 1_784_257_300_000,
+                model: "unknown-local-model",
+                input: 4,
+                cacheRead: 5,
+                output: 7),
+        ], to: agent.appendingPathComponent("wire.jsonl"))
+
+        let snapshot = try #require(KimiCodeSessionScanner.scan(
+            environment: [KimiSettingsReader.codeHomeEnvironmentKey: root.path],
+            historyDays: 30,
+            now: Date(timeIntervalSince1970: 1_784_347_200),
+            calendar: Self.calendar))
+
+        #expect(snapshot.daily.first?.costUSD == nil)
+        #expect(snapshot.last30DaysCostUSD == nil)
+        #expect(snapshot.currencyCode == "USD")
+        let breakdowns = try #require(snapshot.daily.first?.modelBreakdowns)
+        #expect(breakdowns.first { $0.modelName == "kimi-code/k3" }?.costUSD != nil)
+        #expect(breakdowns.first { $0.modelName == "unknown-local-model" }?.costUSD == nil)
+    }
+
+    @Test
     func `streaming scanner cancels without loading the remaining transcript`() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)

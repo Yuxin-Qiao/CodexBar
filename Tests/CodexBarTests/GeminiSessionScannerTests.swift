@@ -281,6 +281,28 @@ struct GeminiSessionScannerTests {
         }
     }
 
+    @Test
+    func `scanner reports file count truncation as incomplete`() throws {
+        let root = try Self.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let chats = try Self.makeChatsDir(root, "hash-a")
+        try Self.write(Self.chatRecording(messages: [
+            Self.modelTurn(id: "m1", timestamp: "2026-07-10T09:00:00Z", tokens: #"{"input":1,"output":2}"#),
+        ]), to: chats.appendingPathComponent("one.json"))
+        try Self.write(Self.chatRecording(messages: [
+            Self.modelTurn(id: "m2", timestamp: "2026-07-10T10:00:00Z", tokens: #"{"input":1,"output":2}"#),
+        ]), to: chats.appendingPathComponent("two.json"))
+
+        #expect(throws: GeminiSessionScanner.ScanError.historyLimitExceeded) {
+            try GeminiSessionScanner.scanCancellable(
+                environment: [GeminiSessionScanner.cliHomeEnvironmentKey: root.path],
+                historyDays: 30,
+                now: Self.date("2026-07-12T12:00:00Z"),
+                calendar: Self.utcCalendar,
+                maximumFiles: 1)
+        }
+    }
+
     // MARK: - Fixtures
 
     private static let utcCalendar: Calendar = {
