@@ -25,29 +25,28 @@ struct ClaudeLoginFlowTests {
                 browserDetection: BrowserDetection(cacheTTL: 0),
                 settings: settings)
 
-            let controller = StatusItemController(
+            let didLogin = await withStatusItemControllerForTesting(
                 store: store,
                 settings: settings,
-                account: fetcher.loadAccountInfo(),
-                updater: DisabledUpdaterController(),
-                preferencesSelection: PreferencesSelection(),
-                statusBar: .system)
-
-            let didLogin = await controller.runClaudeLoginFlow { _, onPhaseChange in
-                onPhaseChange(.requesting)
-                await Task.yield()
-                onPhaseChange(.waitingBrowser)
-                await Task.yield()
-                return ClaudeLoginRunner.Result(
-                    outcome: .success,
-                    output: "Successfully logged in",
-                    authLink: nil)
+                fetcher: fetcher)
+            { controller in
+                let result = await controller.runClaudeLoginFlow { _, onPhaseChange in
+                    onPhaseChange(.requesting)
+                    await Task.yield()
+                    onPhaseChange(.waitingBrowser)
+                    await Task.yield()
+                    return ClaudeLoginRunner.Result(
+                        outcome: .success,
+                        output: "Successfully logged in",
+                        authLink: nil)
+                }
+                #expect(controller.loginPhase == .idle)
+                return result
             }
 
             #expect(didLogin)
-            #expect(controller.loginPhase == .idle)
 
-            let expectedSource: ClaudeUsageDataSource = (source == .web) ? .oauth : source
+            let expectedSource: ClaudeUsageDataSource = (source == .web) ? .auto : source
             #expect(settings.claudeUsageDataSource == expectedSource)
             #expect(settings.isProviderEnabledCached(provider: .claude, metadataByProvider: registry.metadata))
         }

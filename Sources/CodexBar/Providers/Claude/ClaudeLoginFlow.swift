@@ -34,7 +34,7 @@ extension StatusItemController {
             let metadata = self.store.metadata(for: .claude)
             self.settings.setProviderEnabled(provider: .claude, metadata: metadata, enabled: true)
             if self.settings.claudeUsageDataSource == .web {
-                self.settings.claudeUsageDataSource = .oauth
+                self.settings.claudeUsageDataSource = .auto
             }
             self.postLoginNotification(for: .claude)
             return true
