@@ -299,14 +299,21 @@ extension CostUsageScanner {
     private static func claudeInFileKey(_ row: ClaudeUsageRow) -> String? {
         let messageId = row.messageId?.trimmingCharacters(in: .whitespacesAndNewlines)
         let requestId = row.requestId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let session = Self.claudeNonEmptyID(row.sessionId)
 
         if let messageId, !messageId.isEmpty {
             if let requestId, !requestId.isEmpty {
                 return "pair:\(messageId):\(requestId)"
             }
+            if let session {
+                return "msg:\(messageId)@\(session)"
+            }
             return "msg:\(messageId)"
         }
         if let requestId, !requestId.isEmpty {
+            if let session {
+                return "req:\(requestId)@\(session)"
+            }
             return "req:\(requestId)"
         }
         return nil
@@ -343,14 +350,19 @@ extension CostUsageScanner {
             .max(by: { Self.claudeRowTotalTokens($0) < Self.claudeRowTotalTokens($1) })
         else {
             keyedRows[key] = row
-            canonicalKeys.append(key)
+            if !canonicalKeys.contains(key) {
+                canonicalKeys.append(key)
+            }
             return true
         }
 
         if Self.claudeRowTotalTokens(row) >= Self.claudeRowTotalTokens(representative) {
-            let canonicalKey = sessionClassKeys.first { $0.hasPrefix("pair:") } ?? sessionClassKeys[0]
+            let canonicalKey = sessionClassKeys.first { $0.hasPrefix("pair:") } ?? key
             canonicalKeys.removeAll { sessionClassKeys.contains($0) }
-            canonicalKeys.append(canonicalKey)
+            if !canonicalKeys.contains(canonicalKey) {
+                canonicalKeys.append(canonicalKey)
+            }
+            keyedRows[key] = row
             for classKey in sessionClassKeys {
                 keyedRows[classKey] = row
             }
@@ -374,33 +386,70 @@ extension CostUsageScanner {
     {
         let messageId = Self.claudeNonEmptyID(row.messageId)
         let requestId = Self.claudeNonEmptyID(row.requestId)
+        let session = Self.claudeNonEmptyID(row.sessionId)
         var keys: Set<String> = []
         if let messageId, let requestId {
             keys.insert("pair:\(messageId):\(requestId)")
-            if keyedRows["msg:\(messageId)"] != nil {
-                keys.insert("msg:\(messageId)")
+            let messagePlain = "msg:\(messageId)"
+            if keyedRows[messagePlain] != nil {
+                keys.insert(messagePlain)
             }
-            if keyedRows["req:\(requestId)"] != nil {
-                keys.insert("req:\(requestId)")
+            for qualifiedKey in keyedRows.keys where qualifiedKey.hasPrefix("\(messagePlain)@") {
+                keys.insert(qualifiedKey)
+            }
+            let requestPlain = "req:\(requestId)"
+            if keyedRows[requestPlain] != nil {
+                keys.insert(requestPlain)
+            }
+            for qualifiedKey in keyedRows.keys where qualifiedKey.hasPrefix("\(requestPlain)@") {
+                keys.insert(qualifiedKey)
             }
         } else if let messageId {
-            keys.insert("msg:\(messageId)")
+            let messagePlain = "msg:\(messageId)"
+            if let session {
+                keys.insert("\(messagePlain)@\(session)")
+            }
+            keys.insert(messagePlain)
+            if keyedRows[messagePlain] != nil {
+                keys.insert(messagePlain)
+            }
+            for qualifiedKey in keyedRows.keys where qualifiedKey.hasPrefix("\(messagePlain)@") {
+                keys.insert(qualifiedKey)
+            }
             for pairKey in keyedRows.keys where pairKey.hasPrefix("pair:\(messageId):") {
                 keys.insert(pairKey)
                 let requestId = String(pairKey.dropFirst("pair:\(messageId):".count))
-                if keyedRows["req:\(requestId)"] != nil {
-                    keys.insert("req:\(requestId)")
+                let requestPlain = "req:\(requestId)"
+                if keyedRows[requestPlain] != nil {
+                    keys.insert(requestPlain)
+                }
+                for qualifiedKey in keyedRows.keys where qualifiedKey.hasPrefix("\(requestPlain)@") {
+                    keys.insert(qualifiedKey)
                 }
             }
         } else if let requestId {
-            keys.insert("req:\(requestId)")
+            let requestPlain = "req:\(requestId)"
+            if let session {
+                keys.insert("\(requestPlain)@\(session)")
+            }
+            keys.insert(requestPlain)
+            if keyedRows[requestPlain] != nil {
+                keys.insert(requestPlain)
+            }
+            for qualifiedKey in keyedRows.keys where qualifiedKey.hasPrefix("\(requestPlain)@") {
+                keys.insert(qualifiedKey)
+            }
             for pairKey in keyedRows.keys
                 where pairKey.hasPrefix("pair:") && pairKey.hasSuffix(":\(requestId)")
             {
                 keys.insert(pairKey)
                 let messageId = String(pairKey.dropLast(requestId.count + 1).dropFirst("pair:".count))
-                if keyedRows["msg:\(messageId)"] != nil {
-                    keys.insert("msg:\(messageId)")
+                let messagePlain = "msg:\(messageId)"
+                if keyedRows[messagePlain] != nil {
+                    keys.insert(messagePlain)
+                }
+                for qualifiedKey in keyedRows.keys where qualifiedKey.hasPrefix("\(messagePlain)@") {
+                    keys.insert(qualifiedKey)
                 }
             }
         }

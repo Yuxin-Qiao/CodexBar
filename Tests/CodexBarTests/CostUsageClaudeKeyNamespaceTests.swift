@@ -452,6 +452,108 @@ struct CostUsageClaudeKeyNamespaceTests {
     }
 
     @Test
+    func `differently sessioned lone ids stay distinct`() throws {
+        // The same lone message ID reused by two different sessions in one file must be
+        // counted twice; session-qualified keys keep the rows separate.
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2025, month: 12, day: 23)
+        let iso0 = env.isoString(for: day)
+        let iso1 = env.isoString(for: day.addingTimeInterval(1))
+
+        func row(sessionId: String, timestamp: String, input: Int) -> [String: Any] {
+            [
+                "type": "assistant",
+                "timestamp": timestamp,
+                "sessionId": sessionId,
+                "isSidechain": false,
+                "message": [
+                    "id": "reused-across-sessions",
+                    "model": "claude-sonnet-4-20250514",
+                    "usage": [
+                        "input_tokens": input,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "output_tokens": 1,
+                    ],
+                ],
+            ]
+        }
+
+        let fileURL = try env.writeClaudeProjectFile(
+            relativePath: "project-a/session-qualified.jsonl",
+            contents: env.jsonl([
+                row(sessionId: "session-a", timestamp: iso0, input: 11),
+                row(sessionId: "session-b", timestamp: iso1, input: 13),
+            ]))
+
+        let parsed = CostUsageScanner.parseClaudeFile(
+            fileURL: fileURL,
+            range: CostUsageScanner.CostUsageDayRange(since: day, until: day),
+            providerFilter: .all)
+
+        #expect(parsed.rows.count == 2)
+        #expect(parsed.rows.map(\.input).sorted() == [11, 13])
+    }
+
+    @Test
+    func `session qualified row coalesces with sessionless chunk`() throws {
+        // A sessionless early chunk and a later chunk that gains the sessionId describe
+        // the same stream; the qualified row supersedes the sessionless one.
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2025, month: 12, day: 23)
+        let iso0 = env.isoString(for: day)
+        let iso1 = env.isoString(for: day.addingTimeInterval(1))
+
+        let sessionless: [String: Any] = [
+            "type": "assistant",
+            "timestamp": iso0,
+            "isSidechain": false,
+            "message": [
+                "id": "x",
+                "model": "claude-sonnet-4-20250514",
+                "usage": [
+                    "input_tokens": 11,
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 0,
+                    "output_tokens": 1,
+                ],
+            ],
+        ]
+        let withSession: [String: Any] = [
+            "type": "assistant",
+            "timestamp": iso1,
+            "sessionId": "session-appears-later",
+            "isSidechain": false,
+            "message": [
+                "id": "x",
+                "model": "claude-sonnet-4-20250514",
+                "usage": [
+                    "input_tokens": 13,
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 0,
+                    "output_tokens": 1,
+                ],
+            ],
+        ]
+
+        let fileURL = try env.writeClaudeProjectFile(
+            relativePath: "project-a/session-appears.jsonl",
+            contents: env.jsonl([sessionless, withSession]))
+
+        let parsed = CostUsageScanner.parseClaudeFile(
+            fileURL: fileURL,
+            range: CostUsageScanner.CostUsageDayRange(since: day, until: day),
+            providerFilter: .all)
+
+        #expect(parsed.rows.count == 1)
+        #expect(parsed.rows[0].input == 13)
+    }
+
+    @Test
     func `cross file reconciliation keeps reused lone ids distinct`() throws {
         // A lone message ID is only unique within a file; unrelated sessions in separate
         // files that reuse the same ID must both be counted.
