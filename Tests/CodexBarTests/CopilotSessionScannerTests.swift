@@ -48,12 +48,15 @@ struct CopilotSessionScannerTests {
         #expect(entry.totalTokens == 73595 + 1196)
         #expect(entry.inputTokens == 73595 - 48228)
         #expect(entry.cacheReadTokens == 48228)
+        // The shutdown rollup carries requests.count: 3, and all three must be reported.
+        #expect(entry.requestCount == 3)
         let model = try #require(entry.modelBreakdowns?.first)
         // Model name is normalized to the pricing key, but ownership stays with Copilot: the
         // local event has no explicit billing-provider field, so the vendor (Anthropic) is used
         // only as the rate-lookup key, never to re-attribute the usage.
         #expect(model.modelName == "claude-haiku-4-5")
         #expect(model.billingProviderID == UsageProvider.copilot.rawValue)
+        #expect(model.requestCount == 3)
     }
 
     @Test

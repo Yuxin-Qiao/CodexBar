@@ -158,7 +158,7 @@ public enum UsageEventAggregator {
               let nextCacheRead = Bucket.adding(bucket.cacheRead, cacheRead),
               let nextCacheCreation = Bucket.adding(bucket.cacheCreation, cacheCreation),
               let nextReasoning = Bucket.adding(bucket.reasoning, reasoning),
-              let nextRequests = Bucket.adding(bucket.requests, 1)
+              let nextRequests = Bucket.adding(bucket.requests, max(1, event.requestCount ?? 1))
         else {
             return
         }
@@ -211,10 +211,19 @@ public enum UsageEventAggregator {
     /// uncached. Falls back to subtracting the cache when the total is missing or inconsistent.
     private static func uncachedInput(rawInput: Int, output: Int, cacheRead: Int, total: Int?) -> Int {
         guard let total else { return max(0, rawInput - cacheRead) }
-        if rawInput + output == total {
+        let inputPlusOutput = rawInput.addingReportingOverflow(output)
+        let inputPlusCache = rawInput.addingReportingOverflow(cacheRead)
+        let inputCachePlusOutput = inputPlusCache.overflow
+            ? nil
+            : inputPlusCache.partialValue.addingReportingOverflow(output)
+        // Malformed records can carry counts near Int.max; overflow-reporting arithmetic lets the
+        // aggregator reject the record instead of trapping inside these comparisons.
+        if !inputPlusOutput.overflow, inputPlusOutput.partialValue == total {
             return max(0, rawInput - cacheRead)
         }
-        if rawInput + cacheRead + output == total {
+        if let inputCachePlusOutput, !inputCachePlusOutput.overflow,
+           inputCachePlusOutput.partialValue == total
+        {
             return rawInput
         }
         return max(0, rawInput - cacheRead)

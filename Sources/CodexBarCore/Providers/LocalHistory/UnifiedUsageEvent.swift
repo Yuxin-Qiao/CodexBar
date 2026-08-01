@@ -38,6 +38,10 @@ public struct UnifiedUsageEvent: Sendable, Equatable {
     /// local formats do not, so pricing normally happens in the engine against models.dev.
     public var providerCostUSD: Double?
 
+    /// Number of requests this event represents. Rollup sources (e.g. Copilot's shutdown
+    /// metrics) summarize several requests in one record; nil means one request.
+    public var requestCount: Int?
+
     /// Ordered models.dev provider IDs to price this event against, from structured source
     /// evidence (never inferred from the model name). Empty means "do not price" (e.g. degraded
     /// sources or tools whose plan is flat and reported elsewhere).
@@ -54,6 +58,7 @@ public struct UnifiedUsageEvent: Sendable, Equatable {
         cacheCreationTokens: Int? = nil,
         reasoningTokens: Int? = nil,
         providerCostUSD: Double? = nil,
+        requestCount: Int? = nil,
         pricingProviderIDs: [String] = [])
     {
         self.day = day
@@ -66,6 +71,7 @@ public struct UnifiedUsageEvent: Sendable, Equatable {
         self.cacheCreationTokens = cacheCreationTokens
         self.reasoningTokens = reasoningTokens
         self.providerCostUSD = providerCostUSD
+        self.requestCount = requestCount
         self.pricingProviderIDs = pricingProviderIDs
     }
 

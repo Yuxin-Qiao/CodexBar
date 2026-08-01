@@ -30,7 +30,12 @@ public enum CopilotSessionScanner {
         }
 
         struct ModelBucket: Decodable {
+            struct Requests: Decodable {
+                let count: Int?
+            }
+
             let usage: ModelUsage?
+            let requests: Requests?
         }
 
         struct Data: Decodable {
@@ -154,6 +159,7 @@ public enum CopilotSessionScanner {
                         cacheReadTokens: usage.cacheReadTokens,
                         cacheCreationTokens: usage.cacheWriteTokens,
                         reasoningTokens: usage.reasoningTokens,
+                        requestCount: bucket.requests?.count,
                         pricingProviderIDs: Self.pricingProviderIDs(for: model)))
                 }
             } catch is CancellationError {

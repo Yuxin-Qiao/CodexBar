@@ -162,4 +162,49 @@ struct UsageEventAggregatorTests {
             options: .init(historyLabel: "Test", defaultBillingProviderID: "copilot"))
         #expect(snapshot?.daily.first?.modelBreakdowns?.first?.billingProviderID == "claude")
     }
+
+    @Test
+    func `rollup request counts aggregate instead of counting one event`() {
+        let snapshot = UsageEventAggregator.aggregate(
+            events: [
+                UnifiedUsageEvent(
+                    day: "2026-07-28",
+                    model: "claude-haiku-4-5",
+                    inputTokens: 100,
+                    outputTokens: 50,
+                    requestCount: 3,
+                    pricingProviderIDs: []),
+                UnifiedUsageEvent(
+                    day: "2026-07-28",
+                    model: "claude-haiku-4-5",
+                    inputTokens: 100,
+                    outputTokens: 50,
+                    pricingProviderIDs: []),
+            ],
+            historyDays: 30,
+            now: self.now,
+            options: .init(historyLabel: "Test"))
+        #expect(snapshot?.daily.first?.requestCount == 4)
+        #expect(snapshot?.daily.first?.modelBreakdowns?.first?.requestCount == 4)
+    }
+
+    @Test
+    func `overflowing totals are rejected instead of trapping in total comparisons`() {
+        // Malformed local records can carry counts near Int.max. The old comparison
+        // `rawInput + output == total` would trap; the engine must reject the record safely.
+        let snapshot = UsageEventAggregator.aggregate(
+            events: [UnifiedUsageEvent(
+                day: "2026-07-28",
+                model: "qwen3-coder-plus",
+                inputTokens: Int.max,
+                outputTokens: Int.max,
+                totalTokens: Int.max,
+                pricingProviderIDs: [])],
+            historyDays: 30,
+            now: self.now,
+            options: .init(historyLabel: "Test"))
+        #expect(snapshot != nil)
+        #expect(snapshot?.daily.first?.totalTokens == nil)
+        #expect(snapshot?.last30DaysTokens == nil)
+    }
 }
