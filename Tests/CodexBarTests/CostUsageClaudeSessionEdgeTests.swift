@@ -577,4 +577,102 @@ struct CostUsageClaudeSessionEdgeTests {
         #expect(parsed.rows.count == 1)
         #expect(parsed.rows[0].input == 300)
     }
+
+    @Test
+    func `same pair in different sessions stays distinct in file`() throws {
+        // Distinct calls in sessions A and B that reuse the same (messageId, requestId)
+        // pair must both be counted in one file.
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2025, month: 12, day: 23)
+        let iso0 = env.isoString(for: day)
+        let iso1 = env.isoString(for: day.addingTimeInterval(1))
+
+        func row(sessionId: String, timestamp: String, input: Int) -> [String: Any] {
+            [
+                "type": "assistant",
+                "timestamp": timestamp,
+                "sessionId": sessionId,
+                "requestId": "r",
+                "isSidechain": false,
+                "message": [
+                    "id": "m",
+                    "model": "claude-sonnet-4-20250514",
+                    "usage": [
+                        "input_tokens": input,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "output_tokens": 1,
+                    ],
+                ],
+            ]
+        }
+
+        let fileURL = try env.writeClaudeProjectFile(
+            relativePath: "project-a/session-qualified-pairs.jsonl",
+            contents: env.jsonl([
+                row(sessionId: "session-a", timestamp: iso0, input: 11),
+                row(sessionId: "session-b", timestamp: iso1, input: 13),
+            ]))
+
+        let parsed = CostUsageScanner.parseClaudeFile(
+            fileURL: fileURL,
+            range: CostUsageScanner.CostUsageDayRange(since: day, until: day),
+            providerFilter: .all)
+
+        #expect(parsed.rows.count == 2)
+        #expect(parsed.rows.map(\.input).sorted() == [11, 13])
+    }
+
+    @Test
+    func `sessionless update keeps the known session of the class`() throws {
+        // A -> sessionless (larger) -> B: the sessionless chunk replaces A and must adopt
+        // A's session so a later B chunk does not wildcard-replace the whole class.
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2025, month: 12, day: 23)
+        let iso0 = env.isoString(for: day)
+        let iso1 = env.isoString(for: day.addingTimeInterval(1))
+        let iso2 = env.isoString(for: day.addingTimeInterval(2))
+
+        func row(sessionId: String?, timestamp: String, input: Int) -> [String: Any] {
+            var row: [String: Any] = [
+                "type": "assistant",
+                "timestamp": timestamp,
+                "isSidechain": false,
+                "message": [
+                    "id": "x",
+                    "model": "claude-sonnet-4-20250514",
+                    "usage": [
+                        "input_tokens": input,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "output_tokens": 1,
+                    ],
+                ],
+            ]
+            if let sessionId {
+                row["sessionId"] = sessionId
+            }
+            return row
+        }
+
+        let fileURL = try env.writeClaudeProjectFile(
+            relativePath: "project-a/session-adoption.jsonl",
+            contents: env.jsonl([
+                row(sessionId: "session-a", timestamp: iso0, input: 11),
+                row(sessionId: nil, timestamp: iso1, input: 100),
+                row(sessionId: "session-b", timestamp: iso2, input: 150),
+            ]))
+
+        let parsed = CostUsageScanner.parseClaudeFile(
+            fileURL: fileURL,
+            range: CostUsageScanner.CostUsageDayRange(since: day, until: day),
+            providerFilter: .all)
+
+        #expect(parsed.rows.count == 2)
+        #expect(parsed.rows.map(\.input).sorted() == [100, 150])
+    }
 }

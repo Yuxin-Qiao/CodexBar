@@ -130,10 +130,7 @@ extension CostUsageScanner {
         }
 
         let pathRole = Self.claudePathRole(fileURL: fileURL)
-        var keyedRows: [String: ClaudeUsageRow] = [:]
-        var canonicalKeys: Set<String> = []
-        var quarantinedKeys: Set<String> = []
-        var identityIndex: [String: Set<String>] = [:]
+        var identityState = ClaudeIdentityState()
         var unkeyedRows: [ClaudeUsageRow] = []
 
         let maxLineBytes = 512 * 1024
@@ -234,13 +231,7 @@ extension CostUsageScanner {
 
                         // Streaming chunks share message.id and/or requestId inside a file.
                         // Keep overwriting so the final cumulative chunk wins.
-                        if !Self.claudeInsertRow(
-                            row,
-                            into: &keyedRows,
-                            canonicalKeys: &canonicalKeys,
-                            quarantinedKeys: &quarantinedKeys,
-                            identityIndex: &identityIndex)
-                        {
+                        if !Self.claudeInsertRow(row, state: &identityState) {
                             // Older logs omit IDs; treat each line as distinct to avoid dropping usage.
                             unkeyedRows.append(row)
                         }
@@ -252,7 +243,7 @@ extension CostUsageScanner {
             parsedBytes = startOffset
         }
 
-        let rows = canonicalKeys.sorted().compactMap { keyedRows[$0] } + unkeyedRows
+        let rows = identityState.canonicalKeys.sorted().compactMap { identityState.keyedRows[$0] } + unkeyedRows
         var days: [String: [String: [Int]]] = [:]
         for row in rows {
             let tokens = ClaudeTokens(
@@ -282,9 +273,12 @@ extension CostUsageScanner {
     private static func claudeCanonicalRowKey(_ row: ClaudeUsageRow) -> String? {
         // A lone `msg:`/`req:` ID is only unique within a file (or incremental merge).
         // Across files it may be reused by unrelated sessions, so only paired rows are
-        // canonicalized for reconciliation.
-        if let key = self.claudeInFileKey(row), key.hasPrefix("pair:") {
-            return key
+        // canonicalized for reconciliation; copied histories must reconcile across
+        // sessions, so the canonical pair key is session-free.
+        if let messageId = claudeNonEmptyID(row.messageId),
+           let requestId = claudeNonEmptyID(row.requestId)
+        {
+            return "pair:\(self.claudeEscapeKeyComponent(messageId)):\(self.claudeEscapeKeyComponent(requestId))"
         }
         // Alias-bearing partial rows represent a stream whose pair identity is known,
         // so they reconcile against other files' paired rows of the same stream.
@@ -302,32 +296,17 @@ extension CostUsageScanner {
     }
 
     private static func mergeClaudeRows(existing: [ClaudeUsageRow], delta: [ClaudeUsageRow]) -> [ClaudeUsageRow] {
-        var keyedRows: [String: ClaudeUsageRow] = [:]
-        var canonicalKeys: Set<String> = []
-        var quarantinedKeys: Set<String> = []
-        var identityIndex: [String: Set<String>] = [:]
+        var identityState = ClaudeIdentityState()
         var unkeyedRows: [ClaudeUsageRow] = []
 
-        for row in existing where !Self.claudeInsertRow(
-            row,
-            into: &keyedRows,
-            canonicalKeys: &canonicalKeys,
-            quarantinedKeys: &quarantinedKeys,
-            identityIndex: &identityIndex)
-        {
+        for row in existing where !Self.claudeInsertRow(row, state: &identityState) {
             unkeyedRows.append(row)
         }
-        for row in delta where !Self.claudeInsertRow(
-            row,
-            into: &keyedRows,
-            canonicalKeys: &canonicalKeys,
-            quarantinedKeys: &quarantinedKeys,
-            identityIndex: &identityIndex)
-        {
+        for row in delta where !Self.claudeInsertRow(row, state: &identityState) {
             unkeyedRows.append(row)
         }
 
-        return canonicalKeys.sorted().compactMap { keyedRows[$0] } + unkeyedRows
+        return identityState.canonicalKeys.sorted().compactMap { identityState.keyedRows[$0] } + unkeyedRows
     }
 
     private static func claudeInFileKey(_ row: ClaudeUsageRow) -> String? {
@@ -341,6 +320,9 @@ extension CostUsageScanner {
 
         if let messageId, !messageId.isEmpty {
             if let requestId, !requestId.isEmpty {
+                if let session {
+                    return "pair:\(messageId):\(requestId)@\(session)"
+                }
                 return "pair:\(messageId):\(requestId)"
             }
             if let session {
@@ -375,150 +357,188 @@ extension CostUsageScanner {
     /// large as the class's largest member, the signal that it is a cumulative snapshot
     /// rather than a distinct call that happens to reuse an ID. A smaller or
     /// differently-sessioned row starts its own class.
+    private struct ClaudeIdentityState {
+        var keyedRows: [String: ClaudeUsageRow] = [:]
+        var canonicalKeys: Set<String> = []
+        var quarantinedKeys: Set<String> = []
+        var identityIndex: [String: Set<String>] = [:]
+    }
+
     private static func claudeInsertRow(
         _ row: ClaudeUsageRow,
-        into keyedRows: inout [String: ClaudeUsageRow],
-        canonicalKeys: inout Set<String>,
-        quarantinedKeys: inout Set<String>,
-        identityIndex: inout [String: Set<String>]) -> Bool
+        state: inout ClaudeIdentityState) -> Bool
     {
         guard let key = claudeInFileKey(row) else {
             return false
         }
         if row.quarantined == true {
-            quarantinedKeys.insert(key)
+            state.quarantinedKeys.insert(key)
         }
-        let indexedClassKeys = Self.claudeClassKeys(for: row, ownKey: key, identityIndex: identityIndex)
-        let classKeys = (keyedRows[key] != nil && key.hasPrefix("pair:") ? [key] : indexedClassKeys).filter {
+        let indexedClassKeys = Self.claudeClassKeys(for: row, ownKey: key, identityIndex: state.identityIndex)
+        let classKeys = (state.keyedRows[key] != nil && key.hasPrefix("pair:") ? [key] : indexedClassKeys).filter {
             // Paired rows are unique identities: another pair with the same messageId is a
             // different request, while partial rows may bridge through the pair.
             !key.hasPrefix("pair:") || !$0.hasPrefix("pair:") || $0 == key
         }
         let sessionClassKeys = classKeys.filter {
-            guard !quarantinedKeys.contains($0) else { return false }
-            let existingSession = Self.claudeNonEmptyID(keyedRows[$0]?.sessionId)
+            guard !state.quarantinedKeys.contains($0) else { return false }
+            let existingSession = Self.claudeNonEmptyID(state.keyedRows[$0]?.sessionId)
             let rowSession = Self.claudeNonEmptyID(row.sessionId)
             return existingSession == rowSession
                 || existingSession == nil
                 || rowSession == nil
         }
         guard Self.claudeNonEmptyID(row.sessionId) != nil
-            || Self.claudeKnownSessions(sessionClassKeys, keyedRows: keyedRows) <= 1
+            || Self.claudeKnownSessions(sessionClassKeys, keyedRows: state.keyedRows) <= 1
         else {
             // A sessionless row cannot tell which established session it belongs to;
             // keep it separate rather than bridging two distinct sessions.
-            quarantinedKeys.insert(key)
+            state.quarantinedKeys.insert(key)
             var quarantinedRow = row
             quarantinedRow.quarantined = true
-            if let old = keyedRows[key] {
-                Self.claudeUnindexKey(key, for: old, identityIndex: &identityIndex)
+            if let old = state.keyedRows[key] {
+                Self.claudeUnindexKey(key, for: old, identityIndex: &state.identityIndex)
             }
-            keyedRows[key] = quarantinedRow
-            Self.claudeIndexKey(key, for: quarantinedRow, identityIndex: &identityIndex)
-            if !canonicalKeys.contains(key) {
-                canonicalKeys.insert(key)
+            state.keyedRows[key] = quarantinedRow
+            Self.claudeIndexKey(key, for: quarantinedRow, identityIndex: &state.identityIndex)
+            if !state.canonicalKeys.contains(key) {
+                state.canonicalKeys.insert(key)
             }
             return true
         }
         guard let representative = sessionClassKeys
-            .compactMap({ keyedRows[$0] })
+            .compactMap({ state.keyedRows[$0] })
             .max(by: { Self.claudeRowTotalTokens($0) < Self.claudeRowTotalTokens($1) })
         else {
-            if let old = keyedRows[key] {
-                Self.claudeUnindexKey(key, for: old, identityIndex: &identityIndex)
+            if let old = state.keyedRows[key] {
+                Self.claudeUnindexKey(key, for: old, identityIndex: &state.identityIndex)
             }
-            keyedRows[key] = row
-            Self.claudeIndexKey(key, for: row, identityIndex: &identityIndex)
-            if !canonicalKeys.contains(key) {
-                canonicalKeys.insert(key)
+            state.keyedRows[key] = row
+            Self.claudeIndexKey(key, for: row, identityIndex: &state.identityIndex)
+            if !state.canonicalKeys.contains(key) {
+                state.canonicalKeys.insert(key)
             }
             return true
         }
 
         if Self.claudeRowTotalTokens(row) >= Self.claudeRowTotalTokens(representative) {
-            var mergedRow = row
-            var aliasMessages = Set(row.aliasMessageIds ?? [])
-            var aliasRequests = Set(row.aliasRequestIds ?? [])
-            for classKey in sessionClassKeys {
-                guard let member = keyedRows[classKey] else { continue }
-                if let messageId = Self.claudeNonEmptyID(member.messageId),
-                   messageId != Self.claudeNonEmptyID(row.messageId)
-                {
-                    aliasMessages.insert(messageId)
-                }
-                if let requestId = Self.claudeNonEmptyID(member.requestId),
-                   requestId != Self.claudeNonEmptyID(row.requestId)
-                {
-                    aliasRequests.insert(requestId)
-                }
-                aliasMessages.formUnion(member.aliasMessageIds ?? [])
-                aliasRequests.formUnion(member.aliasRequestIds ?? [])
-            }
-            mergedRow.aliasMessageIds = aliasMessages.isEmpty ? nil : Array(aliasMessages).sorted()
-            mergedRow.aliasRequestIds = aliasRequests.isEmpty ? nil : Array(aliasRequests).sorted()
-            mergedRow.quarantined = quarantinedKeys.contains(key) ? true : row.quarantined
-            Self.claudeRetireSupersededPairs(
-                for: mergedRow,
-                keyedRows: &keyedRows,
-                canonicalKeys: &canonicalKeys,
-                identityIndex: &identityIndex)
-            let canonicalKey = sessionClassKeys.first { $0.hasPrefix("pair:") } ?? key
-            canonicalKeys.subtract(sessionClassKeys)
-            if !canonicalKeys.contains(canonicalKey) {
-                canonicalKeys.insert(canonicalKey)
-            }
-            keyedRows[key] = mergedRow
-            Self.claudeIndexKey(key, for: mergedRow, identityIndex: &identityIndex)
-            for classKey in sessionClassKeys {
-                keyedRows[classKey] = mergedRow
-                Self.claudeIndexKey(classKey, for: mergedRow, identityIndex: &identityIndex)
-            }
+            Self.claudeSupersedeClass(
+                row: row,
+                key: key,
+                sessionClassKeys: sessionClassKeys,
+                state: &state)
         } else {
-            if let old = keyedRows[key] {
-                Self.claudeUnindexKey(key, for: old, identityIndex: &identityIndex)
-            }
-            keyedRows[key] = row
-            Self.claudeIndexKey(key, for: row, identityIndex: &identityIndex)
-            if !sessionClassKeys.contains(where: { $0 != key && canonicalKeys.contains($0) }),
-               let alternate = sessionClassKeys.first(where: { $0 != key && keyedRows[$0] != nil })
-            {
-                canonicalKeys.insert(alternate)
-            }
-            if !canonicalKeys.contains(key) {
-                canonicalKeys.insert(key)
-            }
+            Self.claudeInsertDistinctRow(
+                row,
+                key: key,
+                sessionClassKeys: sessionClassKeys,
+                state: &state)
         }
         return true
     }
 
+    private static func claudeSupersedeClass(
+        row: ClaudeUsageRow,
+        key: String,
+        sessionClassKeys: [String],
+        state: inout ClaudeIdentityState)
+    {
+        var mergedRow = row
+        var aliasMessages = Set(row.aliasMessageIds ?? [])
+        var aliasRequests = Set(row.aliasRequestIds ?? [])
+        for classKey in sessionClassKeys {
+            guard let member = state.keyedRows[classKey] else { continue }
+            if let messageId = Self.claudeNonEmptyID(member.messageId),
+               messageId != Self.claudeNonEmptyID(row.messageId)
+            {
+                aliasMessages.insert(messageId)
+            }
+            if let requestId = Self.claudeNonEmptyID(member.requestId),
+               requestId != Self.claudeNonEmptyID(row.requestId)
+            {
+                aliasRequests.insert(requestId)
+            }
+            aliasMessages.formUnion(member.aliasMessageIds ?? [])
+            aliasRequests.formUnion(member.aliasRequestIds ?? [])
+        }
+        mergedRow.aliasMessageIds = aliasMessages.isEmpty ? nil : Array(aliasMessages).sorted()
+        mergedRow.aliasRequestIds = aliasRequests.isEmpty ? nil : Array(aliasRequests).sorted()
+        mergedRow.quarantined = state.quarantinedKeys.contains(key) ? true : row.quarantined
+        if Self.claudeNonEmptyID(mergedRow.sessionId) == nil {
+            for classKey in sessionClassKeys {
+                if let session = Self.claudeNonEmptyID(state.keyedRows[classKey]?.sessionId) {
+                    mergedRow.sessionId = session
+                    break
+                }
+            }
+        }
+        Self.claudeRetireSupersededPairs(
+            for: mergedRow,
+            state: &state)
+        let canonicalKey = sessionClassKeys.first { $0.hasPrefix("pair:") } ?? key
+        state.canonicalKeys.subtract(sessionClassKeys)
+        if !state.canonicalKeys.contains(canonicalKey) {
+            state.canonicalKeys.insert(canonicalKey)
+        }
+        state.keyedRows[key] = mergedRow
+        Self.claudeIndexKey(key, for: mergedRow, identityIndex: &state.identityIndex)
+        for classKey in sessionClassKeys {
+            state.keyedRows[classKey] = mergedRow
+            Self.claudeIndexKey(classKey, for: mergedRow, identityIndex: &state.identityIndex)
+        }
+    }
+
+    private static func claudeInsertDistinctRow(
+        _ row: ClaudeUsageRow,
+        key: String,
+        sessionClassKeys: [String],
+        state: inout ClaudeIdentityState)
+    {
+        if let old = state.keyedRows[key] {
+            self.claudeUnindexKey(key, for: old, identityIndex: &state.identityIndex)
+        }
+        state.keyedRows[key] = row
+        Self.claudeIndexKey(key, for: row, identityIndex: &state.identityIndex)
+        if !sessionClassKeys.contains(where: { $0 != key && state.canonicalKeys.contains($0) }),
+           let alternate = sessionClassKeys.first(where: { $0 != key && state.keyedRows[$0] != nil })
+        {
+            state.canonicalKeys.insert(alternate)
+        }
+        if !state.canonicalKeys.contains(key) {
+            state.canonicalKeys.insert(key)
+        }
+    }
+
     private static func claudeRetireSupersededPairs(
         for row: ClaudeUsageRow,
-        keyedRows: inout [String: ClaudeUsageRow],
-        canonicalKeys: inout Set<String>,
-        identityIndex: inout [String: Set<String>])
+        state: inout ClaudeIdentityState)
     {
         let messageId = Self.claudeNonEmptyID(row.messageId)
         let requestId = Self.claudeNonEmptyID(row.requestId)
+        let sessionSuffix = Self.claudeNonEmptyID(row.sessionId)
+            .map { "@\(Self.claudeEscapeKeyComponent($0))" } ?? ""
         if let messageId {
             for aliasRequestId in row.aliasRequestIds ?? [] where aliasRequestId != requestId {
                 let oldPairKey = "pair:\(Self.claudeEscapeKeyComponent(messageId)):"
                     + Self.claudeEscapeKeyComponent(aliasRequestId)
-                if let oldRow = keyedRows[oldPairKey] {
-                    Self.claudeUnindexKey(oldPairKey, for: oldRow, identityIndex: &identityIndex)
-                    keyedRows.removeValue(forKey: oldPairKey)
+                    + sessionSuffix
+                if let oldRow = state.keyedRows[oldPairKey] {
+                    Self.claudeUnindexKey(oldPairKey, for: oldRow, identityIndex: &state.identityIndex)
+                    state.keyedRows.removeValue(forKey: oldPairKey)
                 }
-                canonicalKeys.remove(oldPairKey)
+                state.canonicalKeys.remove(oldPairKey)
             }
         }
         if let requestId {
             for aliasMessageId in row.aliasMessageIds ?? [] where aliasMessageId != messageId {
                 let oldPairKey = "pair:\(Self.claudeEscapeKeyComponent(aliasMessageId)):"
                     + Self.claudeEscapeKeyComponent(requestId)
-                if let oldRow = keyedRows[oldPairKey] {
-                    Self.claudeUnindexKey(oldPairKey, for: oldRow, identityIndex: &identityIndex)
-                    keyedRows.removeValue(forKey: oldPairKey)
+                    + sessionSuffix
+                if let oldRow = state.keyedRows[oldPairKey] {
+                    Self.claudeUnindexKey(oldPairKey, for: oldRow, identityIndex: &state.identityIndex)
+                    state.keyedRows.removeValue(forKey: oldPairKey)
                 }
-                canonicalKeys.remove(oldPairKey)
+                state.canonicalKeys.remove(oldPairKey)
             }
         }
     }
@@ -653,20 +673,12 @@ extension CostUsageScanner {
 
         // Consolidate stream identities across files with the same equivalence classes as
         // per-file parsing, emitting one row per class.
-        var keyedRows: [String: ClaudeUsageRow] = [:]
-        var canonicalKeys: Set<String> = []
-        var quarantinedKeys: Set<String> = []
-        var identityIndex: [String: Set<String>] = [:]
+        var identityState = ClaudeIdentityState()
         for key in winners.keys.sorted() {
             guard let winner = winners[key]?.row else { continue }
-            _ = Self.claudeInsertRow(
-                winner,
-                into: &keyedRows,
-                canonicalKeys: &canonicalKeys,
-                quarantinedKeys: &quarantinedKeys,
-                identityIndex: &identityIndex)
+            _ = Self.claudeInsertRow(winner, state: &identityState)
         }
-        rows.append(contentsOf: canonicalKeys.sorted().compactMap { keyedRows[$0] })
+        rows.append(contentsOf: identityState.canonicalKeys.sorted().compactMap { identityState.keyedRows[$0] })
         return rows
     }
 

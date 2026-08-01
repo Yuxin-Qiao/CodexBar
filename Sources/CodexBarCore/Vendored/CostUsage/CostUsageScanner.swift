@@ -970,7 +970,7 @@ enum CostUsageScanner {
     struct ClaudeUsageRow: Codable {
         let dayKey: String
         let model: String
-        let sessionId: String?
+        var sessionId: String?
         let messageId: String?
         let requestId: String?
         let timestampUnixMs: Int64?
