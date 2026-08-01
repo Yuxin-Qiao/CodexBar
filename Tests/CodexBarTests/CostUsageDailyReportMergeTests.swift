@@ -228,4 +228,44 @@ struct CostUsageDailyReportMergeTests {
             from: Data(#"{"modelName":"gpt-5.4"}"#.utf8))
         #expect(absent.reasoningTokens == nil)
     }
+
+    @Test
+    func `merged reports preserve only a complete unambiguous billing provider`() throws {
+        func report(providerID: String?) -> CostUsageDailyReport {
+            CostUsageDailyReport(
+                data: [
+                    CostUsageDailyReport.Entry(
+                        date: "2026-04-04",
+                        inputTokens: 10,
+                        outputTokens: 5,
+                        totalTokens: 10,
+                        costUSD: 1,
+                        modelsUsed: ["routed-model"],
+                        modelBreakdowns: [
+                            CostUsageDailyReport.ModelBreakdown(
+                                modelName: "routed-model",
+                                billingProviderID: providerID,
+                                costUSD: 1,
+                                totalTokens: 10),
+                        ]),
+                ],
+                summary: nil)
+        }
+
+        let empty = CostUsageDailyReport(data: [], summary: nil)
+        let preserved = report(providerID: UsageProvider.minimax.rawValue).merged(with: empty)
+        #expect(try #require(preserved.data.first?.modelBreakdowns?.first).billingProviderID == "minimax")
+
+        let same = report(providerID: UsageProvider.kimi.rawValue)
+            .merged(with: report(providerID: UsageProvider.kimi.rawValue))
+        #expect(try #require(same.data.first?.modelBreakdowns?.first).billingProviderID == "kimi")
+
+        let conflicting = report(providerID: UsageProvider.kimi.rawValue)
+            .merged(with: report(providerID: UsageProvider.minimax.rawValue))
+        #expect(try #require(conflicting.data.first?.modelBreakdowns?.first).billingProviderID == nil)
+
+        let incomplete = report(providerID: UsageProvider.kimi.rawValue)
+            .merged(with: report(providerID: nil))
+        #expect(try #require(incomplete.data.first?.modelBreakdowns?.first).billingProviderID == nil)
+    }
 }

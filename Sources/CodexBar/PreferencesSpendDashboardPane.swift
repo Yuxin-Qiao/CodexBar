@@ -442,10 +442,12 @@ struct SpendDailyChartPresentation: Equatable {
     let content: Content
     let series: [Series]
     let dayCount: Int
+    let aggregateTotal: Double?
 
     init(dailyPoints: [SpendDashboardModel.DailyPoint], aggregateTotal: Double?) {
-        self.content = dailyPoints.isEmpty && aggregateTotal == nil ? .unavailable : .chart
+        self.content = dailyPoints.isEmpty ? .unavailable : .chart
         self.dayCount = Set(dailyPoints.map(\.day)).count
+        self.aggregateTotal = aggregateTotal
 
         var seenNames: Set<String> = []
         self.series = dailyPoints.compactMap { point in
@@ -476,10 +478,10 @@ private struct SpendDailyChart: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(L("Daily estimated spend"))
                             .font(SpendModelsListStyle.sectionTitleFont)
-                        if presentation.content == .chart {
+                        if presentation.content == .chart || presentation.aggregateTotal != nil {
                             Text(
                                 "\(L("Active")) \(codexBarLocalizedInteger(presentation.dayCount)) · " +
-                                    "\(L("Total")) \(self.totalCostText)")
+                                    "\(L("Total")) \(self.totalCostText(presentation.aggregateTotal))")
                                 .font(SpendModelsListStyle.secondaryFont)
                                 .foregroundStyle(.secondary)
                         }
@@ -616,10 +618,10 @@ private struct SpendDailyChart: View {
         .onChange(of: self.group.dailySpendDetails) { _, _ in self.rebuildHoverCache() }
     }
 
-    private var totalCostText: String {
-        UsageFormatter.currencyString(
-            self.group.dailyPoints.reduce(0) { $0 + $1.cost },
-            currencyCode: self.group.currencyCode)
+    private func totalCostText(_ aggregateTotal: Double?) -> String {
+        aggregateTotal.map {
+            UsageFormatter.currencyString($0, currencyCode: self.group.currencyCode)
+        } ?? "—"
     }
 
     private var activeChartDomain: ClosedRange<Date> {

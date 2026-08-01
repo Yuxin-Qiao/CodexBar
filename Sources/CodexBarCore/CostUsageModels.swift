@@ -631,6 +631,10 @@ public struct CostUsageDailyReport: Sendable, Decodable {
 
 extension CostUsageDailyReport {
     private struct BreakdownAccumulator {
+        var billingProviderID: String?
+        var sawBillingProviderID = false
+        var missingBillingProviderID = false
+        var conflictingBillingProviderID = false
         var totalTokens: Int = 0
         var sawTotalTokens = false
         var inputTokens: Int = 0
@@ -660,6 +664,18 @@ extension CostUsageDailyReport {
         var sawPriorityTokens = false
 
         mutating func add(_ breakdown: ModelBreakdown) {
+            let normalizedProviderID = breakdown.billingProviderID?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if let normalizedProviderID, !normalizedProviderID.isEmpty {
+                if self.sawBillingProviderID, self.billingProviderID != normalizedProviderID {
+                    self.conflictingBillingProviderID = true
+                } else if !self.sawBillingProviderID {
+                    self.billingProviderID = normalizedProviderID
+                    self.sawBillingProviderID = true
+                }
+            } else {
+                self.missingBillingProviderID = true
+            }
             if let totalTokens = breakdown.totalTokens {
                 self.totalTokens += totalTokens
                 self.sawTotalTokens = true
@@ -719,6 +735,11 @@ extension CostUsageDailyReport {
         func build(modelName: String) -> ModelBreakdown {
             ModelBreakdown(
                 modelName: modelName,
+                billingProviderID: self.sawBillingProviderID &&
+                    !self.missingBillingProviderID &&
+                    !self.conflictingBillingProviderID
+                    ? self.billingProviderID
+                    : nil,
                 costUSD: self.sawCost ? self.costUSD : nil,
                 totalTokens: self.sawTotalTokens ? self.totalTokens : nil,
                 inputTokens: self.sawInputTokens && !self.missingInputTokens ? self.inputTokens : nil,

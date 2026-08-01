@@ -4,8 +4,10 @@ import Testing
 
 struct SpendModelsPresentationTests {
     @Test
-    func `dashboard range labels stay English and preserve compact order`() {
-        #expect([7, 30, 365].map(spendDashboardDayRangeText) == ["7d", "30d", "Cumulative"])
+    func `dashboard range labels preserve compact order in English`() {
+        CodexBarLocalizationOverride.$appLanguage.withValue("en") {
+            #expect([7, 30, 365].map(spendDashboardDayRangeText) == ["7d", "30d", "Cumulative"])
+        }
     }
 
     @Test
@@ -39,6 +41,25 @@ struct SpendModelsPresentationTests {
             let gap = calendar.dateComponents([.day], from: pair.0, to: pair.1).day
             #expect((gap ?? 0) >= 8)
         }
+    }
+
+    @Test
+    func `cumulative active domain stays inside the supplied focused window`() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try #require(TimeZone(secondsFromGMT: 0))
+        let legacy = try #require(calendar.date(from: DateComponents(year: 2025, month: 8, day: 1)))
+        let recent = try #require(calendar.date(from: DateComponents(year: 2026, month: 7, day: 1)))
+        let recentEnd = try #require(calendar.date(byAdding: .day, value: 30, to: recent))
+        let focusedDomain = recent...recentEnd
+
+        let domain = spendModelsActiveChartDomain(
+            selectedDays: 365,
+            dataDays: [legacy, recent, recent.addingTimeInterval(10 * 86400)],
+            chartDomain: focusedDomain,
+            calendar: calendar)
+
+        #expect(domain.lowerBound >= focusedDomain.lowerBound)
+        #expect(domain.upperBound <= focusedDomain.upperBound)
     }
 
     @Test
@@ -410,6 +431,41 @@ struct SpendModelsPresentationTests {
         #expect(first.buckets.map(\.kind) == [.input, .output, .cacheRead, .cacheWrite, .reasoning])
         #expect(first.buckets.map(\.tokens) == [80, 20, 15, 5, 4])
         #expect(detail.models.last?.buckets.map(\.kind) == [.input, .output])
+    }
+
+    @Test
+    func `day detail with overflowing aggregate buckets exposes them as unavailable`() throws {
+        let analysis = SpendDashboardModel.ModelAnalysis(
+            rows: [
+                Self.row(id: "model-a", tokens: Int.max, cost: nil),
+                Self.row(id: "model-b", tokens: 1, cost: nil),
+            ],
+            dailyValues: [
+                Self.dailyValue(
+                    modelID: "model-a",
+                    day: Self.day,
+                    totalTokens: Int.max,
+                    inputTokens: Int.max),
+                Self.dailyValue(
+                    modelID: "model-b",
+                    day: Self.day,
+                    totalTokens: 1,
+                    inputTokens: 1),
+            ],
+            trackedTokenTotal: nil,
+            pricedCostTotal: nil,
+            sourceCount: 2,
+            tokenCoverage: .complete,
+            costCoverage: .partial)
+
+        let detail = try #require(SpendModelsDayDetailPresentation(
+            analysis: analysis,
+            day: Self.day,
+            metric: .tokens))
+
+        #expect(detail.totalTokens == nil)
+        #expect(detail.buckets.isEmpty)
+        #expect(detail.models.allSatisfy { !$0.buckets.isEmpty })
     }
 
     @Test

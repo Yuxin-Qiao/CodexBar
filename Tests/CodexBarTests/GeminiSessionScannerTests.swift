@@ -263,6 +263,24 @@ struct GeminiSessionScannerTests {
         #expect(snapshot.historyLabel == "Gemini CLI")
     }
 
+    @Test
+    func `scanner reports oversized eligible transcripts as incomplete`() throws {
+        let root = try Self.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let chats = try Self.makeChatsDir(root, "hash-a")
+        let transcript = chats.appendingPathComponent("oversized.jsonl")
+        try Data(repeating: 0x20, count: GeminiSessionScanner.maximumFileBytes + 1)
+            .write(to: transcript)
+
+        #expect(throws: GeminiSessionScanner.ScanError.historyLimitExceeded) {
+            try GeminiSessionScanner.scanCancellable(
+                environment: [GeminiSessionScanner.cliHomeEnvironmentKey: root.path],
+                historyDays: 30,
+                now: Self.date("2026-07-12T12:00:00Z"),
+                calendar: Self.utcCalendar)
+        }
+    }
+
     // MARK: - Fixtures
 
     private static let utcCalendar: Calendar = {

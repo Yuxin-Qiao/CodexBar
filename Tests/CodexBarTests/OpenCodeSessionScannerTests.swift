@@ -1,5 +1,10 @@
 import CodexBarCore
 import Foundation
+#if canImport(SQLite3)
+import SQLite3
+#elseif canImport(CSQLite3)
+import CSQLite3
+#endif
 import Testing
 
 struct OpenCodeSessionScannerTests {
@@ -295,6 +300,41 @@ struct OpenCodeSessionScannerTests {
         #expect(snapshot.daily.first?.outputTokens == 8)
     }
 
+    #if canImport(SQLite3) || canImport(CSQLite3)
+    @Test
+    func `database records win cross store deduplication and retain pricing`() throws {
+        let root = try Self.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let session = try Self.makeSessionDir(root, "ses_a")
+        let created = "2026-07-10T09:00:00Z"
+        let shared = Self.assistantMessage(
+            id: "msg_shared",
+            modelID: "claude-sonnet-4",
+            created: created,
+            tokens: #"{"input":10,"output":5,"cache":{"read":0,"write":0}}"#)
+        let idless = Self.assistantMessage(
+            id: nil,
+            modelID: "claude-sonnet-4",
+            created: created,
+            tokens: #"{"input":2,"output":3,"cache":{"read":0,"write":0}}"#)
+        try Self.write(shared, to: session.appendingPathComponent("msg_shared.json"))
+        try Self.write(idless, to: session.appendingPathComponent("legacy.json"))
+
+        func withCost(_ message: String, _ cost: Double) -> String {
+            String(message.dropLast()) + ",\"cost\":\(cost)}"
+        }
+        try Self.createOpenCodeDatabase(
+            at: root.appendingPathComponent("opencode/opencode.db"),
+            messages: [withCost(shared, 1.25), withCost(idless, 0.75)])
+
+        let snapshot = try #require(Self.scan(root: root, now: Self.date("2026-07-12T12:00:00Z")))
+        #expect(snapshot.last30DaysRequests == 2)
+        #expect(snapshot.last30DaysTokens == 20)
+        #expect(snapshot.last30DaysCostUSD == 2)
+        #expect(snapshot.daily.first?.modelBreakdowns?.first?.costUSD == 2)
+    }
+    #endif
+
     @Test
     func `scanner honors XDG_DATA_HOME override and returns nil for empty directories`() throws {
         let emptyRoot = try Self.makeRoot()
@@ -360,6 +400,44 @@ struct OpenCodeSessionScannerTests {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
+
+    #if canImport(SQLite3) || canImport(CSQLite3)
+    private static func createOpenCodeDatabase(at url: URL, messages: [String]) throws {
+        var database: OpaquePointer?
+        guard sqlite3_open(url.path, &database) == SQLITE_OK, let database else {
+            throw OpenCodeSQLiteFixtureError.open
+        }
+        defer { sqlite3_close(database) }
+        guard sqlite3_exec(
+            database,
+            "CREATE TABLE message (id TEXT PRIMARY KEY, data TEXT NOT NULL);",
+            nil,
+            nil,
+            nil) == SQLITE_OK
+        else { throw OpenCodeSQLiteFixtureError.write }
+
+        for (index, message) in messages.enumerated() {
+            var statement: OpaquePointer?
+            guard sqlite3_prepare_v2(
+                database,
+                "INSERT INTO message (id, data) VALUES (?, ?)",
+                -1,
+                &statement,
+                nil) == SQLITE_OK
+            else { throw OpenCodeSQLiteFixtureError.write }
+            defer { sqlite3_finalize(statement) }
+            let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+            sqlite3_bind_text(statement, 1, "row-\(index)", -1, transient)
+            sqlite3_bind_text(statement, 2, message, -1, transient)
+            guard sqlite3_step(statement) == SQLITE_DONE else { throw OpenCodeSQLiteFixtureError.write }
+        }
+    }
+
+    private enum OpenCodeSQLiteFixtureError: Error {
+        case open
+        case write
+    }
+    #endif
 
     private static func assistantMessage(
         id: String?,

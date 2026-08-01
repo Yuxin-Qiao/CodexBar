@@ -135,7 +135,9 @@ struct SpendModelsDayDetailPresentation: Equatable {
         var sums: [BucketKind: Int] = [:]
         for list in bucketLists {
             for (kind, tokens) in list {
-                sums[kind, default: 0] += tokens
+                let addition = sums[kind, default: 0].addingReportingOverflow(tokens)
+                guard !addition.overflow else { return [] }
+                sums[kind] = addition.partialValue
             }
         }
         return BucketKind.allCases.compactMap { kind in

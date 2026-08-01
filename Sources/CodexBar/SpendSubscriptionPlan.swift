@@ -14,7 +14,8 @@ struct SpendSubscriptionPlan: Equatable, Sendable {
         if let curated = ShareStatsSubscriptionName.from(snapshot: snapshot, provider: provider) {
             return Self(displayName: curated.displayName)
         }
-        guard let identity = snapshot?.identity(for: provider),
+        guard ShareStatsSubscriptionName.hasPlanIdentityContract(for: provider),
+              let identity = snapshot?.identity(for: provider),
               let raw = identity.loginMethod?.trimmingCharacters(in: .whitespacesAndNewlines),
               !raw.isEmpty,
               !self.matchesAccountIdentity(raw, identity: identity),

@@ -26,6 +26,11 @@ import CSQLite3
 public enum MiniMaxSessionScanner {
     public static let defaultHistoryDays = 30
 
+    public enum ScanError: Error, Equatable {
+        /// The live provider database could not be read completely (for example, SQLITE_BUSY).
+        case databaseUnavailable
+    }
+
     /// Environment override for the MiniMax home directory, resolved directly here so this scanner
     /// stays self-contained (mirrors how `KimiCodeSessionScanner` honors `KIMI_CODE_HOME`).
     public static let homeEnvironmentKey = "MINIMAX_HOME"
@@ -194,15 +199,12 @@ public enum MiniMaxSessionScanner {
         let end = calendar.startOfDay(for: now)
         let start = calendar.date(byAdding: .day, value: -(days - 1), to: end) ?? end
         let until = calendar.date(byAdding: .day, value: 1, to: end) ?? now
-        guard let rows = try self.readRows(
+        let rows = try self.readRows(
             databaseURL: databaseURL,
             sinceMs: Int64(start.timeIntervalSince1970 * 1000),
             untilMs: Int64(until.timeIntervalSince1970 * 1000),
-            checkCancellation: checkCancellation),
-            !rows.isEmpty
-        else {
-            return nil
-        }
+            checkCancellation: checkCancellation)
+        guard !rows.isEmpty else { return nil }
 
         let modelsDevCatalog = CostUsagePricing.modelsDevCatalog(now: now, cacheRoot: modelsDevCacheRoot)
         var values: [DayModelKey: TokenAccumulator] = [:]
@@ -313,7 +315,7 @@ public enum MiniMaxSessionScanner {
         databaseURL: URL,
         sinceMs: Int64,
         untilMs: Int64,
-        checkCancellation: () throws -> Void) throws -> [UsageRow]?
+        checkCancellation: () throws -> Void) throws -> [UsageRow]
     {
         var db: OpaquePointer?
         // The runtime database is WAL-journaled. `immutable=1` must not be used here: it tells
@@ -323,19 +325,19 @@ public enum MiniMaxSessionScanner {
         let encodedPath = databaseURL.path.addingPercentEncoding(
             withAllowedCharacters: .urlPathAllowed) ?? databaseURL.path
         let uri = "file:\(encodedPath)?mode=ro"
-        guard sqlite3_open_v2(
+        let openResult = sqlite3_open_v2(
             uri,
             &db,
             SQLITE_OPEN_READONLY | SQLITE_OPEN_URI | SQLITE_OPEN_FULLMUTEX,
-            nil) == SQLITE_OK
-        else {
+            nil)
+        guard openResult == SQLITE_OK else {
             sqlite3_close(db)
-            return nil
+            throw ScanError.databaseUnavailable
         }
         defer { sqlite3_close(db) }
         sqlite3_busy_timeout(db, 250)
 
-        guard self.hasTable(named: "local_runtime_token_usage", db: db) else { return nil }
+        guard try self.hasTable(named: "local_runtime_token_usage", db: db) else { return [] }
 
         let sql = """
         SELECT
@@ -353,7 +355,9 @@ public enum MiniMaxSessionScanner {
         """
 
         var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            throw ScanError.databaseUnavailable
+        }
         defer { sqlite3_finalize(stmt) }
         sqlite3_bind_int64(stmt, 1, sinceMs)
         sqlite3_bind_int64(stmt, 2, untilMs)
@@ -363,7 +367,7 @@ public enum MiniMaxSessionScanner {
             try checkCancellation()
             let step = sqlite3_step(stmt)
             if step == SQLITE_DONE { break }
-            guard step == SQLITE_ROW else { return nil }
+            guard step == SQLITE_ROW else { throw ScanError.databaseUnavailable }
 
             let model = self.columnText(stmt, 0) ?? ""
             let createdMs = sqlite3_column_int64(stmt, 1)
@@ -394,7 +398,7 @@ public enum MiniMaxSessionScanner {
         return rows
     }
 
-    private static func hasTable(named name: String, db: OpaquePointer?) -> Bool {
+    private static func hasTable(named name: String, db: OpaquePointer?) throws -> Bool {
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(
             db,
@@ -403,12 +407,15 @@ public enum MiniMaxSessionScanner {
             &stmt,
             nil) == SQLITE_OK
         else {
-            return false
+            throw ScanError.databaseUnavailable
         }
         defer { sqlite3_finalize(stmt) }
         let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
         sqlite3_bind_text(stmt, 1, name, -1, transient)
-        return sqlite3_step(stmt) == SQLITE_ROW
+        let step = sqlite3_step(stmt)
+        if step == SQLITE_ROW { return true }
+        if step == SQLITE_DONE { return false }
+        throw ScanError.databaseUnavailable
     }
 
     private static func columnText(_ stmt: OpaquePointer?, _ index: Int32) -> String? {

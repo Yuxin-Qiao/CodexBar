@@ -81,6 +81,43 @@ struct AntigravitySessionScannerTests {
     }
 
     @Test
+    func `mixed priced and unpriced models withhold day and aggregate cost`() throws {
+        let env = try Self.makeEnvironment()
+        defer { try? FileManager.default.removeItem(at: env.root) }
+        try Self.createDatabase(at: env.databaseURL)
+        let timestamp = Self.ms("2026-07-20T10:00:00.000Z")
+        try Self.insertGeneration(
+            databaseURL: env.databaseURL,
+            meta: GenerationMeta(
+                index: 0,
+                model: "gemini-3.6-flash",
+                responseID: "priced",
+                timestampMs: timestamp),
+            tokens: Tokens(newlyProcessed: 10, cacheRead: 0, output: 5, reasoning: 0))
+        try Self.insertGeneration(
+            databaseURL: env.databaseURL,
+            meta: GenerationMeta(
+                index: 1,
+                model: "unknown-local-model",
+                responseID: "unpriced",
+                timestampMs: timestamp),
+            tokens: Tokens(newlyProcessed: 10, cacheRead: 0, output: 5, reasoning: 0))
+
+        let snapshot = try #require(AntigravitySessionScanner.scan(
+            environment: [AntigravitySessionScanner.homeEnvironmentKey: env.homeURL.path],
+            historyDays: 30,
+            now: Date(timeIntervalSince1970: TimeInterval(timestamp) / 1000),
+            modelsDevCacheRoot: env.root.appendingPathComponent("empty-pricing", isDirectory: true)))
+
+        #expect(snapshot.daily.first?.costUSD == nil)
+        #expect(snapshot.last30DaysCostUSD == nil)
+        #expect(snapshot.currencyCode == "USD")
+        let breakdowns = try #require(snapshot.daily.first?.modelBreakdowns)
+        #expect(breakdowns.first { $0.modelName == "gemini-3.6-flash" }?.costUSD != nil)
+        #expect(breakdowns.first { $0.modelName == "unknown-local-model" }?.costUSD == nil)
+    }
+
+    @Test
     func `empty conversations directory yields no snapshot`() throws {
         let env = try Self.makeEnvironment()
         defer { try? FileManager.default.removeItem(at: env.root) }

@@ -165,6 +165,7 @@ struct UserFacingLocalizationCoverageTests {
 
         let partial = SpendDailyChartPresentation(dailyPoints: points, aggregateTotal: nil)
         #expect(partial.content == .chart)
+        #expect(partial.aggregateTotal == nil)
         #expect(partial.series.map(\.name) == ["Claude", "OpenAI"])
         #expect(partial.dayCount == 2)
         CodexBarLocalizationOverride.$appLanguage.withValue("en") {
@@ -172,6 +173,8 @@ struct UserFacingLocalizationCoverageTests {
         }
 
         #expect(SpendDailyChartPresentation(dailyPoints: [], aggregateTotal: nil).content == .unavailable)
-        #expect(SpendDailyChartPresentation(dailyPoints: [], aggregateTotal: 0).content == .chart)
+        let aggregateOnly = SpendDailyChartPresentation(dailyPoints: [], aggregateTotal: 12)
+        #expect(aggregateOnly.content == .unavailable)
+        #expect(aggregateOnly.aggregateTotal == 12)
     }
 }

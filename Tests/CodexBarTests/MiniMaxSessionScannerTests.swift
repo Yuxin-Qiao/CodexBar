@@ -105,6 +105,38 @@ struct MiniMaxSessionScannerTests {
         #expect(checks <= 10)
     }
 
+    @Test
+    func `scanner propagates a busy database instead of reporting empty history`() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MiniMaxSessionScannerBusyTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let databaseURL = root.appendingPathComponent("v2/sqlite/runtime-state.sqlite")
+        try FileManager.default.createDirectory(
+            at: databaseURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true)
+        try Self.createDatabase(at: databaseURL)
+
+        var writer: OpaquePointer?
+        guard sqlite3_open(databaseURL.path, &writer) == SQLITE_OK, let writer else {
+            throw SQLiteFixtureError.open
+        }
+        defer {
+            sqlite3_exec(writer, "ROLLBACK;", nil, nil, nil)
+            sqlite3_close(writer)
+        }
+        guard sqlite3_exec(writer, "BEGIN EXCLUSIVE;", nil, nil, nil) == SQLITE_OK else {
+            throw SQLiteFixtureError.schema
+        }
+
+        #expect(throws: MiniMaxSessionScanner.ScanError.databaseUnavailable) {
+            try MiniMaxSessionScanner.scanCancellable(
+                environment: [MiniMaxSessionScanner.homeEnvironmentKey: root.path],
+                historyDays: 30,
+                now: Date(timeIntervalSince1970: 1_785_033_600),
+                calendar: Self.calendar)
+        }
+    }
+
     private static func createDatabase(at url: URL, oldRowCount: Int = 0) throws {
         var database: OpaquePointer?
         guard sqlite3_open(url.path, &database) == SQLITE_OK, let database else {

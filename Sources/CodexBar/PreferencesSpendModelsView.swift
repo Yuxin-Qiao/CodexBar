@@ -585,6 +585,45 @@ struct SpendModelsTokenChartPresentation: Equatable {
     }
 }
 
+func spendModelsActiveChartDomain(
+    selectedDays: Int,
+    dataDays: [Date],
+    chartDomain: ClosedRange<Date>?,
+    calendar: Calendar = .current) -> ClosedRange<Date>
+{
+    let firstDataDay = dataDays.min() ?? Date()
+    let lastDataDay = dataDays.max() ?? firstDataDay
+    let fallbackEnd = calendar.date(byAdding: .day, value: 1, to: lastDataDay) ?? lastDataDay
+    let fallbackDomain = firstDataDay...fallbackEnd
+    guard selectedDays >= 365 else { return chartDomain ?? fallbackDomain }
+
+    // The model builder may intentionally trim a negligible legacy island from the supplied
+    // cumulative domain. Keep metric-specific framing inside that focused window instead of
+    // reintroducing the trimmed observations through the raw daily values.
+    let focusedDays = if let chartDomain {
+        dataDays.filter(chartDomain.contains)
+    } else {
+        dataDays
+    }
+    guard let first = focusedDays.min(), let last = focusedDays.max() else {
+        return chartDomain ?? fallbackDomain
+    }
+
+    let observedDays = max(
+        1,
+        (calendar.dateComponents([.day], from: first, to: last).day ?? 0) + 1)
+    let padding = min(14, max(1, Int(ceil(Double(observedDays) * 0.04))))
+    let paddedStart = calendar.date(byAdding: .day, value: -padding, to: first) ?? first
+    let paddedLast = calendar.date(byAdding: .day, value: padding, to: last) ?? last
+    let paddedEnd = calendar.date(byAdding: .day, value: 1, to: paddedLast) ?? paddedLast
+    guard let chartDomain else { return paddedStart...paddedEnd }
+
+    let start = max(chartDomain.lowerBound, paddedStart)
+    let end = min(chartDomain.upperBound, paddedEnd)
+    guard start <= end else { return chartDomain }
+    return start...end
+}
+
 struct SpendModelsSection: View {
     let analysis: SpendDashboardModel.ModelAnalysis
     let chartDomain: ClosedRange<Date>?
@@ -963,33 +1002,15 @@ struct SpendModelsSection: View {
         return L("%d days of usage data across %d models", days, self.chartPresentation.series.count)
     }
 
-    private var fallbackDomain: ClosedRange<Date> {
-        let days = self.activeDataDays
-        let start = days.min() ?? Date()
-        let end = days.max() ?? start
-        return start...Calendar.current.date(byAdding: .day, value: 1, to: end)!
-    }
-
     /// Token and spend histories can have different priced coverage. In the
     /// cumulative view, frame the chart from the active metric's observations
     /// so switching metrics does not reserve months of empty space belonging
     /// only to the other metric.
     private var activeDomain: ClosedRange<Date> {
-        guard self.selectedDays >= 365,
-              let first = self.activeDataDays.min(),
-              let last = self.activeDataDays.max()
-        else {
-            return self.chartDomain ?? self.fallbackDomain
-        }
-        let calendar = Calendar.current
-        let observedDays = max(
-            1,
-            (calendar.dateComponents([.day], from: first, to: last).day ?? 0) + 1)
-        let padding = min(14, max(1, Int(ceil(Double(observedDays) * 0.04))))
-        let start = calendar.date(byAdding: .day, value: -padding, to: first) ?? first
-        let paddedLast = calendar.date(byAdding: .day, value: padding, to: last) ?? last
-        let end = calendar.date(byAdding: .day, value: 1, to: paddedLast) ?? paddedLast
-        return start...end
+        spendModelsActiveChartDomain(
+            selectedDays: self.selectedDays,
+            dataDays: self.activeDataDays,
+            chartDomain: self.chartDomain)
     }
 
     private var activeDataDays: [Date] {

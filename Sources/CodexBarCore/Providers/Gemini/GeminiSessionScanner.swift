@@ -26,6 +26,11 @@ public enum GeminiSessionScanner {
     public static let maximumBytes = 512 * 1024 * 1024
     public static let maximumFileBytes = 16 * 1024 * 1024
 
+    public enum ScanError: Error, Equatable {
+        /// The scan cannot claim complete history after omitting an otherwise eligible transcript.
+        case historyLimitExceeded
+    }
+
     /// Environment override for the Gemini CLI home directory, resolved directly here (the same
     /// way `KimiSettingsReader` honors `KIMI_CODE_HOME`) so this scanner stays self-contained.
     public static let cliHomeEnvironmentKey = "GEMINI_CLI_HOME"
@@ -274,9 +279,7 @@ public enum GeminiSessionScanner {
             let size = max(0, resourceValues?.fileSize ?? 0)
             guard size <= self.maximumFileBytes,
                   size <= self.maximumBytes - visitedBytes
-            else {
-                continue
-            }
+            else { throw ScanError.historyLimitExceeded }
             visitedFiles += 1
             visitedBytes += size
             guard let data = try? Data(contentsOf: url) else { continue }

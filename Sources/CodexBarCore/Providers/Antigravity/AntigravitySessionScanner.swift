@@ -194,6 +194,7 @@ public enum AntigravitySessionScanner {
             var modelBreakdowns: [CostUsageDailyReport.ModelBreakdown] = []
             var dayCost = 0.0
             var daySawCost = false
+            var dayHasUnpricedUsage = false
             for (key, value) in models {
                 guard let modelTotal = value.total else { return nil }
                 guard total.merge(value) else { return nil }
@@ -210,6 +211,8 @@ public enum AntigravitySessionScanner {
                 if value.sawCost {
                     dayCost += value.cost
                     daySawCost = true
+                } else {
+                    dayHasUnpricedUsage = true
                 }
             }
             guard let totalTokens = total.total else { return nil }
@@ -221,23 +224,28 @@ public enum AntigravitySessionScanner {
                 cacheCreationTokens: nil,
                 totalTokens: totalTokens,
                 requestCount: total.requests,
-                costUSD: daySawCost ? dayCost : nil,
+                costUSD: daySawCost && !dayHasUnpricedUsage ? dayCost : nil,
                 modelsUsed: modelBreakdowns.map(\.modelName),
                 modelBreakdowns: modelBreakdowns)
         }
         let totalTokens = self.sum(daily.compactMap(\.totalTokens))
         let totalRequests = self.sum(daily.compactMap(\.requestCount))
-        let totalCost = daily.compactMap(\.costUSD).reduce(0, +)
-        let sawCost = daily.contains { $0.costUSD != nil }
+        let pricedDailyCosts = daily.compactMap(\.costUSD)
+        let hasPricedUsage = daily.contains { entry in
+            entry.modelBreakdowns?.contains { $0.costUSD != nil } == true
+        }
+        let totalCost = !pricedDailyCosts.isEmpty && pricedDailyCosts.count == daily.count
+            ? pricedDailyCosts.reduce(0, +)
+            : nil
         guard let totalTokens, let totalRequests else { return nil }
 
         return CostUsageTokenSnapshot(
             sessionTokens: nil,
             sessionCostUSD: nil,
             last30DaysTokens: totalTokens,
-            last30DaysCostUSD: sawCost ? totalCost : nil,
+            last30DaysCostUSD: totalCost,
             last30DaysRequests: totalRequests,
-            currencyCode: sawCost ? "USD" : "XXX",
+            currencyCode: hasPricedUsage ? "USD" : "XXX",
             historyDays: days,
             historyCoverageIsEstablished: true,
             historyLabel: "Antigravity",

@@ -118,10 +118,12 @@ struct ShareStatsTests {
         let future = Self.snapshot(provider: .cursor, rawName: "Cursor Super Pro")
         let auth = Self.snapshot(provider: .cursor, rawName: "API key")
         let spend = Self.snapshot(provider: .mistral, rawName: "API spend: $12.34 this month")
+        let status = Self.snapshot(provider: .mistral, rawName: "Mistral Enterprise")
 
         #expect(SpendSubscriptionPlan.from(snapshot: future, provider: .cursor)?.displayName == "Cursor Super Pro")
         #expect(SpendSubscriptionPlan.from(snapshot: auth, provider: .cursor) == nil)
         #expect(SpendSubscriptionPlan.from(snapshot: spend, provider: .mistral) == nil)
+        #expect(SpendSubscriptionPlan.from(snapshot: status, provider: .mistral) == nil)
     }
 
     @Test
