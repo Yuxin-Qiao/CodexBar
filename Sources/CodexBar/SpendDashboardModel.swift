@@ -61,6 +61,15 @@ struct SpendDashboardModel: Equatable, Sendable {
         }
     }
 
+    struct TokenActivityPoint: Identifiable, Equatable, Sendable {
+        let day: Date
+        let totalTokens: Int
+
+        var id: Date {
+            self.day
+        }
+    }
+
     enum ModelHistoryCompleteness: Equatable, Sendable {
         case complete
         case incomplete
@@ -84,6 +93,17 @@ struct SpendDashboardModel: Equatable, Sendable {
 
     let requestedDays: Int
     let groups: [CurrencyGroup]
+    let tokenActivity: [TokenActivityPoint]
+
+    init(
+        requestedDays: Int,
+        groups: [CurrencyGroup],
+        tokenActivity: [TokenActivityPoint] = [])
+    {
+        self.requestedDays = requestedDays
+        self.groups = groups
+        self.tokenActivity = tokenActivity
+    }
 
     static func build(
         inputs: [ProviderInput],
@@ -118,7 +138,13 @@ struct SpendDashboardModel: Equatable, Sendable {
                     calendar: calculationCalendar)
             }
             .sorted { $0.currencyCode < $1.currencyCode }
-        return Self(requestedDays: days, groups: groups)
+        return Self(
+            requestedDays: days,
+            groups: groups,
+            tokenActivity: Self.tokenActivity(
+                inputs: inputs,
+                now: now,
+                calendar: calculationCalendar))
     }
 
     private struct ClassifiedInput {
@@ -539,6 +565,31 @@ struct SpendDashboardModel: Equatable, Sendable {
                     stackEnd: cursor))
             }
             return points
+        }
+    }
+
+    private static func tokenActivity(
+        inputs: [ProviderInput],
+        now: Date,
+        calendar: Calendar) -> [TokenActivityPoint]
+    {
+        let bounds = Self.bounds(days: 365, now: now, calendar: calendar)
+        var totals: [Date: Int] = [:]
+        for input in inputs {
+            for entry in input.snapshot.daily {
+                guard let day = Self.day(
+                    entry.date,
+                    provider: input.provider,
+                    displayCalendar: calendar),
+                    bounds.contains(day),
+                    let tokens = Self.nonnegative(entry.totalTokens)
+                else { continue }
+                let addition = (totals[day] ?? 0).addingReportingOverflow(tokens)
+                totals[day] = addition.overflow ? Int.max : addition.partialValue
+            }
+        }
+        return totals.keys.sorted().map { day in
+            TokenActivityPoint(day: day, totalTokens: totals[day] ?? 0)
         }
     }
 

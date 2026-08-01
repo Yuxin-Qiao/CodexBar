@@ -1353,3 +1353,13 @@
 "Cost today unavailable" = "Koszt dzisiaj: Niedostępne";
 "30-day cost unavailable" = "Koszt 30 dni: Niedostępne";
 "Resets" = "Resety";
+
+"Cumulative" = "Łącznie";
+"Token activity" = "Aktywność tokenów";
+"View" = "Widok";
+"in the last year" = "w ciągu ostatniego roku";
+"No activity in the last 12 months" = "Brak aktywności w ciągu ostatnich 12 miesięcy";
+"Each column = 1 week" = "Każda kolumna = 1 tydzień";
+"Running total" = "Suma narastająca";
+"Less" = "Mniej";
+"More" = "Więcej";

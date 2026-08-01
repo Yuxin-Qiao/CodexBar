@@ -1353,3 +1353,13 @@
 "Cost today unavailable" = "Biaya hari ini: Tidak tersedia";
 "30-day cost unavailable" = "Biaya 30 hari: Tidak tersedia";
 "Resets" = "Reset";
+
+"Cumulative" = "Kumulatif";
+"Token activity" = "Aktivitas token";
+"View" = "Tampilan";
+"in the last year" = "dalam setahun terakhir";
+"No activity in the last 12 months" = "Tidak ada aktivitas dalam 12 bulan terakhir";
+"Each column = 1 week" = "Setiap kolom = 1 minggu";
+"Running total" = "Total berjalan";
+"Less" = "Sedikit";
+"More" = "Banyak";

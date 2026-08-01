@@ -753,7 +753,7 @@ struct SpendDashboardModelTests {
         #expect(!request.authFileWasReadable)
         #expect(request.displayName == "Codex · #2")
         #expect(request.cacheIdentity.count == 64)
-        #expect(SpendDashboardSource.scanDays == 30)
+        #expect(SpendDashboardSource.scanDays == 365)
         #expect(SpendDashboardSource.codexRequest(
             account: account,
             homePath: "relative/path",
