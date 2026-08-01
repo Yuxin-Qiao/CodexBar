@@ -265,4 +265,61 @@ struct CostUsageClaudeSessionEdgeTests {
         #expect(refreshed.data.count == 1)
         #expect(refreshed.data[0].inputTokens == 263)
     }
+
+    @Test
+    func `transitive identity aliases carry through later rows`() throws {
+        // pair(x,y) -> req(y) persists x as an alias; pair(m2,y) then msg(x) must all
+        // stay in the same stream instead of splitting into separate calls.
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2025, month: 12, day: 23)
+        let iso0 = env.isoString(for: day)
+        let iso1 = env.isoString(for: day.addingTimeInterval(1))
+        let iso2 = env.isoString(for: day.addingTimeInterval(2))
+        let iso3 = env.isoString(for: day.addingTimeInterval(3))
+
+        func row(messageId: String?, requestId: String?, timestamp: String, input: Int) -> [String: Any] {
+            var message: [String: Any] = [
+                "model": "claude-sonnet-4-20250514",
+                "usage": [
+                    "input_tokens": input,
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 0,
+                    "output_tokens": 1,
+                ],
+            ]
+            if let messageId {
+                message["id"] = messageId
+            }
+            var row: [String: Any] = [
+                "type": "assistant",
+                "timestamp": timestamp,
+                "sessionId": "session-transitive",
+                "isSidechain": false,
+                "message": message,
+            ]
+            if let requestId {
+                row["requestId"] = requestId
+            }
+            return row
+        }
+
+        let fileURL = try env.writeClaudeProjectFile(
+            relativePath: "project-a/transitive-alias.jsonl",
+            contents: env.jsonl([
+                row(messageId: "x", requestId: "y", timestamp: iso0, input: 15),
+                row(messageId: nil, requestId: "y", timestamp: iso1, input: 150),
+                row(messageId: "m2", requestId: "y", timestamp: iso2, input: 300),
+                row(messageId: "x", requestId: nil, timestamp: iso3, input: 500),
+            ]))
+
+        let parsed = CostUsageScanner.parseClaudeFile(
+            fileURL: fileURL,
+            range: CostUsageScanner.CostUsageDayRange(since: day, until: day),
+            providerFilter: .all)
+
+        #expect(parsed.rows.count == 1)
+        #expect(parsed.rows[0].input == 500)
+    }
 }

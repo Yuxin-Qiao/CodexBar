@@ -433,6 +433,8 @@ extension CostUsageScanner {
                 {
                     aliasRequests.insert(requestId)
                 }
+                aliasMessages.formUnion(member.aliasMessageIds ?? [])
+                aliasRequests.formUnion(member.aliasRequestIds ?? [])
             }
             mergedRow.aliasMessageIds = aliasMessages.isEmpty ? nil : Array(aliasMessages).sorted()
             mergedRow.aliasRequestIds = aliasRequests.isEmpty ? nil : Array(aliasRequests).sorted()
