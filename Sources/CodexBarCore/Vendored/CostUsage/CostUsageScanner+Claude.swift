@@ -132,6 +132,7 @@ extension CostUsageScanner {
         let pathRole = Self.claudePathRole(fileURL: fileURL)
         var keyedRows: [String: ClaudeUsageRow] = [:]
         var canonicalKeys: [String] = []
+        var quarantinedKeys: Set<String> = []
         var unkeyedRows: [ClaudeUsageRow] = []
 
         let maxLineBytes = 512 * 1024
@@ -232,7 +233,12 @@ extension CostUsageScanner {
 
                         // Streaming chunks share message.id and/or requestId inside a file.
                         // Keep overwriting so the final cumulative chunk wins.
-                        if !Self.claudeInsertRow(row, into: &keyedRows, canonicalKeys: &canonicalKeys) {
+                        if !Self.claudeInsertRow(
+                            row,
+                            into: &keyedRows,
+                            canonicalKeys: &canonicalKeys,
+                            quarantinedKeys: &quarantinedKeys)
+                        {
                             // Older logs omit IDs; treat each line as distinct to avoid dropping usage.
                             unkeyedRows.append(row)
                         }
@@ -284,12 +290,23 @@ extension CostUsageScanner {
     private static func mergeClaudeRows(existing: [ClaudeUsageRow], delta: [ClaudeUsageRow]) -> [ClaudeUsageRow] {
         var keyedRows: [String: ClaudeUsageRow] = [:]
         var canonicalKeys: [String] = []
+        var quarantinedKeys: Set<String> = []
         var unkeyedRows: [ClaudeUsageRow] = []
 
-        for row in existing where !Self.claudeInsertRow(row, into: &keyedRows, canonicalKeys: &canonicalKeys) {
+        for row in existing where !Self.claudeInsertRow(
+            row,
+            into: &keyedRows,
+            canonicalKeys: &canonicalKeys,
+            quarantinedKeys: &quarantinedKeys)
+        {
             unkeyedRows.append(row)
         }
-        for row in delta where !Self.claudeInsertRow(row, into: &keyedRows, canonicalKeys: &canonicalKeys) {
+        for row in delta where !Self.claudeInsertRow(
+            row,
+            into: &keyedRows,
+            canonicalKeys: &canonicalKeys,
+            quarantinedKeys: &quarantinedKeys)
+        {
             unkeyedRows.append(row)
         }
 
@@ -297,9 +314,13 @@ extension CostUsageScanner {
     }
 
     private static func claudeInFileKey(_ row: ClaudeUsageRow) -> String? {
-        let messageId = row.messageId?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let requestId = row.requestId?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let session = Self.claudeNonEmptyID(row.sessionId)
+        let messageId = row.messageId.map {
+            Self.claudeEscapeKeyComponent($0.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        let requestId = row.requestId.map {
+            Self.claudeEscapeKeyComponent($0.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        let session = Self.claudeNonEmptyID(row.sessionId).map(Self.claudeEscapeKeyComponent)
 
         if let messageId, !messageId.isEmpty {
             if let requestId, !requestId.isEmpty {
@@ -319,6 +340,12 @@ extension CostUsageScanner {
         return nil
     }
 
+    private static func claudeEscapeKeyComponent(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "%", with: "%25")
+            .replacingOccurrences(of: "@", with: "%40")
+    }
+
     /// Inserts a row into its stream identity equivalence class.
     ///
     /// `msg:`, `req:`, and `pair:` keys can all describe the same response: a cumulative
@@ -333,13 +360,15 @@ extension CostUsageScanner {
     private static func claudeInsertRow(
         _ row: ClaudeUsageRow,
         into keyedRows: inout [String: ClaudeUsageRow],
-        canonicalKeys: inout [String]) -> Bool
+        canonicalKeys: inout [String],
+        quarantinedKeys: inout Set<String>) -> Bool
     {
         guard let key = claudeInFileKey(row) else {
             return false
         }
         let classKeys = Self.claudeClassKeys(for: row, keyedRows: keyedRows)
         let sessionClassKeys = classKeys.filter {
+            guard !quarantinedKeys.contains($0) else { return false }
             let existingSession = keyedRows[$0]?.sessionId
             return existingSession == row.sessionId
                 || existingSession == nil
@@ -348,6 +377,7 @@ extension CostUsageScanner {
         guard row.sessionId != nil || Self.claudeKnownSessions(sessionClassKeys, keyedRows: keyedRows) <= 1 else {
             // A sessionless row cannot tell which established session it belongs to;
             // keep it separate rather than bridging two distinct sessions.
+            quarantinedKeys.insert(key)
             keyedRows[key] = row
             if !canonicalKeys.contains(key) {
                 canonicalKeys.append(key)
@@ -406,9 +436,9 @@ extension CostUsageScanner {
         for row: ClaudeUsageRow,
         keyedRows: [String: ClaudeUsageRow]) -> [String]
     {
-        let messageId = Self.claudeNonEmptyID(row.messageId)
-        let requestId = Self.claudeNonEmptyID(row.requestId)
-        let session = Self.claudeNonEmptyID(row.sessionId)
+        let messageId = Self.claudeNonEmptyID(row.messageId).map(Self.claudeEscapeKeyComponent)
+        let requestId = Self.claudeNonEmptyID(row.requestId).map(Self.claudeEscapeKeyComponent)
+        let session = Self.claudeNonEmptyID(row.sessionId).map(Self.claudeEscapeKeyComponent)
         var keys: Set<String> = []
         if let messageId, let requestId {
             keys.insert("pair:\(messageId):\(requestId)")
@@ -481,7 +511,7 @@ extension CostUsageScanner {
     private static func claudeRowTotalTokens(_ row: ClaudeUsageRow) -> Int {
         // `cacheCreate1h` is a subset of `cacheCreate`, so counting both would inflate
         // the cumulative-snapshot comparison.
-        row.input + row.cacheRead + (row.cacheCreate ?? 0) + row.output
+        row.input + row.cacheRead + row.cacheCreate + row.output
     }
 
     private static func claudeNonEmptyID(_ value: String?) -> String? {
@@ -529,9 +559,14 @@ extension CostUsageScanner {
         // per-file parsing, emitting one row per class.
         var keyedRows: [String: ClaudeUsageRow] = [:]
         var canonicalKeys: [String] = []
+        var quarantinedKeys: Set<String> = []
         for key in winners.keys.sorted() {
             guard let winner = winners[key]?.row else { continue }
-            _ = Self.claudeInsertRow(winner, into: &keyedRows, canonicalKeys: &canonicalKeys)
+            _ = Self.claudeInsertRow(
+                winner,
+                into: &keyedRows,
+                canonicalKeys: &canonicalKeys,
+                quarantinedKeys: &quarantinedKeys)
         }
         rows.append(contentsOf: canonicalKeys.sorted().compactMap { keyedRows[$0] })
         return rows
