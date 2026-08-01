@@ -131,7 +131,7 @@ extension CostUsageScanner {
 
         let pathRole = Self.claudePathRole(fileURL: fileURL)
         var keyedRows: [String: ClaudeUsageRow] = [:]
-        var canonicalKeys: [String] = []
+        var canonicalKeys: Set<String> = []
         var quarantinedKeys: Set<String> = []
         var identityIndex: [String: Set<String>] = [:]
         var unkeyedRows: [ClaudeUsageRow] = []
@@ -291,7 +291,7 @@ extension CostUsageScanner {
 
     private static func mergeClaudeRows(existing: [ClaudeUsageRow], delta: [ClaudeUsageRow]) -> [ClaudeUsageRow] {
         var keyedRows: [String: ClaudeUsageRow] = [:]
-        var canonicalKeys: [String] = []
+        var canonicalKeys: Set<String> = []
         var quarantinedKeys: Set<String> = []
         var identityIndex: [String: Set<String>] = [:]
         var unkeyedRows: [ClaudeUsageRow] = []
@@ -366,7 +366,7 @@ extension CostUsageScanner {
     private static func claudeInsertRow(
         _ row: ClaudeUsageRow,
         into keyedRows: inout [String: ClaudeUsageRow],
-        canonicalKeys: inout [String],
+        canonicalKeys: inout Set<String>,
         quarantinedKeys: inout Set<String>,
         identityIndex: inout [String: Set<String>]) -> Bool
     {
@@ -392,7 +392,7 @@ extension CostUsageScanner {
             keyedRows[key] = row
             Self.claudeIndexKey(key, for: row, identityIndex: &identityIndex)
             if !canonicalKeys.contains(key) {
-                canonicalKeys.append(key)
+                canonicalKeys.insert(key)
             }
             return true
         }
@@ -403,16 +403,16 @@ extension CostUsageScanner {
             keyedRows[key] = row
             Self.claudeIndexKey(key, for: row, identityIndex: &identityIndex)
             if !canonicalKeys.contains(key) {
-                canonicalKeys.append(key)
+                canonicalKeys.insert(key)
             }
             return true
         }
 
         if Self.claudeRowTotalTokens(row) >= Self.claudeRowTotalTokens(representative) {
             let canonicalKey = sessionClassKeys.first { $0.hasPrefix("pair:") } ?? key
-            canonicalKeys.removeAll { sessionClassKeys.contains($0) }
+            canonicalKeys.subtract(sessionClassKeys)
             if !canonicalKeys.contains(canonicalKey) {
-                canonicalKeys.append(canonicalKey)
+                canonicalKeys.insert(canonicalKey)
             }
             keyedRows[key] = row
             Self.claudeIndexKey(key, for: row, identityIndex: &identityIndex)
@@ -426,10 +426,10 @@ extension CostUsageScanner {
             if !sessionClassKeys.contains(where: { $0 != key && canonicalKeys.contains($0) }),
                let alternate = sessionClassKeys.first(where: { $0 != key && keyedRows[$0] != nil })
             {
-                canonicalKeys.append(alternate)
+                canonicalKeys.insert(alternate)
             }
             if !canonicalKeys.contains(key) {
-                canonicalKeys.append(key)
+                canonicalKeys.insert(key)
             }
         }
         return true
@@ -530,7 +530,7 @@ extension CostUsageScanner {
         // Consolidate stream identities across files with the same equivalence classes as
         // per-file parsing, emitting one row per class.
         var keyedRows: [String: ClaudeUsageRow] = [:]
-        var canonicalKeys: [String] = []
+        var canonicalKeys: Set<String> = []
         var quarantinedKeys: Set<String> = []
         var identityIndex: [String: Set<String>] = [:]
         for key in winners.keys.sorted() {
