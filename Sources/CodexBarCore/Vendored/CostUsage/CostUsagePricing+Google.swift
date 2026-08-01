@@ -78,26 +78,45 @@ extension CostUsagePricing {
         modelsDevCacheRoot: URL? = nil) -> Double?
     {
         let canonicalModel = self.googlePricingModelID(model)
-        if let pricing = self.google[canonicalModel] {
+        // Prefer the refreshed models.dev catalog so a corrected or updated rate is actually used;
+        // the embedded table below is the offline fallback for ids the catalog has not caught up
+        // with yet, not the first source consulted.
+        if let lookup = self.modelsDevLookup(
+            providerID: "google",
+            model: canonicalModel,
+            catalog: modelsDevCatalog,
+            cacheRoot: modelsDevCacheRoot)
+        {
             return self.googleCostUSD(
-                pricing: pricing,
+                pricing: lookup.pricing,
                 inputTokens: inputTokens,
                 cacheReadInputTokens: cacheReadInputTokens,
                 outputTokens: outputTokens)
         }
 
-        guard let lookup = self.modelsDevLookup(
-            providerID: "google",
-            model: canonicalModel,
-            catalog: modelsDevCatalog,
-            cacheRoot: modelsDevCacheRoot)
-        else {
-            return nil
-        }
-        let pricing = lookup.pricing
-        let safeInput = max(0, inputTokens)
-        let safeCacheRead = max(0, cacheReadInputTokens)
-        let totalInput = safeInput.addingReportingOverflow(safeCacheRead)
+        guard let pricing = self.google[canonicalModel] else { return nil }
+        return self.googleCostUSD(
+            pricing: pricing,
+            inputTokens: inputTokens,
+            cacheReadInputTokens: cacheReadInputTokens,
+            outputTokens: outputTokens)
+    }
+
+    static func googlePricingModelID(_ model: String) -> String {
+        let normalized = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return self.googleAliases[normalized] ?? normalized
+    }
+
+    private static func googleCostUSD(
+        pricing: ModelsDevPricingInfo,
+        inputTokens: Int,
+        cacheReadInputTokens: Int,
+        outputTokens: Int) -> Double
+    {
+        let input = max(0, inputTokens)
+        let cacheRead = max(0, cacheReadInputTokens)
+        let output = max(0, outputTokens)
+        let totalInput = input.addingReportingOverflow(cacheRead)
         let usesLongContextRates = pricing.thresholdTokens.map {
             totalInput.overflow || totalInput.partialValue > $0
         } ?? false
@@ -112,15 +131,9 @@ extension CostUsagePricing {
         let outputRate = usesLongContextRates
             ? pricing.outputCostPerTokenAboveThreshold ?? pricing.outputCostPerToken
             : pricing.outputCostPerToken
-        let cost = Double(safeInput) * inputRate
-            + Double(safeCacheRead) * cacheReadRate
-            + Double(max(0, outputTokens)) * outputRate
-        return cost.isFinite ? cost : nil
-    }
-
-    static func googlePricingModelID(_ model: String) -> String {
-        let normalized = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return self.googleAliases[normalized] ?? normalized
+        return Double(input) * inputRate
+            + Double(cacheRead) * cacheReadRate
+            + Double(output) * outputRate
     }
 
     private static func googleCostUSD(
