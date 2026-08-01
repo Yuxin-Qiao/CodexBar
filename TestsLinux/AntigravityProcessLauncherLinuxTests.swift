@@ -45,7 +45,19 @@ struct AntigravityProcessLauncherLinuxTests {
         try Data(script.utf8).write(to: scriptURL)
         #expect(chmod(scriptURL.path, 0o700) == 0)
 
-        let handle = try AntigravityPTYProcessLauncher().launch(binary: scriptURL.path)
+        var handle: AntigravityPTYProcessLauncher.Handle?
+        for attempt in 0..<10 {
+            do {
+                handle = try AntigravityPTYProcessLauncher().launch(binary: scriptURL.path)
+                break
+            } catch AntigravityPTYProcessLauncherError.launchFailed(let message) where message.contains("Text file busy") && attempt < 9 {
+                Thread.sleep(forTimeInterval: 0.05)
+            }
+        }
+        guard let handle else {
+            Issue.record("Failed to launch script due to launch failure")
+            return
+        }
         defer {
             handle.killRoot()
             handle.terminateTree(signal: SIGKILL, knownDescendants: [])
