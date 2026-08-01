@@ -345,6 +345,15 @@ extension CostUsageScanner {
                 || existingSession == nil
                 || row.sessionId == nil
         }
+        guard row.sessionId != nil || Self.claudeKnownSessions(sessionClassKeys, keyedRows: keyedRows) <= 1 else {
+            // A sessionless row cannot tell which established session it belongs to;
+            // keep it separate rather than bridging two distinct sessions.
+            keyedRows[key] = row
+            if !canonicalKeys.contains(key) {
+                canonicalKeys.append(key)
+            }
+            return true
+        }
         guard let representative = sessionClassKeys
             .compactMap({ keyedRows[$0] })
             .max(by: { Self.claudeRowTotalTokens($0) < Self.claudeRowTotalTokens($1) })
@@ -378,6 +387,19 @@ extension CostUsageScanner {
             }
         }
         return true
+    }
+
+    private static func claudeKnownSessions(
+        _ classKeys: [String],
+        keyedRows: [String: ClaudeUsageRow]) -> Int
+    {
+        var sessions: Set<String> = []
+        for classKey in classKeys {
+            if let session = keyedRows[classKey]?.sessionId {
+                sessions.insert(session)
+            }
+        }
+        return sessions.count
     }
 
     private static func claudeClassKeys(

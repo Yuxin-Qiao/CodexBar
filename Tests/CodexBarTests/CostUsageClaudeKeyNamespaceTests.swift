@@ -498,6 +498,58 @@ struct CostUsageClaudeKeyNamespaceTests {
     }
 
     @Test
+    func `sessionless row does not bridge two known sessions`() throws {
+        // A row without sessionId cannot tell which established session it belongs to;
+        // when the same lone ID already has rows for two different sessions, the
+        // sessionless row stays separate instead of collapsing the other two.
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2025, month: 12, day: 23)
+        let iso0 = env.isoString(for: day)
+        let iso1 = env.isoString(for: day.addingTimeInterval(1))
+        let iso2 = env.isoString(for: day.addingTimeInterval(2))
+
+        func row(sessionId: String?, timestamp: String, input: Int) -> [String: Any] {
+            var row: [String: Any] = [
+                "type": "assistant",
+                "timestamp": timestamp,
+                "isSidechain": false,
+                "message": [
+                    "id": "x",
+                    "model": "claude-sonnet-4-20250514",
+                    "usage": [
+                        "input_tokens": input,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "output_tokens": 1,
+                    ],
+                ],
+            ]
+            if let sessionId {
+                row["sessionId"] = sessionId
+            }
+            return row
+        }
+
+        let fileURL = try env.writeClaudeProjectFile(
+            relativePath: "project-a/ambiguous-session.jsonl",
+            contents: env.jsonl([
+                row(sessionId: "session-a", timestamp: iso0, input: 11),
+                row(sessionId: "session-b", timestamp: iso1, input: 13),
+                row(sessionId: nil, timestamp: iso2, input: 100),
+            ]))
+
+        let parsed = CostUsageScanner.parseClaudeFile(
+            fileURL: fileURL,
+            range: CostUsageScanner.CostUsageDayRange(since: day, until: day),
+            providerFilter: .all)
+
+        #expect(parsed.rows.count == 3)
+        #expect(parsed.rows.map(\.input).sorted() == [11, 13, 100])
+    }
+
+    @Test
     func `session qualified row coalesces with sessionless chunk`() throws {
         // A sessionless early chunk and a later chunk that gains the sessionId describe
         // the same stream; the qualified row supersedes the sessionless one.
