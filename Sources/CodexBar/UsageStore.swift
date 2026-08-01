@@ -1357,7 +1357,7 @@ extension UsageStore {
     }
 
     func refreshTokenUsage(_ provider: UsageProvider, force: Bool) async {
-        guard ProviderDescriptorRegistry.descriptor(for: provider).tokenCost.supportsTokenCost else {
+        guard ProviderDescriptorRegistry.descriptor(for: provider).tokenCost.supportsDashboardHistory else {
             self.resetTokenUsageState(for: provider)
             return
         }

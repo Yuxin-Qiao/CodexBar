@@ -95,6 +95,38 @@ private actor TokenRefreshRecorder {
 @Suite(.serialized)
 struct UsageStoreManualTokenRefreshTests {
     @Test
+    func `local history provider refresh publishes token snapshot instead of resetting`() async {
+        let store = Self.makeStore(enabledProviders: [.codex, .gemini])
+        let snapshot = CostUsageTokenSnapshot(
+            sessionTokens: 150,
+            sessionCostUSD: 0.5,
+            last30DaysTokens: 150,
+            last30DaysCostUSD: 0.5,
+            currencyCode: "USD",
+            historyDays: 30,
+            historyLabel: "Gemini CLI",
+            costSource: .estimated,
+            daily: [CostUsageDailyReport.Entry(
+                date: "2026-07-28",
+                inputTokens: 100,
+                outputTokens: 50,
+                totalTokens: 150,
+                costUSD: 0.5,
+                modelsUsed: ["gemini-2.5-pro"],
+                modelBreakdowns: nil)],
+            updatedAt: Date(timeIntervalSince1970: 1_785_283_200))
+        store._test_tokenUsageSnapshotLoaderOverride = { _, _, _, _, _ in
+            snapshot
+        }
+
+        await store.refreshTokenUsage(.gemini, force: true)
+
+        // Gemini opts into local history but not supportsTokenCost; the refresh must run the
+        // snapshot pipeline instead of resetting the provider's token state.
+        #expect(store.tokenSnapshot(for: .gemini)?.historyLabel == "Gemini CLI")
+    }
+
+    @Test
     func `manual refresh waits for token-cost refresh before completing`() async {
         let store = Self.makeStore()
         let gate = TokenRefreshGate()
