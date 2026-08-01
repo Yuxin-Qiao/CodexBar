@@ -306,6 +306,7 @@ extension CostUsageScanner {
             unkeyedRows.append(row)
         }
 
+        Self.claudeRetireAliasedPairs(state: &identityState)
         return identityState.canonicalKeys.sorted().compactMap { identityState.keyedRows[$0] } + unkeyedRows
     }
 
@@ -690,6 +691,9 @@ extension CostUsageScanner {
                         // keep both instead of collapsing them through the session-free
                         // canonical key.
                         rows.append(row)
+                        if let rowSession {
+                            keptSessions[canonicalKey, default: []].insert(rowSession)
+                        }
                         continue
                     }
                     if existing.path != path,
@@ -736,8 +740,18 @@ extension CostUsageScanner {
             guard let winner = winners[key]?.row else { continue }
             _ = Self.claudeInsertRow(winner, state: &identityState)
         }
+        Self.claudeRetireAliasedPairs(state: &identityState)
         rows.append(contentsOf: identityState.canonicalKeys.sorted().compactMap { identityState.keyedRows[$0] })
         return rows
+    }
+
+    private static func claudeRetireAliasedPairs(state: inout ClaudeIdentityState) {
+        // Replayed rows may carry aliases whose old pair keys arrive in any file order;
+        // retire those pairs after the consolidation pass regardless of order.
+        let canonicalRows = state.canonicalKeys.compactMap { state.keyedRows[$0] }
+        for row in canonicalRows where row.aliasMessageIds != nil || row.aliasRequestIds != nil {
+            Self.claudeRetireSupersededPairs(for: row, state: &state)
+        }
     }
 
     private static func rebuildClaudeDays(cache: inout CostUsageCache) {
