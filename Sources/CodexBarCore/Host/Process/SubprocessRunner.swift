@@ -220,23 +220,9 @@ public enum SubprocessRunner {
             termination.resolve(process.terminationStatus)
         }
 
-        var launchError: Error?
-        for attempt in 0..<5 {
-            do {
-                try process.run()
-                launchError = nil
-                break
-            } catch {
-                launchError = error
-                let desc = error.localizedDescription
-                if desc.contains("Text file busy") || desc.contains("ETXTBSY"), attempt < 4 {
-                    try? await Task.sleep(nanoseconds: 20_000_000)
-                    continue
-                }
-                break
-            }
-        }
-        if let error = launchError {
+        do {
+            try await Self.launchProcessWithRetry(process)
+        } catch {
             process.terminationHandler = nil
             stdoutCapture.stop()
             stdoutPipe.fileHandleForWriting.closeFile()
@@ -350,6 +336,35 @@ public enum SubprocessRunner {
             stdoutCapture.stop()
             stderrCapture.stop()
             throw error
+        }
+    }
+
+    private static func launchProcessWithRetry(_ process: Process) async throws {
+        var launchError: Error?
+        for attempt in 0..<5 {
+            do {
+                try process.run()
+                return
+            } catch {
+                launchError = error
+                let isTextFileBusy: Bool = {
+                    if let nsError = error as NSError?, nsError.domain == NSPOSIXErrorDomain,
+                       nsError.code == Int(ETXTBSY)
+                    {
+                        return true
+                    }
+                    let desc = error.localizedDescription
+                    return desc.contains("Text file busy") || desc.contains("ETXTBSY")
+                }()
+                if isTextFileBusy, attempt < 4 {
+                    try? await Task.sleep(nanoseconds: 20_000_000)
+                    continue
+                }
+                break
+            }
+        }
+        if let launchError {
+            throw launchError
         }
     }
 }
