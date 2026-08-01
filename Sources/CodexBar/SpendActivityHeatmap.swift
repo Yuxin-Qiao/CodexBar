@@ -484,9 +484,19 @@ private struct SpendActivityDailyGrid: View {
                 self.keyboardIndex = self.lastVisibleIndex
             }
         }
-        .accessibilityElement(children: .ignore)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel(L("Token activity"))
         .accessibilityValue(self.accessibilityValue)
+        .accessibilityChildren {
+            ForEach(self.series.daily.indices.filter(self.series.isVisible), id: \.self) { index in
+                if let date = self.series.date(at: index) {
+                    Color.clear
+                        .accessibilityElement()
+                        .accessibilityLabel(SpendActivityDateFormatting.mediumDateString(date))
+                        .accessibilityValue(self.accessibilityTokenValue(at: index))
+                }
+            }
+        }
         .accessibilityAdjustableAction { direction in
             switch direction {
             case .increment:
@@ -594,7 +604,9 @@ private struct SpendActivityDailyGrid: View {
     }
 
     private func moveKeyboardSelection(_ direction: MoveCommandDirection) {
+        self.hoveredIndex = nil
         guard let current = self.keyboardIndex ?? self.lastVisibleIndex else { return }
+        self.keyboardIndex = current
         let move: SpendActivityGridMove? = switch direction {
         case .left:
             .left
@@ -614,6 +626,7 @@ private struct SpendActivityDailyGrid: View {
     }
 
     private func moveKeyboardSelectionChronologically(by offset: Int) {
+        self.hoveredIndex = nil
         guard let current = self.keyboardIndex else {
             self.keyboardIndex = self.lastVisibleIndex
             return
@@ -656,10 +669,7 @@ private struct SpendActivityDailyGrid: View {
 
     private var accessibilityValue: String {
         if let index = self.activeIndex, let date = self.series.date(at: index) {
-            let value = self.series.isCovered[index]
-                ? UsageFormatter.tokenCountString(self.series.daily[index])
-                : L("Unavailable")
-            return "\(SpendActivityDateFormatting.mediumDateString(date)): \(value)"
+            return "\(SpendActivityDateFormatting.mediumDateString(date)): \(self.accessibilityTokenValue(at: index))"
         }
         let total = UsageFormatter.tokenCountString(Self.saturatingTotal(self.series.daily))
         guard self.series.hasUnknownCoverage else { return total }
@@ -667,6 +677,12 @@ private struct SpendActivityDailyGrid: View {
             covered: self.series.coveredDayCount,
             requested: self.series.visibleDayCount)
         return "\(total) · \(coverage)"
+    }
+
+    private func accessibilityTokenValue(at index: Int) -> String {
+        self.series.isCovered[index]
+            ? UsageFormatter.tokenCountString(self.series.daily[index])
+            : L("Unavailable")
     }
 }
 
