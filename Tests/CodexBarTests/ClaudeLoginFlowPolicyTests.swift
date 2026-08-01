@@ -25,23 +25,30 @@ struct ClaudeLoginFlowTests {
                 browserDetection: BrowserDetection(cacheTTL: 0),
                 settings: settings)
 
-            await withStatusItemControllerForTesting(store: store, settings: settings, fetcher: fetcher) { controller in
-                let didLogin = await controller.runClaudeLoginFlow { _, onPhaseChange in
-                    onPhaseChange(.requesting)
-                    await Task.yield()
-                    onPhaseChange(.waitingBrowser)
-                    await Task.yield()
-                    return ClaudeLoginRunner.Result(
-                        outcome: .success,
-                        output: "Successfully logged in",
-                        authLink: nil)
-                }
+            let controller = StatusItemController(
+                store: store,
+                settings: settings,
+                account: fetcher.loadAccountInfo(),
+                updater: DisabledUpdaterController(),
+                preferencesSelection: PreferencesSelection(),
+                statusBar: .system)
 
-                #expect(didLogin)
-                #expect(controller.loginPhase == .idle)
+            let didLogin = await controller.runClaudeLoginFlow { _, onPhaseChange in
+                onPhaseChange(.requesting)
+                await Task.yield()
+                onPhaseChange(.waitingBrowser)
+                await Task.yield()
+                return ClaudeLoginRunner.Result(
+                    outcome: .success,
+                    output: "Successfully logged in",
+                    authLink: nil)
             }
 
-            #expect(settings.claudeUsageDataSource == source)
+            #expect(didLogin)
+            #expect(controller.loginPhase == .idle)
+
+            let expectedSource: ClaudeUsageDataSource = (source == .web) ? .oauth : source
+            #expect(settings.claudeUsageDataSource == expectedSource)
             #expect(settings.isProviderEnabledCached(provider: .claude, metadataByProvider: registry.metadata))
         }
     }
