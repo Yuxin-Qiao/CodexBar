@@ -25,6 +25,7 @@ struct SpendActivitySeries {
     static let dayCount = 7
 
     let daily: [Int]
+    let isCovered: [Bool]
     let start: Date
     let today: Date
     let calendar: Calendar
@@ -35,9 +36,16 @@ struct SpendActivitySeries {
         calendar: Calendar = .current) -> Self
     {
         var totals: [Date: Int] = [:]
+        var unknownDays: Set<Date> = []
         for point in points {
             let day = calendar.startOfDay(for: point.day)
-            totals[day] = Self.saturatingAdd(totals[day] ?? 0, max(point.totalTokens, 0))
+            guard let totalTokens = point.totalTokens else {
+                totals.removeValue(forKey: day)
+                unknownDays.insert(day)
+                continue
+            }
+            guard !unknownDays.contains(day) else { continue }
+            totals[day] = Self.saturatingAdd(totals[day] ?? 0, max(totalTokens, 0))
         }
 
         let today = calendar.startOfDay(for: now)
@@ -49,13 +57,16 @@ struct SpendActivitySeries {
             to: thisWeekSunday) ?? thisWeekSunday
         let cellCount = Self.weekCount * Self.dayCount
         var daily = [Int](repeating: 0, count: cellCount)
+        var isCovered = [Bool](repeating: false, count: cellCount)
         for index in 0..<cellCount {
             guard let date = calendar.date(byAdding: .day, value: index, to: start), date <= today else {
                 continue
             }
-            daily[index] = totals[date] ?? 0
+            guard !unknownDays.contains(date), let total = totals[date] else { continue }
+            daily[index] = total
+            isCovered[index] = true
         }
-        return Self(daily: daily, start: start, today: today, calendar: calendar)
+        return Self(daily: daily, isCovered: isCovered, start: start, today: today, calendar: calendar)
     }
 
     func date(at index: Int) -> Date? {
@@ -66,9 +77,57 @@ struct SpendActivitySeries {
         self.calendar.date(byAdding: .day, value: week * Self.dayCount, to: self.start)
     }
 
-    private static func saturatingAdd(_ lhs: Int, _ rhs: Int) -> Int {
+    var visibleDayCount: Int {
+        self.daily.indices.filter(self.isVisible).count
+    }
+
+    var coveredDayCount: Int {
+        self.daily.indices.count(where: { self.isVisible($0) && self.isCovered[$0] })
+    }
+
+    var hasUnknownCoverage: Bool {
+        self.coveredDayCount < self.visibleDayCount
+    }
+
+    func weeklyActivity() -> SpendActivityAggregateSeries {
+        var values: [Int] = []
+        var coverage: [Bool] = []
+        for start in stride(from: 0, to: self.daily.count, by: Self.dayCount) {
+            let indices = start..<min(start + Self.dayCount, self.daily.count)
+            let visible = indices.filter(self.isVisible)
+            values.append(visible.reduce(0) { Self.saturatingAdd($0, self.daily[$1]) })
+            coverage.append(!visible.isEmpty && visible.allSatisfy { self.isCovered[$0] })
+        }
+        return SpendActivityAggregateSeries(values: values, isCovered: coverage)
+    }
+
+    private func isVisible(_ index: Int) -> Bool {
+        guard let date = self.date(at: index) else { return false }
+        return date <= self.today
+    }
+
+    static func saturatingAdd(_ lhs: Int, _ rhs: Int) -> Int {
         let result = lhs.addingReportingOverflow(rhs)
         return result.overflow ? Int.max : result.partialValue
+    }
+}
+
+struct SpendActivityAggregateSeries: Equatable {
+    let values: [Int]
+    let isCovered: [Bool]
+
+    func cumulative() -> Self {
+        var total = 0
+        var coverageIsComplete = true
+        var cumulativeValues: [Int] = []
+        var cumulativeCoverage: [Bool] = []
+        for index in self.values.indices {
+            total = SpendActivitySeries.saturatingAdd(total, self.values[index])
+            coverageIsComplete = coverageIsComplete && self.isCovered[index]
+            cumulativeValues.append(total)
+            cumulativeCoverage.append(coverageIsComplete)
+        }
+        return Self(values: cumulativeValues, isCovered: cumulativeCoverage)
     }
 }
 
@@ -115,6 +174,10 @@ enum SpendActivityLevels {
 
     static var uniformFill: Color {
         self.rgb(0x40C463)
+    }
+
+    static var unavailableFill: Color {
+        self.rgb(0xD6DCE5)
     }
 
     private static func rgb(_ hex: UInt32) -> Color {
@@ -199,14 +262,23 @@ struct SpendActivityHeatmapView: View {
 
     var body: some View {
         let hasActivity = (self.series.daily.max() ?? 0) > 0
+        let hasUnknownCoverage = self.series.hasUnknownCoverage
         let totalTokens = Self.saturatingTotal(self.series.daily)
+        let coverageText = spendDashboardCoverageText(
+            covered: self.series.coveredDayCount,
+            requested: self.series.visibleDayCount)
+        let weekly = self.series.weeklyActivity()
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 16) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(L("Token activity"))
                         .font(.headline)
                     if hasActivity {
-                        Text("\(UsageFormatter.tokenCountString(totalTokens)) \(L("in the last year"))")
+                        Text(self.activitySummary(totalTokens: totalTokens, coverageText: coverageText))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else if hasUnknownCoverage {
+                        Text("\(L("Unavailable")) · \(coverageText)")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -222,7 +294,7 @@ struct SpendActivityHeatmapView: View {
                 .fixedSize()
             }
 
-            if hasActivity {
+            if hasActivity || hasUnknownCoverage {
                 switch self.mode {
                 case .daily:
                     SpendActivityDailyGrid(series: self.series)
@@ -230,16 +302,17 @@ struct SpendActivityHeatmapView: View {
                 case .weekly:
                     SpendActivityWeekGrid(
                         series: self.series,
-                        values: SpendActivityLevels.weeklyTotals(self.series.daily),
+                        activity: weekly,
                         cumulative: false)
-                    self.caption(L("Each column = 1 week"))
+                    self.caption(
+                        L("Each column = 1 week"),
+                        showsUnavailable: weekly.isCovered.contains(false))
                 case .cumulative:
                     SpendActivityWeekGrid(
                         series: self.series,
-                        values: SpendActivityLevels.cumulativeTotals(
-                            SpendActivityLevels.weeklyTotals(self.series.daily)),
+                        activity: weekly.cumulative(),
                         cumulative: true)
-                    self.caption(L("Running total"))
+                    self.caption(L("Running total"), showsUnavailable: hasUnknownCoverage)
                 }
             } else {
                 Text(L("No activity in the last 12 months"))
@@ -265,15 +338,38 @@ struct SpendActivityHeatmapView: View {
                     .frame(width: 9, height: 9)
             }
             Text(L("More"))
+            if self.series.hasUnknownCoverage {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(SpendActivityLevels.unavailableFill)
+                    .frame(width: 9, height: 9)
+                    .padding(.leading, 6)
+                Text(L("Unavailable"))
+            }
         }
         .font(.caption2)
         .foregroundStyle(.secondary)
     }
 
-    private func caption(_ text: String) -> some View {
-        Text(text)
-            .font(.caption2)
-            .foregroundStyle(.secondary)
+    private func caption(_ text: String, showsUnavailable: Bool) -> some View {
+        HStack(spacing: 4) {
+            Text(text)
+            Spacer()
+            if showsUnavailable {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(SpendActivityLevels.unavailableFill)
+                    .frame(width: 9, height: 9)
+                Text(L("Unavailable"))
+            }
+        }
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+    }
+
+    private func activitySummary(totalTokens: Int, coverageText: String) -> String {
+        let total = UsageFormatter.tokenCountString(totalTokens)
+        return self.series.hasUnknownCoverage
+            ? "\(total) · \(coverageText)"
+            : "\(total) \(L("in the last year"))"
     }
 
     private static func saturatingTotal(_ values: [Int]) -> Int {
@@ -313,9 +409,12 @@ private struct SpendActivityDailyGrid: View {
                                     y: CGFloat(row) * pitch + (pitch - cell) / 2,
                                     width: cell,
                                     height: cell)
+                                let fill = self.series.isCovered[index]
+                                    ? SpendActivityLevels.color(forLevel: levels[index])
+                                    : SpendActivityLevels.unavailableFill
                                 context.fill(
                                     RoundedRectangle(cornerRadius: corner, style: .continuous).path(in: rect),
-                                    with: .color(SpendActivityLevels.color(forLevel: levels[index])))
+                                    with: .color(fill))
                             }
                         }
                         self.hoverHighlight(cell: cell, pitch: pitch)
@@ -338,7 +437,7 @@ private struct SpendActivityDailyGrid: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(L("Token activity"))
-        .accessibilityValue(UsageFormatter.tokenCountString(Self.saturatingTotal(self.series.daily)))
+        .accessibilityValue(self.accessibilityValue)
     }
 
     private var monthRow: some View {
@@ -398,7 +497,9 @@ private struct SpendActivityDailyGrid: View {
                 tooltipHeight: SpendActivityGridGeometry.tooltipHeight,
                 gridHeight: size.height)
             SpendActivityTooltip(
-                title: UsageFormatter.tokenCountString(self.series.daily[index]),
+                title: self.series.isCovered[index]
+                    ? UsageFormatter.tokenCountString(self.series.daily[index])
+                    : L("Unavailable"),
                 subtitle: SpendActivityDateFormatting.mediumDateString(date),
                 width: width)
                 .position(
@@ -455,11 +556,20 @@ private struct SpendActivityDailyGrid: View {
             return result.overflow ? Int.max : result.partialValue
         }
     }
+
+    private var accessibilityValue: String {
+        let total = UsageFormatter.tokenCountString(Self.saturatingTotal(self.series.daily))
+        guard self.series.hasUnknownCoverage else { return total }
+        let coverage = spendDashboardCoverageText(
+            covered: self.series.coveredDayCount,
+            requested: self.series.visibleDayCount)
+        return "\(total) · \(coverage)"
+    }
 }
 
 private struct SpendActivityWeekGrid: View {
     let series: SpendActivitySeries
-    let values: [Int]
+    let activity: SpendActivityAggregateSeries
     let cumulative: Bool
 
     @State private var hoverLocation: CGPoint?
@@ -468,7 +578,10 @@ private struct SpendActivityWeekGrid: View {
     private let rows = SpendActivitySeries.dayCount
 
     var body: some View {
-        let maxValue = self.values.max() ?? 0
+        let maxValue = self.activity.values.enumerated()
+            .filter { self.activity.isCovered[$0.offset] }
+            .map(\.element)
+            .max() ?? 0
         GeometryReader { proxy in
             let gridFrame = SpendActivityGridGeometry.gridFrame(containerWidth: proxy.size.width)
             let pitch = gridFrame.width / CGFloat(self.columns)
@@ -476,13 +589,21 @@ private struct SpendActivityWeekGrid: View {
             ZStack(alignment: .topLeading) {
                 Canvas { context, _ in
                     let corner = min(cell * 0.22, 2.5)
-                    for col in 0..<self.columns where col < self.values.count && self.isVisible(col) {
-                        let value = self.values[col]
+                    for col in 0..<self.columns where col < self.activity.values.count && self.isVisible(col) {
+                        let value = self.activity.values[col]
+                        let isCovered = self.activity.isCovered[col]
                         let rawFill = maxValue > 0
                             ? Int((Double(value) / Double(maxValue) * Double(self.rows)).rounded())
                             : 0
                         let filled = value > 0 ? max(rawFill, 1) : 0
                         for row in 0..<self.rows {
+                            let fill: Color = if !isCovered {
+                                SpendActivityLevels.unavailableFill
+                            } else if row >= self.rows - filled {
+                                SpendActivityLevels.uniformFill
+                            } else {
+                                SpendActivityLevels.color(forLevel: 0)
+                            }
                             let rect = CGRect(
                                 x: CGFloat(col) * pitch + (pitch - cell) / 2,
                                 y: CGFloat(row) * pitch + (pitch - cell) / 2,
@@ -490,9 +611,7 @@ private struct SpendActivityWeekGrid: View {
                                 height: cell)
                             context.fill(
                                 RoundedRectangle(cornerRadius: corner, style: .continuous).path(in: rect),
-                                with: .color(row >= self.rows - filled
-                                    ? SpendActivityLevels.uniformFill
-                                    : SpendActivityLevels.color(forLevel: 0)))
+                                with: .color(fill))
                         }
                     }
                 }
@@ -513,14 +632,14 @@ private struct SpendActivityWeekGrid: View {
         .aspectRatio(CGFloat(self.columns + 2) / CGFloat(self.rows), contentMode: .fit)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(L("Token activity"))
-        .accessibilityValue(UsageFormatter.tokenCountString(self.accessibilityTokenTotal))
+        .accessibilityValue(self.accessibilityValue)
     }
 
     @ViewBuilder
     private func tooltip(size: CGSize, pitch: CGFloat) -> some View {
         if let location = self.hoverLocation,
            let col = self.column(at: location, pitch: pitch),
-           col < self.values.count,
+           col < self.activity.values.count,
            let weekStart = self.series.weekStartDate(at: col)
         {
             let width = min(SpendActivityGridGeometry.tooltipWidth, max(size.width - 8, 1))
@@ -529,7 +648,9 @@ private struct SpendActivityWeekGrid: View {
                 tooltipHeight: SpendActivityGridGeometry.tooltipHeight,
                 gridHeight: size.height)
             SpendActivityTooltip(
-                title: UsageFormatter.tokenCountString(self.values[col]),
+                title: self.activity.isCovered[col]
+                    ? UsageFormatter.tokenCountString(self.activity.values[col])
+                    : L("Unavailable"),
                 subtitle: SpendActivityDateFormatting.mediumDateString(weekStart),
                 width: width)
                 .position(
@@ -555,11 +676,23 @@ private struct SpendActivityWeekGrid: View {
     }
 
     private var accessibilityTokenTotal: Int {
-        if self.cumulative { return self.values.last ?? 0 }
-        return self.values.reduce(0) { total, value in
+        if self.cumulative { return self.activity.values.last ?? 0 }
+        return self.activity.values.reduce(0) { total, value in
             let result = total.addingReportingOverflow(value)
             return result.overflow ? Int.max : result.partialValue
         }
+    }
+
+    private var accessibilityValue: String {
+        let total = UsageFormatter.tokenCountString(self.accessibilityTokenTotal)
+        let hasUnavailable = self.activity.isCovered.enumerated().contains { index, covered in
+            self.isVisible(index) && !covered
+        }
+        guard hasUnavailable else { return total }
+        let coverage = spendDashboardCoverageText(
+            covered: self.series.coveredDayCount,
+            requested: self.series.visibleDayCount)
+        return "\(total) · \(coverage)"
     }
 }
 

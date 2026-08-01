@@ -36,41 +36,127 @@ struct SpendActivityHeatmapTests {
             calendar: calendar)
 
         #expect(series.daily.count == 52 * 7)
+        #expect(series.isCovered.count == 52 * 7)
         #expect(calendar.component(.weekday, from: series.start) == 1)
         #expect(series.daily.reduce(0, +) == 30)
+        #expect(series.coveredDayCount == 2)
         #expect(series.date(at: series.daily.count - 1)! > series.today)
     }
 
     @Test
-    func `token activity spans a year without widening the spend chart`() throws {
+    func `mixed provider activity marks days outside common coverage unavailable`() throws {
         let now = try #require(Self.calendar.date(from: DateComponents(year: 2026, month: 7, day: 16)))
         let oldDay = "2025-08-01"
-        let first = Self.snapshot(entries: [
-            Self.entry(day: oldDay, cost: 2, tokens: 40),
-            Self.entry(day: "2026-07-16", cost: 3, tokens: 10),
-            Self.entry(day: "2026-08-01", cost: 4, tokens: 100),
-        ])
-        let second = Self.snapshot(entries: [
-            Self.entry(day: oldDay, cost: 1, tokens: 60),
-            Self.entry(day: "2025-07-15", cost: 1, tokens: 200),
-            Self.entry(day: "invalid", cost: 1, tokens: 300),
-            Self.entry(day: "2026-07-15", cost: 1, tokens: -1),
-        ])
+        let annual = Self.snapshot(
+            entries: [
+                Self.entry(day: oldDay, cost: 2, tokens: 40),
+                Self.entry(day: "2026-07-16", cost: 3, tokens: 10),
+            ],
+            historyDays: 365,
+            last30DaysTokens: 50)
+        let recent = Self.snapshot(
+            entries: [
+                Self.entry(day: "2026-07-16", cost: 1, tokens: 60),
+            ],
+            historyDays: 30,
+            last30DaysTokens: 60)
         let model = SpendDashboardModel.build(
             inputs: [
-                .init(id: "first", provider: .claude, displayName: "Claude", snapshot: first),
-                .init(id: "second", provider: .openai, displayName: "OpenAI", snapshot: second),
+                .init(id: "annual", provider: .claude, displayName: "Claude", snapshot: annual),
+                .init(id: "recent", provider: .openai, displayName: "OpenAI", snapshot: recent),
             ],
             requestedDays: 30,
             now: now,
             calendar: Self.calendar)
 
         let oldDate = try #require(Self.calendar.date(from: DateComponents(year: 2025, month: 8, day: 1)))
-        #expect(model.tokenActivity == [
-            .init(day: oldDate, totalTokens: 100),
-            .init(day: now, totalTokens: 10),
-        ])
-        #expect(model.groups.first?.dailyPoints.map(\.day) == [now])
+        #expect(model.tokenActivity.count == SpendDashboardModel.tokenActivityDayCount)
+        #expect(model.tokenActivity.first { $0.day == oldDate }?.totalTokens == nil)
+        #expect(model.tokenActivity.first { $0.day == now }?.totalTokens == 70)
+        #expect(model.groups.first?.dailyPoints.allSatisfy { $0.day == now } == true)
+    }
+
+    @Test
+    func `covered empty history is zero while unestablished history remains unavailable`() throws {
+        let now = try #require(Self.calendar.date(from: DateComponents(year: 2026, month: 7, day: 16)))
+        let covered = SpendDashboardModel.build(
+            inputs: [
+                .init(
+                    provider: .claude,
+                    displayName: "Claude",
+                    snapshot: Self.snapshot(entries: [], historyDays: 365, last30DaysTokens: 0)),
+            ],
+            requestedDays: 30,
+            now: now,
+            calendar: Self.calendar)
+        let unavailable = SpendDashboardModel.build(
+            inputs: [
+                .init(
+                    provider: .claude,
+                    displayName: "Claude",
+                    snapshot: Self.snapshot(
+                        entries: [],
+                        historyDays: 365,
+                        last30DaysTokens: nil,
+                        historyCoverageIsEstablished: false)),
+            ],
+            requestedDays: 30,
+            now: now,
+            calendar: Self.calendar)
+
+        #expect(covered.tokenActivity.allSatisfy { $0.totalTokens == 0 })
+        #expect(unavailable.tokenActivity.allSatisfy { $0.totalTokens == nil })
+    }
+
+    @Test
+    func `weekly and cumulative activity preserve unavailable coverage`() throws {
+        let start = try #require(Self.calendar.date(from: DateComponents(year: 2026, month: 7, day: 5)))
+        let today = try #require(Self.calendar.date(byAdding: .day, value: 13, to: start))
+        var covered = [Bool](repeating: true, count: SpendActivitySeries.weekCount * 7)
+        covered[2] = false
+        let series = SpendActivitySeries(
+            daily: [Int](repeating: 1, count: covered.count),
+            isCovered: covered,
+            start: start,
+            today: today,
+            calendar: Self.calendar)
+
+        let weekly = series.weeklyActivity()
+        #expect(weekly.values.prefix(2) == [7, 7])
+        #expect(weekly.isCovered.prefix(2) == [false, true])
+        #expect(weekly.cumulative().isCovered.prefix(2) == [false, false])
+    }
+
+    @Test
+    func `annual aggregation output stays fixed with many full year providers`() throws {
+        let now = try #require(Self.calendar.date(from: DateComponents(year: 2026, month: 7, day: 16)))
+        let formatter = DateFormatter()
+        formatter.calendar = Self.calendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        let entries = try (0..<SpendDashboardModel.tokenActivityDayCount).map { offset in
+            let day = try #require(Self.calendar.date(byAdding: .day, value: -offset, to: now))
+            return Self.entry(day: formatter.string(from: day), cost: 0, tokens: 1)
+        }
+        let snapshot = Self.snapshot(
+            entries: entries,
+            historyDays: SpendDashboardModel.tokenActivityDayCount,
+            last30DaysTokens: SpendDashboardModel.tokenActivityDayCount)
+        let inputs = (0..<32).map { index in
+            SpendDashboardModel.ProviderInput(
+                id: "provider-\(index)",
+                provider: .claude,
+                displayName: "Provider \(index)",
+                snapshot: snapshot)
+        }
+        let model = SpendDashboardModel.build(
+            inputs: inputs,
+            requestedDays: 30,
+            now: now,
+            calendar: Self.calendar)
+
+        #expect(model.tokenActivity.count == SpendDashboardModel.tokenActivityDayCount)
+        #expect(model.tokenActivity.allSatisfy { $0.totalTokens == inputs.count })
     }
 
     @Test
@@ -130,14 +216,20 @@ struct SpendActivityHeatmapTests {
         return calendar
     }
 
-    private static func snapshot(entries: [CostUsageDailyReport.Entry]) -> CostUsageTokenSnapshot {
+    private static func snapshot(
+        entries: [CostUsageDailyReport.Entry],
+        historyDays: Int = 365,
+        last30DaysTokens: Int?,
+        historyCoverageIsEstablished: Bool = true) -> CostUsageTokenSnapshot
+    {
         CostUsageTokenSnapshot(
             sessionTokens: nil,
             sessionCostUSD: nil,
-            last30DaysTokens: nil,
+            last30DaysTokens: last30DaysTokens,
             last30DaysCostUSD: nil,
             currencyCode: "USD",
-            historyDays: 365,
+            historyDays: historyDays,
+            historyCoverageIsEstablished: historyCoverageIsEstablished,
             daily: entries,
             updatedAt: Date(timeIntervalSince1970: 1_784_179_200))
     }
