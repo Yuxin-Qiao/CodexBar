@@ -228,6 +228,9 @@ public enum SubprocessRunner {
             stdoutPipe.fileHandleForWriting.closeFile()
             stderrCapture.stop()
             stderrPipe.fileHandleForWriting.closeFile()
+            if error is CancellationError {
+                throw error
+            }
             throw SubprocessRunnerError.launchFailed(error.localizedDescription)
         }
         stdoutCapture.start()
@@ -348,7 +351,7 @@ public enum SubprocessRunner {
             } catch {
                 launchError = error
                 if self.isTextFileBusyError(error), attempt < 4 {
-                    try? await Task.sleep(nanoseconds: 20_000_000)
+                    try await Task.sleep(nanoseconds: 20_000_000)
                     continue
                 }
                 break
@@ -359,7 +362,9 @@ public enum SubprocessRunner {
         }
     }
 
-    private static func isTextFileBusyError(_ initialError: Error) -> Bool {
+    /// Detects `ETXTBSY` launch failures, including Foundation's wrapped
+    /// `NSCocoaErrorDomain` representation whose POSIX details live in `NSUnderlyingErrorKey`.
+    package static func isTextFileBusyError(_ initialError: Error) -> Bool {
         var currentError: Error? = initialError
         while let err = currentError {
             let nsErr = err as NSError
