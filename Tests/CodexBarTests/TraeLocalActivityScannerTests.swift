@@ -54,6 +54,27 @@ struct TraeLocalActivityScannerTests {
         #expect(snapshot == nil)
     }
 
+    @Test
+    func `scanner omits activity when the last session predates the history window`() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TraeLocalActivityScannerTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let database = root.appendingPathComponent("state.vscdb")
+        let modelMap = #"{"solo_coder":"1_-_glm-5.2"}"#
+        try Self.createDatabase(at: database, values: [
+            "4484236971871945_ai-chat:sessionRelation:globalModelMap": modelMap,
+            // 2026-05-01 is months before the 30-day window ending 2026-07-30.
+            "telemetry.lastSessionDate": "Fri, 01 May 2026 12:00:00 GMT",
+        ])
+
+        let snapshot = TraeLocalActivityScanner.scan(
+            environment: [TraeLocalActivityScanner.databaseEnvironmentKey: database.path],
+            historyDays: 30,
+            now: Date(timeIntervalSince1970: 1_785_456_000), // 2026-07-30T00:00:00Z
+            calendar: Self.calendar)
+        #expect(snapshot == nil)
+    }
+
     private static func createDatabase(at url: URL, values: [String: String]) throws {
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)

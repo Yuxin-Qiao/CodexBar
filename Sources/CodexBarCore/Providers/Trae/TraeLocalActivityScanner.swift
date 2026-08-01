@@ -75,6 +75,8 @@ public enum TraeLocalActivityScanner {
         try checkCancellation()
         let days = max(1, historyDays)
         let calendar = CostUsageLocalDay.gregorianCalendar(preserving: calendar)
+        let end = calendar.startOfDay(for: now)
+        let start = calendar.date(byAdding: .day, value: -(days - 1), to: end) ?? end
         guard let databaseURL = self.databaseURL(environment: environment, fileManager: fileManager),
               fileManager.fileExists(atPath: databaseURL.path)
         else {
@@ -97,6 +99,11 @@ public enum TraeLocalActivityScanner {
         // exposes no per-day token history, so there is exactly one degraded entry per model.
         let anchor = lastActive ?? now
         let anchorDay = calendar.startOfDay(for: anchor)
+        // A last-session date older than the requested window must not surface as recent
+        // activity; the scanner reports nothing rather than an out-of-window record.
+        if let lastActive, anchorDay < start || anchorDay > end {
+            return nil
+        }
         let dayKey = CostUsageLocalDay.key(from: anchorDay, calendar: calendar)
         let events = models.map { model in
             UnifiedUsageEvent(day: dayKey, model: model)
