@@ -162,4 +162,130 @@ struct CostUsageClaudeKeyNamespaceTests {
         #expect(parsed.rows.count == 1)
         #expect(parsed.rows[0].input == 13)
     }
+
+    @Test
+    func `smaller paired call does not swallow a larger partial call`() throws {
+        // A distinct paired call that happens to reuse a message ID must not evict a
+        // message-only call whose token total is larger than its own.
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2025, month: 12, day: 23)
+        let iso0 = env.isoString(for: day)
+        let iso1 = env.isoString(for: day.addingTimeInterval(1))
+
+        func row(messageId: String?, requestId: String?, timestamp: String, input: Int, output: Int) -> [String: Any] {
+            var message: [String: Any] = [
+                "model": "claude-sonnet-4-20250514",
+                "usage": [
+                    "input_tokens": input,
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 0,
+                    "output_tokens": output,
+                ],
+            ]
+            if let messageId {
+                message["id"] = messageId
+            }
+            var row: [String: Any] = [
+                "type": "assistant",
+                "timestamp": timestamp,
+                "sessionId": "session-reused-message-id",
+                "isSidechain": false,
+                "message": message,
+            ]
+            if let requestId {
+                row["requestId"] = requestId
+            }
+            return row
+        }
+
+        let fileURL = try env.writeClaudeProjectFile(
+            relativePath: "project-a/reused-message-id.jsonl",
+            contents: env.jsonl([
+                row(messageId: "x", requestId: nil, timestamp: iso0, input: 100, output: 50),
+                row(messageId: "x", requestId: "y", timestamp: iso1, input: 10, output: 5),
+            ]))
+
+        let parsed = CostUsageScanner.parseClaudeFile(
+            fileURL: fileURL,
+            range: CostUsageScanner.CostUsageDayRange(since: day, until: day),
+            providerFilter: .all)
+
+        #expect(parsed.rows.count == 2)
+        #expect(parsed.rows.map(\.input).sorted() == [10, 100])
+    }
+
+    @Test
+    func `append refresh supersedes partial row when paired row grows`() throws {
+        // Incremental refresh: the cached message-only row is replaced by the appended
+        // paired cumulative row instead of being summed.
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2025, month: 12, day: 23)
+        let iso0 = env.isoString(for: day)
+        let iso1 = env.isoString(for: day.addingTimeInterval(1))
+        let iso2 = env.isoString(for: day.addingTimeInterval(2))
+
+        func row(messageId: String?, requestId: String?, timestamp: String, input: Int) -> [String: Any] {
+            var message: [String: Any] = [
+                "model": "claude-sonnet-4-20250514",
+                "usage": [
+                    "input_tokens": input,
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 0,
+                    "output_tokens": 1,
+                ],
+            ]
+            if let messageId {
+                message["id"] = messageId
+            }
+            var row: [String: Any] = [
+                "type": "assistant",
+                "timestamp": timestamp,
+                "sessionId": "session-append-transition",
+                "isSidechain": false,
+                "message": message,
+            ]
+            if let requestId {
+                row["requestId"] = requestId
+            }
+            return row
+        }
+
+        let fileURL = try env.writeClaudeProjectFile(
+            relativePath: "project-a/append-transition.jsonl",
+            contents: env.jsonl([row(messageId: "x", requestId: nil, timestamp: iso0, input: 11)]))
+
+        var options = CostUsageScanner.Options(
+            codexSessionsRoot: nil,
+            claudeProjectsRoots: [env.claudeProjectsRoot],
+            cacheRoot: env.cacheRoot)
+        options.refreshMinIntervalSeconds = 0
+
+        let initial = CostUsageScanner.loadDailyReport(
+            provider: .claude,
+            since: day,
+            until: day,
+            now: day,
+            options: options)
+        #expect(initial.data.count == 1)
+        #expect(initial.data[0].inputTokens == 11)
+
+        let appended = try env.jsonl([row(messageId: "x", requestId: "y", timestamp: iso2, input: 13)])
+        let handle = try FileHandle(forWritingTo: fileURL)
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data(appended.utf8))
+        try handle.close()
+
+        let refreshed = CostUsageScanner.loadDailyReport(
+            provider: .claude,
+            since: day,
+            until: day,
+            now: day,
+            options: options)
+        #expect(refreshed.data.count == 1)
+        #expect(refreshed.data[0].inputTokens == 13)
+    }
 }

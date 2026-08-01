@@ -308,9 +308,10 @@ extension CostUsageScanner {
     ///
     /// A cumulative chunk may start with only `messageId` and gain `requestId` on a later
     /// chunk of the same response (or the analogous request-only transition). The fully
-    /// identified row therefore replaces the partial `msg:`/`req:` row, while partial rows
-    /// never evict a fully identified row, keeping distinct requests that reuse a message
-    /// ID separate.
+    /// identified row replaces the partial `msg:`/`req:` row only when its token total is
+    /// at least as large, the signal that it is a cumulative snapshot rather than a
+    /// distinct call that happens to reuse the ID. Partial rows never evict a fully
+    /// identified row.
     private static func claudeInsertRow(
         _ row: ClaudeUsageRow,
         into keyedRows: inout [String: ClaudeUsageRow]) -> Bool
@@ -321,13 +322,30 @@ extension CostUsageScanner {
         keyedRows[key] = row
         if key.hasPrefix("pair:") {
             if let messageId = Self.claudeNonEmptyID(row.messageId) {
-                keyedRows.removeValue(forKey: "msg:\(messageId)")
+                Self.claudeSupersedePartialRow("msg:\(messageId)", with: row, keyedRows: &keyedRows)
             }
             if let requestId = Self.claudeNonEmptyID(row.requestId) {
-                keyedRows.removeValue(forKey: "req:\(requestId)")
+                Self.claudeSupersedePartialRow("req:\(requestId)", with: row, keyedRows: &keyedRows)
             }
         }
         return true
+    }
+
+    private static func claudeSupersedePartialRow(
+        _ partialKey: String,
+        with row: ClaudeUsageRow,
+        keyedRows: inout [String: ClaudeUsageRow])
+    {
+        guard let partial = keyedRows[partialKey],
+              claudeRowTotalTokens(row) >= claudeRowTotalTokens(partial)
+        else {
+            return
+        }
+        keyedRows.removeValue(forKey: partialKey)
+    }
+
+    private static func claudeRowTotalTokens(_ row: ClaudeUsageRow) -> Int {
+        row.input + row.cacheRead + (row.cacheCreate ?? 0) + (row.cacheCreate1h ?? 0) + row.output
     }
 
     private static func claudeNonEmptyID(_ value: String?) -> String? {
@@ -368,6 +386,25 @@ extension CostUsageScanner {
                 } else {
                     winners[canonicalKey] = candidate
                 }
+            }
+        }
+
+        // Apply the same cumulative-snapshot rule across files: a winning paired row
+        // supersedes a partial row in another file when its token total is at least as large.
+        let pairedKeys = winners.keys.filter { $0.hasPrefix("pair:") }
+        for key in pairedKeys {
+            guard let winner = winners[key]?.row else { continue }
+            if let messageId = Self.claudeNonEmptyID(winner.messageId),
+               let partial = winners["msg:\(messageId)"]?.row,
+               Self.claudeRowTotalTokens(winner) >= Self.claudeRowTotalTokens(partial)
+            {
+                winners.removeValue(forKey: "msg:\(messageId)")
+            }
+            if let requestId = Self.claudeNonEmptyID(winner.requestId),
+               let partial = winners["req:\(requestId)"]?.row,
+               Self.claudeRowTotalTokens(winner) >= Self.claudeRowTotalTokens(partial)
+            {
+                winners.removeValue(forKey: "req:\(requestId)")
             }
         }
 
