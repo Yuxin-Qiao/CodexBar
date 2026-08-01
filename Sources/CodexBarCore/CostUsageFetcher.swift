@@ -205,12 +205,16 @@ public struct CostUsageFetcher: Sendable {
     /// with gigabytes of history sees token counts creep up over several manual refreshes instead
     /// of settling at the true total. Lifting the budget and forcing a rescan makes one manual
     /// refresh converge on the full corpus.
-    private static func configureFullRescan(
+    static func configureFullRescan(
         _ options: inout CostUsageScanner.Options,
         progress: (@Sendable (_ scanned: Int, _ total: Int) -> Void)?)
     {
         options.forceRescan = true
         options.maxCodexScanBytesPerRefresh = 0
+        // The aggregate budget is disabled above, so the per-file cap must go too: a session
+        // file larger than 256 MiB would otherwise be partially parsed on every full rescan and
+        // the manual result would never converge.
+        options.maxCodexSessionFileBytes = 0
         options.progressHandler = progress
     }
 
@@ -1182,19 +1186,24 @@ extension CostUsageFetcher {
         let sources = ProviderDescriptorRegistry.descriptor(for: provider)
             .tokenCost.localHistorySources
         guard !sources.isEmpty else { return nil }
-        let context = LocalHistoryScanContext(
-            environment: environment,
-            historyDays: historyDays,
-            now: now)
-        for source in sources {
-            guard let scanner = LocalHistoryScannerRegistry.shared.scanner(for: source) else {
-                continue
+        // Scanners are synchronous and can walk large file trees, so they run on the dedicated
+        // scan queue with the awaiting task's cancellation bridged into the context.
+        return try await CostUsageScanExecutor.run { checkCancellation in
+            let context = LocalHistoryScanContext(
+                environment: environment,
+                historyDays: historyDays,
+                now: now,
+                checkCancellation: checkCancellation)
+            for source in sources {
+                guard let scanner = LocalHistoryScannerRegistry.shared.scanner(for: source) else {
+                    continue
+                }
+                if let snapshot = try scanner.scan(context: context) {
+                    return snapshot
+                }
             }
-            if let snapshot = try scanner.scan(context: context) {
-                return snapshot
-            }
+            return nil
         }
-        return nil
     }
 
     /// Whether the provider's token snapshot comes from local history scanners rather than a

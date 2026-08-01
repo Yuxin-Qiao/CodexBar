@@ -20,6 +20,17 @@ struct CostUsageFetcherTests {
     }
 
     @Test
+    func `full rescan also lifts the per-file byte cap`() {
+        var options = CostUsageScanner.Options()
+        CostUsageFetcher.configureFullRescan(&options, progress: nil)
+        #expect(options.forceRescan)
+        #expect(options.maxCodexScanBytesPerRefresh == 0)
+        // A session file larger than the 256 MiB default cap must not be partially parsed on a
+        // full rescan, or the manual result can never converge for that file.
+        #expect(options.maxCodexSessionFileBytes == 0)
+    }
+
+    @Test
     func `fetcher scopes codex history to selected codex home`() async throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }
