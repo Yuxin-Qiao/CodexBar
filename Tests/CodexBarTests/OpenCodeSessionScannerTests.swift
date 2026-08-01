@@ -335,6 +335,28 @@ struct OpenCodeSessionScannerTests {
     }
 
     @Test
+    func `database records preserve provider routing evidence`() throws {
+        let root = try Self.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent("opencode"),
+            withIntermediateDirectories: true)
+        let message = Self.assistantMessage(
+            id: "msg-routed",
+            modelID: "minimax/MiniMax-M3",
+            providerID: "minimax",
+            created: "2026-07-10T09:00:00Z",
+            tokens: #"{"input":10,"output":5,"cache":{"read":0,"write":0}}"#)
+        try Self.createOpenCodeDatabase(
+            at: root.appendingPathComponent("opencode/opencode.db"),
+            messages: [message])
+
+        let snapshot = try #require(Self.scan(root: root, now: Self.date("2026-07-12T12:00:00Z")))
+        let breakdown = try #require(snapshot.daily.first?.modelBreakdowns?.first)
+        #expect(breakdown.billingProviderID == "minimax")
+    }
+
+    @Test
     func `scanner propagates a busy database instead of reporting empty history`() throws {
         let root = try Self.makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -364,6 +386,29 @@ struct OpenCodeSessionScannerTests {
 
         #expect(throws: OpenCodeSessionScanner.ScanError.databaseUnavailable) {
             _ = try Self.scanThrowing(root: root, now: Self.date("2026-07-12T12:00:00Z"))
+        }
+    }
+
+    @Test
+    func `scanner reports JSON file limit truncation as incomplete`() throws {
+        let root = try Self.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let session = try Self.makeSessionDir(root, "ses_a")
+        for index in 0..<2 {
+            try Self.write(
+                Self.assistantMessage(
+                    id: "msg-\(index)",
+                    modelID: "claude-sonnet-4",
+                    created: "2026-07-10T09:00:00Z",
+                    tokens: #"{"input":10,"output":5,"cache":{"read":0,"write":0}}"#),
+                to: session.appendingPathComponent("msg-\(index).json"))
+        }
+
+        #expect(throws: OpenCodeSessionScanner.ScanError.historyLimitExceeded) {
+            _ = try Self.scanThrowing(
+                root: root,
+                now: Self.date("2026-07-12T12:00:00Z"),
+                maximumFiles: 1)
         }
     }
     #endif
@@ -424,13 +469,15 @@ struct OpenCodeSessionScannerTests {
     private static func scanThrowing(
         root: URL,
         now: Date,
-        calendar: Calendar = Self.utcCalendar) throws -> CostUsageTokenSnapshot?
+        calendar: Calendar = Self.utcCalendar,
+        maximumFiles: Int = OpenCodeSessionScanner.maximumFiles) throws -> CostUsageTokenSnapshot?
     {
         try OpenCodeSessionScanner.scanCancellable(
             environment: [OpenCodeSessionScanner.dataHomeEnvironmentKey: root.path],
             historyDays: 30,
             now: now,
-            calendar: calendar)
+            calendar: calendar,
+            maximumFiles: maximumFiles)
     }
 
     private static func makeRoot() throws -> URL {
@@ -488,6 +535,7 @@ struct OpenCodeSessionScannerTests {
         id: String?,
         modelID: String?,
         nestedModelID: String? = nil,
+        providerID: String? = nil,
         created: String,
         tokens: String,
         role: String?? = "assistant",
@@ -498,6 +546,7 @@ struct OpenCodeSessionScannerTests {
         fields.append(#""sessionID":"ses""#)
         if let role = role.flatMap(\.self) { fields.append(#""role":"\#(role)""#) }
         if let modelID { fields.append(#""modelID":"\#(modelID)""#) }
+        if let providerID { fields.append(#""providerID":"\#(providerID)""#) }
         if let nestedModelID { fields.append(#""model":{"id":"\#(nestedModelID)","providerID":"test"}"#) }
         fields.append(#""tokens":"# + tokens)
         var time = #""created":"# + "\(Self.ms(created))"

@@ -320,6 +320,51 @@ struct SpendBillingAttributionTests {
         #expect(SpendProviderIdentity.modelProvider(rawName: "sonar-pro", fallback: .cursor) == .perplexity)
     }
 
+    @Test
+    func `merged same-day costs withhold when any entry lacks a price`() throws {
+        // Two fragments from the same billing vendor overlap on one day; one is priced and the
+        // other is token-only. The merged day must not present the priced subtotal as complete.
+        let priced = Self.entry(
+            date: "2026-07-24",
+            model: "claude-sonnet-4",
+            cost: 0.5,
+            tokens: 100,
+            billingProviderID: UsageProvider.claude.rawValue)
+        let tokenOnly = CostUsageDailyReport.Entry(
+            date: "2026-07-24",
+            inputTokens: 10,
+            outputTokens: 10,
+            totalTokens: 20,
+            costUSD: nil,
+            modelsUsed: ["claude-sonnet-4"],
+            modelBreakdowns: [CostUsageDailyReport.ModelBreakdown(
+                modelName: "claude-sonnet-4",
+                costUSD: nil,
+                totalTokens: 20,
+                inputTokens: 10,
+                outputTokens: 10)])
+
+        let attributed = SpendBillingAttribution.attribute([
+            SpendDashboardModel.ProviderInput(
+                id: "a",
+                provider: .claude,
+                displayName: "Claude",
+                modelProviderName: "Claude",
+                snapshot: Self.snapshot([priced])),
+            SpendDashboardModel.ProviderInput(
+                id: "b",
+                provider: .claude,
+                displayName: "Claude",
+                modelProviderName: "Claude",
+                snapshot: Self.snapshot([tokenOnly])),
+        ])
+
+        let merged = try #require(attributed.first)
+        let day = try #require(merged.snapshot.daily.first)
+        #expect(day.costUSD == nil)
+        #expect(merged.snapshot.last30DaysCostUSD == nil)
+    }
+
     private static func entry(
         date: String = "2026-07-24",
         model: String,

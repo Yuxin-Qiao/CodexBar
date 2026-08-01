@@ -12,6 +12,11 @@ public enum QwenCodeSessionScanner {
     public static let maximumFiles = 20000
     public static let maximumBytes = 512 * 1024 * 1024
 
+    public enum ScanError: Error, Equatable {
+        /// The scan cannot claim complete history after omitting an otherwise eligible record.
+        case historyLimitExceeded
+    }
+
     private struct WireMessage: Decodable {
         struct Usage: Decodable {
             let promptTokenCount: Int?
@@ -203,7 +208,7 @@ public enum QwenCodeSessionScanner {
             else {
                 continue
             }
-            guard visitedFiles < self.maximumFiles else { break }
+            guard visitedFiles < self.maximumFiles else { throw ScanError.historyLimitExceeded }
             let resourceValues = try? url.resourceValues(
                 forKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey])
             guard resourceValues?.isRegularFile == true else { continue }
@@ -211,10 +216,11 @@ public enum QwenCodeSessionScanner {
                 continue
             }
             let size = max(0, resourceValues?.fileSize ?? 0)
-            guard size <= self.maximumBytes - visitedBytes else { break }
+            guard size <= self.maximumBytes - visitedBytes else { throw ScanError.historyLimitExceeded }
             visitedFiles += 1
             visitedBytes += size
 
+            var sawTruncatedLine = false
             do {
                 try CostUsageJsonl.scan(
                     fileURL: url,
@@ -222,8 +228,11 @@ public enum QwenCodeSessionScanner {
                     prefixBytes: 1024 * 1024,
                     checkCancellation: checkCancellation)
                 { line in
-                    guard !line.wasTruncated,
-                          let message = try? decoder.decode(WireMessage.self, from: line.bytes),
+                    guard !line.wasTruncated else {
+                        sawTruncatedLine = true
+                        return
+                    }
+                    guard let message = try? decoder.decode(WireMessage.self, from: line.bytes),
                           message.type == "assistant",
                           let usage = message.usageMetadata
                     else {
@@ -251,8 +260,13 @@ public enum QwenCodeSessionScanner {
                     }
                     values[key] = accumulator
                 }
+                if sawTruncatedLine {
+                    throw ScanError.historyLimitExceeded
+                }
             } catch is CancellationError {
                 throw CancellationError()
+            } catch is ScanError {
+                throw ScanError.historyLimitExceeded
             } catch {
                 continue
             }
@@ -265,14 +279,20 @@ public enum QwenCodeSessionScanner {
         else {
             return nil
         }
-        let costs = daily.compactMap(\.costUSD)
+        let pricedDailyCosts = daily.compactMap(\.costUSD)
+        let hasPricedUsage = daily.contains { entry in
+            entry.modelBreakdowns?.contains { $0.costUSD != nil } == true
+        }
+        let totalCost = pricedDailyCosts.count == daily.count
+            ? pricedDailyCosts.reduce(0, +)
+            : nil
         return CostUsageTokenSnapshot(
             sessionTokens: nil,
             sessionCostUSD: nil,
             last30DaysTokens: totalTokens,
-            last30DaysCostUSD: costs.isEmpty ? nil : costs.reduce(0, +),
+            last30DaysCostUSD: totalCost,
             last30DaysRequests: requests,
-            currencyCode: costs.isEmpty ? "XXX" : "USD",
+            currencyCode: hasPricedUsage ? "USD" : "XXX",
             historyDays: days,
             historyCoverageIsEstablished: true,
             historyLabel: "Qwen Code CLI",

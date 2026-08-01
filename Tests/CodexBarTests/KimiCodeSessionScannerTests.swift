@@ -1,6 +1,6 @@
-import CodexBarCore
 import Foundation
 import Testing
+@testable import CodexBarCore
 
 struct KimiCodeSessionScannerTests {
     @Test
@@ -43,11 +43,32 @@ struct KimiCodeSessionScannerTests {
                 output: 10),
         ], to: child.appendingPathComponent("wire.jsonl"))
 
+        // kimi-for-coding has no embedded fallback rate; inject a catalog so the day is fully
+        // priced and the aggregate covers every contributing day.
+        let cacheRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("KimiCodeSessionScannerCache-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: cacheRoot) }
+        let catalog = try JSONDecoder().decode(ModelsDevCatalog.self, from: Data("""
+        {
+          "kimi-for-coding": {
+            "id": "kimi-for-coding",
+            "models": {
+              "kimi-for-coding": {
+                "id": "kimi-for-coding",
+                "cost": { "input": 3, "output": 15 }
+              }
+            }
+          }
+        }
+        """.utf8))
+        #expect(ModelsDevCache.save(catalog: catalog, fetchedAt: now, cacheRoot: cacheRoot))
+
         let snapshot = try #require(KimiCodeSessionScanner.scan(
             environment: [KimiSettingsReader.codeHomeEnvironmentKey: root.path],
             historyDays: 30,
             now: now,
-            calendar: Self.calendar))
+            calendar: Self.calendar,
+            modelsDevCacheRoot: cacheRoot))
 
         #expect(snapshot.currencyCode == "USD")
         #expect(snapshot.last30DaysTokens == 82)
@@ -169,6 +190,38 @@ struct KimiCodeSessionScannerTests {
                 })
         }
         #expect(checks >= 4)
+    }
+
+    @Test
+    func `scanner reports file limit truncation as incomplete`() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        func agentDir(_ name: String) throws -> URL {
+            let dir = root
+                .appendingPathComponent("sessions/workspace/\(name)/agents/main", isDirectory: true)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            return dir
+        }
+        for index in 0..<2 {
+            try Self.write([
+                Self.usage(
+                    time: 1_784_257_200_000,
+                    model: "kimi-code/k3",
+                    input: 10,
+                    cacheRead: 20,
+                    output: 3),
+            ], to: agentDir("session-\(index)").appendingPathComponent("wire.jsonl"))
+        }
+
+        #expect(throws: KimiCodeSessionScanner.ScanError.historyLimitExceeded) {
+            _ = try KimiCodeSessionScanner.scanCancellable(
+                environment: [KimiSettingsReader.codeHomeEnvironmentKey: root.path],
+                historyDays: 30,
+                now: Date(timeIntervalSince1970: 1_784_347_200),
+                calendar: Self.calendar,
+                maximumFiles: 1)
+        }
     }
 
     private static let calendar: Calendar = {

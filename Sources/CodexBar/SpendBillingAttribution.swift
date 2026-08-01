@@ -293,7 +293,7 @@ enum SpendBillingAttribution {
                 cacheCreationTokens: Self.sum(dayEntries.map(\.cacheCreationTokens)),
                 totalTokens: Self.sum(dayEntries.map(\.totalTokens)),
                 requestCount: Self.sum(dayEntries.map(\.requestCount)),
-                costUSD: Self.sumCost(dayEntries.map(\.costUSD)),
+                costUSD: Self.completeCostSum(dayEntries.map(\.costUSD)),
                 modelsUsed: dayEntries.flatMap { $0.modelsUsed ?? [] },
                 modelBreakdowns: dayEntries.flatMap { $0.modelBreakdowns ?? [] })
         }
@@ -305,7 +305,7 @@ enum SpendBillingAttribution {
         historyLabel: String) -> CostUsageTokenSnapshot
     {
         let totalTokens = Self.sum(daily.map(\.totalTokens))
-        let totalCost = Self.sumCost(daily.map(\.costUSD))
+        let totalCost = Self.completeCostSum(daily.map(\.costUSD))
         let totalRequests = Self.sum(daily.map(\.requestCount))
         return CostUsageTokenSnapshot(
             sessionTokens: nil,
@@ -383,6 +383,18 @@ enum SpendBillingAttribution {
         let present = values.compactMap(\.self).filter(\.isFinite)
         guard !present.isEmpty else { return nil }
         let total = present.reduce(0, +)
+        return total.isFinite ? total : nil
+    }
+
+    /// Sums costs only when every contributing value is present and finite; a single missing
+    /// value withholds the merged total so a partial subtotal is not presented as complete.
+    private static func completeCostSum(_ values: [Double?]) -> Double? {
+        guard !values.isEmpty,
+              values.allSatisfy({ $0?.isFinite == true })
+        else {
+            return nil
+        }
+        let total = values.compactMap(\.self).reduce(0, +)
         return total.isFinite ? total : nil
     }
 }

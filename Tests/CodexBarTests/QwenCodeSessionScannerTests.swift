@@ -1,6 +1,6 @@
-import CodexBarCore
 import Foundation
 import Testing
+@testable import CodexBarCore
 
 struct QwenCodeSessionScannerTests {
     @Test
@@ -75,6 +75,73 @@ struct QwenCodeSessionScannerTests {
                     checks += 1
                     if checks >= 2 { throw CancellationError() }
                 })
+        }
+    }
+
+    @Test
+    func `aggregate withholds when one day has no pricing`() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("QwenCodeSessionScannerTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let chats = root
+            .appendingPathComponent("projects/project-a/chats", isDirectory: true)
+        try FileManager.default.createDirectory(at: chats, withIntermediateDirectories: true)
+        let cacheRoot = root.appendingPathComponent("pricing-cache", isDirectory: true)
+        try ModelsDevCache.save(
+            catalog: JSONDecoder().decode(ModelsDevCatalog.self, from: Data("""
+            {
+              "alibaba": {
+                "id": "alibaba",
+                "models": {
+                  "qwen3-coder-plus": {
+                    "id": "qwen3-coder-plus",
+                    "cost": { "input": 0.4, "output": 1.6 }
+                  }
+                }
+              }
+            }
+            """.utf8)),
+            fetchedAt: Date(timeIntervalSince1970: 1_785_283_200),
+            cacheRoot: cacheRoot)
+        let priced = #"{"type":"assistant","model":"qwen3-coder-plus","# +
+            #""timestamp":"2026-07-28T08:01:00Z","usageMetadata":{"promptTokenCount":300,"# +
+            #""candidatesTokenCount":30,"thoughtsTokenCount":20,"cachedContentTokenCount":200}}"#
+        let unpriced = #"{"type":"assistant","model":"unknown-local-model","# +
+            #""timestamp":"2026-07-27T08:01:00Z","usageMetadata":{"promptTokenCount":10,"# +
+            #""candidatesTokenCount":5}}"#
+        try Data(([priced, unpriced].joined(separator: "\n") + "\n").utf8)
+            .write(to: chats.appendingPathComponent("session.jsonl"))
+
+        let snapshot = try #require(QwenCodeSessionScanner.scan(
+            environment: [QwenCodeSessionScanner.homeEnvironmentKey: root.path],
+            historyDays: 30,
+            now: Date(timeIntervalSince1970: 1_785_283_200),
+            calendar: Self.calendar,
+            modelsDevCacheRoot: cacheRoot))
+
+        #expect(snapshot.daily.count == 2)
+        #expect(snapshot.daily.first { $0.modelBreakdowns?.first?.modelName == "unknown-local-model" }?.costUSD == nil)
+        #expect(snapshot.last30DaysCostUSD == nil)
+        #expect(snapshot.currencyCode == "USD")
+    }
+
+    @Test
+    func `scanner reports oversized records as incomplete`() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("QwenCodeSessionScannerTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let chats = root
+            .appendingPathComponent("projects/project-a/chats", isDirectory: true)
+        try FileManager.default.createDirectory(at: chats, withIntermediateDirectories: true)
+        let oversized = String(repeating: "x", count: 1024 * 1024 + 1)
+        try Data(oversized.utf8).write(to: chats.appendingPathComponent("session.jsonl"))
+
+        #expect(throws: QwenCodeSessionScanner.ScanError.historyLimitExceeded) {
+            _ = try QwenCodeSessionScanner.scanCancellable(
+                environment: [QwenCodeSessionScanner.homeEnvironmentKey: root.path],
+                historyDays: 30,
+                now: Date(timeIntervalSince1970: 1_785_283_200),
+                calendar: Self.calendar)
         }
     }
 

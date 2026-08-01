@@ -49,6 +49,7 @@ public enum MiniMaxSessionScanner {
         var requests = 0
         var cost = 0.0
         var sawCost = false
+        var sawUnpricedUsage = false
 
         mutating func add(
             _ row: UsageRow,
@@ -70,16 +71,17 @@ public enum MiniMaxSessionScanner {
             self.output = nextOutput
             self.reasoning = nextReasoning
             self.requests = nextRequests
-            if let cost = row.estimatedCost(
+            let cost = row.estimatedCost(
                 modelsDevCatalog: modelsDevCatalog,
-                modelsDevCacheRoot: modelsDevCacheRoot),
-                cost.isFinite
-            {
+                modelsDevCacheRoot: modelsDevCacheRoot)
+            if let cost, cost.isFinite {
                 let nextCost = self.cost + cost
                 if nextCost.isFinite {
                     self.cost = nextCost
                     self.sawCost = true
                 }
+            } else {
+                self.sawUnpricedUsage = true
             }
             return true
         }
@@ -106,6 +108,9 @@ public enum MiniMaxSessionScanner {
                     self.cost = nextCost
                     self.sawCost = true
                 }
+            }
+            if other.sawUnpricedUsage {
+                self.sawUnpricedUsage = true
             }
             return true
         }
@@ -231,13 +236,14 @@ public enum MiniMaxSessionScanner {
             var modelBreakdowns: [CostUsageDailyReport.ModelBreakdown] = []
             var dayCost = 0.0
             var daySawCost = false
+            var dayHasUnpricedUsage = false
             for (key, value) in models {
                 guard let modelTotal = value.total else { return nil }
                 guard total.merge(value) else { return nil }
                 modelBreakdowns.append(CostUsageDailyReport.ModelBreakdown(
                     modelName: key.model,
                     billingProviderID: UsageProvider.minimax.rawValue,
-                    costUSD: value.sawCost ? value.cost : nil,
+                    costUSD: value.sawCost && !value.sawUnpricedUsage ? value.cost : nil,
                     totalTokens: modelTotal,
                     inputTokens: value.input,
                     cacheReadTokens: value.cacheRead,
@@ -249,6 +255,9 @@ public enum MiniMaxSessionScanner {
                     dayCost += value.cost
                     daySawCost = true
                 }
+                if value.sawUnpricedUsage {
+                    dayHasUnpricedUsage = true
+                }
             }
             guard let totalTokens = total.total else { return nil }
             return CostUsageDailyReport.Entry(
@@ -259,14 +268,19 @@ public enum MiniMaxSessionScanner {
                 cacheCreationTokens: total.cacheCreation,
                 totalTokens: totalTokens,
                 requestCount: total.requests,
-                costUSD: daySawCost ? dayCost : nil,
+                costUSD: daySawCost && !dayHasUnpricedUsage ? dayCost : nil,
                 modelsUsed: modelBreakdowns.map(\.modelName),
                 modelBreakdowns: modelBreakdowns)
         }
         let totalTokens = self.sum(daily.compactMap(\.totalTokens))
         let totalRequests = self.sum(daily.compactMap(\.requestCount))
-        let totalCost = daily.compactMap(\.costUSD).reduce(0, +)
-        let sawCost = daily.contains { $0.costUSD != nil }
+        let pricedDailyCosts = daily.compactMap(\.costUSD)
+        let hasPricedUsage = daily.contains { entry in
+            entry.modelBreakdowns?.contains { $0.costUSD != nil } == true
+        }
+        let totalCost = pricedDailyCosts.count == daily.count
+            ? pricedDailyCosts.reduce(0, +)
+            : nil
         guard let totalTokens, let totalRequests else { return nil }
 
         return CostUsageTokenSnapshot(
@@ -274,9 +288,9 @@ public enum MiniMaxSessionScanner {
             sessionCostUSD: nil,
             sessionRequests: nil,
             last30DaysTokens: totalTokens,
-            last30DaysCostUSD: sawCost ? totalCost : nil,
+            last30DaysCostUSD: totalCost,
             last30DaysRequests: totalRequests,
-            currencyCode: sawCost ? "USD" : "XXX",
+            currencyCode: hasPricedUsage ? "USD" : "XXX",
             historyDays: days,
             historyCoverageIsEstablished: true,
             historyLabel: "MiniMax",

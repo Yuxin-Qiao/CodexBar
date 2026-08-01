@@ -35,6 +35,11 @@ import CSQLite3
 public enum AntigravitySessionScanner {
     public static let defaultHistoryDays = 30
 
+    public enum ScanError: Error, Equatable {
+        /// The live provider database could not be read completely (for example, SQLITE_BUSY).
+        case databaseUnavailable
+    }
+
     /// Environment override for the Antigravity conversations directory, resolved directly here so
     /// this scanner stays self-contained (mirrors `MiniMaxSessionScanner.MINIMAX_HOME`).
     public static let homeEnvironmentKey = "ANTIGRAVITY_HOME"
@@ -312,24 +317,24 @@ public enum AntigravitySessionScanner {
             nil) == SQLITE_OK
         else {
             sqlite3_close(db)
-            return
+            throw ScanError.databaseUnavailable
         }
         defer { sqlite3_close(db) }
         sqlite3_busy_timeout(db, 250)
 
-        guard self.hasTable(named: "gen_metadata", db: db) else { return }
-        let sessionTimestampMs = self.sessionCreatedMs(db: db) ?? self.fileModifiedMs(databaseURL)
+        guard try self.hasTable(named: "gen_metadata", db: db) else { return }
+        let sessionTimestampMs = (try? self.sessionCreatedMs(db: db)) ?? self.fileModifiedMs(databaseURL)
 
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, "SELECT data FROM gen_metadata ORDER BY idx", -1, &stmt, nil) == SQLITE_OK
-        else { return }
+        else { throw ScanError.databaseUnavailable }
         defer { sqlite3_finalize(stmt) }
 
         while true {
             try checkCancellation()
             let step = sqlite3_step(stmt)
             if step == SQLITE_DONE { break }
-            guard step == SQLITE_ROW else { return }
+            guard step == SQLITE_ROW else { throw ScanError.databaseUnavailable }
             guard let blob = self.columnBlob(stmt, 0) else { continue }
             if let row = self.parseGeneration(
                 blob,
@@ -444,8 +449,8 @@ public enum AntigravitySessionScanner {
 
     // MARK: - SQLite helpers
 
-    private static func sessionCreatedMs(db: OpaquePointer?) -> Int64? {
-        guard self.hasTable(named: "trajectory_metadata_blob", db: db) else { return nil }
+    private static func sessionCreatedMs(db: OpaquePointer?) throws -> Int64? {
+        guard try self.hasTable(named: "trajectory_metadata_blob", db: db) else { return nil }
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, "SELECT data FROM trajectory_metadata_blob LIMIT 1", -1, &stmt, nil) == SQLITE_OK
         else { return nil }
@@ -468,7 +473,7 @@ public enum AntigravitySessionScanner {
         return Int64(modified.timeIntervalSince1970 * 1000)
     }
 
-    private static func hasTable(named name: String, db: OpaquePointer?) -> Bool {
+    private static func hasTable(named name: String, db: OpaquePointer?) throws -> Bool {
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(
             db,
@@ -477,12 +482,15 @@ public enum AntigravitySessionScanner {
             &stmt,
             nil) == SQLITE_OK
         else {
-            return false
+            throw ScanError.databaseUnavailable
         }
         defer { sqlite3_finalize(stmt) }
         let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
         sqlite3_bind_text(stmt, 1, name, -1, transient)
-        return sqlite3_step(stmt) == SQLITE_ROW
+        let step = sqlite3_step(stmt)
+        if step == SQLITE_ROW { return true }
+        if step == SQLITE_DONE { return false }
+        throw ScanError.databaseUnavailable
     }
 
     private static func columnBlob(_ stmt: OpaquePointer?, _ index: Int32) -> [UInt8]? {
@@ -571,7 +579,7 @@ private enum WireReader {
             case 2:
                 guard let length = self.readVarint(buffer, &position),
                       let count = Int(exactly: length),
-                      position + count <= buffer.count
+                      count <= buffer.count - position
                 else {
                     return result
                 }

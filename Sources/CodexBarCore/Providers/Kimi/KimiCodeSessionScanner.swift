@@ -2,6 +2,12 @@ import Foundation
 
 public enum KimiCodeSessionScanner {
     public static let defaultHistoryDays = 30
+
+    public enum ScanError: Error, Equatable {
+        /// The scan cannot claim complete history after omitting an otherwise eligible file.
+        case historyLimitExceeded
+    }
+
     public static let maximumFiles = 20000
     public static let maximumBytes = 512 * 1024 * 1024
 
@@ -184,6 +190,7 @@ public enum KimiCodeSessionScanner {
         historyDays: Int = defaultHistoryDays,
         now: Date = Date(),
         calendar: Calendar = .current,
+        maximumFiles: Int = Self.maximumFiles,
         modelsDevCacheRoot: URL? = nil,
         checkCancellation: @escaping () throws -> Void = {}) throws -> CostUsageTokenSnapshot?
     {
@@ -215,7 +222,7 @@ public enum KimiCodeSessionScanner {
             else {
                 continue
             }
-            guard visitedFiles < self.maximumFiles else { break }
+            guard visitedFiles < maximumFiles else { throw ScanError.historyLimitExceeded }
             let resourceValues = try? url.resourceValues(
                 forKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey])
             guard resourceValues?.isRegularFile == true else { continue }
@@ -225,7 +232,7 @@ public enum KimiCodeSessionScanner {
                 continue
             }
             let size = max(0, resourceValues?.fileSize ?? 0)
-            guard size <= self.maximumBytes - visitedBytes else { break }
+            guard size <= self.maximumBytes - visitedBytes else { throw ScanError.historyLimitExceeded }
             visitedFiles += 1
             visitedBytes += size
             do {
@@ -321,12 +328,11 @@ public enum KimiCodeSessionScanner {
         let hasPricedUsage = daily.contains { entry in
             entry.modelBreakdowns?.contains { $0.costUSD != nil } == true
         }
-        // Day-level totals are withheld for mixed-price days, so the aggregate only sums days
-        // whose cost is complete. Publishing that known subtotal keeps existing coverage while
-        // never pairing a partial day with a complete-looking figure.
-        let totalCost = pricedDailyCosts.isEmpty
-            ? nil
-            : pricedDailyCosts.reduce(0, +)
+        // Day-level totals are withheld for mixed-price days; the aggregate is only published when
+        // every contributing day has a complete cost, so a partial day never looks complete.
+        let totalCost = !pricedDailyCosts.isEmpty && pricedDailyCosts.count == daily.count
+            ? pricedDailyCosts.reduce(0, +)
+            : nil
         guard let totalTokens, let totalRequests else { return nil }
 
         return CostUsageTokenSnapshot(

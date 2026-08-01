@@ -137,6 +137,51 @@ struct MiniMaxSessionScannerTests {
         }
     }
 
+    @Test
+    func `mixed priced and unpriced models withhold day and aggregate cost`() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MiniMaxSessionScannerTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let databaseURL = root.appendingPathComponent("v2/sqlite/runtime-state.sqlite")
+        try FileManager.default.createDirectory(
+            at: databaseURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true)
+        try Self.createDatabase(at: databaseURL)
+
+        var writer: OpaquePointer?
+        guard sqlite3_open(databaseURL.path, &writer) == SQLITE_OK, let writer else {
+            throw SQLiteFixtureError.open
+        }
+        defer { sqlite3_close(writer) }
+        let unknownSQL = """
+        INSERT INTO local_runtime_token_usage (
+          session_id, agent_name, framework_type, turn_id, model, ts,
+          input_tokens, output_tokens, reasoning_tokens, cache_read_tokens,
+          cache_write_tokens, cost_usd
+        ) VALUES (
+          'session-2', 'main', 'agent', 'turn-2', 'unknown-local-model', 1785033600000,
+          10, 5, 0, 20, 0, 0
+        );
+        """
+        guard sqlite3_exec(writer, unknownSQL, nil, nil, nil) == SQLITE_OK else {
+            throw SQLiteFixtureError.schema
+        }
+
+        let snapshot = try #require(MiniMaxSessionScanner.scan(
+            environment: [MiniMaxSessionScanner.homeEnvironmentKey: root.path],
+            historyDays: 30,
+            now: Date(timeIntervalSince1970: 1_785_033_600),
+            calendar: Self.calendar,
+            modelsDevCacheRoot: root.appendingPathComponent("empty-pricing", isDirectory: true)))
+
+        #expect(snapshot.daily.first?.costUSD == nil)
+        #expect(snapshot.last30DaysCostUSD == nil)
+        #expect(snapshot.currencyCode == "USD")
+        let breakdowns = try #require(snapshot.daily.first?.modelBreakdowns)
+        #expect(breakdowns.first { $0.modelName == "minimax/MiniMax-M3" }?.costUSD != nil)
+        #expect(breakdowns.first { $0.modelName == "unknown-local-model" }?.costUSD == nil)
+    }
+
     private static func createDatabase(at url: URL, oldRowCount: Int = 0) throws {
         var database: OpaquePointer?
         guard sqlite3_open(url.path, &database) == SQLITE_OK, let database else {

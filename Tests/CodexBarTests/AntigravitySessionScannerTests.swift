@@ -118,6 +118,74 @@ struct AntigravitySessionScannerTests {
     }
 
     @Test
+    func `scanner propagates a busy database instead of reporting empty history`() throws {
+        let env = try Self.makeEnvironment()
+        defer { try? FileManager.default.removeItem(at: env.root) }
+        try Self.createDatabase(at: env.databaseURL)
+
+        var writer: OpaquePointer?
+        guard sqlite3_open(env.databaseURL.path, &writer) == SQLITE_OK, let writer else {
+            throw SQLiteTestError.open
+        }
+        defer {
+            sqlite3_exec(writer, "ROLLBACK;", nil, nil, nil)
+            sqlite3_close(writer)
+        }
+        guard sqlite3_exec(writer, "BEGIN EXCLUSIVE;", nil, nil, nil) == SQLITE_OK else {
+            throw SQLiteTestError.exec("begin")
+        }
+
+        #expect(throws: AntigravitySessionScanner.ScanError.databaseUnavailable) {
+            _ = try AntigravitySessionScanner.scanCancellable(
+                environment: [AntigravitySessionScanner.homeEnvironmentKey: env.homeURL.path],
+                historyDays: 30,
+                now: Date(timeIntervalSince1970: TimeInterval(Self.ms("2026-07-20T12:00:00.000Z")) / 1000))
+        }
+    }
+
+    @Test
+    func `malformed protobuf length does not overflow the field cursor`() throws {
+        // A length-delimited field whose declared length is near Int.max must be treated as
+        // malformed instead of overflowing `position + count` while slicing.
+        let env = try Self.makeEnvironment()
+        defer { try? FileManager.default.removeItem(at: env.root) }
+        try Self.createDatabase(at: env.databaseURL)
+
+        var blob: [UInt8] = []
+        blob.append(0x12) // field 2, wire type 2 (length-delimited)
+        blob.append(contentsOf: [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01])
+        blob.append(contentsOf: [0x00, 0x00])
+
+        var db: OpaquePointer?
+        guard sqlite3_open(env.databaseURL.path, &db) == SQLITE_OK, let db else {
+            throw SQLiteTestError.open
+        }
+        defer { sqlite3_close(db) }
+
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(
+            db,
+            "INSERT INTO gen_metadata (idx, data) VALUES (1, ?)",
+            -1,
+            &stmt,
+            nil) == SQLITE_OK
+        else { throw SQLiteTestError.exec("prepare") }
+        defer { sqlite3_finalize(stmt) }
+        let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        _ = blob.withUnsafeBytes { buffer in
+            sqlite3_bind_blob(stmt, 1, buffer.baseAddress, Int32(buffer.count), transient)
+        }
+        guard sqlite3_step(stmt) == SQLITE_DONE else { throw SQLiteTestError.exec("insert") }
+
+        // The scanner must skip the malformed row without trapping on overflow.
+        let snapshot = try AntigravitySessionScanner.scanCancellable(
+            environment: [AntigravitySessionScanner.homeEnvironmentKey: env.homeURL.path],
+            historyDays: 30,
+            now: Date(timeIntervalSince1970: TimeInterval(Self.ms("2026-07-20T12:00:00.000Z")) / 1000))
+        #expect(snapshot == nil)
+    }
+
+    @Test
     func `empty conversations directory yields no snapshot`() throws {
         let env = try Self.makeEnvironment()
         defer { try? FileManager.default.removeItem(at: env.root) }

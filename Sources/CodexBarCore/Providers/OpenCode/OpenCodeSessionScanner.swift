@@ -43,6 +43,8 @@ public enum OpenCodeSessionScanner {
     public enum ScanError: Error, Equatable {
         /// The live provider database could not be read completely (for example, SQLITE_BUSY).
         case databaseUnavailable
+        /// The scan cannot claim complete history after omitting an otherwise eligible file.
+        case historyLimitExceeded
     }
 
     public static let maximumFiles = 20000
@@ -80,6 +82,8 @@ public enum OpenCodeSessionScanner {
         let role: String?
         let modelID: String?
         let model: Model?
+        let providerID: String?
+        let provider: Model?
         let tokens: Tokens?
         let time: Time
     }
@@ -109,6 +113,8 @@ public enum OpenCodeSessionScanner {
         let usage: NormalizedUsage
         /// Provider-reported cost (only present for `opencode.db` rows; JSON files carry none).
         let cost: Double?
+        /// Provider-reported routing evidence (for example `anthropic`, `openai`, `minimax`).
+        let billingProviderID: String?
         /// Full-field fingerprint used to collapse JSON-vs-DB duplicates when ids don't conflict.
         let fingerprint: String
     }
@@ -197,6 +203,7 @@ public enum OpenCodeSessionScanner {
         historyDays: Int = defaultHistoryDays,
         now: Date = Date(),
         calendar: Calendar = .current,
+        maximumFiles: Int = Self.maximumFiles,
         checkCancellation: @escaping () throws -> Void = {}) throws -> CostUsageTokenSnapshot?
     {
         try checkCancellation()
@@ -217,10 +224,13 @@ public enum OpenCodeSessionScanner {
             environment: environment,
             fileManager: fileManager,
             context: &context,
+            maximumFiles: maximumFiles,
             checkCancellation: checkCancellation))
 
         var values: [DayModelKey: TokenAccumulator] = [:]
         var costs: [DayModelKey: Double] = [:]
+        var billingProviderIDs: [DayModelKey: String] = [:]
+        var conflictingBillingProviderIDs: Set<DayModelKey> = []
         // Keys that include at least one billable record with no provider-reported cost (legacy JSON
         // rows). Their day's cost must be withheld so a priced DB subtotal is not read as complete.
         var partiallyPricedKeys: Set<DayModelKey> = []
@@ -230,6 +240,19 @@ public enum OpenCodeSessionScanner {
             var value = values[key] ?? TokenAccumulator()
             guard value.add(record.usage) else { continue }
             values[key] = value
+            if let providerID = record.billingProviderID,
+               !providerID.isEmpty
+            {
+                if let existing = billingProviderIDs[key],
+                   existing != providerID
+                {
+                    conflictingBillingProviderIDs.insert(key)
+                } else {
+                    billingProviderIDs[key] = providerID
+                }
+            } else {
+                conflictingBillingProviderIDs.insert(key)
+            }
             if let cost = record.cost, cost.isFinite, cost >= 0 {
                 costs[key] = (costs[key] ?? 0) + cost
             } else {
@@ -259,6 +282,9 @@ public enum OpenCodeSessionScanner {
                 if !modelPriced { dayHasUnpricedUsage = true }
                 modelBreakdowns.append(CostUsageDailyReport.ModelBreakdown(
                     modelName: key.model,
+                    billingProviderID: conflictingBillingProviderIDs.contains(key)
+                        ? nil
+                        : billingProviderIDs[key],
                     costUSD: modelCost,
                     totalTokens: modelTotal,
                     inputTokens: value.input,
@@ -287,7 +313,13 @@ public enum OpenCodeSessionScanner {
         guard let totalTokens, let totalRequests else { return nil }
         // Cost only exists for `opencode.db` rows (JSON files carry none). When nothing was priced,
         // stay token-only ("XXX"/nil) so the dashboard does not show a phantom zero spend.
-        let totalCost = self.sum(daily.compactMap(\.costUSD))
+        let pricedDailyCosts = daily.compactMap(\.costUSD)
+        let hasPricedUsage = daily.contains { entry in
+            entry.modelBreakdowns?.contains { $0.costUSD != nil } == true
+        }
+        let totalCost = !pricedDailyCosts.isEmpty && pricedDailyCosts.count == daily.count
+            ? pricedDailyCosts.reduce(0, +)
+            : nil
 
         return CostUsageTokenSnapshot(
             sessionTokens: nil,
@@ -296,7 +328,7 @@ public enum OpenCodeSessionScanner {
             last30DaysTokens: totalTokens,
             last30DaysCostUSD: totalCost,
             last30DaysRequests: totalRequests,
-            currencyCode: totalCost != nil ? "USD" : "XXX",
+            currencyCode: hasPricedUsage ? "USD" : "XXX",
             historyDays: days,
             historyCoverageIsEstablished: true,
             historyLabel: "OpenCode",
@@ -318,6 +350,7 @@ public enum OpenCodeSessionScanner {
         environment: [String: String],
         fileManager: FileManager,
         context: inout ScanContext,
+        maximumFiles: Int,
         checkCancellation: () throws -> Void) throws -> [UsageRecord]
     {
         let start = context.start
@@ -339,7 +372,7 @@ public enum OpenCodeSessionScanner {
         while let url = enumerator.nextObject() as? URL {
             try checkCancellation()
             guard url.pathExtension.lowercased() == "json" else { continue }
-            guard visitedFiles < self.maximumFiles else { break }
+            guard visitedFiles < maximumFiles else { throw ScanError.historyLimitExceeded }
             let resourceValues = try? url.resourceValues(
                 forKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey])
             guard resourceValues?.isRegularFile == true else { continue }
@@ -352,7 +385,7 @@ public enum OpenCodeSessionScanner {
             guard size <= self.maximumFileBytes,
                   size <= self.maximumBytes - visitedBytes
             else {
-                continue
+                throw ScanError.historyLimitExceeded
             }
             visitedFiles += 1
             visitedBytes += size
@@ -387,6 +420,7 @@ public enum OpenCodeSessionScanner {
                 model: model,
                 usage: usage,
                 cost: nil,
+                billingProviderID: self.cleaned(message.providerID ?? message.provider?.id),
                 fingerprint: fingerprint))
         }
         return records
@@ -433,6 +467,9 @@ public enum OpenCodeSessionScanner {
           COALESCE(
             NULLIF(json_extract(data, '$.modelID'), ''),
             json_extract(data, '$.model.id')),
+          COALESCE(
+            NULLIF(json_extract(data, '$.providerID'), ''),
+            json_extract(data, '$.provider.id')),
           json_extract(data, '$.time.created'),
           json_extract(data, '$.tokens.input'),
           json_extract(data, '$.tokens.output'),
@@ -464,18 +501,19 @@ public enum OpenCodeSessionScanner {
 
             let messageID = self.columnText(stmt, 0)
             guard let model = self.cleaned(self.columnText(stmt, 1)) else { continue }
-            let createdMs = sqlite3_column_type(stmt, 2) == SQLITE_NULL
+            let billingProviderID = self.cleaned(self.columnText(stmt, 2))
+            let createdMs = sqlite3_column_type(stmt, 3) == SQLITE_NULL
                 ? 0
-                : Int64(sqlite3_column_double(stmt, 2))
+                : Int64(sqlite3_column_double(stmt, 3))
             guard createdMs > 0 else { continue }
-            let input = Int(sqlite3_column_int64(stmt, 3))
-            let output = Int(sqlite3_column_int64(stmt, 4))
-            let reasoning = sqlite3_column_type(stmt, 5) == SQLITE_NULL ? 0 : Int(sqlite3_column_int64(stmt, 5))
-            let cacheRead = sqlite3_column_type(stmt, 6) == SQLITE_NULL ? 0 : Int(sqlite3_column_int64(stmt, 6))
-            let cacheCreation = sqlite3_column_type(stmt, 7) == SQLITE_NULL ? 0 : Int(sqlite3_column_int64(stmt, 7))
-            let cost: Double? = sqlite3_column_type(stmt, 8) == SQLITE_NULL
+            let input = Int(sqlite3_column_int64(stmt, 4))
+            let output = Int(sqlite3_column_int64(stmt, 5))
+            let reasoning = sqlite3_column_type(stmt, 6) == SQLITE_NULL ? 0 : Int(sqlite3_column_int64(stmt, 6))
+            let cacheRead = sqlite3_column_type(stmt, 7) == SQLITE_NULL ? 0 : Int(sqlite3_column_int64(stmt, 7))
+            let cacheCreation = sqlite3_column_type(stmt, 8) == SQLITE_NULL ? 0 : Int(sqlite3_column_int64(stmt, 8))
+            let cost: Double? = sqlite3_column_type(stmt, 9) == SQLITE_NULL
                 ? nil
-                : sqlite3_column_double(stmt, 8)
+                : sqlite3_column_double(stmt, 9)
 
             guard input >= 0, output >= 0, reasoning >= 0, cacheRead >= 0, cacheCreation >= 0,
                   let foldedOutput = self.adding(output, reasoning)
@@ -507,6 +545,7 @@ public enum OpenCodeSessionScanner {
                 model: model,
                 usage: usage,
                 cost: cost,
+                billingProviderID: billingProviderID,
                 fingerprint: fingerprint))
         }
         return records
