@@ -1262,6 +1262,7 @@
 "No local cost history yet" = "Aucun historique local des coûts pour l’instant";
 "Turn on cost tracking or refresh after using a supported provider." = "Activez le suivi local des coûts ou actualisez après avoir utilisé un fournisseur pris en charge.";
 "Refresh failures" = "Échecs d’actualisation";
+"Scanning history %d/%d" = "Scanning history %d/%d";
 "Native currencies stay separate; Codex account rows exclude Pi session history." = "Les devises d’origine restent séparées ; les lignes de compte Codex excluent l’historique des sessions Pi.";
 "Spend unavailable" = "Dépenses indisponibles";
 "Model breakdown unavailable" = "Répartition par modèle indisponible";

@@ -16,6 +16,16 @@ func spendDashboardDayRangeText(_ days: Int) -> String {
         with: codexBarLocalizedInteger(days))
 }
 
+/// Compact label for the segmented range picker so it stays as narrow as the
+/// original 7d/30d control. The full "Cumulative" wording is kept for the
+/// coverage summary text via `spendDashboardDayRangeText`.
+private func spendDashboardDayRangeSegmentText(_ days: Int) -> String {
+    switch days {
+    case 365: L("All")
+    default: spendDashboardDayRangeText(days)
+    }
+}
+
 func spendDashboardRankText(_ rank: Int) -> String {
     "#\(codexBarLocalizedInteger(rank))"
 }
@@ -100,9 +110,9 @@ struct SpendDashboardPane: View {
             }
             Spacer()
             Picker(L("Time range"), selection: self.daysBinding) {
-                Text(spendDashboardDayRangeText(7)).tag(7)
-                Text(spendDashboardDayRangeText(30)).tag(30)
-                Text(spendDashboardDayRangeText(365)).tag(365)
+                Text(spendDashboardDayRangeSegmentText(7)).tag(7)
+                Text(spendDashboardDayRangeSegmentText(30)).tag(30)
+                Text(spendDashboardDayRangeSegmentText(365)).tag(365)
             }
             .labelsHidden()
             .pickerStyle(.segmented)
@@ -112,7 +122,15 @@ struct SpendDashboardPane: View {
                 self.controller.refresh()
             } label: {
                 if self.controller.isRefreshing {
-                    ProgressView().controlSize(.small)
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        if let progress = self.controller.codexScanProgress, progress.total > 0 {
+                            Text(L("Scanning history %d/%d", progress.scanned, progress.total))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                    }
                 } else {
                     Label(L("Refresh"), systemImage: "arrow.clockwise")
                 }

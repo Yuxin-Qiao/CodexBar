@@ -42,6 +42,9 @@ enum CostUsageScanner {
         var maxCodexScanBytesPerRefresh: Int64 = 512 * 1024 * 1024
         /// Prefer newest session files first so recent usage lands before catch-up work.
         var preferNewestCodexSessionsFirst: Bool = true
+        /// Called on the scan queue with (filesScanned, totalFiles) as each Codex session file
+        /// is parsed. Lets a manual full rescan surface progress instead of appearing stalled.
+        var progressHandler: (@Sendable (_ scanned: Int, _ total: Int) -> Void)?
 
         init(
             codexSessionsRoot: URL? = nil,
@@ -53,7 +56,8 @@ enum CostUsageScanner {
             forceRescan: Bool = false,
             maxCodexSessionFileBytes: Int64 = 256 * 1024 * 1024,
             maxCodexScanBytesPerRefresh: Int64 = 512 * 1024 * 1024,
-            preferNewestCodexSessionsFirst: Bool = true)
+            preferNewestCodexSessionsFirst: Bool = true,
+            progressHandler: (@Sendable (_ scanned: Int, _ total: Int) -> Void)? = nil)
         {
             self.codexSessionsRoot = codexSessionsRoot
             self.claudeProjectsRoots = claudeProjectsRoots
@@ -65,6 +69,7 @@ enum CostUsageScanner {
             self.maxCodexSessionFileBytes = max(0, maxCodexSessionFileBytes)
             self.maxCodexScanBytesPerRefresh = max(0, maxCodexScanBytesPerRefresh)
             self.preferNewestCodexSessionsFirst = preferNewestCodexSessionsFirst
+            self.progressHandler = progressHandler
         }
     }
 
@@ -3516,12 +3521,15 @@ enum CostUsageScanner {
                 resources: resources,
                 checkCancellation: checkCancellation,
                 scanBudget: scanBudget)
-            for fileURL in files {
+            let totalFiles = files.count
+            options.progressHandler?(0, totalFiles)
+            for (index, fileURL) in files.enumerated() {
                 try Self.scanCodexFile(
                     fileURL: fileURL,
                     context: scanContext,
                     cache: &cache,
                     state: &scanState)
+                options.progressHandler?(index + 1, totalFiles)
             }
             if scanBudget.resumedPartialFileCount > 0 || scanBudget.deferredByBudgetFileCount > 0 {
                 Self.log.info(

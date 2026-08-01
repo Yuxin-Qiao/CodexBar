@@ -1266,6 +1266,7 @@
 "No local cost history yet" = "هنوز تاریخچه هزینه محلی وجود ندارد";
 "Turn on cost tracking or refresh after using a supported provider." = "پیگیری هزینه را روشن کنید یا پس از استفاده از یک ارائه‌دهنده پشتیبانی‌شده تازه‌سازی کنید.";
 "Refresh failures" = "خطاهای تازه‌سازی";
+"Scanning history %d/%d" = "Scanning history %d/%d";
 "Native currencies stay separate; Codex account rows exclude Pi session history." = "ارزهای اصلی جدا نگه داشته می‌شوند؛ ردیف‌های حساب Codex تاریخچه نشست‌های Pi را دربر نمی‌گیرند.";
 "Spend unavailable" = "هزینه در دسترس نیست";
 "Model breakdown unavailable" = "تفکیک مدل در دسترس نیست";

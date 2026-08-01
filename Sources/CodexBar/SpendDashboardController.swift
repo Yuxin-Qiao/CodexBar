@@ -169,6 +169,8 @@ struct CodexSpendSnapshotLoadContext: Sendable {
     let historyDays: Int
     let refreshPricingInBackground: Bool
     let includePiSessions: Bool
+    /// Reports Codex full-rescan progress (filesScanned, totalFiles) from the scan queue.
+    var progress: (@Sendable (_ scanned: Int, _ total: Int) -> Void)?
 }
 
 struct KimiCodeSpendSnapshotLoadContext: Sendable {
@@ -356,9 +358,14 @@ enum SpendDashboardSource {
             force: mode.forcesLoader)
     }
 
-    static func load(_ request: SpendDashboardLoadRequest) async -> SpendDashboardLoadResult {
+    static func load(
+        _ request: SpendDashboardLoadRequest,
+        codexProgress: (@Sendable (_ scanned: Int, _ total: Int) -> Void)? = nil) async
+        -> SpendDashboardLoadResult
+    {
         await self.load(
             request,
+            codexProgress: codexProgress,
             codexSnapshotLoader: { context in
                 try await self.loadCodexSnapshot(context)
             },
@@ -402,12 +409,12 @@ enum SpendDashboardSource {
 
     /// A local tool whose usage snapshot is loaded from a home directory via a
     /// registered, injectable adapter.
-    private struct LocalSnapshotSource {
+    private struct LocalSnapshotSource: Sendable {
         let homePath: String?
         let sourceID: String
         let provider: UsageProvider
         let displayName: String
-        let load: (String) async throws -> CostUsageTokenSnapshot?
+        let load: @Sendable (String) async throws -> CostUsageTokenSnapshot?
 
         func loadInput() async throws -> SpendDashboardModel.ProviderInput? {
             guard let homePath else { return nil }
@@ -424,6 +431,7 @@ enum SpendDashboardSource {
 
     static func load(
         _ request: SpendDashboardLoadRequest,
+        codexProgress: (@Sendable (_ scanned: Int, _ total: Int) -> Void)? = nil,
         codexSnapshotLoader: CodexSnapshotLoader,
         kimiCodeSnapshotLoader: @escaping KimiCodeSnapshotLoader = { context in
             try await Self.loadKimiCodeSnapshot(context)
@@ -465,7 +473,8 @@ enum SpendDashboardSource {
                     force: request.force,
                     historyDays: Self.scanDays,
                     refreshPricingInBackground: false,
-                    includePiSessions: false))
+                    includePiSessions: false,
+                    progress: codexProgress))
                 try Task.checkCancellation()
                 guard self.currentAuthFingerprint(for: account) == account.authFingerprint else {
                     failedSourceIDs.insert(sourceID)
@@ -510,24 +519,69 @@ enum SpendDashboardSource {
                     try await adapter.load(homePath, request.now, Self.scanDays)
                 })
         }
-        for source in localSources {
-            do {
-                if let input = try await source.loadInput() {
-                    inputs.append(input)
-                    // The spend dashboard's canonical history for these providers is the local
-                    // scanner. A failed/unchanged live quota publication must not remain as a
-                    // refresh warning after the corresponding local history loaded successfully.
-                    failedSourceIDs.remove(source.provider.rawValue)
+        // Scan local sources in parallel: total wall-clock time approaches the slowest
+        // single source instead of the sum of all sources (large histories such as Kimi's
+        // no longer block every other tool behind them).
+        enum LocalScanOutcome: Sendable {
+            case input(SpendDashboardModel.ProviderInput)
+            case empty(sourceID: String)
+            case failed(sourceID: String)
+            case cancelled(sourceID: String)
+        }
+        let outcomes: [(Int, LocalScanOutcome)] = await withTaskGroup(
+            of: (Int, LocalScanOutcome).self,
+            returning: [(Int, LocalScanOutcome)].self)
+        { group in
+            for (index, source) in localSources.enumerated() {
+                group.addTask {
+                    do {
+                        if let input = try await source.loadInput() {
+                            return (index, .input(input))
+                        }
+                        return (index, .empty(sourceID: source.sourceID))
+                    } catch is CancellationError {
+                        return (index, .cancelled(sourceID: source.sourceID))
+                    } catch {
+                        return (index, .failed(sourceID: source.sourceID))
+                    }
                 }
-            } catch is CancellationError {
-                failedSourceIDs.insert(source.sourceID)
-                return SpendDashboardLoadResult(
-                    inputs: [],
-                    failedSourceIDs: failedSourceIDs,
-                    invalidatedSourceIDs: invalidatedSourceIDs)
-            } catch {
-                failedSourceIDs.insert(source.sourceID)
             }
+            var collected: [(Int, LocalScanOutcome)] = []
+            for await outcome in group {
+                if case .cancelled = outcome.1 {
+                    // A cooperative cancellation from any source aborts the whole refresh;
+                    // stop the remaining in-flight scans instead of letting them run to
+                    // completion only to have their results discarded.
+                    group.cancelAll()
+                }
+                collected.append(outcome)
+            }
+            return collected
+        }
+
+        var cancelled = false
+        for (_, outcome) in outcomes.sorted(by: { $0.0 < $1.0 }) {
+            switch outcome {
+            case let .input(input):
+                inputs.append(input)
+                // The spend dashboard's canonical history for these providers is the local
+                // scanner. A failed/unchanged live quota publication must not remain as a
+                // refresh warning after the corresponding local history loaded successfully.
+                failedSourceIDs.remove(input.provider.rawValue)
+            case let .empty(sourceID):
+                _ = sourceID
+            case let .failed(sourceID):
+                failedSourceIDs.insert(sourceID)
+            case let .cancelled(sourceID):
+                failedSourceIDs.insert(sourceID)
+                cancelled = true
+            }
+        }
+        if cancelled {
+            return SpendDashboardLoadResult(
+                inputs: [],
+                failedSourceIDs: failedSourceIDs,
+                invalidatedSourceIDs: invalidatedSourceIDs)
         }
         let lateInvalidatedSourceIDs = Set(request.codexRequests.compactMap { account in
             self.currentAuthFingerprint(for: account) == account.authFingerprint
@@ -554,7 +608,8 @@ enum SpendDashboardSource {
             codexHomePath: context.account.homePath,
             historyDays: context.historyDays,
             refreshPricingInBackground: context.refreshPricingInBackground,
-            includePiSessions: context.includePiSessions)
+            includePiSessions: context.includePiSessions,
+            codexProgress: context.progress)
     }
 
     private static func loadKimiCodeSnapshot(
@@ -1044,6 +1099,14 @@ private struct SpendDashboardSnapshotRevisionEncoder {
     }
 }
 
+/// Main-actor store for Codex full-rescan progress. The scan queue reports file progress off the
+/// main thread; the loader bounces each update here so `@Observable` views re-render live.
+@MainActor
+@Observable
+final class CodexScanProgressStore {
+    var value: (scanned: Int, total: Int)?
+}
+
 @MainActor
 @Observable
 final class SpendDashboardController {
@@ -1139,6 +1202,12 @@ final class SpendDashboardController {
 
     private(set) var model = SpendDashboardModel(requestedDays: 30, groups: [])
     private(set) var isRefreshing = false
+    /// Codex full-rescan progress during a manual refresh: (filesScanned, totalFiles). Nil when
+    /// no progress has been reported yet (incremental refreshes and non-Codex sources).
+    var codexScanProgress: (scanned: Int, total: Int)? {
+        self.progressStore.value
+    }
+
     private(set) var failedSourceCount = 0
     private(set) var failedSourceIDs: Set<String> = []
     private(set) var generation: UInt64 = 0
@@ -1150,6 +1219,7 @@ final class SpendDashboardController {
     private let requestBuilder: RequestBuilder
     private let loader: Loader
     private let nowProvider: @Sendable () -> Date
+    private let progressStore = CodexScanProgressStore()
     private var loadTask: Task<Void, Never>?
     private var loadedInputs: [SpendDashboardModel.ProviderInput] = []
     private var loadedAt = Date()
@@ -1160,14 +1230,25 @@ final class SpendDashboardController {
     init(
         userDefaults: UserDefaults = .standard,
         requestBuilder: @escaping RequestBuilder,
-        loader: @escaping Loader = SpendDashboardSource.load,
+        loader: Loader? = nil,
         nowProvider: @escaping @Sendable () -> Date = { Date() })
     {
         self.userDefaults = userDefaults
         self.requestBuilder = requestBuilder
-        self.loader = loader
         self.nowProvider = nowProvider
         self.selectedDays = Self.normalizedDays(userDefaults.integer(forKey: Self.daysDefaultsKey))
+        if let loader {
+            self.loader = loader
+        } else {
+            // Capture only the progress store (already initialized above), not `self`, so the
+            // default loader can bounce scan-queue progress onto the main actor.
+            let progressStore = self.progressStore
+            self.loader = { request in
+                await SpendDashboardSource.load(request) { scanned, total in
+                    Task { @MainActor in progressStore.value = (scanned, total) }
+                }
+            }
+        }
     }
 
     func update(configuration: SpendDashboardConfiguration, force: Bool = false) {
@@ -1226,6 +1307,7 @@ final class SpendDashboardController {
         }
 
         self.isRefreshing = true
+        self.progressStore.value = nil
         self.loadTask = Task { [weak self] in
             guard let self else { return }
             let request = await self.requestBuilder(phase.buildMode)
@@ -1382,6 +1464,7 @@ final class SpendDashboardController {
         self.failedSourceCount = result.failedSourceCount
         self.failedSourceIDs = result.failedSourceIDs
         self.isRefreshing = false
+        self.progressStore.value = nil
         self.phase = .ordinary
         self.loadTask = nil
         self.rebuildModel()
@@ -1469,6 +1552,7 @@ final class SpendDashboardController {
         self.loadTask = nil
         self.configuration = nil
         self.isRefreshing = false
+        self.progressStore.value = nil
         self.phase = .ordinary
     }
 

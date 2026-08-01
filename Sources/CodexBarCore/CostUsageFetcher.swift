@@ -117,7 +117,9 @@ public struct CostUsageFetcher: Sendable {
         cursorCookieHeaderOverride: String? = nil,
         allowPricingRefresh: Bool = true,
         refreshPricingInBackground: Bool = true,
-        includePiSessions: Bool = true) async throws -> CostUsageTokenSnapshot
+        includePiSessions: Bool = true,
+        codexProgress: (@Sendable (_ scanned: Int, _ total: Int) -> Void)? = nil) async throws
+        -> CostUsageTokenSnapshot
     {
         try await Self.loadTokenSnapshot(
             provider: provider,
@@ -132,7 +134,8 @@ public struct CostUsageFetcher: Sendable {
             refreshPricingInBackground: refreshPricingInBackground,
             includePiSessions: includePiSessions,
             bypassScannerDebounce: false,
-            scannerOptions: self.scannerOptionsOverride())
+            scannerOptions: self.scannerOptionsOverride(),
+            codexProgress: codexProgress)
     }
 
     package func loadTokenSnapshot(
@@ -147,7 +150,9 @@ public struct CostUsageFetcher: Sendable {
         allowPricingRefresh: Bool = true,
         refreshPricingInBackground: Bool = true,
         includePiSessions: Bool = true,
-        bypassScannerDebounce: Bool) async throws -> CostUsageTokenSnapshot
+        bypassScannerDebounce: Bool,
+        codexProgress: (@Sendable (_ scanned: Int, _ total: Int) -> Void)? = nil) async throws
+        -> CostUsageTokenSnapshot
     {
         try await Self.loadTokenSnapshot(
             provider: provider,
@@ -162,7 +167,8 @@ public struct CostUsageFetcher: Sendable {
             refreshPricingInBackground: refreshPricingInBackground,
             includePiSessions: includePiSessions,
             bypassScannerDebounce: bypassScannerDebounce,
-            scannerOptions: self.scannerOptionsOverride())
+            scannerOptions: self.scannerOptionsOverride(),
+            codexProgress: codexProgress)
     }
 
     @available(*, deprecated, message: "Codex token-cost scans are uncapped; this limit is ignored.")
@@ -192,6 +198,32 @@ public struct CostUsageFetcher: Sendable {
 
     private func scannerOptionsOverride() -> CostUsageScanner.Options? {
         self.scannerOptions
+    }
+
+    /// Configures a manual full rescan: reconcile the *entire* history in one pass. The default
+    /// per-refresh byte budget (512MB) defers older session files to later refreshes, so a user
+    /// with gigabytes of history sees token counts creep up over several manual refreshes instead
+    /// of settling at the true total. Lifting the budget and forcing a rescan makes one manual
+    /// refresh converge on the full corpus.
+    private static func configureFullRescan(
+        _ options: inout CostUsageScanner.Options,
+        progress: (@Sendable (_ scanned: Int, _ total: Int) -> Void)?)
+    {
+        options.forceRescan = true
+        options.maxCodexScanBytesPerRefresh = 0
+        options.progressHandler = progress
+    }
+
+    private static func applyClaudeLogFilter(
+        _ options: inout CostUsageScanner.Options,
+        provider: UsageProvider,
+        allowVertexClaudeFallback: Bool)
+    {
+        if provider == .vertexai {
+            options.claudeLogProviderFilter = allowVertexClaudeFallback ? .all : .vertexAIOnly
+        } else if provider == .claude {
+            options.claudeLogProviderFilter = .excludeVertexAI
+        }
     }
 
     private static func resolvedScannerOptions(
@@ -227,7 +259,9 @@ public struct CostUsageFetcher: Sendable {
         piScannerOptions overridePiScannerOptions: PiSessionCostScanner
             .Options? = nil,
         modelsDevClient: ModelsDevClient = ModelsDevClient(),
-        retryUnknownPricing: Bool = true) async throws -> CostUsageTokenSnapshot
+        retryUnknownPricing: Bool = true,
+        codexProgress: (@Sendable (_ scanned: Int, _ total: Int) -> Void)? = nil) async throws
+        -> CostUsageTokenSnapshot
     {
         guard self.supportsTokenSnapshot(provider) else {
             throw CostUsageError.unsupportedProvider(provider)
@@ -263,13 +297,12 @@ public struct CostUsageFetcher: Sendable {
             cacheRoot: options.cacheRoot,
             client: modelsDevClient)
 
-        if provider == .vertexai {
-            options.claudeLogProviderFilter = allowVertexClaudeFallback ? .all : .vertexAIOnly
-        } else if provider == .claude {
-            options.claudeLogProviderFilter = .excludeVertexAI
-        }
+        Self.applyClaudeLogFilter(&options, provider: provider, allowVertexClaudeFallback: allowVertexClaudeFallback)
         if forceRefresh || bypassScannerDebounce {
             options.refreshMinIntervalSeconds = 0
+        }
+        if forceRefresh {
+            Self.configureFullRescan(&options, progress: codexProgress)
         }
         var resolvedPiOptions = overridePiScannerOptions ?? PiSessionCostScanner.Options()
         if resolvedPiOptions.cacheRoot == nil {
