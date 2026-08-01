@@ -294,9 +294,11 @@ public enum OpenCodeSessionScanner {
         let totalTokens = self.sum(daily.compactMap(\.totalTokens))
         let totalRequests = self.sum(daily.compactMap(\.requestCount))
         guard let totalTokens, let totalRequests else { return nil }
-        // Cost only exists for `opencode.db` rows (JSON files carry none). When nothing was priced,
-        // stay token-only ("XXX"/nil) so the dashboard does not show a phantom zero spend.
-        let totalCost = self.sum(daily.compactMap(\.costUSD))
+        // Cost only exists for `opencode.db` rows (JSON files carry none). A day with any
+        // unpriced usage withholds the headline cost: publishing the priced subtotal alone would
+        // read as the complete history total.
+        let hasUnpricedTokenDay = daily.contains { $0.totalTokens != nil && $0.costUSD == nil }
+        let totalCost = hasUnpricedTokenDay ? nil : self.sum(daily.compactMap(\.costUSD))
 
         return CostUsageTokenSnapshot(
             sessionTokens: nil,
@@ -309,6 +311,7 @@ public enum OpenCodeSessionScanner {
             historyDays: days,
             historyCoverageIsEstablished: true,
             historyLabel: "OpenCode",
+            costSource: totalCost != nil ? .providerReported : .estimated,
             daily: daily,
             updatedAt: now)
     }

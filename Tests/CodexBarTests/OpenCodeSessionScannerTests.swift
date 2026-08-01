@@ -1,6 +1,11 @@
 import CodexBarCore
 import Foundation
 import Testing
+#if canImport(SQLite3)
+import SQLite3
+#elseif canImport(CSQLite3)
+import CSQLite3
+#endif
 
 struct OpenCodeSessionScannerTests {
     @Test
@@ -360,6 +365,54 @@ struct OpenCodeSessionScannerTests {
         #expect(snapshot.historyLabel == "OpenCode")
     }
 
+    @Test
+    func `db priced day plus unpriced json day withholds the headline cost`() throws {
+        let root = try Self.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Self.makeDatabase(root, rows: [
+            (
+                id: "db-1",
+                created: "2026-07-27T10:00:00Z",
+                tokens: #"{"input":100,"output":50,"reasoning":0,"cache":{"read":0,"write":0}}"#,
+                cost: 0.01),
+        ])
+        let session = try Self.makeSessionDir(root, "ses_legacy")
+        try Self.write(
+            Self.assistantMessage(
+                id: "msg_001",
+                modelID: "gpt-5",
+                created: "2026-07-28T10:00:00Z",
+                tokens: #"{"input":3,"output":4,"cache":{"read":0,"write":0}}"#),
+            to: session.appendingPathComponent("msg_001.json"))
+
+        let snapshot = try #require(Self.scan(root: root, now: Self.date("2026-07-28T12:00:00Z")))
+        // The priced DB day stays visible, but the unpriced JSON day withholds the headline:
+        // publishing 0.01 as the 30-day total would read as complete history.
+        #expect(snapshot.daily.first?.costUSD == 0.01)
+        #expect(snapshot.last30DaysCostUSD == nil)
+        #expect(snapshot.currencyCode == "XXX")
+        #expect(snapshot.costSource == .estimated)
+    }
+
+    @Test
+    func `db priced snapshot reports provider-reported cost source`() throws {
+        let root = try Self.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Self.makeDatabase(root, rows: [
+            (
+                id: "db-1",
+                created: "2026-07-27T10:00:00Z",
+                tokens: #"{"input":100,"output":50,"reasoning":0,"cache":{"read":0,"write":0}}"#,
+                cost: 0.01),
+        ])
+
+        let snapshot = try #require(Self.scan(root: root, now: Self.date("2026-07-28T12:00:00Z")))
+        #expect(snapshot.last30DaysCostUSD == 0.01)
+        #expect(snapshot.currencyCode == "USD")
+        #expect(snapshot.costSource == .providerReported)
+        #expect(snapshot.daily.first?.modelBreakdowns?.first?.billingProviderID == "anthropic")
+    }
+
     // MARK: - Fixtures
 
     private static let utcCalendar: Calendar = {
@@ -441,5 +494,55 @@ struct OpenCodeSessionScannerTests {
 
     private static func write(_ content: String, to url: URL) throws {
         try (content + "\n").write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    private static func makeDatabase(
+        _ root: URL,
+        rows: [(id: String, created: String, tokens: String, cost: Double?)]) throws
+    {
+        let opencodeDir = root.appendingPathComponent("opencode", isDirectory: true)
+        try FileManager.default.createDirectory(at: opencodeDir, withIntermediateDirectories: true)
+        var db: OpaquePointer?
+        guard sqlite3_open(opencodeDir.appendingPathComponent("opencode.db").path, &db) == SQLITE_OK,
+              let db
+        else {
+            throw TestFailure.dbOpen
+        }
+        defer { sqlite3_close(db) }
+        guard sqlite3_exec(db, "CREATE TABLE message (data TEXT, time_created INTEGER);", nil, nil, nil) ==
+            SQLITE_OK
+        else {
+            throw TestFailure.dbWrite
+        }
+        let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        for row in rows {
+            var data = #"{"id":"\#(row.id)","role":"assistant","modelID":"claude-sonnet-4","tokens":\#(row.tokens),"#
+            if let cost = row.cost {
+                data += #""cost":\#(cost),"#
+            }
+            data += #""providerID":"anthropic","time":{"created":\#(Self.ms(row.created))}}"#
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(
+                db,
+                "INSERT INTO message (data, time_created) VALUES (?, ?);",
+                -1,
+                &stmt,
+                nil) == SQLITE_OK
+            else {
+                throw TestFailure.dbWrite
+            }
+            sqlite3_bind_text(stmt, 1, data, -1, transient)
+            sqlite3_bind_int64(stmt, 2, Int64(Self.ms(row.created)))
+            guard sqlite3_step(stmt) == SQLITE_DONE else {
+                sqlite3_finalize(stmt)
+                throw TestFailure.dbWrite
+            }
+            sqlite3_finalize(stmt)
+        }
+    }
+
+    private enum TestFailure: Error {
+        case dbOpen
+        case dbWrite
     }
 }
