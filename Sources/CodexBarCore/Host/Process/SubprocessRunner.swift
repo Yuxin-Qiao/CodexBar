@@ -220,9 +220,23 @@ public enum SubprocessRunner {
             termination.resolve(process.terminationStatus)
         }
 
-        do {
-            try process.run()
-        } catch {
+        var launchError: Error?
+        for attempt in 0..<5 {
+            do {
+                try process.run()
+                launchError = nil
+                break
+            } catch {
+                launchError = error
+                let desc = error.localizedDescription
+                if desc.contains("Text file busy") || desc.contains("ETXTBSY"), attempt < 4 {
+                    Thread.sleep(forTimeInterval: 0.02)
+                    continue
+                }
+                break
+            }
+        }
+        if let error = launchError {
             process.terminationHandler = nil
             stdoutCapture.stop()
             stdoutPipe.fileHandleForWriting.closeFile()
