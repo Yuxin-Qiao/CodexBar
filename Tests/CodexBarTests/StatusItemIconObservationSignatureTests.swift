@@ -295,19 +295,12 @@ struct StatusItemIconObservationSignatureTests {
     }
 
     @Test
-    func `store icon observation token invalidates when account snapshots change`() {
+    func `store icon observation signature isolates icon from background account snapshots`() {
         let (_, store, controller) = self.makeController(
-            suiteName: "StatusItemIconObservationSignatureTests-account-snapshots")
+            suiteName: "StatusItemIconObservationSignatureTests-account-signature-isolation")
         defer { controller.releaseStatusItemsForTesting() }
 
         let baselineSignature = controller.storeIconObservationSignature()
-
-        nonisolated(unsafe) var invalidated = false
-        withObservationTracking {
-            _ = store.iconObservationToken
-        } onChange: {
-            invalidated = true
-        }
 
         let account = ProviderTokenAccount(
             id: UUID(),
@@ -325,155 +318,7 @@ struct StatusItemIconObservationSignatureTests {
                 cacheKey: store.tokenAccountSnapshotCacheKey(provider: .codex, account: account)),
         ]
 
-        #expect(invalidated)
-        #expect(controller.storeIconObservationSignature() != baselineSignature)
-    }
-
-    @Test
-    func `store icon observation token invalidates when codex account snapshots change`() {
-        let (_, store, controller) = self.makeController(
-            suiteName: "StatusItemIconObservationSignatureTests-codex-account-snapshots")
-        defer { controller.releaseStatusItemsForTesting() }
-
-        let baselineSignature = controller.storeIconObservationSignature()
-
-        nonisolated(unsafe) var invalidated = false
-        withObservationTracking {
-            _ = store.iconObservationToken
-        } onChange: {
-            invalidated = true
-        }
-
-        let visibleAccount = CodexVisibleAccount(
-            id: "test-codex-account",
-            email: "email@example.com",
-            authFingerprint: nil,
-            storedAccountID: nil,
-            selectionSource: .profileHome(path: "/tmp"),
-            isActive: true,
-            isLive: true,
-            canReauthenticate: true,
-            canRemove: true)
-
-        store.codexAccountSnapshots = [
-            CodexAccountUsageSnapshot(
-                account: visibleAccount,
-                snapshot: nil,
-                error: nil,
-                sourceLabel: "cached"),
-        ]
-
-        #expect(invalidated)
-        #expect(controller.storeIconObservationSignature() != baselineSignature)
-    }
-
-    @Test
-    func `store icon observation signature changes when existing account snapshot usage is replaced`() {
-        let (_, store, controller) = self.makeController(
-            suiteName: "StatusItemIconObservationSignatureTests-account-usage-replacement")
-        defer { controller.releaseStatusItemsForTesting() }
-
-        let account = ProviderTokenAccount(
-            id: UUID(),
-            label: "Account 1",
-            token: "token1",
-            addedAt: 1,
-            lastUsed: nil)
-        let cacheKey = store.tokenAccountSnapshotCacheKey(provider: .codex, account: account)
-
-        store.accountSnapshots[.codex] = [
-            TokenAccountUsageSnapshot(
-                account: account,
-                snapshot: Self.makeSnapshot(provider: .codex, email: "account@example.com", primaryUsedPercent: 10),
-                error: nil,
-                sourceLabel: "fixture",
-                cacheKey: cacheKey),
-        ]
-        let baseline = controller.storeIconObservationSignature()
-
-        store.accountSnapshots[.codex] = [
-            TokenAccountUsageSnapshot(
-                account: account,
-                snapshot: Self.makeSnapshot(provider: .codex, email: "account@example.com", primaryUsedPercent: 42),
-                error: nil,
-                sourceLabel: "fixture",
-                cacheKey: cacheKey),
-        ]
-
-        #expect(controller.storeIconObservationSignature() != baseline)
-    }
-
-    @Test
-    func `store icon observation signature changes when existing account snapshot error is replaced`() {
-        let (_, store, controller) = self.makeController(
-            suiteName: "StatusItemIconObservationSignatureTests-account-error-replacement")
-        defer { controller.releaseStatusItemsForTesting() }
-
-        let account = ProviderTokenAccount(
-            id: UUID(),
-            label: "Account 1",
-            token: "token1",
-            addedAt: 1,
-            lastUsed: nil)
-        let cacheKey = store.tokenAccountSnapshotCacheKey(provider: .codex, account: account)
-
-        store.accountSnapshots[.codex] = [
-            TokenAccountUsageSnapshot(
-                account: account,
-                snapshot: nil,
-                error: nil,
-                sourceLabel: "fixture",
-                cacheKey: cacheKey),
-        ]
-        let baseline = controller.storeIconObservationSignature()
-
-        store.accountSnapshots[.codex] = [
-            TokenAccountUsageSnapshot(
-                account: account,
-                snapshot: nil,
-                error: "rate limited",
-                sourceLabel: "fixture",
-                cacheKey: cacheKey),
-        ]
-
-        #expect(controller.storeIconObservationSignature() != baseline)
-    }
-
-    @Test
-    func `store icon observation signature changes when existing codex account snapshot is replaced`() {
-        let (_, store, controller) = self.makeController(
-            suiteName: "StatusItemIconObservationSignatureTests-codex-account-replacement")
-        defer { controller.releaseStatusItemsForTesting() }
-
-        let visibleAccount = CodexVisibleAccount(
-            id: "test-codex-account",
-            email: "email@example.com",
-            authFingerprint: nil,
-            storedAccountID: nil,
-            selectionSource: .profileHome(path: "/tmp"),
-            isActive: true,
-            isLive: true,
-            canReauthenticate: true,
-            canRemove: true)
-
-        store.codexAccountSnapshots = [
-            CodexAccountUsageSnapshot(
-                account: visibleAccount,
-                snapshot: Self.makeSnapshot(provider: .codex, email: "email@example.com", primaryUsedPercent: 10),
-                error: nil,
-                sourceLabel: "cached"),
-        ]
-        let baseline = controller.storeIconObservationSignature()
-
-        store.codexAccountSnapshots = [
-            CodexAccountUsageSnapshot(
-                account: visibleAccount,
-                snapshot: Self.makeSnapshot(provider: .codex, email: "email@example.com", primaryUsedPercent: 66),
-                error: nil,
-                sourceLabel: "cached"),
-        ]
-
-        #expect(controller.storeIconObservationSignature() != baseline)
+        #expect(controller.storeIconObservationSignature() == baselineSignature)
     }
 
     @Test
