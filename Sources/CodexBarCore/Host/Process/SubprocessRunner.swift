@@ -228,6 +228,9 @@ public enum SubprocessRunner {
             stdoutPipe.fileHandleForWriting.closeFile()
             stderrCapture.stop()
             stderrPipe.fileHandleForWriting.closeFile()
+            if error is CancellationError {
+                throw error
+            }
             throw SubprocessRunnerError.launchFailed(error.localizedDescription)
         }
         stdoutCapture.start()
@@ -347,17 +350,8 @@ public enum SubprocessRunner {
                 return
             } catch {
                 launchError = error
-                let isTextFileBusy: Bool = {
-                    if let nsError = error as NSError?, nsError.domain == NSPOSIXErrorDomain,
-                       nsError.code == Int(ETXTBSY)
-                    {
-                        return true
-                    }
-                    let desc = error.localizedDescription
-                    return desc.contains("Text file busy") || desc.contains("ETXTBSY")
-                }()
-                if isTextFileBusy, attempt < 4 {
-                    try? await Task.sleep(nanoseconds: 20_000_000)
+                if self.isTextFileBusyError(error), attempt < 4 {
+                    try await Task.sleep(nanoseconds: 20_000_000)
                     continue
                 }
                 break
@@ -366,5 +360,24 @@ public enum SubprocessRunner {
         if let launchError {
             throw launchError
         }
+    }
+
+    /// Detects `ETXTBSY` launch failures, including Foundation's wrapped
+    /// `NSCocoaErrorDomain` representation whose POSIX details live in `NSUnderlyingErrorKey`.
+    package static func isTextFileBusyError(_ initialError: Error) -> Bool {
+        var currentError: Error? = initialError
+        while let err = currentError {
+            let nsErr = err as NSError
+            if nsErr.domain == NSPOSIXErrorDomain, nsErr.code == Int(ETXTBSY) {
+                return true
+            }
+            if let underlying = nsErr.userInfo[NSUnderlyingErrorKey] as? Error {
+                currentError = underlying
+            } else {
+                break
+            }
+        }
+        let desc = initialError.localizedDescription
+        return desc.contains("Text file busy") || desc.contains("ETXTBSY")
     }
 }

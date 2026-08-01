@@ -352,4 +352,29 @@ struct SubprocessRunnerTests {
             #expect(count == 20, "All 20 concurrent calls should complete")
         }
     }
+
+    @Test
+    func `detects ETXTBSY wrapped in a Cocoa error`() {
+        let underlying = NSError(
+            domain: NSPOSIXErrorDomain,
+            code: Int(ETXTBSY),
+            userInfo: [NSLocalizedDescriptionKey: "Text file busy"])
+        let wrapped = NSError(
+            domain: NSCocoaErrorDomain,
+            code: 256,
+            userInfo: [NSUnderlyingErrorKey: underlying])
+        #expect(SubprocessRunner.isTextFileBusyError(wrapped))
+    }
+
+    @Test
+    func `detects bare POSIX ETXTBSY error`() {
+        let error = NSError(domain: NSPOSIXErrorDomain, code: Int(ETXTBSY), userInfo: [:])
+        #expect(SubprocessRunner.isTextFileBusyError(error))
+    }
+
+    @Test
+    func `rejects unrelated launch errors`() {
+        let error = NSError(domain: NSPOSIXErrorDomain, code: Int(EACCES), userInfo: [:])
+        #expect(!SubprocessRunner.isTextFileBusyError(error))
+    }
 }
