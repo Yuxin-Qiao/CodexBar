@@ -21,7 +21,7 @@ struct SpendActivityHeatmapTests {
     }
 
     @Test
-    func `series uses a fixed Sunday first 52 week window`() throws {
+    func `series uses a Sunday aligned 53 week container for exactly 365 visible days`() throws {
         let calendar = Self.calendar
         let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 8, day: 5)))
         let previousDay = try #require(calendar.date(byAdding: .day, value: -1, to: now))
@@ -35,12 +35,35 @@ struct SpendActivityHeatmapTests {
             now: now,
             calendar: calendar)
 
-        #expect(series.daily.count == 52 * 7)
-        #expect(series.isCovered.count == 52 * 7)
+        #expect(series.daily.count == 53 * 7)
+        #expect(series.isCovered.count == 53 * 7)
         #expect(calendar.component(.weekday, from: series.start) == 1)
+        #expect(series.visibleDayCount == 365)
         #expect(series.daily.reduce(0, +) == 30)
         #expect(series.coveredDayCount == 2)
         #expect(series.date(at: series.daily.count - 1)! > series.today)
+    }
+
+    @Test(arguments: Array(2...8))
+    func `oldest annual day remains visible for every ending weekday`(augustDay: Int) throws {
+        let calendar = Self.calendar
+        let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 8, day: augustDay)))
+        let rangeStart = try #require(calendar.date(
+            byAdding: .day,
+            value: -(SpendActivitySeries.rangeDayCount - 1),
+            to: now))
+        let points = try (0..<SpendActivitySeries.rangeDayCount).map { offset in
+            let day = try #require(calendar.date(byAdding: .day, value: offset, to: rangeStart))
+            return SpendDashboardModel.TokenActivityPoint(day: day, totalTokens: offset == 0 ? 1 : 0)
+        }
+        let series = SpendActivitySeries.make(from: points, now: now, calendar: calendar)
+        let visibleIndices = series.daily.indices.filter(series.isVisible)
+
+        #expect(series.visibleDayCount == SpendActivitySeries.rangeDayCount)
+        #expect(series.coveredDayCount == SpendActivitySeries.rangeDayCount)
+        #expect(series.daily.reduce(0, +) == 1)
+        #expect(visibleIndices.first.flatMap(series.date(at:)) == rangeStart)
+        #expect(visibleIndices.last.flatMap(series.date(at:)) == now)
     }
 
     @Test
@@ -118,6 +141,7 @@ struct SpendActivityHeatmapTests {
             daily: [Int](repeating: 1, count: covered.count),
             isCovered: covered,
             start: start,
+            rangeStart: start,
             today: today,
             calendar: Self.calendar)
 
@@ -168,6 +192,16 @@ struct SpendActivityHeatmapTests {
         #expect(SpendActivityGridGeometry.weekdayCenter(row: 3, rowPitch: pitch) == pitch * 3.5)
         #expect(SpendActivityGridGeometry.weekdayCenter(row: 5, rowPitch: pitch) == pitch * 5.5)
         #expect(frame.height == pitch * 7)
+    }
+
+    @Test
+    func `grid keyboard navigation follows rows and weeks without wrapping`() {
+        #expect(SpendActivityGridNavigation.candidate(from: 10, move: .left, rows: 7) == 3)
+        #expect(SpendActivityGridNavigation.candidate(from: 10, move: .right, rows: 7) == 17)
+        #expect(SpendActivityGridNavigation.candidate(from: 10, move: .up, rows: 7) == 9)
+        #expect(SpendActivityGridNavigation.candidate(from: 10, move: .down, rows: 7) == 11)
+        #expect(SpendActivityGridNavigation.candidate(from: 7, move: .up, rows: 7) == nil)
+        #expect(SpendActivityGridNavigation.candidate(from: 13, move: .down, rows: 7) == nil)
     }
 
     @Test

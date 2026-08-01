@@ -21,12 +21,14 @@ enum SpendActivityViewMode: String, CaseIterable, Identifiable {
 }
 
 struct SpendActivitySeries {
-    static let weekCount = 52
+    static let weekCount = 53
     static let dayCount = 7
+    static let rangeDayCount = 365
 
     let daily: [Int]
     let isCovered: [Bool]
     let start: Date
+    let rangeStart: Date
     let today: Date
     let calendar: Calendar
 
@@ -49,24 +51,35 @@ struct SpendActivitySeries {
         }
 
         let today = calendar.startOfDay(for: now)
-        let weekday = calendar.component(.weekday, from: today)
-        let thisWeekSunday = calendar.date(byAdding: .day, value: -(weekday - 1), to: today) ?? today
+        let rangeStart = calendar.date(
+            byAdding: .day,
+            value: -(Self.rangeDayCount - 1),
+            to: today) ?? today
+        let rangeStartWeekday = calendar.component(.weekday, from: rangeStart)
         let start = calendar.date(
-            byAdding: .weekOfYear,
-            value: -(Self.weekCount - 1),
-            to: thisWeekSunday) ?? thisWeekSunday
+            byAdding: .day,
+            value: -(rangeStartWeekday - 1),
+            to: rangeStart) ?? rangeStart
         let cellCount = Self.weekCount * Self.dayCount
         var daily = [Int](repeating: 0, count: cellCount)
         var isCovered = [Bool](repeating: false, count: cellCount)
         for index in 0..<cellCount {
-            guard let date = calendar.date(byAdding: .day, value: index, to: start), date <= today else {
+            guard let date = calendar.date(byAdding: .day, value: index, to: start),
+                  rangeStart...today ~= date
+            else {
                 continue
             }
             guard !unknownDays.contains(date), let total = totals[date] else { continue }
             daily[index] = total
             isCovered[index] = true
         }
-        return Self(daily: daily, isCovered: isCovered, start: start, today: today, calendar: calendar)
+        return Self(
+            daily: daily,
+            isCovered: isCovered,
+            start: start,
+            rangeStart: rangeStart,
+            today: today,
+            calendar: calendar)
     }
 
     func date(at index: Int) -> Date? {
@@ -101,9 +114,9 @@ struct SpendActivitySeries {
         return SpendActivityAggregateSeries(values: values, isCovered: coverage)
     }
 
-    private func isVisible(_ index: Int) -> Bool {
+    func isVisible(_ index: Int) -> Bool {
         guard let date = self.date(at: index) else { return false }
-        return date <= self.today
+        return self.rangeStart...self.today ~= date
     }
 
     static func saturatingAdd(_ lhs: Int, _ rhs: Int) -> Int {
@@ -220,6 +233,32 @@ struct SpendActivityGridGeometry {
             return below
         }
         return max(anchorY - tooltipHeight - self.tooltipGap, 0)
+    }
+}
+
+enum SpendActivityGridMove {
+    case left
+    case right
+    case up
+    case down
+}
+
+enum SpendActivityGridNavigation {
+    static func candidate(from current: Int, move: SpendActivityGridMove, rows: Int) -> Int? {
+        guard rows > 0 else { return nil }
+        let row = current % rows
+        return switch move {
+        case .left:
+            current - rows
+        case .right:
+            current + rows
+        case .up where row > 0:
+            current - 1
+        case .down where row < rows - 1:
+            current + 1
+        default:
+            nil
+        }
     }
 }
 
@@ -384,6 +423,8 @@ private struct SpendActivityDailyGrid: View {
     let series: SpendActivitySeries
 
     @State private var hoveredIndex: Int?
+    @State private var keyboardIndex: Int?
+    @FocusState private var isKeyboardFocused: Bool
 
     private let columns = SpendActivitySeries.weekCount
     private let rows = SpendActivitySeries.dayCount
@@ -435,9 +476,27 @@ private struct SpendActivityDailyGrid: View {
             }
             .aspectRatio(CGFloat(self.columns + 2) / CGFloat(self.rows), contentMode: .fit)
         }
+        .focusable()
+        .focused(self.$isKeyboardFocused)
+        .onMoveCommand(perform: self.moveKeyboardSelection)
+        .onChange(of: self.isKeyboardFocused) { _, isFocused in
+            if isFocused, self.keyboardIndex == nil {
+                self.keyboardIndex = self.lastVisibleIndex
+            }
+        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(L("Token activity"))
         .accessibilityValue(self.accessibilityValue)
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment:
+                self.moveKeyboardSelectionChronologically(by: 1)
+            case .decrement:
+                self.moveKeyboardSelectionChronologically(by: -1)
+            @unknown default:
+                break
+            }
+        }
     }
 
     private var monthRow: some View {
@@ -471,7 +530,7 @@ private struct SpendActivityDailyGrid: View {
 
     @ViewBuilder
     private func hoverHighlight(cell: CGFloat, pitch: CGFloat) -> some View {
-        if let index = self.hoveredIndex {
+        if let index = self.activeIndex {
             let col = index / self.rows
             let row = index % self.rows
             RoundedRectangle(cornerRadius: min(cell * 0.22, 2.5), style: .continuous)
@@ -486,7 +545,7 @@ private struct SpendActivityDailyGrid: View {
 
     @ViewBuilder
     private func tooltip(size: CGSize, pitch: CGFloat) -> some View {
-        if let index = self.hoveredIndex, let date = self.series.date(at: index) {
+        if let index = self.activeIndex, let date = self.series.date(at: index) {
             let col = index / self.rows
             let row = index % self.rows
             let anchorX = CGFloat(col) * pitch + pitch / 2
@@ -522,8 +581,46 @@ private struct SpendActivityDailyGrid: View {
     }
 
     private func isVisibleCell(_ index: Int) -> Bool {
-        guard let date = self.series.date(at: index) else { return false }
-        return date <= self.series.today
+        self.series.isVisible(index)
+    }
+
+    private var activeIndex: Int? {
+        if let hoveredIndex { return hoveredIndex }
+        return self.keyboardIndex
+    }
+
+    private var lastVisibleIndex: Int? {
+        self.series.daily.indices.last(where: self.series.isVisible)
+    }
+
+    private func moveKeyboardSelection(_ direction: MoveCommandDirection) {
+        guard let current = self.keyboardIndex ?? self.lastVisibleIndex else { return }
+        let move: SpendActivityGridMove? = switch direction {
+        case .left:
+            .left
+        case .right:
+            .right
+        case .up:
+            .up
+        case .down:
+            .down
+        default:
+            nil
+        }
+        guard let move else { return }
+        let candidate = SpendActivityGridNavigation.candidate(from: current, move: move, rows: self.rows)
+        guard let candidate, self.isVisibleCell(candidate) else { return }
+        self.keyboardIndex = candidate
+    }
+
+    private func moveKeyboardSelectionChronologically(by offset: Int) {
+        guard let current = self.keyboardIndex else {
+            self.keyboardIndex = self.lastVisibleIndex
+            return
+        }
+        let candidate = current + offset
+        guard self.isVisibleCell(candidate) else { return }
+        self.keyboardIndex = candidate
     }
 
     private struct MonthMarker: Identifiable {
@@ -558,6 +655,12 @@ private struct SpendActivityDailyGrid: View {
     }
 
     private var accessibilityValue: String {
+        if let index = self.activeIndex, let date = self.series.date(at: index) {
+            let value = self.series.isCovered[index]
+                ? UsageFormatter.tokenCountString(self.series.daily[index])
+                : L("Unavailable")
+            return "\(SpendActivityDateFormatting.mediumDateString(date)): \(value)"
+        }
         let total = UsageFormatter.tokenCountString(Self.saturatingTotal(self.series.daily))
         guard self.series.hasUnknownCoverage else { return total }
         let coverage = spendDashboardCoverageText(
@@ -672,7 +775,11 @@ private struct SpendActivityWeekGrid: View {
 
     private func isVisible(_ column: Int) -> Bool {
         guard let start = self.series.weekStartDate(at: column) else { return false }
-        return start <= self.series.today
+        let end = self.series.calendar.date(
+            byAdding: .day,
+            value: SpendActivitySeries.dayCount - 1,
+            to: start) ?? start
+        return start <= self.series.today && end >= self.series.rangeStart
     }
 
     private var accessibilityTokenTotal: Int {
