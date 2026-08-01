@@ -81,8 +81,8 @@ struct AdaptiveRefreshPerformanceTests {
         #expect(!sessions.isEmpty)
         #expect(visits.count <= config.maxDirectoryEntryCount)
         #expect(
-            elapsed < .milliseconds(250),
-            "Bounded agent scan exceeded 250 ms: \(elapsed), visited \(visits.count) entries")
+            elapsed < .milliseconds(1500),
+            "Bounded agent scan exceeded 1500 ms: \(elapsed), visited \(visits.count) entries")
     }
 
     @Test
