@@ -100,6 +100,41 @@ struct SpendActivityHeatmapTests {
     }
 
     @Test
+    func `annual activity snapshot does not widen spend aggregation`() throws {
+        let now = try #require(Self.calendar.date(from: DateComponents(year: 2026, month: 7, day: 16)))
+        let oldDay = "2025-08-01"
+        let spend = Self.snapshot(
+            entries: [Self.entry(day: "2026-07-16", cost: 2, tokens: 10)],
+            historyDays: 30,
+            last30DaysTokens: 10)
+        let activity = Self.snapshot(
+            entries: [
+                Self.entry(day: oldDay, cost: nil, tokens: 40),
+                Self.entry(day: "2026-07-16", cost: nil, tokens: 5),
+            ],
+            historyDays: 365,
+            last30DaysTokens: 45)
+        let model = SpendDashboardModel.build(
+            inputs: [
+                .init(
+                    provider: .codex,
+                    displayName: "Codex",
+                    snapshot: spend,
+                    tokenActivitySnapshot: activity),
+            ],
+            requestedDays: 30,
+            now: now,
+            calendar: Self.calendar)
+
+        let oldDate = try #require(Self.calendar.date(from: DateComponents(year: 2025, month: 8, day: 1)))
+        #expect(model.groups.first?.totalTokens == 10)
+        #expect(model.groups.first?.totalCost == 2)
+        #expect(model.groups.first?.dailyPoints.count == 1)
+        #expect(model.tokenActivity.first { $0.day == oldDate }?.totalTokens == 40)
+        #expect(model.tokenActivity.first { $0.day == now }?.totalTokens == 10)
+    }
+
+    @Test
     func `covered empty history is zero while unestablished history remains unavailable`() throws {
         let now = try #require(Self.calendar.date(from: DateComponents(year: 2026, month: 7, day: 16)))
         let covered = SpendDashboardModel.build(

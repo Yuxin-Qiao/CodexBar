@@ -121,7 +121,9 @@ enum SpendDashboardSource {
     typealias CodexSnapshotLoader = @Sendable (CodexSpendSnapshotLoadContext) async throws
         -> CostUsageTokenSnapshot
 
-    static let scanDays = 365
+    static let scanDays = 30
+    static let activityScanDays = SpendDashboardModel.tokenActivityDayCount
+    private static let activitySnapshotCache = SpendDashboardCodexActivitySnapshotCache()
 
     @MainActor
     static func configuration(settings: SettingsStore, store: UsageStore) -> SpendDashboardConfiguration {
@@ -250,14 +252,32 @@ enum SpendDashboardSource {
     }
 
     static func load(_ request: SpendDashboardLoadRequest) async -> SpendDashboardLoadResult {
-        await self.load(request, codexSnapshotLoader: { context in
-            try await self.loadCodexSnapshot(context)
-        })
+        await self.load(
+            request,
+            codexSnapshotLoader: { context in
+                try await self.loadCodexSnapshot(context)
+            },
+            codexActivitySnapshotLoader: { context in
+                try await self.activitySnapshotCache.load(context) { activityContext in
+                    try await self.loadCodexSnapshot(activityContext)
+                }
+            })
     }
 
     static func load(
         _ request: SpendDashboardLoadRequest,
         codexSnapshotLoader: CodexSnapshotLoader) async -> SpendDashboardLoadResult
+    {
+        await self.load(
+            request,
+            codexSnapshotLoader: codexSnapshotLoader,
+            codexActivitySnapshotLoader: codexSnapshotLoader)
+    }
+
+    static func load(
+        _ request: SpendDashboardLoadRequest,
+        codexSnapshotLoader: CodexSnapshotLoader,
+        codexActivitySnapshotLoader: CodexSnapshotLoader) async -> SpendDashboardLoadResult
     {
         var inputs = request.capturedInputs
         var failedSourceIDs = request.unavailableSourceIDs
@@ -287,12 +307,32 @@ enum SpendDashboardSource {
                     invalidatedSourceIDs.insert(sourceID)
                     continue
                 }
+                var tokenActivitySnapshot = snapshot
+                do {
+                    tokenActivitySnapshot = try await codexActivitySnapshotLoader(CodexSpendSnapshotLoadContext(
+                        account: account,
+                        cacheRoot: cacheRoot,
+                        now: request.now,
+                        force: false,
+                        historyDays: Self.activityScanDays,
+                        refreshPricingInBackground: false,
+                        includePiSessions: false))
+                    try Task.checkCancellation()
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {}
+                guard self.currentAuthFingerprint(for: account) == account.authFingerprint else {
+                    failedSourceIDs.insert(sourceID)
+                    invalidatedSourceIDs.insert(sourceID)
+                    continue
+                }
                 inputs.append(SpendDashboardModel.ProviderInput(
                     id: sourceID,
                     provider: .codex,
                     displayName: account.displayName,
                     modelProviderName: ProviderDescriptorRegistry.descriptor(for: .codex).metadata.displayName,
-                    snapshot: snapshot))
+                    snapshot: snapshot,
+                    tokenActivitySnapshot: tokenActivitySnapshot))
             } catch is CancellationError {
                 failedSourceIDs.formUnion(request.codexRequests.map { "codex:\($0.id)" })
                 return SpendDashboardLoadResult(
@@ -497,6 +537,63 @@ enum SpendDashboardSource {
     private static func currentAuthFingerprint(for request: CodexSpendScanRequest) -> String? {
         let current = CodexAuthFingerprint.fingerprint(homePath: request.homePath)
         return request.authFileWasReadable ? current : current ?? request.authFingerprint
+    }
+}
+
+actor SpendDashboardCodexActivitySnapshotCache {
+    private struct Entry {
+        let snapshot: CostUsageTokenSnapshot
+        let expiresAt: Date
+    }
+
+    private let refreshInterval: TimeInterval
+    private var entries: [String: Entry] = [:]
+    private var inFlight: [String: Task<CostUsageTokenSnapshot, Error>] = [:]
+
+    init(refreshInterval: TimeInterval = 15 * 60) {
+        self.refreshInterval = refreshInterval
+    }
+
+    func load(
+        _ context: CodexSpendSnapshotLoadContext,
+        loader: @escaping SpendDashboardSource.CodexSnapshotLoader) async throws -> CostUsageTokenSnapshot
+    {
+        let key = Self.key(for: context)
+        if let entry = self.entries[key], context.now < entry.expiresAt {
+            return entry.snapshot
+        }
+        if let task = self.inFlight[key] {
+            return try await task.value
+        }
+
+        let task = Task { try await loader(context) }
+        self.inFlight[key] = task
+        do {
+            let snapshot = try await task.value
+            self.entries[key] = Entry(
+                snapshot: snapshot,
+                expiresAt: Self.expirationDate(from: context.now, refreshInterval: self.refreshInterval))
+            self.inFlight[key] = nil
+            return snapshot
+        } catch {
+            self.inFlight[key] = nil
+            throw error
+        }
+    }
+
+    private static func key(for context: CodexSpendSnapshotLoadContext) -> String {
+        [
+            context.cacheRoot.standardizedFileURL.path,
+            context.account.cacheIdentity,
+            context.account.authFingerprint ?? "missing-auth",
+        ].joined(separator: "|")
+    }
+
+    private static func expirationDate(from now: Date, refreshInterval: TimeInterval) -> Date {
+        let intervalExpiry = now.addingTimeInterval(refreshInterval)
+        let calendar = Calendar.current
+        let nextDay = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now)) ?? intervalExpiry
+        return min(intervalExpiry, nextDay)
     }
 }
 
@@ -998,7 +1095,8 @@ final class SpendDashboardController {
             provider: input.provider,
             displayName: displayName,
             modelProviderName: input.modelProviderName,
-            snapshot: input.snapshot)
+            snapshot: input.snapshot,
+            tokenActivitySnapshot: input.tokenActivitySnapshot)
     }
 
     private static func sameSourceOwnership(
