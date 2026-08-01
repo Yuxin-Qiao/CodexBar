@@ -373,19 +373,23 @@ extension CostUsageScanner {
         guard let key = claudeInFileKey(row) else {
             return false
         }
-        let classKeys = Self.claudeClassKeys(for: row, ownKey: key, identityIndex: identityIndex).filter {
+        let indexedClassKeys = Self.claudeClassKeys(for: row, ownKey: key, identityIndex: identityIndex)
+        let classKeys = (keyedRows[key] != nil && key.hasPrefix("pair:") ? [key] : indexedClassKeys).filter {
             // Paired rows are unique identities: another pair with the same messageId is a
             // different request, while partial rows may bridge through the pair.
             !key.hasPrefix("pair:") || !$0.hasPrefix("pair:") || $0 == key
         }
         let sessionClassKeys = classKeys.filter {
             guard !quarantinedKeys.contains($0) else { return false }
-            let existingSession = keyedRows[$0]?.sessionId
-            return existingSession == row.sessionId
+            let existingSession = Self.claudeNonEmptyID(keyedRows[$0]?.sessionId)
+            let rowSession = Self.claudeNonEmptyID(row.sessionId)
+            return existingSession == rowSession
                 || existingSession == nil
-                || row.sessionId == nil
+                || rowSession == nil
         }
-        guard row.sessionId != nil || Self.claudeKnownSessions(sessionClassKeys, keyedRows: keyedRows) <= 1 else {
+        guard Self.claudeNonEmptyID(row.sessionId) != nil
+            || Self.claudeKnownSessions(sessionClassKeys, keyedRows: keyedRows) <= 1
+        else {
             // A sessionless row cannot tell which established session it belongs to;
             // keep it separate rather than bridging two distinct sessions.
             quarantinedKeys.insert(key)
@@ -456,7 +460,7 @@ extension CostUsageScanner {
     {
         var sessions: Set<String> = []
         for classKey in classKeys {
-            if let session = keyedRows[classKey]?.sessionId {
+            if let session = Self.claudeNonEmptyID(keyedRows[classKey]?.sessionId) {
                 sessions.insert(session)
             }
         }
