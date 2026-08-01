@@ -231,9 +231,7 @@ extension CostUsageScanner {
 
                         // Streaming chunks share message.id and/or requestId inside a file.
                         // Keep overwriting so the final cumulative chunk wins.
-                        if let key = Self.claudeInFileKey(row) {
-                            keyedRows[key] = row
-                        } else {
+                        if !Self.claudeInsertRow(row, into: &keyedRows) {
                             // Older logs omit IDs; treat each line as distinct to avoid dropping usage.
                             unkeyedRows.append(row)
                         }
@@ -280,19 +278,11 @@ extension CostUsageScanner {
         var keyedRows: [String: ClaudeUsageRow] = [:]
         var unkeyedRows: [ClaudeUsageRow] = []
 
-        for row in existing {
-            if let key = Self.claudeInFileKey(row) {
-                keyedRows[key] = row
-            } else {
-                unkeyedRows.append(row)
-            }
+        for row in existing where !Self.claudeInsertRow(row, into: &keyedRows) {
+            unkeyedRows.append(row)
         }
-        for row in delta {
-            if let key = Self.claudeInFileKey(row) {
-                keyedRows[key] = row
-            } else {
-                unkeyedRows.append(row)
-            }
+        for row in delta where !Self.claudeInsertRow(row, into: &keyedRows) {
+            unkeyedRows.append(row)
         }
 
         return keyedRows.keys.sorted().compactMap { keyedRows[$0] } + unkeyedRows
@@ -312,6 +302,38 @@ extension CostUsageScanner {
             return "req:\(requestId)"
         }
         return nil
+    }
+
+    /// Inserts a row and supersedes any partial row that shares its identity.
+    ///
+    /// A cumulative chunk may start with only `messageId` and gain `requestId` on a later
+    /// chunk of the same response (or the analogous request-only transition). The fully
+    /// identified row therefore replaces the partial `msg:`/`req:` row, while partial rows
+    /// never evict a fully identified row, keeping distinct requests that reuse a message
+    /// ID separate.
+    private static func claudeInsertRow(
+        _ row: ClaudeUsageRow,
+        into keyedRows: inout [String: ClaudeUsageRow]) -> Bool
+    {
+        guard let key = claudeInFileKey(row) else {
+            return false
+        }
+        keyedRows[key] = row
+        if key.hasPrefix("pair:") {
+            if let messageId = Self.claudeNonEmptyID(row.messageId) {
+                keyedRows.removeValue(forKey: "msg:\(messageId)")
+            }
+            if let requestId = Self.claudeNonEmptyID(row.requestId) {
+                keyedRows.removeValue(forKey: "req:\(requestId)")
+            }
+        }
+        return true
+    }
+
+    private static func claudeNonEmptyID(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private static func claudeRowWins(
