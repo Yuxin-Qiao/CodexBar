@@ -5,6 +5,21 @@ import Testing
 @Suite(.serialized)
 struct CostUsageFetcherTests {
     @Test
+    func `local history providers support token snapshot`() {
+        // Providers that opt into `localHistorySources` (Copilot, Antigravity, Kimi, MiniMax,
+        // OpenCode, Qwen) get their snapshot from a registered local scanner, so the fetcher must
+        // report them as snapshot-capable even though `supportsTokenCost` is false.
+        #expect(CostUsageFetcher.supportsTokenSnapshot(.copilot))
+        #expect(CostUsageFetcher.supportsTokenSnapshot(.antigravity))
+        #expect(CostUsageFetcher.supportsTokenSnapshot(.kimi))
+        #expect(CostUsageFetcher.supportsTokenSnapshot(.minimax))
+        #expect(CostUsageFetcher.supportsTokenSnapshot(.opencode))
+        #expect(CostUsageFetcher.supportsTokenSnapshot(.qwencloud))
+        // A provider with neither a remote path nor local history sources stays unsupported.
+        #expect(!CostUsageFetcher.supportsTokenSnapshot(.grok))
+    }
+
+    @Test
     func `fetcher scopes codex history to selected codex home`() async throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }

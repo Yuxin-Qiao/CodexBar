@@ -346,7 +346,7 @@ enum SpendDashboardSource {
     @MainActor
     static func costCapableProviders(store: UsageStore) -> [UsageProvider] {
         store.enabledProvidersForDisplay().filter {
-            ProviderDescriptorRegistry.descriptor(for: $0).tokenCost.supportsTokenCost
+            ProviderDescriptorRegistry.descriptor(for: $0).tokenCost.supportsDashboardHistory
         }
     }
 
