@@ -64,6 +64,7 @@ public enum OpenCodeSessionScanner {
 
         struct Model: Decodable {
             let id: String?
+            let provider: String?
         }
 
         struct Time: Decodable {
@@ -74,6 +75,9 @@ public enum OpenCodeSessionScanner {
         let role: String?
         let modelID: String?
         let model: Model?
+        /// Billing ownership evidence recorded by OpenCode (e.g. `openai`, `anthropic`).
+        /// Optional because legacy JSON files predate it; never guessed from the model name.
+        let providerID: String?
         let tokens: Tokens?
         let time: Time
     }
@@ -100,6 +104,10 @@ public enum OpenCodeSessionScanner {
         let dedupKey: String
         let day: String
         let model: String
+        /// Billing ownership evidence retained from the source record (JSON `providerID` /
+        /// `model.provider`, or the DB row's equivalents). Optional because legacy records predate
+        /// it; never inferred from the model name.
+        let billingProviderID: String?
         let usage: NormalizedUsage
         /// Provider-reported cost (only present for `opencode.db` rows; JSON files carry none).
         let cost: Double?
@@ -215,6 +223,9 @@ public enum OpenCodeSessionScanner {
 
         var values: [DayModelKey: TokenAccumulator] = [:]
         var costs: [DayModelKey: Double] = [:]
+        // First retained ownership evidence per (day, model); records that lack one do not
+        // overwrite an earlier, sourced value.
+        var billingProviderIDs: [DayModelKey: String] = [:]
         // Keys that include at least one billable record with no provider-reported cost (legacy JSON
         // rows). Their day's cost must be withheld so a priced DB subtotal is not read as complete.
         var partiallyPricedKeys: Set<DayModelKey> = []
@@ -224,6 +235,9 @@ public enum OpenCodeSessionScanner {
             var value = values[key] ?? TokenAccumulator()
             guard value.add(record.usage) else { continue }
             values[key] = value
+            if billingProviderIDs[key] == nil, let billingProviderID = record.billingProviderID {
+                billingProviderIDs[key] = billingProviderID
+            }
             if let cost = record.cost, cost.isFinite, cost >= 0 {
                 costs[key] = (costs[key] ?? 0) + cost
             } else {
@@ -253,6 +267,7 @@ public enum OpenCodeSessionScanner {
                 if !modelPriced { dayHasUnpricedUsage = true }
                 modelBreakdowns.append(CostUsageDailyReport.ModelBreakdown(
                     modelName: key.model,
+                    billingProviderID: billingProviderIDs[key],
                     costUSD: modelCost,
                     totalTokens: modelTotal,
                     inputTokens: value.input,
@@ -367,9 +382,11 @@ public enum OpenCodeSessionScanner {
             let day = calendar.startOfDay(for: date)
             guard day >= start, day <= end else { continue }
             let dedupKey = self.cleaned(message.id) ?? url.deletingPathExtension().lastPathComponent
+            let billingProviderID = self.cleaned(message.providerID ?? message.model?.provider)
             let fingerprint = self.fingerprint(
                 createdMs: Int64(message.time.created.rounded()),
                 model: model,
+                billingProviderID: billingProviderID,
                 usage: usage,
                 cost: nil)
             guard context.seenMessageIDs.insert(dedupKey).inserted,
@@ -379,6 +396,7 @@ public enum OpenCodeSessionScanner {
                 dedupKey: dedupKey,
                 day: CostUsageLocalDay.key(from: day, calendar: calendar),
                 model: model,
+                billingProviderID: billingProviderID,
                 usage: usage,
                 cost: nil,
                 fingerprint: fingerprint))
@@ -433,7 +451,10 @@ public enum OpenCodeSessionScanner {
           json_extract(data, '$.tokens.reasoning'),
           json_extract(data, '$.tokens.cache.read'),
           json_extract(data, '$.tokens.cache.write'),
-          json_extract(data, '$.cost')
+          json_extract(data, '$.cost'),
+          COALESCE(
+            NULLIF(json_extract(data, '$.providerID'), ''),
+            json_extract(data, '$.model.provider'))
         FROM message
         WHERE json_extract(data, '$.role') = 'assistant'
           AND COALESCE(json_extract(data, '$.time.created'), time_created) >= ?
@@ -468,6 +489,7 @@ public enum OpenCodeSessionScanner {
             let cost: Double? = sqlite3_column_type(stmt, 8) == SQLITE_NULL
                 ? nil
                 : sqlite3_column_double(stmt, 8)
+            let billingProviderID = self.cleaned(self.columnText(stmt, 9))
 
             guard input >= 0, output >= 0, reasoning >= 0, cacheRead >= 0, cacheCreation >= 0,
                   let foldedOutput = self.adding(output, reasoning)
@@ -485,7 +507,12 @@ public enum OpenCodeSessionScanner {
             let day = calendar.startOfDay(for: date)
             guard day >= start, day <= end else { continue }
 
-            let fingerprint = self.fingerprint(createdMs: createdMs, model: model, usage: usage, cost: cost)
+            let fingerprint = self.fingerprint(
+                createdMs: createdMs,
+                model: model,
+                billingProviderID: billingProviderID,
+                usage: usage,
+                cost: cost)
             // tokscale dedups JSON vs DB by embedded id, then by full-field fingerprint when ids
             // don't conflict — so a message present in both stores collapses to one record.
             if let messageID, !messageID.isEmpty {
@@ -497,6 +524,7 @@ public enum OpenCodeSessionScanner {
                 dedupKey: messageID ?? fingerprint,
                 day: CostUsageLocalDay.key(from: day, calendar: calendar),
                 model: model,
+                billingProviderID: billingProviderID,
                 usage: usage,
                 cost: cost,
                 fingerprint: fingerprint))
@@ -587,15 +615,18 @@ public enum OpenCodeSessionScanner {
 
     /// Cross-store fingerprint for one logical message. Cost is deliberately excluded because
     /// migrated database rows can enrich an otherwise identical legacy JSON record with pricing.
+    /// Ownership evidence is included so records whose routing differs are not collapsed.
     private static func fingerprint(
         createdMs: Int64,
         model: String,
+        billingProviderID: String?,
         usage: NormalizedUsage,
         cost _: Double?) -> String
     {
         [
             String(createdMs),
             model,
+            billingProviderID ?? "",
             String(usage.input),
             String(usage.output),
             String(usage.cacheRead),

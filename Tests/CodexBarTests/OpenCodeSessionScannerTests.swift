@@ -77,6 +77,44 @@ struct OpenCodeSessionScannerTests {
     }
 
     @Test
+    func `scanner retains billing ownership evidence from json and nested model`() throws {
+        let root = try Self.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sessionA = try Self.makeSessionDir(root, "ses_a")
+        let sessionB = try Self.makeSessionDir(root, "ses_b")
+        try Self.write(
+            Self.assistantMessage(
+                id: "msg_001",
+                modelID: "claude-sonnet-4",
+                providerID: "anthropic",
+                created: "2026-07-10T09:00:00Z",
+                tokens: #"{"input":100,"output":50,"cache":{"read":20,"write":5}}"#),
+            to: sessionA.appendingPathComponent("msg_001.json"))
+        try Self.write(
+            Self.assistantMessage(
+                id: "msg_002",
+                modelID: "gpt-5",
+                nestedModelID: "gpt-5",
+                nestedProviderID: "openai",
+                created: "2026-07-11T10:00:00Z",
+                tokens: #"{"input":3,"output":4,"cache":{"read":1,"write":2}}"#),
+            to: sessionA.appendingPathComponent("msg_002.json"))
+        // Legacy record without ownership evidence stays nil.
+        try Self.write(
+            Self.assistantMessage(
+                id: "msg_003",
+                modelID: "gemini-2.5-pro",
+                created: "2026-07-10T11:00:00Z",
+                tokens: #"{"input":7,"output":8,"cache":{"read":0,"write":0}}"#),
+            to: sessionB.appendingPathComponent("msg_003.json"))
+
+        let snapshot = try #require(Self.scan(root: root, now: Self.date("2026-07-12T12:00:00Z")))
+
+        let breakdowns = snapshot.daily.flatMap { $0.modelBreakdowns ?? [] }
+        #expect(breakdowns.map(\.billingProviderID) == ["anthropic", nil, "openai"])
+    }
+
+    @Test
     func `scanner buckets usage by local day across midnight`() throws {
         let root = try Self.makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -365,6 +403,8 @@ struct OpenCodeSessionScannerTests {
         id: String?,
         modelID: String?,
         nestedModelID: String? = nil,
+        nestedProviderID: String? = nil,
+        providerID: String? = nil,
         created: String,
         tokens: String,
         role: String?? = "assistant",
@@ -375,7 +415,13 @@ struct OpenCodeSessionScannerTests {
         fields.append(#""sessionID":"ses""#)
         if let role = role.flatMap(\.self) { fields.append(#""role":"\#(role)""#) }
         if let modelID { fields.append(#""modelID":"\#(modelID)""#) }
-        if let nestedModelID { fields.append(#""model":{"id":"\#(nestedModelID)","providerID":"test"}"#) }
+        if let nestedModelID {
+            var nested = #""model":{"id":"\#(nestedModelID)""#
+            if let nestedProviderID { nested += #","provider":"\#(nestedProviderID)""# }
+            nested += "}"
+            fields.append(nested)
+        }
+        if let providerID { fields.append(#""providerID":"\#(providerID)""#) }
         fields.append(#""tokens":"# + tokens)
         var time = #""created":"# + "\(Self.ms(created))"
         if completed { time += #","completed":"# + "\(Self.ms(created) + 1000)" }
