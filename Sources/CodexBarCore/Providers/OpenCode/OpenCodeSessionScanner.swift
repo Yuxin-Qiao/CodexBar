@@ -427,7 +427,7 @@ public enum OpenCodeSessionScanner {
           COALESCE(
             NULLIF(json_extract(data, '$.modelID'), ''),
             json_extract(data, '$.model.id')),
-          json_extract(data, '$.time.created'),
+          COALESCE(json_extract(data, '$.time.created'), time_created),
           json_extract(data, '$.tokens.input'),
           json_extract(data, '$.tokens.output'),
           json_extract(data, '$.tokens.reasoning'),
@@ -436,8 +436,8 @@ public enum OpenCodeSessionScanner {
           json_extract(data, '$.cost')
         FROM message
         WHERE json_extract(data, '$.role') = 'assistant'
-          AND json_extract(data, '$.time.created') >= ?
-          AND json_extract(data, '$.time.created') < ?
+          AND COALESCE(json_extract(data, '$.time.created'), time_created) >= ?
+          AND COALESCE(json_extract(data, '$.time.created'), time_created) < ?
         """
 
         var stmt: OpaquePointer?
