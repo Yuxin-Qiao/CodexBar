@@ -155,7 +155,7 @@ struct SpendDashboardSourceConcurrencyTests {
     }
 
     @Test
-    func `local history cancellation marks the source failed and short-circuits remaining local scans`() async {
+    func `local history cancellation marks the source failed and discards the whole refresh`() async {
         let now = Date(timeIntervalSince1970: 1_784_179_200)
         let snapshot = Self.localHistorySnapshot(tokens: 8, model: "opencode-test-model", now: now)
         let recorder = SpendDashboardLocalLoaderRecorder()
@@ -187,9 +187,13 @@ struct SpendDashboardSourceConcurrencyTests {
                 return snapshot
             })
 
+        // Local sources scan in parallel, so a cancellation in one source no longer prevents
+        // the others from starting. The invariant that matters: a cancellation discards the
+        // whole refresh (empty inputs) and marks the cancelled source failed, regardless of
+        // whether a concurrent sibling managed to finish first.
         #expect(result.inputs.isEmpty)
-        #expect(result.failedSourceIDs == ["gemini:local"])
-        #expect(await recorder.invokedIDs == ["gemini"])
+        #expect(result.failedSourceIDs.contains("gemini:local"))
+        #expect(await recorder.invokedIDs.contains("gemini"))
     }
 
     @Test

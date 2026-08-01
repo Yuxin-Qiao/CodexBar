@@ -1,7 +1,36 @@
+import Foundation
 import Testing
 @testable import CodexBar
 
 struct SpendActivityLevelsTests {
+    @Test
+    func `weekday labels follow the selected app language`() {
+        let english = CodexBarLocalizationOverride.$appLanguage.withValue("en") {
+            (1...5).map { SpendActivityWeekday.label(for: $0) }
+        }
+        let simplifiedChinese = CodexBarLocalizationOverride.$appLanguage.withValue("zh-Hans") {
+            (1...5).map { SpendActivityWeekday.label(for: $0) }
+        }
+
+        #expect(english == ["Mo", "", "We", "", "Fr"])
+        #expect(simplifiedChinese == ["一", "", "三", "", "五"])
+    }
+
+    @Test
+    func `activity dates follow the selected app language`() {
+        let date = Date(timeIntervalSince1970: 1_785_542_400)
+        let english = CodexBarLocalizationOverride.$appLanguage.withValue("en") {
+            SpendActivityDateFormatting.mediumDateString(date)
+        }
+        let simplifiedChinese = CodexBarLocalizationOverride.$appLanguage.withValue("zh-Hans") {
+            SpendActivityDateFormatting.mediumDateString(date)
+        }
+
+        #expect(english.contains("Aug"))
+        #expect(!english.contains("年"))
+        #expect(simplifiedChinese.contains("年"))
+    }
+
     @Test
     func `daily levels stay finite near Int max`() {
         // Token counters can approach Int.max; `value * 4` / `maxValue * 3` would trap while
