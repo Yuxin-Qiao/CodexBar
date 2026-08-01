@@ -133,7 +133,7 @@ extension CostUsageScanner {
         var keyedRows: [String: ClaudeUsageRow] = [:]
         var canonicalKeys: [String] = []
         var quarantinedKeys: Set<String> = []
-        var identityIndex: [String: [String]] = [:]
+        var identityIndex: [String: Set<String>] = [:]
         var unkeyedRows: [ClaudeUsageRow] = []
 
         let maxLineBytes = 512 * 1024
@@ -293,7 +293,7 @@ extension CostUsageScanner {
         var keyedRows: [String: ClaudeUsageRow] = [:]
         var canonicalKeys: [String] = []
         var quarantinedKeys: Set<String> = []
-        var identityIndex: [String: [String]] = [:]
+        var identityIndex: [String: Set<String>] = [:]
         var unkeyedRows: [ClaudeUsageRow] = []
 
         for row in existing where !Self.claudeInsertRow(
@@ -368,7 +368,7 @@ extension CostUsageScanner {
         into keyedRows: inout [String: ClaudeUsageRow],
         canonicalKeys: inout [String],
         quarantinedKeys: inout Set<String>,
-        identityIndex: inout [String: [String]]) -> Bool
+        identityIndex: inout [String: Set<String>]) -> Bool
     {
         guard let key = claudeInFileKey(row) else {
             return false
@@ -438,15 +438,15 @@ extension CostUsageScanner {
     private static func claudeIndexKey(
         _ key: String,
         for row: ClaudeUsageRow,
-        identityIndex: inout [String: [String]])
+        identityIndex: inout [String: Set<String>])
     {
         let messageId = Self.claudeNonEmptyID(row.messageId).map(Self.claudeEscapeKeyComponent)
         let requestId = Self.claudeNonEmptyID(row.requestId).map(Self.claudeEscapeKeyComponent)
         if let messageId {
-            identityIndex["m:\(messageId)", default: []].append(key)
+            identityIndex["m:\(messageId)", default: []].insert(key)
         }
         if let requestId {
-            identityIndex["r:\(requestId)", default: []].append(key)
+            identityIndex["r:\(requestId)", default: []].insert(key)
         }
     }
 
@@ -466,7 +466,7 @@ extension CostUsageScanner {
     private static func claudeClassKeys(
         for row: ClaudeUsageRow,
         ownKey: String,
-        identityIndex: [String: [String]]) -> [String]
+        identityIndex: [String: Set<String>]) -> [String]
     {
         let messageId = Self.claudeNonEmptyID(row.messageId).map(Self.claudeEscapeKeyComponent)
         let requestId = Self.claudeNonEmptyID(row.requestId).map(Self.claudeEscapeKeyComponent)
@@ -532,7 +532,7 @@ extension CostUsageScanner {
         var keyedRows: [String: ClaudeUsageRow] = [:]
         var canonicalKeys: [String] = []
         var quarantinedKeys: Set<String> = []
-        var identityIndex: [String: [String]] = [:]
+        var identityIndex: [String: Set<String>] = [:]
         for key in winners.keys.sorted() {
             guard let winner = winners[key]?.row else { continue }
             _ = Self.claudeInsertRow(
