@@ -398,6 +398,9 @@ extension CostUsageScanner {
             quarantinedKeys.insert(key)
             var quarantinedRow = row
             quarantinedRow.quarantined = true
+            if let old = keyedRows[key] {
+                Self.claudeUnindexKey(key, for: old, identityIndex: &identityIndex)
+            }
             keyedRows[key] = quarantinedRow
             Self.claudeIndexKey(key, for: quarantinedRow, identityIndex: &identityIndex)
             if !canonicalKeys.contains(key) {
@@ -409,6 +412,9 @@ extension CostUsageScanner {
             .compactMap({ keyedRows[$0] })
             .max(by: { Self.claudeRowTotalTokens($0) < Self.claudeRowTotalTokens($1) })
         else {
+            if let old = keyedRows[key] {
+                Self.claudeUnindexKey(key, for: old, identityIndex: &identityIndex)
+            }
             keyedRows[key] = row
             Self.claudeIndexKey(key, for: row, identityIndex: &identityIndex)
             if !canonicalKeys.contains(key) {
@@ -451,6 +457,9 @@ extension CostUsageScanner {
                 Self.claudeIndexKey(classKey, for: mergedRow, identityIndex: &identityIndex)
             }
         } else {
+            if let old = keyedRows[key] {
+                Self.claudeUnindexKey(key, for: old, identityIndex: &identityIndex)
+            }
             keyedRows[key] = row
             Self.claudeIndexKey(key, for: row, identityIndex: &identityIndex)
             if !sessionClassKeys.contains(where: { $0 != key && canonicalKeys.contains($0) }),
@@ -463,6 +472,28 @@ extension CostUsageScanner {
             }
         }
         return true
+    }
+
+    private static func claudeUnindexKey(
+        _ key: String,
+        for row: ClaudeUsageRow,
+        identityIndex: inout [String: Set<String>])
+    {
+        func remove(_ indexKey: String) {
+            identityIndex[indexKey]?.remove(key)
+        }
+        if let messageId = Self.claudeNonEmptyID(row.messageId) {
+            remove("m:\(Self.claudeEscapeKeyComponent(messageId))")
+        }
+        if let requestId = Self.claudeNonEmptyID(row.requestId) {
+            remove("r:\(Self.claudeEscapeKeyComponent(requestId))")
+        }
+        for aliasMessageId in row.aliasMessageIds ?? [] {
+            remove("m:\(Self.claudeEscapeKeyComponent(aliasMessageId))")
+        }
+        for aliasRequestId in row.aliasRequestIds ?? [] {
+            remove("r:\(Self.claudeEscapeKeyComponent(aliasRequestId))")
+        }
     }
 
     private static func claudeIndexKey(
