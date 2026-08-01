@@ -656,6 +656,21 @@ extension CostUsageScanner {
     private static func reconciledClaudeRows(cache: CostUsageCache) -> [ClaudeUsageRow] {
         var rows: [ClaudeUsageRow] = []
         var winners: [String: (path: String, row: ClaudeUsageRow)] = [:]
+        var keptSessions: [String: Set<String>] = [:]
+        var multiSessionKeys: [String: Set<String>] = [:]
+
+        for path in cache.files.keys.sorted() {
+            guard let fileRows = cache.files[path]?.claudeRows else { continue }
+            var sessionsByKey: [String: Set<String>] = [:]
+            for row in fileRows {
+                guard let canonicalKey = Self.claudeCanonicalRowKey(row) else { continue }
+                sessionsByKey[canonicalKey, default: []]
+                    .insert(Self.claudeNonEmptyID(row.sessionId) ?? "")
+            }
+            for (canonicalKey, sessions) in sessionsByKey where sessions.count > 1 {
+                multiSessionKeys[canonicalKey, default: []].formUnion(sessions)
+            }
+        }
 
         for path in cache.files.keys.sorted() {
             guard let fileRows = cache.files[path]?.claudeRows else { continue }
@@ -666,14 +681,29 @@ extension CostUsageScanner {
                 }
                 let candidate = (path: path, row: row)
                 if let existing = winners[canonicalKey] {
+                    let existingSession = Self.claudeNonEmptyID(existing.row.sessionId)
+                    let rowSession = Self.claudeNonEmptyID(row.sessionId)
                     if existing.path == path,
-                       Self.claudeNonEmptyID(existing.row.sessionId)
-                       != Self.claudeNonEmptyID(row.sessionId)
+                       existingSession != rowSession
                     {
                         // The same file can hold distinct sessions that reuse the pair;
                         // keep both instead of collapsing them through the session-free
                         // canonical key.
                         rows.append(row)
+                        continue
+                    }
+                    if existing.path != path,
+                       let existingSession,
+                       let rowSession,
+                       existingSession != rowSession,
+                       multiSessionKeys[canonicalKey]?.contains(rowSession) == true,
+                       !(keptSessions[canonicalKey]?.contains(rowSession) ?? false)
+                    {
+                        // The candidate's file holds this pair in multiple sessions; a
+                        // session that has no cross-file counterpart yet is a separate
+                        // call and must survive the copy's path precedence.
+                        rows.append(row)
+                        keptSessions[canonicalKey, default: []].insert(rowSession)
                         continue
                     }
                     let aliasInvolved = existing.row.aliasMessageIds != nil
