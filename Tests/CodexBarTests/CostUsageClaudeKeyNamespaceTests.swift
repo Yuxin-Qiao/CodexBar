@@ -395,6 +395,59 @@ struct CostUsageClaudeKeyNamespaceTests {
     }
 
     @Test
+    func `cross file reconciliation keeps reused lone ids distinct`() throws {
+        // A lone message ID is only unique within a file; unrelated sessions in separate
+        // files that reuse the same ID must both be counted.
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2025, month: 12, day: 23)
+        let iso0 = env.isoString(for: day)
+
+        func row(sessionId: String, input: Int) -> [String: Any] {
+            [
+                "type": "assistant",
+                "timestamp": iso0,
+                "sessionId": sessionId,
+                "isSidechain": false,
+                "message": [
+                    "id": "reused-lone-id",
+                    "model": "claude-sonnet-4-20250514",
+                    "usage": [
+                        "input_tokens": input,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "output_tokens": 1,
+                    ],
+                ],
+            ]
+        }
+
+        _ = try env.writeClaudeProjectFile(
+            relativePath: "project-a/session-one.jsonl",
+            contents: env.jsonl([row(sessionId: "session-one", input: 11)]))
+        _ = try env.writeClaudeProjectFile(
+            relativePath: "project-a/session-two.jsonl",
+            contents: env.jsonl([row(sessionId: "session-two", input: 13)]))
+
+        var options = CostUsageScanner.Options(
+            codexSessionsRoot: nil,
+            claudeProjectsRoots: [env.claudeProjectsRoot],
+            cacheRoot: env.cacheRoot)
+        options.refreshMinIntervalSeconds = 0
+
+        let report = CostUsageScanner.loadDailyReport(
+            provider: .claude,
+            since: day,
+            until: day,
+            now: day,
+            options: options)
+
+        #expect(report.data.count == 1)
+        #expect(report.data[0].inputTokens == 24)
+    }
+
+    @Test
     func `append refresh supersedes partial row when paired row grows`() throws {
         // Incremental refresh: the cached message-only row is replaced by the appended
         // paired cumulative row instead of being summed.

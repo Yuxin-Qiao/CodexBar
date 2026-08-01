@@ -272,7 +272,13 @@ extension CostUsageScanner {
     }
 
     private static func claudeCanonicalRowKey(_ row: ClaudeUsageRow) -> String? {
-        self.claudeInFileKey(row)
+        // A lone `msg:`/`req:` ID is only unique within a file (or incremental merge).
+        // Across files it may be reused by unrelated sessions, so only paired rows are
+        // canonicalized for reconciliation.
+        guard let key = self.claudeInFileKey(row), key.hasPrefix("pair:") else {
+            return nil
+        }
+        return key
     }
 
     private static func mergeClaudeRows(existing: [ClaudeUsageRow], delta: [ClaudeUsageRow]) -> [ClaudeUsageRow] {
@@ -310,10 +316,11 @@ extension CostUsageScanner {
     ///
     /// `msg:`, `req:`, and `pair:` keys can all describe the same response: a cumulative
     /// chunk may gain or lose the optional second identifier, or bridge through both
-    /// partial forms. All matching keys are aliases of one class. A newly inserted row
-    /// replaces the whole class only when its token total is at least as large as the
-    /// class's largest member, the signal that it is a cumulative snapshot rather than a
-    /// distinct call that happens to reuse an ID. A smaller row starts its own class.
+    /// partial forms. All matching keys of the same session are aliases of one class. A
+    /// newly inserted row replaces the whole class only when it shares the session and its
+    /// token total is at least as large as the class's largest member, the signal that it
+    /// is a cumulative snapshot rather than a distinct call that happens to reuse an ID.
+    /// A smaller or differently-sessioned row starts its own class.
     private static func claudeInsertRow(
         _ row: ClaudeUsageRow,
         into keyedRows: inout [String: ClaudeUsageRow],
@@ -323,7 +330,10 @@ extension CostUsageScanner {
             return false
         }
         let classKeys = Self.claudeClassKeys(for: row, keyedRows: keyedRows)
-        guard let representative = classKeys
+        let sessionClassKeys = classKeys.filter {
+            keyedRows[$0]?.sessionId == row.sessionId
+        }
+        guard let representative = sessionClassKeys
             .compactMap({ keyedRows[$0] })
             .max(by: { Self.claudeRowTotalTokens($0) < Self.claudeRowTotalTokens($1) })
         else {
@@ -333,16 +343,16 @@ extension CostUsageScanner {
         }
 
         if Self.claudeRowTotalTokens(row) >= Self.claudeRowTotalTokens(representative) {
-            let canonicalKey = classKeys.first { $0.hasPrefix("pair:") } ?? classKeys[0]
-            canonicalKeys.removeAll { classKeys.contains($0) }
+            let canonicalKey = sessionClassKeys.first { $0.hasPrefix("pair:") } ?? sessionClassKeys[0]
+            canonicalKeys.removeAll { sessionClassKeys.contains($0) }
             canonicalKeys.append(canonicalKey)
-            for classKey in classKeys {
+            for classKey in sessionClassKeys {
                 keyedRows[classKey] = row
             }
         } else {
             keyedRows[key] = row
-            if !classKeys.contains(where: { $0 != key && canonicalKeys.contains($0) }),
-               let alternate = classKeys.first(where: { $0 != key && keyedRows[$0] != nil })
+            if !sessionClassKeys.contains(where: { $0 != key && canonicalKeys.contains($0) }),
+               let alternate = sessionClassKeys.first(where: { $0 != key && keyedRows[$0] != nil })
             {
                 canonicalKeys.append(alternate)
             }
