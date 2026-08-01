@@ -20,138 +20,46 @@ public enum KimiCodeSessionScanner {
         let usageScope: String?
     }
 
-    private struct DayModelKey: Hashable {
-        let day: String
-        let model: String
+    /// Returns the value when it is a valid non-negative token count, or nil otherwise. A
+    /// malformed (negative) count rejects the whole record, matching the pre-migration scanner.
+    private static func validOrNil(_ value: Int?) -> Int? {
+        guard let value, value >= 0 else { return nil }
+        return value
     }
 
-    private struct TokenAccumulator {
-        var input = 0
-        var cacheRead = 0
-        var cacheCreation = 0
-        var output = 0
-        var requests = 0
-        var cost = 0.0
-        var sawCost = false
-
-        mutating func add(
-            _ usage: WireEvent.Usage,
-            model: String,
-            pricingDate: Date,
-            modelsDevCatalog: ModelsDevCatalog?,
-            modelsDevCacheRoot: URL?) -> Bool
-        {
-            guard let input = Self.valid(usage.inputOther),
-                  let cacheRead = Self.valid(usage.inputCacheRead),
-                  let cacheCreation = Self.valid(usage.inputCacheCreation),
-                  let output = Self.valid(usage.output),
-                  let nextInput = Self.adding(self.input, input),
-                  let nextCacheRead = Self.adding(self.cacheRead, cacheRead),
-                  let nextCacheCreation = Self.adding(self.cacheCreation, cacheCreation),
-                  let nextOutput = Self.adding(self.output, output),
-                  let nextRequests = Self.adding(self.requests, 1)
-            else {
-                return false
-            }
-            self.input = nextInput
-            self.cacheRead = nextCacheRead
-            self.cacheCreation = nextCacheCreation
-            self.output = nextOutput
-            self.requests = nextRequests
-            if let cost = Self.estimatedCost(
-                model: model,
-                usage: usage,
-                pricingDate: pricingDate,
-                modelsDevCatalog: modelsDevCatalog,
-                modelsDevCacheRoot: modelsDevCacheRoot),
-                cost.isFinite
-            {
-                let nextCost = self.cost + cost
-                if nextCost.isFinite {
-                    self.cost = nextCost
-                    self.sawCost = true
-                }
-            }
-            return true
+    private static func estimatedCost(
+        model: String,
+        usage: WireEvent.Usage,
+        pricingDate: Date,
+        modelsDevCatalog: ModelsDevCatalog?,
+        modelsDevCacheRoot: URL?) -> Double?
+    {
+        guard let input = self.validOrNil(usage.inputOther),
+              let cacheRead = self.validOrNil(usage.inputCacheRead),
+              let cacheCreation = self.validOrNil(usage.inputCacheCreation),
+              let output = self.validOrNil(usage.output)
+        else {
+            return nil
         }
+        return CostUsagePricing.claudeCostUSD(
+            model: self.pricingModelID(model),
+            inputTokens: input,
+            cacheReadInputTokens: cacheRead,
+            cacheCreationInputTokens: cacheCreation,
+            outputTokens: output,
+            pricingDate: pricingDate,
+            modelsDevCatalog: modelsDevCatalog,
+            modelsDevCacheRoot: modelsDevCacheRoot)
+    }
 
-        mutating func merge(_ other: TokenAccumulator) -> Bool {
-            guard let nextInput = Self.adding(self.input, other.input),
-                  let nextCacheRead = Self.adding(self.cacheRead, other.cacheRead),
-                  let nextCacheCreation = Self.adding(self.cacheCreation, other.cacheCreation),
-                  let nextOutput = Self.adding(self.output, other.output),
-                  let nextRequests = Self.adding(self.requests, other.requests)
-            else {
-                return false
-            }
-            self.input = nextInput
-            self.cacheRead = nextCacheRead
-            self.cacheCreation = nextCacheCreation
-            self.output = nextOutput
-            self.requests = nextRequests
-            if other.sawCost {
-                let nextCost = self.cost + other.cost
-                if other.cost.isFinite, nextCost.isFinite {
-                    self.cost = nextCost
-                    self.sawCost = true
-                }
-            }
-            return true
-        }
-
-        var total: Int? {
-            guard let inputAndCacheRead = Self.adding(self.input, self.cacheRead),
-                  let withCacheCreation = Self.adding(inputAndCacheRead, self.cacheCreation)
-            else {
-                return nil
-            }
-            return Self.adding(withCacheCreation, self.output)
-        }
-
-        private static func valid(_ value: Int?) -> Int? {
-            guard let value, value >= 0 else { return nil }
-            return value
-        }
-
-        private static func adding(_ lhs: Int, _ rhs: Int) -> Int? {
-            let result = lhs.addingReportingOverflow(rhs)
-            return result.overflow ? nil : result.partialValue
-        }
-
-        private static func estimatedCost(
-            model: String,
-            usage: WireEvent.Usage,
-            pricingDate: Date,
-            modelsDevCatalog: ModelsDevCatalog?,
-            modelsDevCacheRoot: URL?) -> Double?
-        {
-            guard let input = self.valid(usage.inputOther),
-                  let cacheRead = self.valid(usage.inputCacheRead),
-                  let cacheCreation = self.valid(usage.inputCacheCreation),
-                  let output = self.valid(usage.output)
-            else {
-                return nil
-            }
-            return CostUsagePricing.claudeCostUSD(
-                model: self.pricingModelID(model),
-                inputTokens: input,
-                cacheReadInputTokens: cacheRead,
-                cacheCreationInputTokens: cacheCreation,
-                outputTokens: output,
-                pricingDate: pricingDate,
-                modelsDevCatalog: modelsDevCatalog,
-                modelsDevCacheRoot: modelsDevCacheRoot)
-        }
-
-        private static func pricingModelID(_ model: String) -> String {
-            let bare = model.split(separator: "/", omittingEmptySubsequences: true).last
-                .map(String.init) ?? model
-            switch bare.lowercased() {
-            case "k3", "k3-256k":
-                return "kimi-k3"
-            default:
-                return bare
-            }
+    private static func pricingModelID(_ model: String) -> String {
+        let bare = model.split(separator: "/", omittingEmptySubsequences: true).last
+            .map(String.init) ?? model
+        switch bare.lowercased() {
+        case "k3", "k3-256k":
+            return "kimi-k3"
+        default:
+            return bare
         }
     }
 
@@ -196,7 +104,7 @@ public enum KimiCodeSessionScanner {
 
         let end = calendar.startOfDay(for: now)
         let start = calendar.date(byAdding: .day, value: -(days - 1), to: end) ?? end
-        var values: [DayModelKey: TokenAccumulator] = [:]
+        var events: [UnifiedUsageEvent] = []
         let decoder = JSONDecoder()
         let modelsDevCatalog = CostUsagePricing.modelsDevCatalog(now: now, cacheRoot: modelsDevCacheRoot)
         var visitedFiles = 0
@@ -244,18 +152,34 @@ public enum KimiCodeSessionScanner {
                     let date = Date(timeIntervalSince1970: time / 1000)
                     let day = calendar.startOfDay(for: date)
                     guard day >= start, day <= end else { return }
-                    let key = DayModelKey(
+                    // Kimi's `inputOther` is already uncached. Passing totalTokens as
+                    // input+cacheRead+output (cache-write excluded) hits the engine's
+                    // "input is already uncached" branch so it is priced as-is. The estimated cost
+                    // is resolved here (official Moonshot rate via the third-party lookup, with a
+                    // kimi-k3 fallback) and carried as `providerCostUSD` so the engine trusts it;
+                    // an unresolvable cost surfaces as an unpriced day, not a partial subtotal.
+                    guard let input = Self.validOrNil(usage.inputOther),
+                          let cacheRead = Self.validOrNil(usage.inputCacheRead),
+                          let cacheCreation = Self.validOrNil(usage.inputCacheCreation),
+                          let output = Self.validOrNil(usage.output)
+                    else {
+                        return
+                    }
+                    events.append(UnifiedUsageEvent(
                         day: CostUsageLocalDay.key(from: day, calendar: calendar),
-                        model: rawModel)
-                    var value = values[key] ?? TokenAccumulator()
-                    guard value.add(
-                        usage,
                         model: rawModel,
-                        pricingDate: date,
-                        modelsDevCatalog: modelsDevCatalog,
-                        modelsDevCacheRoot: modelsDevCacheRoot)
-                    else { return }
-                    values[key] = value
+                        billingProviderID: UsageProvider.kimi.rawValue,
+                        inputTokens: input,
+                        outputTokens: output,
+                        totalTokens: input + cacheRead + output,
+                        cacheReadTokens: cacheRead,
+                        cacheCreationTokens: cacheCreation,
+                        providerCostUSD: Self.estimatedCost(
+                            model: rawModel,
+                            usage: usage,
+                            pricingDate: date,
+                            modelsDevCatalog: modelsDevCatalog,
+                            modelsDevCacheRoot: modelsDevCacheRoot)))
                 }
             } catch is CancellationError {
                 throw CancellationError()
@@ -264,76 +188,14 @@ public enum KimiCodeSessionScanner {
             }
         }
 
-        guard !values.isEmpty else { return nil }
-        let byDay = Dictionary(grouping: values, by: \.key.day)
-        let daily = byDay.keys.sorted().compactMap { day -> CostUsageDailyReport.Entry? in
-            let models = (byDay[day] ?? []).sorted { lhs, rhs in
-                lhs.key.model.localizedCaseInsensitiveCompare(rhs.key.model) == .orderedAscending
-            }
-            var total = TokenAccumulator()
-            var modelBreakdowns: [CostUsageDailyReport.ModelBreakdown] = []
-            var dayCost = 0.0
-            var daySawCost = false
-            for (key, value) in models {
-                guard let modelTotal = value.total else { return nil }
-                guard total.merge(value) else { return nil }
-                modelBreakdowns.append(CostUsageDailyReport.ModelBreakdown(
-                    modelName: key.model,
-                    billingProviderID: UsageProvider.kimi.rawValue,
-                    costUSD: value.sawCost ? value.cost : nil,
-                    totalTokens: modelTotal,
-                    inputTokens: value.input,
-                    cacheReadTokens: value.cacheRead,
-                    cacheCreationTokens: value.cacheCreation,
-                    outputTokens: value.output,
-                    requestCount: value.requests))
-                if value.sawCost {
-                    dayCost += value.cost
-                    daySawCost = true
-                }
-            }
-            guard let totalTokens = total.total else { return nil }
-            return CostUsageDailyReport.Entry(
-                date: day,
-                inputTokens: total.input,
-                outputTokens: total.output,
-                cacheReadTokens: total.cacheRead,
-                cacheCreationTokens: total.cacheCreation,
-                totalTokens: totalTokens,
-                requestCount: total.requests,
-                costUSD: daySawCost ? dayCost : nil,
-                modelsUsed: modelBreakdowns.map(\.modelName),
-                modelBreakdowns: modelBreakdowns)
-        }
-        let totalTokens = self.sum(daily.compactMap(\.totalTokens))
-        let totalRequests = self.sum(daily.compactMap(\.requestCount))
-        let totalCost = daily.compactMap(\.costUSD).reduce(0, +)
-        let sawCost = daily.contains { $0.costUSD != nil }
-        guard let totalTokens, let totalRequests else { return nil }
-
-        return CostUsageTokenSnapshot(
-            sessionTokens: nil,
-            sessionCostUSD: nil,
-            sessionRequests: nil,
-            last30DaysTokens: totalTokens,
-            last30DaysCostUSD: sawCost ? totalCost : nil,
-            last30DaysRequests: totalRequests,
-            currencyCode: sawCost ? "USD" : "XXX",
+        return UsageEventAggregator.aggregate(
+            events: events,
             historyDays: days,
-            historyCoverageIsEstablished: true,
-            historyLabel: "Kimi Code CLI",
-            costSource: .estimated,
-            daily: daily,
-            updatedAt: now)
+            now: now,
+            options: .init(
+                historyLabel: "Kimi Code CLI",
+                defaultBillingProviderID: UsageProvider.kimi.rawValue,
+                modelsDevCacheRoot: modelsDevCacheRoot))
     }
 
-    private static func sum(_ values: [Int]) -> Int? {
-        var result = 0
-        for value in values {
-            let addition = result.addingReportingOverflow(value)
-            guard !addition.overflow else { return nil }
-            result = addition.partialValue
-        }
-        return result
-    }
 }

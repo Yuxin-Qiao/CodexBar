@@ -246,7 +246,7 @@ public enum UsageEventAggregator {
                         cacheReadTokens: value.cacheRead,
                         cacheCreationTokens: value.cacheCreation,
                         outputTokens: value.output,
-                        reasoningTokens: value.reasoning,
+                        reasoningTokens: value.reasoning > 0 ? value.reasoning : nil,
                         requestCount: value.requests))
                 }
                 Self.merge(value, into: &total)

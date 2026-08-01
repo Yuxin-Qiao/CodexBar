@@ -45,79 +45,6 @@ public enum AntigravitySessionScanner {
         "claude-haiku-4-6-thinking": "claude-haiku-4-6",
     ]
 
-    private struct DayModelKey: Hashable {
-        let day: String
-        let model: String
-    }
-
-    private struct TokenAccumulator {
-        var input = 0
-        var cacheRead = 0
-        var output = 0
-        var reasoning = 0
-        var requests = 0
-        var cost = 0.0
-        var sawCost = false
-
-        mutating func add(_ row: UsageRow) -> Bool {
-            guard let nextInput = Self.adding(self.input, row.input),
-                  let nextCacheRead = Self.adding(self.cacheRead, row.cacheRead),
-                  let nextOutput = Self.adding(self.output, row.output),
-                  let nextReasoning = Self.adding(self.reasoning, row.reasoning),
-                  let nextRequests = Self.adding(self.requests, 1)
-            else {
-                return false
-            }
-            self.input = nextInput
-            self.cacheRead = nextCacheRead
-            self.output = nextOutput
-            self.reasoning = nextReasoning
-            self.requests = nextRequests
-            if let cost = row.costUSD, cost.isFinite {
-                let nextCost = self.cost + cost
-                if nextCost.isFinite {
-                    self.cost = nextCost
-                    self.sawCost = true
-                }
-            }
-            return true
-        }
-
-        mutating func merge(_ other: TokenAccumulator) -> Bool {
-            guard let nextInput = Self.adding(self.input, other.input),
-                  let nextCacheRead = Self.adding(self.cacheRead, other.cacheRead),
-                  let nextOutput = Self.adding(self.output, other.output),
-                  let nextReasoning = Self.adding(self.reasoning, other.reasoning),
-                  let nextRequests = Self.adding(self.requests, other.requests)
-            else {
-                return false
-            }
-            self.input = nextInput
-            self.cacheRead = nextCacheRead
-            self.output = nextOutput
-            self.reasoning = nextReasoning
-            self.requests = nextRequests
-            if other.sawCost {
-                let nextCost = self.cost + other.cost
-                if other.cost.isFinite, nextCost.isFinite {
-                    self.cost = nextCost
-                    self.sawCost = true
-                }
-            }
-            return true
-        }
-
-        var total: Int? {
-            guard let withCacheRead = Self.adding(self.input, self.cacheRead) else { return nil }
-            return Self.adding(withCacheRead, self.output)
-        }
-
-        private static func adding(_ lhs: Int, _ rhs: Int) -> Int? {
-            let result = lhs.addingReportingOverflow(rhs)
-            return result.overflow ? nil : result.partialValue
-        }
-    }
-
     private struct UsageRow {
         let model: String
         let createdMs: Int64
@@ -162,7 +89,7 @@ public enum AntigravitySessionScanner {
         let modelsDevCatalog = CostUsagePricing.modelsDevCatalog(now: now, cacheRoot: modelsDevCacheRoot)
         let end = calendar.startOfDay(for: now)
         let start = calendar.date(byAdding: .day, value: -(days - 1), to: end) ?? end
-        var values: [DayModelKey: TokenAccumulator] = [:]
+        var events: [UnifiedUsageEvent] = []
         var seenResponseIDs: Set<String> = []
         for databaseURL in databaseURLs {
             try checkCancellation()
@@ -175,75 +102,32 @@ public enum AntigravitySessionScanner {
                 let date = Date(timeIntervalSince1970: TimeInterval(row.createdMs) / 1000)
                 let day = calendar.startOfDay(for: date)
                 guard day >= start, day <= end else { return }
-                let key = DayModelKey(
+                // Antigravity's `input` is newly-processed (non-cached), and its consumption total
+                // is input+cacheRead+output — the same shape the shared engine produces — so the
+                // event carries that total verbatim. The per-row estimated cost (Google models.dev
+                // rate, resolved during the DB read) is carried as `providerCostUSD`; an
+                // unresolvable cost surfaces as an unpriced day rather than a partial subtotal.
+                events.append(UnifiedUsageEvent(
                     day: CostUsageLocalDay.key(from: day, calendar: calendar),
-                    model: row.model)
-                var value = values[key] ?? TokenAccumulator()
-                guard value.add(row) else { return }
-                values[key] = value
+                    model: row.model,
+                    billingProviderID: UsageProvider.antigravity.rawValue,
+                    inputTokens: row.input,
+                    outputTokens: row.output,
+                    totalTokens: row.input + row.cacheRead + row.output,
+                    cacheReadTokens: row.cacheRead,
+                    reasoningTokens: row.reasoning > 0 ? row.reasoning : nil,
+                    providerCostUSD: row.costUSD))
             }
         }
 
-        guard !values.isEmpty else { return nil }
-        let byDay = Dictionary(grouping: values, by: \.key.day)
-        let daily = byDay.keys.sorted().compactMap { day -> CostUsageDailyReport.Entry? in
-            let models = (byDay[day] ?? []).sorted { lhs, rhs in
-                lhs.key.model.localizedCaseInsensitiveCompare(rhs.key.model) == .orderedAscending
-            }
-            var total = TokenAccumulator()
-            var modelBreakdowns: [CostUsageDailyReport.ModelBreakdown] = []
-            var dayCost = 0.0
-            var daySawCost = false
-            for (key, value) in models {
-                guard let modelTotal = value.total else { return nil }
-                guard total.merge(value) else { return nil }
-                modelBreakdowns.append(CostUsageDailyReport.ModelBreakdown(
-                    modelName: key.model,
-                    costUSD: value.sawCost ? value.cost : nil,
-                    totalTokens: modelTotal,
-                    inputTokens: value.input,
-                    cacheReadTokens: value.cacheRead,
-                    cacheCreationTokens: nil,
-                    outputTokens: value.output,
-                    reasoningTokens: value.reasoning > 0 ? value.reasoning : nil,
-                    requestCount: value.requests))
-                if value.sawCost {
-                    dayCost += value.cost
-                    daySawCost = true
-                }
-            }
-            guard let totalTokens = total.total else { return nil }
-            return CostUsageDailyReport.Entry(
-                date: day,
-                inputTokens: total.input,
-                outputTokens: total.output,
-                cacheReadTokens: total.cacheRead,
-                cacheCreationTokens: nil,
-                totalTokens: totalTokens,
-                requestCount: total.requests,
-                costUSD: daySawCost ? dayCost : nil,
-                modelsUsed: modelBreakdowns.map(\.modelName),
-                modelBreakdowns: modelBreakdowns)
-        }
-        let totalTokens = self.sum(daily.compactMap(\.totalTokens))
-        let totalRequests = self.sum(daily.compactMap(\.requestCount))
-        let totalCost = daily.compactMap(\.costUSD).reduce(0, +)
-        let sawCost = daily.contains { $0.costUSD != nil }
-        guard let totalTokens, let totalRequests else { return nil }
-
-        return CostUsageTokenSnapshot(
-            sessionTokens: nil,
-            sessionCostUSD: nil,
-            last30DaysTokens: totalTokens,
-            last30DaysCostUSD: sawCost ? totalCost : nil,
-            last30DaysRequests: totalRequests,
-            currencyCode: sawCost ? "USD" : "XXX",
+        return UsageEventAggregator.aggregate(
+            events: events,
             historyDays: days,
-            historyCoverageIsEstablished: true,
-            historyLabel: "Antigravity",
-            costSource: .estimated,
-            daily: daily,
-            updatedAt: now)
+            now: now,
+            options: .init(
+                historyLabel: "Antigravity",
+                defaultBillingProviderID: UsageProvider.antigravity.rawValue,
+                modelsDevCacheRoot: modelsDevCacheRoot))
     }
 
     // MARK: - Paths
@@ -488,16 +372,6 @@ public enum AntigravitySessionScanner {
     private static func clampedInt(_ value: UInt64?) -> Int {
         guard let value else { return 0 }
         return Int(clamping: value)
-    }
-
-    private static func sum(_ values: [Int]) -> Int? {
-        var result = 0
-        for value in values {
-            let addition = result.addingReportingOverflow(value)
-            guard !addition.overflow else { return nil }
-            result = addition.partialValue
-        }
-        return result
     }
 }
 

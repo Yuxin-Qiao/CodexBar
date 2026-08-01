@@ -30,96 +30,6 @@ public enum MiniMaxSessionScanner {
     /// stays self-contained (mirrors how `KimiCodeSessionScanner` honors `KIMI_CODE_HOME`).
     public static let homeEnvironmentKey = "MINIMAX_HOME"
 
-    private struct DayModelKey: Hashable {
-        let day: String
-        let model: String
-    }
-
-    private struct TokenAccumulator {
-        var input = 0
-        var cacheRead = 0
-        var cacheCreation = 0
-        var output = 0
-        var reasoning = 0
-        var requests = 0
-        var cost = 0.0
-        var sawCost = false
-
-        mutating func add(
-            _ row: UsageRow,
-            modelsDevCatalog: ModelsDevCatalog?,
-            modelsDevCacheRoot: URL?) -> Bool
-        {
-            guard let nextInput = Self.adding(self.input, row.input),
-                  let nextCacheRead = Self.adding(self.cacheRead, row.cacheRead),
-                  let nextCacheCreation = Self.adding(self.cacheCreation, row.cacheCreation),
-                  let nextOutput = Self.adding(self.output, row.output),
-                  let nextReasoning = Self.adding(self.reasoning, row.reasoning),
-                  let nextRequests = Self.adding(self.requests, 1)
-            else {
-                return false
-            }
-            self.input = nextInput
-            self.cacheRead = nextCacheRead
-            self.cacheCreation = nextCacheCreation
-            self.output = nextOutput
-            self.reasoning = nextReasoning
-            self.requests = nextRequests
-            if let cost = row.estimatedCost(
-                modelsDevCatalog: modelsDevCatalog,
-                modelsDevCacheRoot: modelsDevCacheRoot),
-                cost.isFinite
-            {
-                let nextCost = self.cost + cost
-                if nextCost.isFinite {
-                    self.cost = nextCost
-                    self.sawCost = true
-                }
-            }
-            return true
-        }
-
-        mutating func merge(_ other: TokenAccumulator) -> Bool {
-            guard let nextInput = Self.adding(self.input, other.input),
-                  let nextCacheRead = Self.adding(self.cacheRead, other.cacheRead),
-                  let nextCacheCreation = Self.adding(self.cacheCreation, other.cacheCreation),
-                  let nextOutput = Self.adding(self.output, other.output),
-                  let nextReasoning = Self.adding(self.reasoning, other.reasoning),
-                  let nextRequests = Self.adding(self.requests, other.requests)
-            else {
-                return false
-            }
-            self.input = nextInput
-            self.cacheRead = nextCacheRead
-            self.cacheCreation = nextCacheCreation
-            self.output = nextOutput
-            self.reasoning = nextReasoning
-            self.requests = nextRequests
-            if other.sawCost {
-                let nextCost = self.cost + other.cost
-                if other.cost.isFinite, nextCost.isFinite {
-                    self.cost = nextCost
-                    self.sawCost = true
-                }
-            }
-            return true
-        }
-
-        var total: Int? {
-            guard let inputAndCacheRead = Self.adding(self.input, self.cacheRead),
-                  let withCacheCreation = Self.adding(inputAndCacheRead, self.cacheCreation)
-            else {
-                return nil
-            }
-            return Self.adding(withCacheCreation, self.output)
-        }
-
-        private static func adding(_ lhs: Int, _ rhs: Int) -> Int? {
-            let result = lhs.addingReportingOverflow(rhs)
-            return result.overflow ? nil : result.partialValue
-        }
-    }
-
     private struct UsageRow {
         let model: String
         let createdMs: Int64
@@ -205,82 +115,43 @@ public enum MiniMaxSessionScanner {
         }
 
         let modelsDevCatalog = CostUsagePricing.modelsDevCatalog(now: now, cacheRoot: modelsDevCacheRoot)
-        var values: [DayModelKey: TokenAccumulator] = [:]
+        var events: [UnifiedUsageEvent] = []
 
         for row in rows {
             try checkCancellation()
             let date = Date(timeIntervalSince1970: TimeInterval(row.createdMs) / 1000)
             let day = calendar.startOfDay(for: date)
             guard day >= start, day <= end else { continue }
-            let key = DayModelKey(day: CostUsageLocalDay.key(from: day, calendar: calendar), model: row.model)
-            var value = values[key] ?? TokenAccumulator()
-            guard value.add(row, modelsDevCatalog: modelsDevCatalog, modelsDevCacheRoot: modelsDevCacheRoot)
-            else { continue }
-            values[key] = value
+            // MiniMax reports `input` already uncached. The engine's uncached-input disambiguation
+            // keys off `totalTokens`: passing input+cacheRead+output (cache-write excluded) hits the
+            // "input is already uncached" branch so it is priced as-is, while cache-write is priced
+            // separately via `cacheCreationTokens`. The estimated cost is resolved here (official
+            // models.dev rate, falling back to a real provider-reported `cost_usd`) and carried as
+            // `providerCostUSD` so the engine trusts it and never re-prices; an unresolvable cost
+            // surfaces as an unpriced day instead of a partial subtotal.
+            events.append(UnifiedUsageEvent(
+                day: CostUsageLocalDay.key(from: day, calendar: calendar),
+                model: row.model,
+                billingProviderID: UsageProvider.minimax.rawValue,
+                inputTokens: row.input,
+                outputTokens: row.output,
+                totalTokens: row.input + row.cacheRead + row.output,
+                cacheReadTokens: row.cacheRead,
+                cacheCreationTokens: row.cacheCreation,
+                reasoningTokens: row.reasoning > 0 ? row.reasoning : nil,
+                providerCostUSD: row.estimatedCost(
+                    modelsDevCatalog: modelsDevCatalog,
+                    modelsDevCacheRoot: modelsDevCacheRoot)))
         }
 
-        guard !values.isEmpty else { return nil }
-        let byDay = Dictionary(grouping: values, by: \.key.day)
-        let daily = byDay.keys.sorted().compactMap { day -> CostUsageDailyReport.Entry? in
-            let models = (byDay[day] ?? []).sorted { lhs, rhs in
-                lhs.key.model.localizedCaseInsensitiveCompare(rhs.key.model) == .orderedAscending
-            }
-            var total = TokenAccumulator()
-            var modelBreakdowns: [CostUsageDailyReport.ModelBreakdown] = []
-            var dayCost = 0.0
-            var daySawCost = false
-            for (key, value) in models {
-                guard let modelTotal = value.total else { return nil }
-                guard total.merge(value) else { return nil }
-                modelBreakdowns.append(CostUsageDailyReport.ModelBreakdown(
-                    modelName: key.model,
-                    billingProviderID: UsageProvider.minimax.rawValue,
-                    costUSD: value.sawCost ? value.cost : nil,
-                    totalTokens: modelTotal,
-                    inputTokens: value.input,
-                    cacheReadTokens: value.cacheRead,
-                    cacheCreationTokens: value.cacheCreation,
-                    outputTokens: value.output,
-                    reasoningTokens: value.reasoning > 0 ? value.reasoning : nil,
-                    requestCount: value.requests))
-                if value.sawCost {
-                    dayCost += value.cost
-                    daySawCost = true
-                }
-            }
-            guard let totalTokens = total.total else { return nil }
-            return CostUsageDailyReport.Entry(
-                date: day,
-                inputTokens: total.input,
-                outputTokens: total.output,
-                cacheReadTokens: total.cacheRead,
-                cacheCreationTokens: total.cacheCreation,
-                totalTokens: totalTokens,
-                requestCount: total.requests,
-                costUSD: daySawCost ? dayCost : nil,
-                modelsUsed: modelBreakdowns.map(\.modelName),
-                modelBreakdowns: modelBreakdowns)
-        }
-        let totalTokens = self.sum(daily.compactMap(\.totalTokens))
-        let totalRequests = self.sum(daily.compactMap(\.requestCount))
-        let totalCost = daily.compactMap(\.costUSD).reduce(0, +)
-        let sawCost = daily.contains { $0.costUSD != nil }
-        guard let totalTokens, let totalRequests else { return nil }
-
-        return CostUsageTokenSnapshot(
-            sessionTokens: nil,
-            sessionCostUSD: nil,
-            sessionRequests: nil,
-            last30DaysTokens: totalTokens,
-            last30DaysCostUSD: sawCost ? totalCost : nil,
-            last30DaysRequests: totalRequests,
-            currencyCode: sawCost ? "USD" : "XXX",
+        return UsageEventAggregator.aggregate(
+            events: events,
             historyDays: days,
-            historyCoverageIsEstablished: true,
-            historyLabel: "MiniMax",
-            costSource: .estimated,
-            daily: daily,
-            updatedAt: now)
+            now: now,
+            options: .init(
+                historyLabel: "MiniMax",
+                defaultBillingProviderID: UsageProvider.minimax.rawValue,
+                modelsDevCacheRoot: modelsDevCacheRoot))
     }
 
     // MARK: - Paths
@@ -420,16 +291,5 @@ public enum MiniMaxSessionScanner {
         return String(cString: cString)
     }
 
-    // MARK: - Helpers
-
-    private static func sum(_ values: [Int]) -> Int? {
-        var result = 0
-        for value in values {
-            let addition = result.addingReportingOverflow(value)
-            guard !addition.overflow else { return nil }
-            result = addition.partialValue
-        }
-        return result
-    }
 }
 #endif

@@ -50,7 +50,9 @@ struct KimiCodeSessionScannerTests {
             calendar: Self.calendar))
 
         #expect(snapshot.currencyCode == "USD")
-        #expect(snapshot.last30DaysTokens == 82)
+        // Shared-engine total is input+cacheRead+output; cache-write is priced and reported
+        // separately (cacheCreationTokens) but not folded into the consumption total.
+        #expect(snapshot.last30DaysTokens == 76)
         #expect(snapshot.last30DaysRequests == 3)
         #expect(snapshot.last30DaysCostUSD != nil)
         #expect(snapshot.costSource == .estimated)
@@ -59,7 +61,7 @@ struct KimiCodeSessionScannerTests {
             "kimi-code/k3",
             "kimi-code/kimi-for-coding",
         ])
-        #expect(snapshot.daily.flatMap { $0.modelBreakdowns ?? [] }.map(\.totalTokens) == [55, 27])
+        #expect(snapshot.daily.flatMap { $0.modelBreakdowns ?? [] }.map(\.totalTokens) == [49, 27])
         #expect(snapshot.daily.flatMap { $0.modelBreakdowns ?? [] }.map(\.inputTokens) == [14, 8])
         #expect(snapshot.daily.flatMap { $0.modelBreakdowns ?? [] }.map(\.cacheReadTokens) == [25, 9])
         #expect(snapshot.daily.flatMap { $0.modelBreakdowns ?? [] }.map(\.cacheCreationTokens) == [6, 0])
@@ -68,6 +70,47 @@ struct KimiCodeSessionScannerTests {
         #expect(abs((breakdowns.first?.costUSD ?? 0) - 0.0002175) < 0.000000001)
         // Kimi wire.jsonl carries no reasoning field, so the reasoning bucket stays nil.
         #expect(snapshot.daily.flatMap { $0.modelBreakdowns ?? [] }.map(\.reasoningTokens) == [nil, nil])
+    }
+
+    @Test
+    func `mixed pricing day withholds the day cost instead of a partial total`() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let agent = root
+            .appendingPathComponent("sessions/workspace/session-a/agents/main", isDirectory: true)
+        try FileManager.default.createDirectory(at: agent, withIntermediateDirectories: true)
+        try Self.write([
+            // kimi-code/k3 is priced via the third-party fallback.
+            Self.usage(
+                time: 1_784_257_200_000,
+                model: "kimi-code/k3",
+                input: 10,
+                cacheRead: 20,
+                output: 3),
+            // An unresolvable model (no third-party mapping, empty catalog) stays unpriced.
+            Self.usage(
+                time: 1_784_257_300_000,
+                model: "kimi-code/unknown-model",
+                input: 4,
+                cacheRead: 5,
+                output: 7),
+        ], to: agent.appendingPathComponent("wire.jsonl"))
+
+        let snapshot = try #require(KimiCodeSessionScanner.scan(
+            environment: [KimiSettingsReader.codeHomeEnvironmentKey: root.path],
+            historyDays: 30,
+            now: Date(timeIntervalSince1970: 1_784_347_200),
+            calendar: Self.calendar,
+            modelsDevCacheRoot: root.appendingPathComponent("empty-pricing", isDirectory: true)))
+
+        // Tokens are still counted; the mixed-priced day withholds its cost so the partial
+        // subtotal never masquerades as a complete total. k3(10+20+3) + unknown(4+5+7) = 49.
+        #expect(snapshot.last30DaysTokens == 49)
+        #expect(snapshot.currencyCode == "XXX")
+        #expect(snapshot.last30DaysCostUSD == nil)
+        #expect(snapshot.daily.first?.totalTokens == 49)
+        #expect(snapshot.daily.first?.costUSD == nil)
     }
 
     @Test
