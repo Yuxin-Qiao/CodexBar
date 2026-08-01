@@ -316,11 +316,13 @@ extension CostUsageScanner {
     ///
     /// `msg:`, `req:`, and `pair:` keys can all describe the same response: a cumulative
     /// chunk may gain or lose the optional second identifier, or bridge through both
-    /// partial forms. All matching keys of the same session are aliases of one class. A
-    /// newly inserted row replaces the whole class only when it shares the session and its
-    /// token total is at least as large as the class's largest member, the signal that it
-    /// is a cumulative snapshot rather than a distinct call that happens to reuse an ID.
-    /// A smaller or differently-sessioned row starts its own class.
+    /// partial forms. All matching keys of the same session are aliases of one class; a
+    /// missing session acts as a wildcard so an early chunk without `sessionId` still
+    /// coalesces with a later chunk that carries one. A newly inserted row replaces the
+    /// whole class only when it shares the session and its token total is at least as
+    /// large as the class's largest member, the signal that it is a cumulative snapshot
+    /// rather than a distinct call that happens to reuse an ID. A smaller or
+    /// differently-sessioned row starts its own class.
     private static func claudeInsertRow(
         _ row: ClaudeUsageRow,
         into keyedRows: inout [String: ClaudeUsageRow],
@@ -331,7 +333,10 @@ extension CostUsageScanner {
         }
         let classKeys = Self.claudeClassKeys(for: row, keyedRows: keyedRows)
         let sessionClassKeys = classKeys.filter {
-            keyedRows[$0]?.sessionId == row.sessionId
+            let existingSession = keyedRows[$0]?.sessionId
+            return existingSession == row.sessionId
+                || existingSession == nil
+                || row.sessionId == nil
         }
         guard let representative = sessionClassKeys
             .compactMap({ keyedRows[$0] })

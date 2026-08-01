@@ -395,6 +395,63 @@ struct CostUsageClaudeKeyNamespaceTests {
     }
 
     @Test
+    func `sessionless chunk coalesces with later session row`() throws {
+        // An early cumulative chunk without sessionId belongs to the same stream as the
+        // later chunk that carries the sessionId; a missing session acts as a wildcard.
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2025, month: 12, day: 23)
+        let iso0 = env.isoString(for: day)
+        let iso1 = env.isoString(for: day.addingTimeInterval(1))
+
+        let sessionless: [String: Any] = [
+            "type": "assistant",
+            "timestamp": iso0,
+            "isSidechain": false,
+            "message": [
+                "id": "x",
+                "model": "claude-sonnet-4-20250514",
+                "usage": [
+                    "input_tokens": 11,
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 0,
+                    "output_tokens": 1,
+                ],
+            ],
+        ]
+        let withSession: [String: Any] = [
+            "type": "assistant",
+            "timestamp": iso1,
+            "sessionId": "session-late-id",
+            "requestId": "y",
+            "isSidechain": false,
+            "message": [
+                "id": "x",
+                "model": "claude-sonnet-4-20250514",
+                "usage": [
+                    "input_tokens": 13,
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 0,
+                    "output_tokens": 1,
+                ],
+            ],
+        ]
+
+        let fileURL = try env.writeClaudeProjectFile(
+            relativePath: "project-a/session-transition.jsonl",
+            contents: env.jsonl([sessionless, withSession]))
+
+        let parsed = CostUsageScanner.parseClaudeFile(
+            fileURL: fileURL,
+            range: CostUsageScanner.CostUsageDayRange(since: day, until: day),
+            providerFilter: .all)
+
+        #expect(parsed.rows.count == 1)
+        #expect(parsed.rows[0].input == 13)
+    }
+
+    @Test
     func `cross file reconciliation keeps reused lone ids distinct`() throws {
         // A lone message ID is only unique within a file; unrelated sessions in separate
         // files that reuse the same ID must both be counted.
