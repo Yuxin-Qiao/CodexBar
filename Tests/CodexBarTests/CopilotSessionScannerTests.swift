@@ -1,9 +1,7 @@
 import Foundation
 import Testing
-
 @testable import CodexBarCore
 
-@Suite
 struct CopilotSessionScannerTests {
     private static let calendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
@@ -26,9 +24,9 @@ struct CopilotSessionScannerTests {
         let shutdownUsage = #""usage":{"inputTokens":73595,"outputTokens":1196,"# +
             #""cacheReadTokens":48228,"cacheWriteTokens":0,"reasoningTokens":0}"#
         let shutdown = """
-            {"type":"session.shutdown","timestamp":"2026-07-28T10:00:00.000Z",\
-            "data":{"modelMetrics":{"claude-haiku-4.5":{"requests":{"count":3},\(shutdownUsage)}}}}
-            """
+        {"type":"session.shutdown","timestamp":"2026-07-28T10:00:00.000Z",\
+        "data":{"modelMetrics":{"claude-haiku-4.5":{"requests":{"count":3},\(shutdownUsage)}}}}
+        """
         let lines = [
             #"{"type":"session.start","timestamp":"2026-07-28T09:00:00.000Z"}"#,
             shutdown,
@@ -101,7 +99,7 @@ struct CopilotSessionScannerTests {
     }
 
     @Test
-    func `scanner returns nil when no metrics exist`() throws {
+    func `scanner returns nil when no metrics exist`() {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }

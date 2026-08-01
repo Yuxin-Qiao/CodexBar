@@ -1,9 +1,7 @@
 import Foundation
 import Testing
-
 @testable import CodexBarCore
 
-@Suite
 struct UsageEventAggregatorTests {
     private let now = Date(timeIntervalSince1970: 1_785_283_200)
 
