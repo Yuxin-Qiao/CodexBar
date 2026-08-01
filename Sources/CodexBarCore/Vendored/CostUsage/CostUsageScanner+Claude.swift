@@ -304,14 +304,12 @@ extension CostUsageScanner {
         return nil
     }
 
-    /// Inserts a row and supersedes any partial row that shares its identity.
+    /// Inserts a row and supersedes any row that shares its identity.
     ///
-    /// A cumulative chunk may start with only `messageId` and gain `requestId` on a later
-    /// chunk of the same response (or the analogous request-only transition). The fully
-    /// identified row replaces the partial `msg:`/`req:` row only when its token total is
-    /// at least as large, the signal that it is a cumulative snapshot rather than a
-    /// distinct call that happens to reuse the ID. Partial rows never evict a fully
-    /// identified row.
+    /// A cumulative chunk may gain or lose the optional second identifier on a later chunk
+    /// of the same response. The newly inserted row replaces the other row only when its
+    /// token total is at least as large, the signal that it is a cumulative snapshot
+    /// rather than a distinct call that happens to reuse the ID.
     private static func claudeInsertRow(
         _ row: ClaudeUsageRow,
         into keyedRows: inout [String: ClaudeUsageRow]) -> Bool
@@ -322,26 +320,44 @@ extension CostUsageScanner {
         keyedRows[key] = row
         if key.hasPrefix("pair:") {
             if let messageId = Self.claudeNonEmptyID(row.messageId) {
-                Self.claudeSupersedePartialRow("msg:\(messageId)", with: row, keyedRows: &keyedRows)
+                Self.claudeSupersedeIfCumulative(
+                    row,
+                    existingKey: "msg:\(messageId)",
+                    keyedRows: &keyedRows)
             }
             if let requestId = Self.claudeNonEmptyID(row.requestId) {
-                Self.claudeSupersedePartialRow("req:\(requestId)", with: row, keyedRows: &keyedRows)
+                Self.claudeSupersedeIfCumulative(
+                    row,
+                    existingKey: "req:\(requestId)",
+                    keyedRows: &keyedRows)
+            }
+        } else if key.hasPrefix("msg:") {
+            let messageId = String(key.dropFirst(4))
+            for pairKey in keyedRows.keys where pairKey.hasPrefix("pair:\(messageId):") {
+                Self.claudeSupersedeIfCumulative(row, existingKey: pairKey, keyedRows: &keyedRows)
+            }
+        } else if key.hasPrefix("req:") {
+            let requestId = String(key.dropFirst(4))
+            for pairKey in keyedRows.keys
+                where pairKey.hasPrefix("pair:") && pairKey.hasSuffix(":\(requestId)")
+            {
+                Self.claudeSupersedeIfCumulative(row, existingKey: pairKey, keyedRows: &keyedRows)
             }
         }
         return true
     }
 
-    private static func claudeSupersedePartialRow(
-        _ partialKey: String,
-        with row: ClaudeUsageRow,
+    private static func claudeSupersedeIfCumulative(
+        _ row: ClaudeUsageRow,
+        existingKey: String,
         keyedRows: inout [String: ClaudeUsageRow])
     {
-        guard let partial = keyedRows[partialKey],
-              claudeRowTotalTokens(row) >= claudeRowTotalTokens(partial)
+        guard let existing = keyedRows[existingKey],
+              claudeRowTotalTokens(row) >= claudeRowTotalTokens(existing)
         else {
             return
         }
-        keyedRows.removeValue(forKey: partialKey)
+        keyedRows.removeValue(forKey: existingKey)
     }
 
     private static func claudeRowTotalTokens(_ row: ClaudeUsageRow) -> Int {
@@ -389,22 +405,45 @@ extension CostUsageScanner {
             }
         }
 
-        // Apply the same cumulative-snapshot rule across files: a winning paired row
-        // supersedes a partial row in another file when its token total is at least as large.
-        let pairedKeys = winners.keys.filter { $0.hasPrefix("pair:") }
-        for key in pairedKeys {
+        // Apply the same cumulative-snapshot rule across files: a winning row supersedes a
+        // row with the same messageId/requestId in another file when its token total is at
+        // least as large, in either identity direction.
+        let reconciledKeys = Array(winners.keys)
+        for key in reconciledKeys {
             guard let winner = winners[key]?.row else { continue }
-            if let messageId = Self.claudeNonEmptyID(winner.messageId),
-               let partial = winners["msg:\(messageId)"]?.row,
-               Self.claudeRowTotalTokens(winner) >= Self.claudeRowTotalTokens(partial)
-            {
-                winners.removeValue(forKey: "msg:\(messageId)")
-            }
-            if let requestId = Self.claudeNonEmptyID(winner.requestId),
-               let partial = winners["req:\(requestId)"]?.row,
-               Self.claudeRowTotalTokens(winner) >= Self.claudeRowTotalTokens(partial)
-            {
-                winners.removeValue(forKey: "req:\(requestId)")
+            if key.hasPrefix("pair:") {
+                if let messageId = Self.claudeNonEmptyID(winner.messageId),
+                   let partial = winners["msg:\(messageId)"]?.row,
+                   Self.claudeRowTotalTokens(winner) >= Self.claudeRowTotalTokens(partial)
+                {
+                    winners.removeValue(forKey: "msg:\(messageId)")
+                }
+                if let requestId = Self.claudeNonEmptyID(winner.requestId),
+                   let partial = winners["req:\(requestId)"]?.row,
+                   Self.claudeRowTotalTokens(winner) >= Self.claudeRowTotalTokens(partial)
+                {
+                    winners.removeValue(forKey: "req:\(requestId)")
+                }
+            } else if key.hasPrefix("msg:") {
+                let messageId = String(key.dropFirst(4))
+                for pairKey in reconciledKeys where pairKey.hasPrefix("pair:\(messageId):") {
+                    if let pair = winners[pairKey]?.row,
+                       Self.claudeRowTotalTokens(winner) >= Self.claudeRowTotalTokens(pair)
+                    {
+                        winners.removeValue(forKey: pairKey)
+                    }
+                }
+            } else if key.hasPrefix("req:") {
+                let requestId = String(key.dropFirst(4))
+                for pairKey in reconciledKeys
+                    where pairKey.hasPrefix("pair:") && pairKey.hasSuffix(":\(requestId)")
+                {
+                    if let pair = winners[pairKey]?.row,
+                       Self.claudeRowTotalTokens(winner) >= Self.claudeRowTotalTokens(pair)
+                    {
+                        winners.removeValue(forKey: pairKey)
+                    }
+                }
             }
         }
 
