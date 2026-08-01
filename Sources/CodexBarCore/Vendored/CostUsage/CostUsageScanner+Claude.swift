@@ -283,10 +283,22 @@ extension CostUsageScanner {
         // A lone `msg:`/`req:` ID is only unique within a file (or incremental merge).
         // Across files it may be reused by unrelated sessions, so only paired rows are
         // canonicalized for reconciliation.
-        guard let key = self.claudeInFileKey(row), key.hasPrefix("pair:") else {
-            return nil
+        if let key = self.claudeInFileKey(row), key.hasPrefix("pair:") {
+            return key
         }
-        return key
+        // Alias-bearing partial rows represent a stream whose pair identity is known,
+        // so they reconcile against other files' paired rows of the same stream.
+        if let messageId = Self.claudeNonEmptyID(row.messageId),
+           let aliasRequestId = row.aliasRequestIds?.first
+        {
+            return "pair:\(Self.claudeEscapeKeyComponent(messageId)):\(Self.claudeEscapeKeyComponent(aliasRequestId))"
+        }
+        if let requestId = Self.claudeNonEmptyID(row.requestId),
+           let aliasMessageId = row.aliasMessageIds?.first
+        {
+            return "pair:\(Self.claudeEscapeKeyComponent(aliasMessageId)):\(Self.claudeEscapeKeyComponent(requestId))"
+        }
+        return nil
     }
 
     private static func mergeClaudeRows(existing: [ClaudeUsageRow], delta: [ClaudeUsageRow]) -> [ClaudeUsageRow] {
