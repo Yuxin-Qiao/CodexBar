@@ -133,6 +133,7 @@ extension CostUsageScanner {
         var keyedRows: [String: ClaudeUsageRow] = [:]
         var canonicalKeys: [String] = []
         var quarantinedKeys: Set<String> = []
+        var identityIndex: [String: [String]] = [:]
         var unkeyedRows: [ClaudeUsageRow] = []
 
         let maxLineBytes = 512 * 1024
@@ -237,7 +238,8 @@ extension CostUsageScanner {
                             row,
                             into: &keyedRows,
                             canonicalKeys: &canonicalKeys,
-                            quarantinedKeys: &quarantinedKeys)
+                            quarantinedKeys: &quarantinedKeys,
+                            identityIndex: &identityIndex)
                         {
                             // Older logs omit IDs; treat each line as distinct to avoid dropping usage.
                             unkeyedRows.append(row)
@@ -291,13 +293,15 @@ extension CostUsageScanner {
         var keyedRows: [String: ClaudeUsageRow] = [:]
         var canonicalKeys: [String] = []
         var quarantinedKeys: Set<String> = []
+        var identityIndex: [String: [String]] = [:]
         var unkeyedRows: [ClaudeUsageRow] = []
 
         for row in existing where !Self.claudeInsertRow(
             row,
             into: &keyedRows,
             canonicalKeys: &canonicalKeys,
-            quarantinedKeys: &quarantinedKeys)
+            quarantinedKeys: &quarantinedKeys,
+            identityIndex: &identityIndex)
         {
             unkeyedRows.append(row)
         }
@@ -305,7 +309,8 @@ extension CostUsageScanner {
             row,
             into: &keyedRows,
             canonicalKeys: &canonicalKeys,
-            quarantinedKeys: &quarantinedKeys)
+            quarantinedKeys: &quarantinedKeys,
+            identityIndex: &identityIndex)
         {
             unkeyedRows.append(row)
         }
@@ -344,6 +349,7 @@ extension CostUsageScanner {
         value
             .replacingOccurrences(of: "%", with: "%25")
             .replacingOccurrences(of: "@", with: "%40")
+            .replacingOccurrences(of: ":", with: "%3A")
     }
 
     /// Inserts a row into its stream identity equivalence class.
@@ -361,12 +367,17 @@ extension CostUsageScanner {
         _ row: ClaudeUsageRow,
         into keyedRows: inout [String: ClaudeUsageRow],
         canonicalKeys: inout [String],
-        quarantinedKeys: inout Set<String>) -> Bool
+        quarantinedKeys: inout Set<String>,
+        identityIndex: inout [String: [String]]) -> Bool
     {
         guard let key = claudeInFileKey(row) else {
             return false
         }
-        let classKeys = Self.claudeClassKeys(for: row, keyedRows: keyedRows)
+        let classKeys = Self.claudeClassKeys(for: row, ownKey: key, identityIndex: identityIndex).filter {
+            // Paired rows are unique identities: another pair with the same messageId is a
+            // different request, while partial rows may bridge through the pair.
+            !key.hasPrefix("pair:") || !$0.hasPrefix("pair:") || $0 == key
+        }
         let sessionClassKeys = classKeys.filter {
             guard !quarantinedKeys.contains($0) else { return false }
             let existingSession = keyedRows[$0]?.sessionId
@@ -379,6 +390,7 @@ extension CostUsageScanner {
             // keep it separate rather than bridging two distinct sessions.
             quarantinedKeys.insert(key)
             keyedRows[key] = row
+            Self.claudeIndexKey(key, for: row, identityIndex: &identityIndex)
             if !canonicalKeys.contains(key) {
                 canonicalKeys.append(key)
             }
@@ -389,6 +401,7 @@ extension CostUsageScanner {
             .max(by: { Self.claudeRowTotalTokens($0) < Self.claudeRowTotalTokens($1) })
         else {
             keyedRows[key] = row
+            Self.claudeIndexKey(key, for: row, identityIndex: &identityIndex)
             if !canonicalKeys.contains(key) {
                 canonicalKeys.append(key)
             }
@@ -402,11 +415,14 @@ extension CostUsageScanner {
                 canonicalKeys.append(canonicalKey)
             }
             keyedRows[key] = row
+            Self.claudeIndexKey(key, for: row, identityIndex: &identityIndex)
             for classKey in sessionClassKeys {
                 keyedRows[classKey] = row
+                Self.claudeIndexKey(classKey, for: row, identityIndex: &identityIndex)
             }
         } else {
             keyedRows[key] = row
+            Self.claudeIndexKey(key, for: row, identityIndex: &identityIndex)
             if !sessionClassKeys.contains(where: { $0 != key && canonicalKeys.contains($0) }),
                let alternate = sessionClassKeys.first(where: { $0 != key && keyedRows[$0] != nil })
             {
@@ -417,6 +433,21 @@ extension CostUsageScanner {
             }
         }
         return true
+    }
+
+    private static func claudeIndexKey(
+        _ key: String,
+        for row: ClaudeUsageRow,
+        identityIndex: inout [String: [String]])
+    {
+        let messageId = Self.claudeNonEmptyID(row.messageId).map(Self.claudeEscapeKeyComponent)
+        let requestId = Self.claudeNonEmptyID(row.requestId).map(Self.claudeEscapeKeyComponent)
+        if let messageId {
+            identityIndex["m:\(messageId)", default: []].append(key)
+        }
+        if let requestId {
+            identityIndex["r:\(requestId)", default: []].append(key)
+        }
     }
 
     private static func claudeKnownSessions(
@@ -434,76 +465,17 @@ extension CostUsageScanner {
 
     private static func claudeClassKeys(
         for row: ClaudeUsageRow,
-        keyedRows: [String: ClaudeUsageRow]) -> [String]
+        ownKey: String,
+        identityIndex: [String: [String]]) -> [String]
     {
         let messageId = Self.claudeNonEmptyID(row.messageId).map(Self.claudeEscapeKeyComponent)
         let requestId = Self.claudeNonEmptyID(row.requestId).map(Self.claudeEscapeKeyComponent)
-        let session = Self.claudeNonEmptyID(row.sessionId).map(Self.claudeEscapeKeyComponent)
-        var keys: Set<String> = []
-        if let messageId, let requestId {
-            keys.insert("pair:\(messageId):\(requestId)")
-            let messagePlain = "msg:\(messageId)"
-            if keyedRows[messagePlain] != nil {
-                keys.insert(messagePlain)
-            }
-            for qualifiedKey in keyedRows.keys where qualifiedKey.hasPrefix("\(messagePlain)@") {
-                keys.insert(qualifiedKey)
-            }
-            let requestPlain = "req:\(requestId)"
-            if keyedRows[requestPlain] != nil {
-                keys.insert(requestPlain)
-            }
-            for qualifiedKey in keyedRows.keys where qualifiedKey.hasPrefix("\(requestPlain)@") {
-                keys.insert(qualifiedKey)
-            }
-        } else if let messageId {
-            let messagePlain = "msg:\(messageId)"
-            if let session {
-                keys.insert("\(messagePlain)@\(session)")
-            }
-            keys.insert(messagePlain)
-            if keyedRows[messagePlain] != nil {
-                keys.insert(messagePlain)
-            }
-            for qualifiedKey in keyedRows.keys where qualifiedKey.hasPrefix("\(messagePlain)@") {
-                keys.insert(qualifiedKey)
-            }
-            for pairKey in keyedRows.keys where pairKey.hasPrefix("pair:\(messageId):") {
-                keys.insert(pairKey)
-                let requestId = String(pairKey.dropFirst("pair:\(messageId):".count))
-                let requestPlain = "req:\(requestId)"
-                if keyedRows[requestPlain] != nil {
-                    keys.insert(requestPlain)
-                }
-                for qualifiedKey in keyedRows.keys where qualifiedKey.hasPrefix("\(requestPlain)@") {
-                    keys.insert(qualifiedKey)
-                }
-            }
-        } else if let requestId {
-            let requestPlain = "req:\(requestId)"
-            if let session {
-                keys.insert("\(requestPlain)@\(session)")
-            }
-            keys.insert(requestPlain)
-            if keyedRows[requestPlain] != nil {
-                keys.insert(requestPlain)
-            }
-            for qualifiedKey in keyedRows.keys where qualifiedKey.hasPrefix("\(requestPlain)@") {
-                keys.insert(qualifiedKey)
-            }
-            for pairKey in keyedRows.keys
-                where pairKey.hasPrefix("pair:") && pairKey.hasSuffix(":\(requestId)")
-            {
-                keys.insert(pairKey)
-                let messageId = String(pairKey.dropLast(requestId.count + 1).dropFirst("pair:".count))
-                let messagePlain = "msg:\(messageId)"
-                if keyedRows[messagePlain] != nil {
-                    keys.insert(messagePlain)
-                }
-                for qualifiedKey in keyedRows.keys where qualifiedKey.hasPrefix("\(messagePlain)@") {
-                    keys.insert(qualifiedKey)
-                }
-            }
+        var keys: Set<String> = [ownKey]
+        if let messageId {
+            keys.formUnion(identityIndex["m:\(messageId)"] ?? [])
+        }
+        if let requestId {
+            keys.formUnion(identityIndex["r:\(requestId)"] ?? [])
         }
         return Array(keys)
     }
@@ -560,13 +532,15 @@ extension CostUsageScanner {
         var keyedRows: [String: ClaudeUsageRow] = [:]
         var canonicalKeys: [String] = []
         var quarantinedKeys: Set<String> = []
+        var identityIndex: [String: [String]] = [:]
         for key in winners.keys.sorted() {
             guard let winner = winners[key]?.row else { continue }
             _ = Self.claudeInsertRow(
                 winner,
                 into: &keyedRows,
                 canonicalKeys: &canonicalKeys,
-                quarantinedKeys: &quarantinedKeys)
+                quarantinedKeys: &quarantinedKeys,
+                identityIndex: &identityIndex)
         }
         rows.append(contentsOf: canonicalKeys.sorted().compactMap { keyedRows[$0] })
         return rows
