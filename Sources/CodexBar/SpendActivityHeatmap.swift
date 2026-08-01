@@ -490,8 +490,7 @@ private struct SpendActivityDailyGrid: View {
         .accessibilityChildren {
             ForEach(self.series.daily.indices.filter(self.series.isVisible), id: \.self) { index in
                 if let date = self.series.date(at: index) {
-                    Color.clear
-                        .accessibilityElement()
+                    Text(self.accessibilityTokenValue(at: index))
                         .accessibilityLabel(SpendActivityDateFormatting.mediumDateString(date))
                         .accessibilityValue(self.accessibilityTokenValue(at: index))
                 }
