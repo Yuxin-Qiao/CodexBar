@@ -634,7 +634,15 @@ extension CostUsageScanner {
                 }
                 let candidate = (path: path, row: row)
                 if let existing = winners[canonicalKey] {
-                    if Self.claudeRowWins(lhs: candidate, rhs: existing) {
+                    let aliasInvolved = existing.row.aliasMessageIds != nil
+                        || existing.row.aliasRequestIds != nil
+                        || row.aliasMessageIds != nil
+                        || row.aliasRequestIds != nil
+                    if aliasInvolved {
+                        if Self.claudeRowTotalTokens(row) >= Self.claudeRowTotalTokens(existing.row) {
+                            winners[canonicalKey] = candidate
+                        }
+                    } else if Self.claudeRowWins(lhs: candidate, rhs: existing) {
                         winners[canonicalKey] = candidate
                     }
                 } else {

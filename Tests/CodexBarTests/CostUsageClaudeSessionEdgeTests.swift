@@ -452,6 +452,78 @@ struct CostUsageClaudeSessionEdgeTests {
     }
 
     @Test
+    func `fork files keep the latest cumulative alias row`() throws {
+        // A lexicographically earlier fork contains only the old pair(m,r)=100 while the
+        // main transcript ends with msg(m)=200 (alias r); the larger cumulative row must
+        // win reconciliation instead of the fork's stale path-ordered row.
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2025, month: 12, day: 23)
+        let iso0 = env.isoString(for: day)
+        let iso1 = env.isoString(for: day.addingTimeInterval(1))
+
+        func pairRow(timestamp: String, input: Int) -> [String: Any] {
+            [
+                "type": "assistant",
+                "timestamp": timestamp,
+                "sessionId": "session-fork-latest",
+                "requestId": "r",
+                "isSidechain": false,
+                "message": [
+                    "id": "m",
+                    "model": "claude-sonnet-4-20250514",
+                    "usage": [
+                        "input_tokens": input,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "output_tokens": 1,
+                    ],
+                ],
+            ]
+        }
+        let messageOnly: [String: Any] = [
+            "type": "assistant",
+            "timestamp": iso1,
+            "sessionId": "session-fork-latest",
+            "isSidechain": false,
+            "message": [
+                "id": "m",
+                "model": "claude-sonnet-4-20250514",
+                "usage": [
+                    "input_tokens": 200,
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 0,
+                    "output_tokens": 1,
+                ],
+            ],
+        ]
+
+        _ = try env.writeClaudeProjectFile(
+            relativePath: "project-a/fork-a.jsonl",
+            contents: env.jsonl([pairRow(timestamp: iso0, input: 100)]))
+        _ = try env.writeClaudeProjectFile(
+            relativePath: "project-a/main-transcript.jsonl",
+            contents: env.jsonl([pairRow(timestamp: iso0, input: 100), messageOnly]))
+
+        var options = CostUsageScanner.Options(
+            codexSessionsRoot: nil,
+            claudeProjectsRoots: [env.claudeProjectsRoot],
+            cacheRoot: env.cacheRoot)
+        options.refreshMinIntervalSeconds = 0
+
+        let report = CostUsageScanner.loadDailyReport(
+            provider: .claude,
+            since: day,
+            until: day,
+            now: day,
+            options: options)
+
+        #expect(report.data.count == 1)
+        #expect(report.data[0].inputTokens == 200)
+    }
+
+    @Test
     func `identifier transition retires the previous pair`() throws {
         // pair(m1,r) -> req(r) -> pair(m2,r) is one stream; the old pair(m1,r) must not
         // remain canonical and double-count the cumulative totals.
