@@ -761,4 +761,122 @@ struct CostUsageClaudeSessionEdgeTests {
         #expect(report.data.count == 1)
         #expect(report.data[0].inputTokens == 100)
     }
+
+    @Test
+    func `report keeps same file sessions distinct for a reused pair`() throws {
+        // The daily report path must not re-collapse two sessions from one file that
+        // reuse the same (messageId, requestId) pair.
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2025, month: 12, day: 23)
+        let iso0 = env.isoString(for: day)
+        let iso1 = env.isoString(for: day.addingTimeInterval(1))
+
+        func row(sessionId: String, timestamp: String, input: Int) -> [String: Any] {
+            [
+                "type": "assistant",
+                "timestamp": timestamp,
+                "sessionId": sessionId,
+                "requestId": "r",
+                "isSidechain": false,
+                "message": [
+                    "id": "m",
+                    "model": "claude-sonnet-4-20250514",
+                    "usage": [
+                        "input_tokens": input,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                        "output_tokens": 1,
+                    ],
+                ],
+            ]
+        }
+
+        _ = try env.writeClaudeProjectFile(
+            relativePath: "project-a/reused-pair-sessions.jsonl",
+            contents: env.jsonl([
+                row(sessionId: "session-a", timestamp: iso0, input: 11),
+                row(sessionId: "session-b", timestamp: iso1, input: 13),
+            ]))
+
+        var options = CostUsageScanner.Options(
+            codexSessionsRoot: nil,
+            claudeProjectsRoots: [env.claudeProjectsRoot],
+            cacheRoot: env.cacheRoot)
+        options.refreshMinIntervalSeconds = 0
+
+        let report = CostUsageScanner.loadDailyReport(
+            provider: .claude,
+            since: day,
+            until: day,
+            now: day,
+            options: options)
+
+        #expect(report.data.count == 1)
+        #expect(report.data[0].inputTokens == 24)
+    }
+
+    @Test
+    func `sessionless pair is retired when a session appears later`() throws {
+        // pair(m1,r) sessionless -> req(r) session A -> pair(m2,r) session A is one
+        // stream; the sessionless old pair must be retired as well.
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2025, month: 12, day: 23)
+        let iso0 = env.isoString(for: day)
+        let iso1 = env.isoString(for: day.addingTimeInterval(1))
+        let iso2 = env.isoString(for: day.addingTimeInterval(2))
+
+        func row(
+            messageId: String?,
+            requestId: String?,
+            sessionId: String?,
+            timestamp: String,
+            input: Int) -> [String: Any]
+        {
+            var message: [String: Any] = [
+                "model": "claude-sonnet-4-20250514",
+                "usage": [
+                    "input_tokens": input,
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 0,
+                    "output_tokens": 1,
+                ],
+            ]
+            if let messageId {
+                message["id"] = messageId
+            }
+            var row: [String: Any] = [
+                "type": "assistant",
+                "timestamp": timestamp,
+                "isSidechain": false,
+                "message": message,
+            ]
+            if let requestId {
+                row["requestId"] = requestId
+            }
+            if let sessionId {
+                row["sessionId"] = sessionId
+            }
+            return row
+        }
+
+        let fileURL = try env.writeClaudeProjectFile(
+            relativePath: "project-a/sessionless-pair-retire.jsonl",
+            contents: env.jsonl([
+                row(messageId: "m1", requestId: "r", sessionId: nil, timestamp: iso0, input: 100),
+                row(messageId: nil, requestId: "r", sessionId: "session-a", timestamp: iso1, input: 150),
+                row(messageId: "m2", requestId: "r", sessionId: "session-a", timestamp: iso2, input: 300),
+            ]))
+
+        let parsed = CostUsageScanner.parseClaudeFile(
+            fileURL: fileURL,
+            range: CostUsageScanner.CostUsageDayRange(since: day, until: day),
+            providerFilter: .all)
+
+        #expect(parsed.rows.count == 1)
+        #expect(parsed.rows[0].input == 300)
+    }
 }

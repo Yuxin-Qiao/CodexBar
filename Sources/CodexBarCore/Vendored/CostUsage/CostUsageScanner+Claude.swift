@@ -519,27 +519,39 @@ extension CostUsageScanner {
             .map { "@\(Self.claudeEscapeKeyComponent($0))" } ?? ""
         if let messageId {
             for aliasRequestId in row.aliasRequestIds ?? [] where aliasRequestId != requestId {
-                let oldPairKey = "pair:\(Self.claudeEscapeKeyComponent(messageId)):"
+                let pairBase = "pair:\(Self.claudeEscapeKeyComponent(messageId)):"
                     + Self.claudeEscapeKeyComponent(aliasRequestId)
-                    + sessionSuffix
-                if let oldRow = state.keyedRows[oldPairKey] {
-                    Self.claudeUnindexKey(oldPairKey, for: oldRow, identityIndex: &state.identityIndex)
-                    state.keyedRows.removeValue(forKey: oldPairKey)
-                }
-                state.canonicalKeys.remove(oldPairKey)
+                Self.claudeRetirePairKeys(
+                    base: pairBase,
+                    sessionSuffix: sessionSuffix,
+                    state: &state)
             }
         }
         if let requestId {
             for aliasMessageId in row.aliasMessageIds ?? [] where aliasMessageId != messageId {
-                let oldPairKey = "pair:\(Self.claudeEscapeKeyComponent(aliasMessageId)):"
+                let pairBase = "pair:\(Self.claudeEscapeKeyComponent(aliasMessageId)):"
                     + Self.claudeEscapeKeyComponent(requestId)
-                    + sessionSuffix
-                if let oldRow = state.keyedRows[oldPairKey] {
-                    Self.claudeUnindexKey(oldPairKey, for: oldRow, identityIndex: &state.identityIndex)
-                    state.keyedRows.removeValue(forKey: oldPairKey)
-                }
-                state.canonicalKeys.remove(oldPairKey)
+                Self.claudeRetirePairKeys(
+                    base: pairBase,
+                    sessionSuffix: sessionSuffix,
+                    state: &state)
             }
+        }
+    }
+
+    private static func claudeRetirePairKeys(
+        base: String,
+        sessionSuffix: String,
+        state: inout ClaudeIdentityState)
+    {
+        // The old pair may have been stored sessionless or with an earlier session.
+        let candidates = sessionSuffix.isEmpty ? [base] : [base + sessionSuffix, base]
+        for oldPairKey in candidates {
+            if let oldRow = state.keyedRows[oldPairKey] {
+                Self.claudeUnindexKey(oldPairKey, for: oldRow, identityIndex: &state.identityIndex)
+                state.keyedRows.removeValue(forKey: oldPairKey)
+            }
+            state.canonicalKeys.remove(oldPairKey)
         }
     }
 
@@ -654,6 +666,16 @@ extension CostUsageScanner {
                 }
                 let candidate = (path: path, row: row)
                 if let existing = winners[canonicalKey] {
+                    if existing.path == path,
+                       Self.claudeNonEmptyID(existing.row.sessionId)
+                       != Self.claudeNonEmptyID(row.sessionId)
+                    {
+                        // The same file can hold distinct sessions that reuse the pair;
+                        // keep both instead of collapsing them through the session-free
+                        // canonical key.
+                        rows.append(row)
+                        continue
+                    }
                     let aliasInvolved = existing.row.aliasMessageIds != nil
                         || existing.row.aliasRequestIds != nil
                         || row.aliasMessageIds != nil
