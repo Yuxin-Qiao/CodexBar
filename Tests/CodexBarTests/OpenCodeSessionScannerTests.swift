@@ -357,6 +357,66 @@ struct OpenCodeSessionScannerTests {
     }
 
     @Test
+    func `same model routed through two providers stays in separate breakdowns`() throws {
+        let root = try Self.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent("opencode"),
+            withIntermediateDirectories: true)
+        let anthropic = Self.assistantMessage(
+            id: "msg-anthropic",
+            modelID: "claude-sonnet-4",
+            providerID: "anthropic",
+            created: "2026-07-10T09:00:00Z",
+            tokens: #"{"input":10,"output":5,"cache":{"read":0,"write":0}}"#)
+        let minimax = Self.assistantMessage(
+            id: "msg-minimax",
+            modelID: "claude-sonnet-4",
+            providerID: "minimax",
+            created: "2026-07-10T09:00:01Z",
+            tokens: #"{"input":10,"output":5,"cache":{"read":0,"write":0}}"#)
+        try Self.createOpenCodeDatabase(
+            at: root.appendingPathComponent("opencode/opencode.db"),
+            messages: [anthropic, minimax])
+
+        let snapshot = try #require(Self.scan(root: root, now: Self.date("2026-07-12T12:00:00Z")))
+        let breakdowns = try #require(snapshot.daily.first?.modelBreakdowns)
+        #expect(breakdowns.count == 2)
+        #expect(Set(breakdowns.compactMap(\.billingProviderID)) == ["anthropic", "minimax"])
+        #expect(breakdowns.allSatisfy { $0.totalTokens == 15 })
+    }
+
+    @Test
+    func `distinct message ids are not collapsed by fingerprint`() throws {
+        let root = try Self.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent("opencode"),
+            withIntermediateDirectories: true)
+        // Identical tokens and timestamps, but distinct embedded IDs: both must be counted.
+        let first = Self.assistantMessage(
+            id: "msg-1",
+            modelID: "claude-sonnet-4",
+            providerID: "anthropic",
+            created: "2026-07-10T09:00:00Z",
+            tokens: #"{"input":10,"output":5,"cache":{"read":0,"write":0}}"#)
+        let second = Self.assistantMessage(
+            id: "msg-2",
+            modelID: "claude-sonnet-4",
+            providerID: "anthropic",
+            created: "2026-07-10T09:00:00Z",
+            tokens: #"{"input":10,"output":5,"cache":{"read":0,"write":0}}"#)
+        try Self.createOpenCodeDatabase(
+            at: root.appendingPathComponent("opencode/opencode.db"),
+            messages: [first, second])
+
+        let snapshot = try #require(Self.scan(root: root, now: Self.date("2026-07-12T12:00:00Z")))
+        #expect(snapshot.last30DaysRequests == 2)
+        #expect(snapshot.last30DaysTokens == 30)
+        #expect(snapshot.daily.first?.modelBreakdowns?.first?.totalTokens == 30)
+    }
+
+    @Test
     func `scanner propagates a busy database instead of reporting empty history`() throws {
         let root = try Self.makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }

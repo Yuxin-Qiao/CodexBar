@@ -224,6 +224,26 @@ struct KimiCodeSessionScannerTests {
         }
     }
 
+    @Test
+    func `scanner reports truncated records as incomplete`() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let agent = root
+            .appendingPathComponent("sessions/workspace/session-a/agents/main", isDirectory: true)
+        try FileManager.default.createDirectory(at: agent, withIntermediateDirectories: true)
+        let oversized = String(repeating: "x", count: 1024 * 1024 + 1)
+        try Data(oversized.utf8).write(to: agent.appendingPathComponent("wire.jsonl"))
+
+        #expect(throws: KimiCodeSessionScanner.ScanError.historyLimitExceeded) {
+            _ = try KimiCodeSessionScanner.scanCancellable(
+                environment: [KimiSettingsReader.codeHomeEnvironmentKey: root.path],
+                historyDays: 30,
+                now: Date(timeIntervalSince1970: 1_784_347_200),
+                calendar: Self.calendar)
+        }
+    }
+
     private static let calendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!

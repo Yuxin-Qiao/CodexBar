@@ -45,6 +45,8 @@ public enum OpenCodeSessionScanner {
         case databaseUnavailable
         /// The scan cannot claim complete history after omitting an otherwise eligible file.
         case historyLimitExceeded
+        /// An existing storage directory could not be enumerated.
+        case enumerationFailed
     }
 
     public static let maximumFiles = 20000
@@ -102,6 +104,7 @@ public enum OpenCodeSessionScanner {
     private struct DayModelKey: Hashable {
         let day: String
         let model: String
+        let billingProviderID: String?
     }
 
     /// One assistant-turn usage record, normalized from either a JSON message file or an
@@ -229,30 +232,21 @@ public enum OpenCodeSessionScanner {
 
         var values: [DayModelKey: TokenAccumulator] = [:]
         var costs: [DayModelKey: Double] = [:]
-        var billingProviderIDs: [DayModelKey: String] = [:]
-        var conflictingBillingProviderIDs: Set<DayModelKey> = []
         // Keys that include at least one billable record with no provider-reported cost (legacy JSON
         // rows). Their day's cost must be withheld so a priced DB subtotal is not read as complete.
         var partiallyPricedKeys: Set<DayModelKey> = []
         for record in records {
             try checkCancellation()
-            let key = DayModelKey(day: record.day, model: record.model)
+            // The bucket key includes the billing provider so the same model routed through two
+            // providers on one day stays in separate breakdowns instead of merging into a single
+            // conflicting (and therefore unlabeled) row.
+            let key = DayModelKey(
+                day: record.day,
+                model: record.model,
+                billingProviderID: record.billingProviderID)
             var value = values[key] ?? TokenAccumulator()
             guard value.add(record.usage) else { continue }
             values[key] = value
-            if let providerID = record.billingProviderID,
-               !providerID.isEmpty
-            {
-                if let existing = billingProviderIDs[key],
-                   existing != providerID
-                {
-                    conflictingBillingProviderIDs.insert(key)
-                } else {
-                    billingProviderIDs[key] = providerID
-                }
-            } else {
-                conflictingBillingProviderIDs.insert(key)
-            }
             if let cost = record.cost, cost.isFinite, cost >= 0 {
                 costs[key] = (costs[key] ?? 0) + cost
             } else {
@@ -271,7 +265,14 @@ public enum OpenCodeSessionScanner {
             var dayCostSeen = false
             var dayHasUnpricedUsage = false
             var modelBreakdowns: [CostUsageDailyReport.ModelBreakdown] = []
-            for (key, value) in models {
+            // Sort breakdowns by model name, then by provider, so same-model routed rows stay
+            // adjacent and predictable.
+            for (key, value) in models.sorted(by: {
+                if $0.key.model != $1.key.model {
+                    return $0.key.model.localizedCaseInsensitiveCompare($1.key.model) == .orderedAscending
+                }
+                return ($0.key.billingProviderID ?? "") < ($1.key.billingProviderID ?? "")
+            }) {
                 guard let modelTotal = value.total else { return nil }
                 guard total.merge(value) else { return nil }
                 // A model whose records are only partially priced reports no subtotal: pairing the
@@ -282,9 +283,7 @@ public enum OpenCodeSessionScanner {
                 if !modelPriced { dayHasUnpricedUsage = true }
                 modelBreakdowns.append(CostUsageDailyReport.ModelBreakdown(
                     modelName: key.model,
-                    billingProviderID: conflictingBillingProviderIDs.contains(key)
-                        ? nil
-                        : billingProviderIDs[key],
+                    billingProviderID: key.billingProviderID,
                     costUSD: modelCost,
                     totalTokens: modelTotal,
                     inputTokens: value.input,
@@ -332,6 +331,7 @@ public enum OpenCodeSessionScanner {
             historyDays: days,
             historyCoverageIsEstablished: true,
             historyLabel: "OpenCode",
+            costSource: hasPricedUsage ? .providerReported : .estimated,
             daily: daily,
             updatedAt: now)
     }
@@ -357,12 +357,15 @@ public enum OpenCodeSessionScanner {
         let end = context.end
         let calendar = context.calendar
         let storage = self.opencodeMessageStorageURL(environment: environment)
+        if !fileManager.fileExists(atPath: storage.path) {
+            return []
+        }
         guard let enumerator = fileManager.enumerator(
             at: storage,
             includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey],
             options: [.skipsHiddenFiles])
         else {
-            return []
+            throw ScanError.enumerationFailed
         }
 
         let decoder = JSONDecoder()
@@ -389,11 +392,15 @@ public enum OpenCodeSessionScanner {
             }
             visitedFiles += 1
             visitedBytes += size
-            guard let data = try? Data(contentsOf: url),
-                  let message = try? decoder.decode(WireMessage.self, from: data)
-            else {
-                continue
+            let data: Data
+            do {
+                data = try Data(contentsOf: url)
+            } catch {
+                // A transiently unreadable legacy file must surface as a failed scan instead of
+                // silently publishing the remaining files as complete established history.
+                throw error
             }
+            guard let message = try? decoder.decode(WireMessage.self, from: data) else { continue }
             guard message.role == "assistant",
                   let model = self.cleaned(message.modelID ?? message.model?.id),
                   let tokens = message.tokens,
@@ -411,9 +418,12 @@ public enum OpenCodeSessionScanner {
                 model: model,
                 usage: usage,
                 cost: nil)
-            guard context.seenMessageIDs.insert(dedupKey).inserted,
-                  context.seenFingerprints.insert(fingerprint).inserted
-            else { continue }
+            // Distinct embedded IDs are authoritative; the fingerprint only collapses ID-less rows.
+            if let messageID = self.cleaned(message.id) {
+                guard context.seenMessageIDs.insert(messageID).inserted else { continue }
+            } else {
+                guard context.seenFingerprints.insert(fingerprint).inserted else { continue }
+            }
             records.append(UsageRecord(
                 dedupKey: dedupKey,
                 day: CostUsageLocalDay.key(from: day, calendar: calendar),
@@ -534,10 +544,13 @@ public enum OpenCodeSessionScanner {
             let fingerprint = self.fingerprint(createdMs: createdMs, model: model, usage: usage, cost: cost)
             // tokscale dedups JSON vs DB by embedded id, then by full-field fingerprint when ids
             // don't conflict — so a message present in both stores collapses to one record.
+            // Distinct embedded IDs are authoritative: two legitimate messages sharing the same
+            // created/model/token fields must not collide on the fingerprint.
             if let messageID, !messageID.isEmpty {
                 guard context.seenMessageIDs.insert(messageID).inserted else { continue }
+            } else {
+                guard context.seenFingerprints.insert(fingerprint).inserted else { continue }
             }
-            guard context.seenFingerprints.insert(fingerprint).inserted else { continue }
 
             records.append(UsageRecord(
                 dedupKey: messageID ?? fingerprint,

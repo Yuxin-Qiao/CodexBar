@@ -792,8 +792,18 @@ enum CostUsagePricing {
         let cacheCreationTotal = max(0, tokens.cacheCreation)
         let cacheCreation1h = min(max(0, tokens.cacheCreation1h), cacheCreationTotal)
         let cacheCreation5m = cacheCreationTotal - cacheCreation1h
+        // Checked addition: accepted scanner counters can individually be near Int.max, and an
+        // unchecked sum would trap before the threshold comparison.
+        let combinedContext = input.addingReportingOverflow(cacheRead)
+        let contextOverflow = combinedContext.overflow
+        var withCacheCreation = (overflow: false, partialValue: combinedContext.partialValue)
+        if contextOverflow {
+            withCacheCreation.overflow = true
+        } else {
+            withCacheCreation = combinedContext.partialValue.addingReportingOverflow(cacheCreationTotal)
+        }
         let usesLongContextRates = pricing.thresholdTokens.map {
-            input + cacheRead + cacheCreationTotal > $0
+            contextOverflow || withCacheCreation.overflow || withCacheCreation.partialValue > $0
         } ?? false
         let inputRate = usesLongContextRates
             ? pricing.inputCostPerTokenAboveThreshold ?? pricing.inputCostPerToken

@@ -268,4 +268,36 @@ struct CostUsageDailyReportMergeTests {
             .merged(with: report(providerID: nil))
         #expect(try #require(incomplete.data.first?.modelBreakdowns?.first).billingProviderID == nil)
     }
+
+    @Test
+    func `merged token buckets become unavailable on overflow`() throws {
+        func report(tokens: Int) -> CostUsageDailyReport {
+            CostUsageDailyReport(
+                data: [
+                    CostUsageDailyReport.Entry(
+                        date: "2026-04-04",
+                        inputTokens: tokens,
+                        outputTokens: 1,
+                        totalTokens: tokens,
+                        costUSD: 1,
+                        modelsUsed: ["gpt-5.4"],
+                        modelBreakdowns: [
+                            CostUsageDailyReport.ModelBreakdown(
+                                modelName: "gpt-5.4",
+                                billingProviderID: "openai",
+                                costUSD: 1,
+                                totalTokens: tokens,
+                                inputTokens: tokens,
+                                outputTokens: 1),
+                        ]),
+                ],
+                summary: nil)
+        }
+
+        let merged = report(tokens: Int.max).merged(with: report(tokens: 1))
+        let breakdown = try #require(merged.data.first?.modelBreakdowns?.first)
+        #expect(breakdown.totalTokens == nil)
+        #expect(breakdown.inputTokens == nil)
+        #expect(breakdown.costUSD == 2)
+    }
 }

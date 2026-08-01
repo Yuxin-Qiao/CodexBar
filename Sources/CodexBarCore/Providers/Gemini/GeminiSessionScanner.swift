@@ -29,6 +29,8 @@ public enum GeminiSessionScanner {
     public enum ScanError: Error, Equatable {
         /// The scan cannot claim complete history after omitting an otherwise eligible transcript.
         case historyLimitExceeded
+        /// An existing history directory could not be enumerated.
+        case enumerationFailed
     }
 
     /// Environment override for the Gemini CLI home directory, resolved directly here (the same
@@ -246,12 +248,15 @@ public enum GeminiSessionScanner {
         let days = max(1, historyDays)
         let calendar = CostUsageLocalDay.gregorianCalendar(preserving: calendar)
         let tmp = self.geminiTmpURL(environment: environment)
+        if !fileManager.fileExists(atPath: tmp.path) {
+            return nil
+        }
         guard let enumerator = fileManager.enumerator(
             at: tmp,
             includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey],
             options: [.skipsHiddenFiles])
         else {
-            return nil
+            throw ScanError.enumerationFailed
         }
 
         let end = calendar.startOfDay(for: now)
@@ -283,7 +288,14 @@ public enum GeminiSessionScanner {
             else { throw ScanError.historyLimitExceeded }
             visitedFiles += 1
             visitedBytes += size
-            guard let data = try? Data(contentsOf: url) else { continue }
+            let data: Data
+            do {
+                data = try Data(contentsOf: url)
+            } catch {
+                // A transiently unreadable transcript must surface as a failed scan instead of
+                // silently publishing the remaining files as complete established history.
+                throw error
+            }
             // Messages without a usable timestamp fall back to the file mtime (tokscale rule);
             // epoch zero simply lands outside the window when even the mtime is unavailable.
             let fallbackDate = modificationDate ?? Date(timeIntervalSince1970: 0)
@@ -309,9 +321,15 @@ public enum GeminiSessionScanner {
             }
             var total = TokenAccumulator()
             var modelBreakdowns: [CostUsageDailyReport.ModelBreakdown] = []
+            var dayOverflowed = false
             for (key, value) in models {
-                guard let modelTotal = value.total else { return nil }
-                guard total.merge(value) else { return nil }
+                guard let modelTotal = value.total else { continue }
+                if !total.merge(value) {
+                    // A single overflowing model must not erase the whole day's history; keep the
+                    // day with unavailable totals instead of silently dropping it.
+                    dayOverflowed = true
+                    continue
+                }
                 modelBreakdowns.append(CostUsageDailyReport.ModelBreakdown(
                     modelName: key.model,
                     costUSD: nil,
@@ -323,12 +341,12 @@ public enum GeminiSessionScanner {
                     reasoningTokens: value.reasoning > 0 ? value.reasoning : nil,
                     requestCount: value.requests))
             }
-            guard let totalTokens = total.total else { return nil }
+            let totalTokens = dayOverflowed ? nil : total.total
             return CostUsageDailyReport.Entry(
                 date: day,
-                inputTokens: total.input,
-                outputTokens: total.output,
-                cacheReadTokens: total.cacheRead,
+                inputTokens: dayOverflowed ? nil : total.input,
+                outputTokens: dayOverflowed ? nil : total.output,
+                cacheReadTokens: dayOverflowed ? nil : total.cacheRead,
                 cacheCreationTokens: nil,
                 totalTokens: totalTokens,
                 requestCount: total.requests,

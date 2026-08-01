@@ -82,7 +82,9 @@ extension UsageStore {
             codexOwnerKey: codexOwnerKey)
         let suppressRepeatedStartupDepletion = previousState == nil &&
             SessionQuotaNotificationLogic.isDepleted(currentRemaining) &&
-            self.persistedSessionQuotaDepletionCycle(provider: provider) == cycleIdentity
+            self.persistedSessionQuotaDepletionCycle(
+                provider: provider,
+                codexOwnerKey: codexOwnerKey) == cycleIdentity
         let forceBaseline = provider == .codex && self.codexSessionQuotaBaselineRequirement != nil
         let evaluation = SessionQuotaTransitionReducer.evaluate(
             previous: previousState,
@@ -99,9 +101,10 @@ extension UsageStore {
         self.sessionQuotaTransitionStates[provider] = evaluation.state
         self.persistSessionQuotaDepletion(
             provider: provider,
-            cycleIdentity: SessionQuotaNotificationLogic.isDepleted(currentRemaining)
+            cycleIdentity: SessionQuotaNotificationLogic.isDepleted(evaluation.state.remaining)
                 ? cycleIdentity
-                : nil)
+                : nil,
+            codexOwnerKey: codexOwnerKey)
         if provider == .codex {
             self.codexSessionQuotaBaselineRequirement = nil
         }

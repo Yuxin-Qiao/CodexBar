@@ -6,6 +6,8 @@ public enum KimiCodeSessionScanner {
     public enum ScanError: Error, Equatable {
         /// The scan cannot claim complete history after omitting an otherwise eligible file.
         case historyLimitExceeded
+        /// An existing session directory could not be enumerated.
+        case enumerationFailed
     }
 
     public static let maximumFiles = 20000
@@ -199,83 +201,36 @@ public enum KimiCodeSessionScanner {
         let calendar = CostUsageLocalDay.gregorianCalendar(preserving: calendar)
         let home = KimiSettingsReader.kimiCodeHomeURL(environment: environment)
         let sessions = home.appendingPathComponent("sessions", isDirectory: true)
+        if !fileManager.fileExists(atPath: sessions.path) {
+            return nil
+        }
         guard let enumerator = fileManager.enumerator(
             at: sessions,
             includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey],
             options: [.skipsHiddenFiles])
         else {
-            return nil
+            throw ScanError.enumerationFailed
         }
 
         let end = calendar.startOfDay(for: now)
         let start = calendar.date(byAdding: .day, value: -(days - 1), to: end) ?? end
-        var values: [DayModelKey: TokenAccumulator] = [:]
         let decoder = JSONDecoder()
         let modelsDevCatalog = CostUsagePricing.modelsDevCatalog(now: now, cacheRoot: modelsDevCacheRoot)
-        var visitedFiles = 0
-        var visitedBytes = 0
+        var scanContext = TranscriptScanContext(
+            values: [:],
+            decoder: decoder,
+            modelsDevCatalog: modelsDevCatalog,
+            modelsDevCacheRoot: modelsDevCacheRoot,
+            calendar: calendar,
+            start: start,
+            end: end,
+            maximumFiles: maximumFiles)
 
         while let url = enumerator.nextObject() as? URL {
             try checkCancellation()
-            guard url.lastPathComponent == "wire.jsonl",
-                  url.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent == "agents"
-            else {
-                continue
-            }
-            guard visitedFiles < maximumFiles else { throw ScanError.historyLimitExceeded }
-            let resourceValues = try? url.resourceValues(
-                forKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey])
-            guard resourceValues?.isRegularFile == true else { continue }
-            if let modificationDate = resourceValues?.contentModificationDate,
-               modificationDate < start
-            {
-                continue
-            }
-            let size = max(0, resourceValues?.fileSize ?? 0)
-            guard size <= self.maximumBytes - visitedBytes else { throw ScanError.historyLimitExceeded }
-            visitedFiles += 1
-            visitedBytes += size
-            do {
-                try CostUsageJsonl.scan(
-                    fileURL: url,
-                    maxLineBytes: 1024 * 1024,
-                    prefixBytes: 1024 * 1024,
-                    checkCancellation: checkCancellation)
-                { line in
-                    guard !line.wasTruncated,
-                          let event = try? decoder.decode(WireEvent.self, from: line.bytes),
-                          event.type == "usage.record",
-                          event.usageScope == nil || event.usageScope == "turn",
-                          let time = event.time,
-                          time.isFinite,
-                          let rawModel = event.model?.trimmingCharacters(in: .whitespacesAndNewlines),
-                          !rawModel.isEmpty,
-                          let usage = event.usage
-                    else {
-                        return
-                    }
-                    let date = Date(timeIntervalSince1970: time / 1000)
-                    let day = calendar.startOfDay(for: date)
-                    guard day >= start, day <= end else { return }
-                    let key = DayModelKey(
-                        day: CostUsageLocalDay.key(from: day, calendar: calendar),
-                        model: rawModel)
-                    var value = values[key] ?? TokenAccumulator()
-                    guard value.add(
-                        usage,
-                        model: rawModel,
-                        pricingDate: date,
-                        modelsDevCatalog: modelsDevCatalog,
-                        modelsDevCacheRoot: modelsDevCacheRoot)
-                    else { return }
-                    values[key] = value
-                }
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch {
-                continue
-            }
+            try self.scanTranscript(url, context: &scanContext, checkCancellation: checkCancellation)
         }
+        let values = scanContext.values
 
         guard !values.isEmpty else { return nil }
         let byDay = Dictionary(grouping: values, by: \.key.day)
@@ -349,6 +304,108 @@ public enum KimiCodeSessionScanner {
             costSource: .estimated,
             daily: daily,
             updatedAt: now)
+    }
+
+    private struct TranscriptScanContext {
+        var values: [DayModelKey: TokenAccumulator]
+        let decoder: JSONDecoder
+        let modelsDevCatalog: ModelsDevCatalog?
+        let modelsDevCacheRoot: URL?
+        let calendar: Calendar
+        let start: Date
+        let end: Date
+        let maximumFiles: Int
+        var visitedFiles = 0
+        var visitedBytes = 0
+    }
+
+    private static func scanTranscript(
+        _ url: URL,
+        context: inout TranscriptScanContext,
+        checkCancellation: @escaping () throws -> Void) throws
+    {
+        var values = context.values
+        let decoder = context.decoder
+        let modelsDevCatalog = context.modelsDevCatalog
+        let modelsDevCacheRoot = context.modelsDevCacheRoot
+        let calendar = context.calendar
+        let start = context.start
+        let end = context.end
+        let maximumFiles = context.maximumFiles
+        var visitedFiles = context.visitedFiles
+        var visitedBytes = context.visitedBytes
+        guard url.lastPathComponent == "wire.jsonl",
+              url.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent == "agents"
+        else {
+            return
+        }
+        guard visitedFiles < maximumFiles else { throw ScanError.historyLimitExceeded }
+        let resourceValues = try? url.resourceValues(
+            forKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey])
+        guard resourceValues?.isRegularFile == true else { return }
+        if let modificationDate = resourceValues?.contentModificationDate,
+           modificationDate < start
+        {
+            return
+        }
+        let size = max(0, resourceValues?.fileSize ?? 0)
+        guard size <= self.maximumBytes - visitedBytes else { throw ScanError.historyLimitExceeded }
+        visitedFiles += 1
+        visitedBytes += size
+        context.visitedFiles = visitedFiles
+        context.visitedBytes = visitedBytes
+        var sawTruncatedLine = false
+        do {
+            try CostUsageJsonl.scan(
+                fileURL: url,
+                maxLineBytes: 1024 * 1024,
+                prefixBytes: 1024 * 1024,
+                checkCancellation: checkCancellation)
+            { line in
+                guard !line.wasTruncated else {
+                    sawTruncatedLine = true
+                    return
+                }
+                guard let event = try? decoder.decode(WireEvent.self, from: line.bytes),
+                      event.type == "usage.record",
+                      event.usageScope == nil || event.usageScope == "turn",
+                      let time = event.time,
+                      time.isFinite,
+                      let rawModel = event.model?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !rawModel.isEmpty,
+                      let usage = event.usage
+                else {
+                    return
+                }
+                let date = Date(timeIntervalSince1970: time / 1000)
+                let day = calendar.startOfDay(for: date)
+                guard day >= start, day <= end else { return }
+                let key = DayModelKey(
+                    day: CostUsageLocalDay.key(from: day, calendar: calendar),
+                    model: rawModel)
+                var value = values[key] ?? TokenAccumulator()
+                guard value.add(
+                    usage,
+                    model: rawModel,
+                    pricingDate: date,
+                    modelsDevCatalog: modelsDevCatalog,
+                    modelsDevCacheRoot: modelsDevCacheRoot)
+                else { return }
+                values[key] = value
+            }
+            if sawTruncatedLine {
+                throw ScanError.historyLimitExceeded
+            }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch is ScanError {
+            throw ScanError.historyLimitExceeded
+        } catch {
+            // A transiently unreadable transcript must surface as a failed scan instead of
+            // silently publishing the remaining files as complete established history.
+            throw error
+        }
+        context.values = values
     }
 
     private static func sum(_ values: [Int]) -> Int? {

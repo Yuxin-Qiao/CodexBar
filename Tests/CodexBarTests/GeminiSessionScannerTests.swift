@@ -303,6 +303,30 @@ struct GeminiSessionScannerTests {
         }
     }
 
+    @Test
+    func `day with overflowing model keeps remaining history instead of disappearing`() throws {
+        let root = try Self.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let chats = try Self.makeChatsDir(root, "hash-a")
+        try Self.write(Self.chatRecording(messages: [
+            Self.modelTurn(id: "m2", timestamp: "2026-07-10T10:00:00Z", tokens: #"{"input":1,"output":2}"#),
+        ]), to: chats.appendingPathComponent("two.json"))
+        // One model's own counters overflow Int.max; the other model's history must survive.
+        let overflow = #"{"input":9223372036854775807,"output":2}"#
+        try Self.write(Self.chatRecording(messages: [
+            Self.modelTurn(
+                id: "m1",
+                timestamp: "2026-07-10T09:00:00Z",
+                model: "overflow-model",
+                tokens: overflow),
+        ]), to: chats.appendingPathComponent("one.json"))
+
+        let snapshot = try #require(Self.scan(root: root, now: Self.date("2026-07-12T12:00:00Z")))
+        let entry = try #require(snapshot.daily.first)
+        #expect(entry.modelBreakdowns?.map(\.modelName) == ["gemini-2.5-pro"])
+        #expect(entry.totalTokens == 3)
+    }
+
     // MARK: - Fixtures
 
     private static let utcCalendar: Calendar = {

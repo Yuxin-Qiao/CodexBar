@@ -15,6 +15,8 @@ public enum QwenCodeSessionScanner {
     public enum ScanError: Error, Equatable {
         /// The scan cannot claim complete history after omitting an otherwise eligible record.
         case historyLimitExceeded
+        /// An existing projects directory could not be enumerated.
+        case enumerationFailed
     }
 
     private struct WireMessage: Decodable {
@@ -176,12 +178,15 @@ public enum QwenCodeSessionScanner {
         let calendar = CostUsageLocalDay.gregorianCalendar(preserving: calendar)
         let home = self.homeURL(environment: environment)
         let root = home.appendingPathComponent("projects", isDirectory: true)
+        if !fileManager.fileExists(atPath: root.path) {
+            return nil
+        }
         guard let enumerator = fileManager.enumerator(
             at: root,
             includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey],
             options: [.skipsHiddenFiles])
         else {
-            return nil
+            throw ScanError.enumerationFailed
         }
 
         let end = calendar.startOfDay(for: now)
@@ -268,7 +273,9 @@ public enum QwenCodeSessionScanner {
             } catch is ScanError {
                 throw ScanError.historyLimitExceeded
             } catch {
-                continue
+                // A transiently unreadable transcript must surface as a failed scan instead of
+                // silently publishing the remaining files as complete established history.
+                throw error
             }
         }
 

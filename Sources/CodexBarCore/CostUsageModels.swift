@@ -662,7 +662,10 @@ extension CostUsageDailyReport {
         var sawStandardTokens = false
         var priorityTokens: Int = 0
         var sawPriorityTokens = false
+        var overflowingTokenBuckets = false
+        var overflowingCostBuckets = false
 
+        // swiftlint:disable:next cyclomatic_complexity
         mutating func add(_ breakdown: ModelBreakdown) {
             let normalizedProviderID = breakdown.billingProviderID?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -677,59 +680,106 @@ extension CostUsageDailyReport {
                 self.missingBillingProviderID = true
             }
             if let totalTokens = breakdown.totalTokens {
-                self.totalTokens += totalTokens
-                self.sawTotalTokens = true
+                if Self.addChecked(totalTokens, to: &self.totalTokens) {
+                    self.sawTotalTokens = true
+                } else {
+                    self.overflowingTokenBuckets = true
+                }
             }
             if let inputTokens = breakdown.inputTokens {
-                self.inputTokens += inputTokens
-                self.sawInputTokens = true
+                if Self.addChecked(inputTokens, to: &self.inputTokens) {
+                    self.sawInputTokens = true
+                } else {
+                    self.overflowingTokenBuckets = true
+                }
             } else {
                 self.missingInputTokens = true
             }
             if let cacheReadTokens = breakdown.cacheReadTokens {
-                self.cacheReadTokens += cacheReadTokens
-                self.sawCacheReadTokens = true
+                if Self.addChecked(cacheReadTokens, to: &self.cacheReadTokens) {
+                    self.sawCacheReadTokens = true
+                } else {
+                    self.overflowingTokenBuckets = true
+                }
             } else {
                 self.missingCacheReadTokens = true
             }
             if let cacheCreationTokens = breakdown.cacheCreationTokens {
-                self.cacheCreationTokens += cacheCreationTokens
-                self.sawCacheCreationTokens = true
+                if Self.addChecked(cacheCreationTokens, to: &self.cacheCreationTokens) {
+                    self.sawCacheCreationTokens = true
+                } else {
+                    self.overflowingTokenBuckets = true
+                }
             } else {
                 self.missingCacheCreationTokens = true
             }
             if let outputTokens = breakdown.outputTokens {
-                self.outputTokens += outputTokens
-                self.sawOutputTokens = true
+                if Self.addChecked(outputTokens, to: &self.outputTokens) {
+                    self.sawOutputTokens = true
+                } else {
+                    self.overflowingTokenBuckets = true
+                }
             } else {
                 self.missingOutputTokens = true
             }
             if let reasoningTokens = breakdown.reasoningTokens {
-                self.reasoningTokens += reasoningTokens
-                self.sawReasoningTokens = true
+                if Self.addChecked(reasoningTokens, to: &self.reasoningTokens) {
+                    self.sawReasoningTokens = true
+                } else {
+                    self.overflowingTokenBuckets = true
+                }
             } else {
                 self.missingReasoningTokens = true
             }
             if let costUSD = breakdown.costUSD {
-                self.costUSD += costUSD
-                self.sawCost = true
+                if Self.addCostChecked(costUSD, to: &self.costUSD) {
+                    self.sawCost = true
+                } else {
+                    self.overflowingCostBuckets = true
+                }
             }
             if let standardCostUSD = breakdown.standardCostUSD {
-                self.standardCostUSD += standardCostUSD
-                self.sawStandardCost = true
+                if Self.addCostChecked(standardCostUSD, to: &self.standardCostUSD) {
+                    self.sawStandardCost = true
+                } else {
+                    self.overflowingCostBuckets = true
+                }
             }
             if let priorityCostUSD = breakdown.priorityCostUSD {
-                self.priorityCostUSD += priorityCostUSD
-                self.sawPriorityCost = true
+                if Self.addCostChecked(priorityCostUSD, to: &self.priorityCostUSD) {
+                    self.sawPriorityCost = true
+                } else {
+                    self.overflowingCostBuckets = true
+                }
             }
             if let standardTokens = breakdown.standardTokens {
-                self.standardTokens += standardTokens
-                self.sawStandardTokens = true
+                if Self.addChecked(standardTokens, to: &self.standardTokens) {
+                    self.sawStandardTokens = true
+                } else {
+                    self.overflowingTokenBuckets = true
+                }
             }
             if let priorityTokens = breakdown.priorityTokens {
-                self.priorityTokens += priorityTokens
-                self.sawPriorityTokens = true
+                if Self.addChecked(priorityTokens, to: &self.priorityTokens) {
+                    self.sawPriorityTokens = true
+                } else {
+                    self.overflowingTokenBuckets = true
+                }
             }
+        }
+
+        private static func addChecked(_ value: Int, to target: inout Int) -> Bool {
+            let addition = target.addingReportingOverflow(value)
+            guard !addition.overflow else { return false }
+            target = addition.partialValue
+            return true
+        }
+
+        private static func addCostChecked(_ value: Double, to target: inout Double) -> Bool {
+            let next = target + value
+            guard next.isFinite else { return false }
+            target = next
+            return true
         }
 
         func build(modelName: String) -> ModelBreakdown {
@@ -740,24 +790,36 @@ extension CostUsageDailyReport {
                     !self.conflictingBillingProviderID
                     ? self.billingProviderID
                     : nil,
-                costUSD: self.sawCost ? self.costUSD : nil,
-                totalTokens: self.sawTotalTokens ? self.totalTokens : nil,
-                inputTokens: self.sawInputTokens && !self.missingInputTokens ? self.inputTokens : nil,
-                cacheReadTokens: self.sawCacheReadTokens && !self.missingCacheReadTokens ? self.cacheReadTokens : nil,
+                costUSD: self.sawCost && !self.overflowingCostBuckets ? self.costUSD : nil,
+                totalTokens: self.sawTotalTokens && !self.overflowingTokenBuckets ? self.totalTokens : nil,
+                inputTokens: self.sawInputTokens && !self.missingInputTokens && !self.overflowingTokenBuckets
+                    ? self.inputTokens
+                    : nil,
+                cacheReadTokens: self.sawCacheReadTokens && !self.missingCacheReadTokens
+                    && !self.overflowingTokenBuckets
+                    ? self.cacheReadTokens
+                    : nil,
                 cacheCreationTokens: self.sawCacheCreationTokens && !self.missingCacheCreationTokens
+                    && !self.overflowingTokenBuckets
                     ? self.cacheCreationTokens
                     : nil,
-                outputTokens: self.sawOutputTokens && !self.missingOutputTokens ? self.outputTokens : nil,
-                reasoningTokens: self.sawReasoningTokens && !self.missingReasoningTokens ? self.reasoningTokens : nil,
-                standardCostUSD: self.sawStandardCost ? self.standardCostUSD : nil,
-                priorityCostUSD: self.sawPriorityCost ? self.priorityCostUSD : nil,
-                standardTokens: self.sawStandardTokens ? self.standardTokens : nil,
-                priorityTokens: self.sawPriorityTokens ? self.priorityTokens : nil)
+                outputTokens: self.sawOutputTokens && !self.missingOutputTokens && !self.overflowingTokenBuckets
+                    ? self.outputTokens
+                    : nil,
+                reasoningTokens: self.sawReasoningTokens && !self.missingReasoningTokens
+                    && !self.overflowingTokenBuckets
+                    ? self.reasoningTokens
+                    : nil,
+                standardCostUSD: self.sawStandardCost && !self.overflowingCostBuckets ? self.standardCostUSD : nil,
+                priorityCostUSD: self.sawPriorityCost && !self.overflowingCostBuckets ? self.priorityCostUSD : nil,
+                standardTokens: self.sawStandardTokens && !self.overflowingTokenBuckets ? self.standardTokens : nil,
+                priorityTokens: self.sawPriorityTokens && !self.overflowingTokenBuckets ? self.priorityTokens : nil)
         }
     }
 
     private struct EntryAccumulator {
         var inputTokens: Int = 0
+        var overflowingTokenBuckets = false
         var sawInputTokens = false
         var cacheReadTokens: Int = 0
         var sawCacheReadTokens = false
@@ -774,35 +836,62 @@ extension CostUsageDailyReport {
         var breakdowns: [String: BreakdownAccumulator] = [:]
 
         mutating func add(_ entry: Entry) {
-            let entryDerivedTotalTokens = (entry.inputTokens ?? 0)
-                + (entry.cacheReadTokens ?? 0)
-                + (entry.cacheCreationTokens ?? 0)
-                + (entry.outputTokens ?? 0)
+            let entryDerivedTotalTokens = Self.entryDerivedTotal(entry)
+            if entryDerivedTotalTokens == nil {
+                self.overflowingTokenBuckets = true
+            }
             if let inputTokens = entry.inputTokens {
-                self.inputTokens += inputTokens
-                self.sawInputTokens = true
+                if Self.addChecked(inputTokens, to: &self.inputTokens) {
+                    self.sawInputTokens = true
+                } else {
+                    self.overflowingTokenBuckets = true
+                }
             }
             if let cacheReadTokens = entry.cacheReadTokens {
-                self.cacheReadTokens += cacheReadTokens
-                self.sawCacheReadTokens = true
+                if Self.addChecked(cacheReadTokens, to: &self.cacheReadTokens) {
+                    self.sawCacheReadTokens = true
+                } else {
+                    self.overflowingTokenBuckets = true
+                }
             }
             if let cacheCreationTokens = entry.cacheCreationTokens {
-                self.cacheCreationTokens += cacheCreationTokens
-                self.sawCacheCreationTokens = true
+                if Self.addChecked(cacheCreationTokens, to: &self.cacheCreationTokens) {
+                    self.sawCacheCreationTokens = true
+                } else {
+                    self.overflowingTokenBuckets = true
+                }
             }
             if let outputTokens = entry.outputTokens {
-                self.outputTokens += outputTokens
-                self.sawOutputTokens = true
+                if Self.addChecked(outputTokens, to: &self.outputTokens) {
+                    self.sawOutputTokens = true
+                } else {
+                    self.overflowingTokenBuckets = true
+                }
             }
             if let totalTokens = entry.totalTokens {
-                self.totalTokens += totalTokens
-                self.sawTotalTokens = true
-            } else if entryDerivedTotalTokens > 0 {
-                self.derivedTotalTokensWithoutExplicitTotal += entryDerivedTotalTokens
+                if Self.addChecked(totalTokens, to: &self.totalTokens) {
+                    self.sawTotalTokens = true
+                } else {
+                    self.overflowingTokenBuckets = true
+                }
+            } else if let entryDerivedTotalTokens, entryDerivedTotalTokens > 0 {
+                if Self.addChecked(
+                    entryDerivedTotalTokens,
+                    to: &self.derivedTotalTokensWithoutExplicitTotal)
+                {
+                    // tracked by the derived-total path
+                } else {
+                    self.overflowingTokenBuckets = true
+                }
             }
             if let costUSD = entry.costUSD {
-                self.costUSD += costUSD
-                self.sawCost = true
+                let next = self.costUSD + costUSD
+                if next.isFinite {
+                    self.costUSD = next
+                    self.sawCost = true
+                } else {
+                    self.overflowingTokenBuckets = true
+                }
             }
             if let modelsUsed = entry.modelsUsed {
                 self.modelsUsed.formUnion(modelsUsed)
@@ -811,43 +900,92 @@ extension CostUsageDailyReport {
                 for breakdown in modelBreakdowns {
                     var accumulator = self.breakdowns[breakdown.modelName] ?? BreakdownAccumulator()
                     accumulator.add(breakdown)
+                    if accumulator.overflowingTokenBuckets {
+                        self.overflowingTokenBuckets = true
+                    }
                     self.breakdowns[breakdown.modelName] = accumulator
                     self.modelsUsed.insert(breakdown.modelName)
                 }
             }
         }
 
+        private static func entryDerivedTotal(_ entry: Entry) -> Int? {
+            let values = [
+                entry.inputTokens,
+                entry.cacheReadTokens,
+                entry.cacheCreationTokens,
+                entry.outputTokens,
+            ]
+            var total = 0
+            for value in values {
+                guard let value else { continue }
+                let addition = total.addingReportingOverflow(value)
+                guard !addition.overflow else { return nil }
+                total = addition.partialValue
+            }
+            return total
+        }
+
+        private static func addChecked(_ value: Int, to target: inout Int) -> Bool {
+            let addition = target.addingReportingOverflow(value)
+            guard !addition.overflow else { return false }
+            target = addition.partialValue
+            return true
+        }
+
         func build(date: String) -> Entry {
-            let derivedTotalTokens = self.inputTokens
-                + self.cacheReadTokens
-                + self.cacheCreationTokens
-                + self.outputTokens
+            let derivedTotalTokens = Self.checkedSum([
+                self.inputTokens,
+                self.cacheReadTokens,
+                self.cacheCreationTokens,
+                self.outputTokens,
+            ])
             let totalTokens: Int? = if self.sawTotalTokens {
-                self.totalTokens + self.derivedTotalTokensWithoutExplicitTotal
-            } else if derivedTotalTokens > 0 {
+                Self.checkedSum([self.totalTokens, self.derivedTotalTokensWithoutExplicitTotal])
+            } else if let derivedTotalTokens, derivedTotalTokens > 0 {
                 derivedTotalTokens
             } else {
                 nil
             }
             let modelBreakdowns: [ModelBreakdown]? = {
                 guard !self.breakdowns.isEmpty else { return nil }
-                return CostUsageDailyReport.sortedModelBreakdowns(
-                    self.breakdowns
-                        .map { modelName, accumulator in
-                            accumulator.build(modelName: modelName)
-                        })
+                let breakdowns = self.breakdowns
+                    .map { modelName, accumulator in
+                        accumulator.build(modelName: modelName)
+                    }
+                return self.overflowingTokenBuckets
+                    ? breakdowns
+                    : CostUsageDailyReport.sortedModelBreakdowns(breakdowns)
             }()
             let modelsUsed = self.modelsUsed.isEmpty ? nil : self.modelsUsed.sorted()
             return Entry(
                 date: date,
-                inputTokens: self.sawInputTokens ? self.inputTokens : nil,
-                outputTokens: self.sawOutputTokens ? self.outputTokens : nil,
-                cacheReadTokens: self.sawCacheReadTokens ? self.cacheReadTokens : nil,
-                cacheCreationTokens: self.sawCacheCreationTokens ? self.cacheCreationTokens : nil,
-                totalTokens: totalTokens,
+                inputTokens: self.sawInputTokens && !self.overflowingTokenBuckets
+                    ? self.inputTokens
+                    : nil,
+                outputTokens: self.sawOutputTokens && !self.overflowingTokenBuckets
+                    ? self.outputTokens
+                    : nil,
+                cacheReadTokens: self.sawCacheReadTokens && !self.overflowingTokenBuckets
+                    ? self.cacheReadTokens
+                    : nil,
+                cacheCreationTokens: self.sawCacheCreationTokens && !self.overflowingTokenBuckets
+                    ? self.cacheCreationTokens
+                    : nil,
+                totalTokens: self.overflowingTokenBuckets ? nil : totalTokens,
                 costUSD: self.sawCost ? self.costUSD : nil,
                 modelsUsed: modelsUsed,
                 modelBreakdowns: modelBreakdowns)
+        }
+
+        private static func checkedSum(_ values: [Int]) -> Int? {
+            var total = 0
+            for value in values {
+                let addition = total.addingReportingOverflow(value)
+                guard !addition.overflow else { return nil }
+                total = addition.partialValue
+            }
+            return total
         }
     }
 

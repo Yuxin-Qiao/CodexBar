@@ -38,6 +38,8 @@ public enum AntigravitySessionScanner {
     public enum ScanError: Error, Equatable {
         /// The live provider database could not be read completely (for example, SQLITE_BUSY).
         case databaseUnavailable
+        /// An existing conversations directory could not be enumerated.
+        case enumerationFailed
     }
 
     /// Environment override for the Antigravity conversations directory, resolved directly here so
@@ -161,7 +163,12 @@ public enum AntigravitySessionScanner {
         let days = max(1, historyDays)
         let calendar = CostUsageLocalDay.gregorianCalendar(preserving: calendar)
         let conversationsURL = self.conversationsURL(environment: environment)
-        let databaseURLs = self.conversationDatabases(under: conversationsURL)
+        let databaseURLs: [URL]
+        do {
+            databaseURLs = try self.conversationDatabases(under: conversationsURL)
+        } catch {
+            throw ScanError.enumerationFailed
+        }
         guard !databaseURLs.isEmpty else { return nil }
 
         let modelsDevCatalog = CostUsagePricing.modelsDevCatalog(now: now, cacheRoot: modelsDevCacheRoot)
@@ -282,14 +289,14 @@ public enum AntigravitySessionScanner {
             .appendingPathComponent("conversations", isDirectory: true)
     }
 
-    private static func conversationDatabases(under directory: URL) -> [URL] {
-        guard let contents = try? FileManager.default.contentsOfDirectory(
+    private static func conversationDatabases(under directory: URL) throws -> [URL] {
+        if !FileManager.default.fileExists(atPath: directory.path) {
+            return []
+        }
+        let contents = try FileManager.default.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: nil,
             options: [.skipsHiddenFiles])
-        else {
-            return []
-        }
         return contents
             .filter { $0.pathExtension == "db" }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }

@@ -834,7 +834,9 @@ extension SpendDashboardModel {
                         daily[dailyKey] = dailyValue
                     }
 
-                    if costBreakdownIsComplete, let cost = Self.validCost(breakdown.costUSD) {
+                    if costBreakdownIsComplete,
+                       let cost = Self.validCost(breakdown.costUSD).map({ $0 * summary.costMultiplier })
+                    {
                         aggregate.sawCost = true
                         aggregate.cost = Self.add(cost, to: aggregate.cost, overflowed: &aggregate.overflowedCost)
                         if input.costSource == .estimated {
@@ -1190,7 +1192,8 @@ extension SpendDashboardModel {
             }
             // Cache-inclusive input (Codex shape, where input + output == total): subtract the
             // cache read overlap so the explicit buckets sum to the total, mirroring tokscale.
-            if input + output == total, cacheRead <= input {
+            let inputOutputSum = input.addingReportingOverflow(output)
+            if !inputOutputSum.overflow, inputOutputSum.partialValue == total, cacheRead <= input {
                 return ModelTokenSplit(
                     input: input - cacheRead,
                     output: output,

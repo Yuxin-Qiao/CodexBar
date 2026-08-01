@@ -239,7 +239,7 @@ enum SpendBillingAttribution {
             sessionTokens: nil,
             sessionCostUSD: nil,
             last30DaysTokens: Self.sum(daily.map(\.totalTokens)),
-            last30DaysCostUSD: Self.sumCost(daily.map(\.costUSD)),
+            last30DaysCostUSD: Self.completeCostSum(daily.map(\.costUSD)),
             last30DaysRequests: Self.sum(daily.map(\.requestCount)),
             currencyCode: historyInputs.first?.snapshot.currencyCode ?? first.snapshot.currencyCode,
             historyDays: historyDays,

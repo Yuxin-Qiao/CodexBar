@@ -338,23 +338,42 @@ extension UsageStore {
     private static let sessionQuotaDepletionCyclesDefaultsKey =
         "sessionQuotaDepletionCycles"
 
-    func persistedSessionQuotaDepletionCycle(provider: UsageProvider) -> String? {
+    private static func sessionQuotaDepletionKey(
+        provider: UsageProvider,
+        codexOwnerKey: CodexSessionQuotaOwnerKey?) -> String
+    {
+        guard provider == .codex, let codexOwnerKey else { return provider.rawValue }
+        return "codex:\(codexOwnerKey.rawValue)"
+    }
+
+    func persistedSessionQuotaDepletionCycle(
+        provider: UsageProvider,
+        codexOwnerKey: CodexSessionQuotaOwnerKey? = nil) -> String?
+    {
         let cycles = self.settings.userDefaults
             .dictionary(forKey: Self.sessionQuotaDepletionCyclesDefaultsKey) as? [String: String]
-        return cycles?[provider.rawValue]
+        let key = Self.sessionQuotaDepletionKey(provider: provider, codexOwnerKey: codexOwnerKey)
+        if let value = cycles?[key] {
+            return value
+        }
+        // Legacy builds stored the Codex depletion under the bare provider key; keep honoring it
+        // so an already-notified cycle does not replay after the first upgrade.
+        return provider == .codex ? cycles?[provider.rawValue] : nil
     }
 
     func persistSessionQuotaDepletion(
         provider: UsageProvider,
-        cycleIdentity: String?)
+        cycleIdentity: String?,
+        codexOwnerKey: CodexSessionQuotaOwnerKey? = nil)
     {
         var cycles = self.settings.userDefaults
             .dictionary(forKey: Self.sessionQuotaDepletionCyclesDefaultsKey) as? [String: String] ?? [:]
-        guard cycles[provider.rawValue] != cycleIdentity else { return }
+        let key = Self.sessionQuotaDepletionKey(provider: provider, codexOwnerKey: codexOwnerKey)
+        guard cycles[key] != cycleIdentity else { return }
         if let cycleIdentity {
-            cycles[provider.rawValue] = cycleIdentity
+            cycles[key] = cycleIdentity
         } else {
-            cycles.removeValue(forKey: provider.rawValue)
+            cycles.removeValue(forKey: key)
         }
         self.settings.userDefaults.set(
             cycles,
