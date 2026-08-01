@@ -212,6 +212,47 @@ struct CostUsageDailyReportMergeTests {
     }
 
     @Test
+    func `merged report preserves billing ownership when sources agree and drops it on conflict`() {
+        func report(billingProviderID: String?) -> CostUsageDailyReport {
+            CostUsageDailyReport(
+                data: [
+                    CostUsageDailyReport.Entry(
+                        date: "2026-04-04",
+                        inputTokens: 100,
+                        outputTokens: 30,
+                        totalTokens: 130,
+                        costUSD: 1.0,
+                        modelsUsed: ["claude-haiku-4-5"],
+                        modelBreakdowns: [
+                            CostUsageDailyReport.ModelBreakdown(
+                                modelName: "claude-haiku-4-5",
+                                billingProviderID: billingProviderID,
+                                costUSD: 1.0,
+                                totalTokens: 130,
+                                inputTokens: 100,
+                                outputTokens: 30),
+                        ]),
+                ],
+                summary: nil)
+        }
+
+        let agreed = report(billingProviderID: "anthropic")
+            .merged(with: report(billingProviderID: "anthropic"))
+        #expect(agreed.data.first?.modelBreakdowns?.first?.billingProviderID == "anthropic")
+
+        // Two sources disagree about who owns the usage; the merged breakdown must not claim
+        // either side's ownership as the merged truth.
+        let conflicted = report(billingProviderID: "anthropic")
+            .merged(with: report(billingProviderID: "openai"))
+        #expect(conflicted.data.first?.modelBreakdowns?.first?.billingProviderID == nil)
+
+        // A source without evidence does not erase evidence another source retained.
+        let oneSided = report(billingProviderID: "anthropic")
+            .merged(with: report(billingProviderID: nil))
+        #expect(oneSided.data.first?.modelBreakdowns?.first?.billingProviderID == "anthropic")
+    }
+
+    @Test
     func `model breakdown decodes reasoning tokens from camel and snake case keys`() throws {
         let camel = try JSONDecoder().decode(
             CostUsageDailyReport.ModelBreakdown.self,

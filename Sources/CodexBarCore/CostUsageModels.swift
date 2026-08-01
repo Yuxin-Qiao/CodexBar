@@ -650,6 +650,10 @@ extension CostUsageDailyReport {
         var missingReasoningTokens = false
         var costUSD: Double = 0
         var sawCost = false
+        /// Billing ownership evidence retained across merged sources. Dropped when sources
+        /// disagree: a merged breakdown must never claim an ownership the sources do not share.
+        var billingProviderID: String?
+        var sawConflictingBillingProviderID = false
         var standardCostUSD: Double = 0
         var sawStandardCost = false
         var priorityCostUSD: Double = 0
@@ -698,6 +702,13 @@ extension CostUsageDailyReport {
                 self.costUSD += costUSD
                 self.sawCost = true
             }
+            if let billingProviderID = breakdown.billingProviderID {
+                if let existing = self.billingProviderID, existing != billingProviderID {
+                    self.sawConflictingBillingProviderID = true
+                } else if self.billingProviderID == nil {
+                    self.billingProviderID = billingProviderID
+                }
+            }
             if let standardCostUSD = breakdown.standardCostUSD {
                 self.standardCostUSD += standardCostUSD
                 self.sawStandardCost = true
@@ -719,6 +730,7 @@ extension CostUsageDailyReport {
         func build(modelName: String) -> ModelBreakdown {
             ModelBreakdown(
                 modelName: modelName,
+                billingProviderID: self.sawConflictingBillingProviderID ? nil : self.billingProviderID,
                 costUSD: self.sawCost ? self.costUSD : nil,
                 totalTokens: self.sawTotalTokens ? self.totalTokens : nil,
                 inputTokens: self.sawInputTokens && !self.missingInputTokens ? self.inputTokens : nil,
