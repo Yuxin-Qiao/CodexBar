@@ -306,10 +306,10 @@ extension CostUsageScanner {
             if let requestId, !requestId.isEmpty {
                 return "\(messageId):\(requestId)"
             }
-            return messageId
+            return "msg:\(messageId)"
         }
         if let requestId, !requestId.isEmpty {
-            return requestId
+            return "req:\(requestId)"
         }
         return nil
     }
