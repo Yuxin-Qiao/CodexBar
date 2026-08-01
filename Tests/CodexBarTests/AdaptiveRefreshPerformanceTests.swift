@@ -80,9 +80,16 @@ struct AdaptiveRefreshPerformanceTests {
 
         #expect(!sessions.isEmpty)
         #expect(visits.count <= config.maxDirectoryEntryCount)
+        // Linux CI runners show wider IO variance; keep the macOS assertion close to the
+        // 150 ms scan budget so adaptive refresh regressions do not slip through.
+        #if os(Linux)
+        let scanAllowance: Duration = .milliseconds(1500)
+        #else
+        let scanAllowance: Duration = .milliseconds(250)
+        #endif
         #expect(
-            elapsed < .milliseconds(1500),
-            "Bounded agent scan exceeded 1500 ms: \(elapsed), visited \(visits.count) entries")
+            elapsed < scanAllowance,
+            "Bounded agent scan exceeded \(scanAllowance): \(elapsed), visited \(visits.count) entries")
     }
 
     @Test
