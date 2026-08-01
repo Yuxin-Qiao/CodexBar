@@ -7,6 +7,10 @@ extension CostUsagePricing {
         let inputTokens: Int
         let cacheReadInputTokens: Int
         let outputTokens: Int
+        /// Cache-write (cache-creation) tokens. Defaults to 0 so callers that do not track them
+        /// price unchanged; catalogs without a distinct cache-write rate fall back to the input
+        /// rate, matching how cache reads are handled.
+        var cacheCreationInputTokens: Int = 0
     }
 
     /// Prices a model against an explicit ordered list of models.dev provider IDs.
@@ -30,6 +34,7 @@ extension CostUsagePricing {
 
         let input = max(0, request.inputTokens)
         let cacheRead = max(0, request.cacheReadInputTokens)
+        let cacheCreation = max(0, request.cacheCreationInputTokens)
         let output = max(0, request.outputTokens)
         let context = input.addingReportingOverflow(cacheRead)
         let usesLongContextRates = pricing.thresholdTokens.map {
@@ -43,11 +48,17 @@ extension CostUsagePricing {
             ?? pricing.cacheReadInputCostPerToken
             ?? inputRate
             : pricing.cacheReadInputCostPerToken ?? inputRate
+        let cacheCreationRate = usesLongContextRates
+            ? pricing.cacheCreationInputCostPerTokenAboveThreshold
+            ?? pricing.cacheCreationInputCostPerToken
+            ?? inputRate
+            : pricing.cacheCreationInputCostPerToken ?? inputRate
         let outputRate = usesLongContextRates
             ? pricing.outputCostPerTokenAboveThreshold ?? pricing.outputCostPerToken
             : pricing.outputCostPerToken
         let cost = Double(input) * inputRate
             + Double(cacheRead) * cacheReadRate
+            + Double(cacheCreation) * cacheCreationRate
             + Double(output) * outputRate
         return cost.isFinite ? cost : nil
     }

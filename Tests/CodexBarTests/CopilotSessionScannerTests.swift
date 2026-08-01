@@ -49,10 +49,11 @@ struct CopilotSessionScannerTests {
         #expect(entry.inputTokens == 73595 - 48228)
         #expect(entry.cacheReadTokens == 48228)
         let model = try #require(entry.modelBreakdowns?.first)
-        // Model name is traced to the real vendor: Copilot's claude-haiku-4.5 is billed at
-        // Anthropic's rate and normalized to the pricing key.
+        // Model name is normalized to the pricing key, but ownership stays with Copilot: the
+        // local event has no explicit billing-provider field, so the vendor (Anthropic) is used
+        // only as the rate-lookup key, never to re-attribute the usage.
         #expect(model.modelName == "claude-haiku-4-5")
-        #expect(model.billingProviderID == UsageProvider.claude.rawValue)
+        #expect(model.billingProviderID == UsageProvider.copilot.rawValue)
     }
 
     @Test
@@ -95,7 +96,7 @@ struct CopilotSessionScannerTests {
         #expect(entry.totalTokens == 300 + 120)
         #expect(entry.inputTokens == 300 - 60)
         let model = try #require(entry.modelBreakdowns?.first)
-        #expect(model.billingProviderID == UsageProvider.openai.rawValue)
+        #expect(model.billingProviderID == UsageProvider.copilot.rawValue)
     }
 
     @Test

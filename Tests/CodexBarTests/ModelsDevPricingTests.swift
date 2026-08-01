@@ -1318,6 +1318,67 @@ extension ModelsDevPricingTests {
         return try Data(contentsOf: url)
     }
 
+    @Test
+    func `models dev cost includes cache-write tokens at their own rate`() throws {
+        // input=1/MTok, cache_read=0.5/MTok, cache_write=2/MTok, output=4/MTok. Cache-write is
+        // priced distinctly so the test fails if cache-creation tokens are dropped from the cost.
+        let catalog = try Self.catalog("""
+        {
+          "anthropic": {
+            "id": "anthropic",
+            "models": {
+              "claude-test": {
+                "id": "claude-test",
+                "cost": { "input": 1, "output": 4, "cache_read": 0.5, "cache_write": 2 }
+              }
+            }
+          }
+        }
+        """)
+        let request = CostUsagePricing.ModelsDevCostRequest(
+            providerIDs: ["anthropic"],
+            model: "claude-test",
+            inputTokens: 1_000_000,
+            cacheReadInputTokens: 1_000_000,
+            outputTokens: 1_000_000,
+            cacheCreationInputTokens: 1_000_000)
+        let cost = try #require(CostUsagePricing.modelsDevCostUSD(
+            request: request,
+            catalog: catalog,
+            cacheRoot: nil))
+        // 1*1 + 1*0.5 + 1*2 + 1*4 = 7.5
+        #expect(abs(cost - 7.5) < 0.000_000_001)
+    }
+
+    @Test
+    func `models dev cost omits cache-write when the catalog has no such rate`() throws {
+        // No cache_write rate: cache-creation tokens fall back to the input rate, same as cache
+        // reads, so records carrying writes still price instead of erroring.
+        let catalog = try Self.catalog("""
+        {
+          "anthropic": {
+            "id": "anthropic",
+            "models": {
+              "claude-test": { "id": "claude-test", "cost": { "input": 1, "output": 4 } }
+            }
+          }
+        }
+        """)
+        let request = CostUsagePricing.ModelsDevCostRequest(
+            providerIDs: ["anthropic"],
+            model: "claude-test",
+            inputTokens: 0,
+            cacheReadInputTokens: 0,
+            outputTokens: 0,
+            cacheCreationInputTokens: 1_000_000)
+        let cost = try #require(CostUsagePricing.modelsDevCostUSD(
+            request: request,
+            catalog: catalog,
+            cacheRoot: nil))
+        // 1M cache-write tokens at the 1/MTok input-rate fallback = 1.0
+        #expect(abs(cost - 1.0) < 0.000_000_001)
+    }
+
     private static func fixtureCatalog() throws -> ModelsDevCatalog {
         try JSONDecoder().decode(ModelsDevCatalog.self, from: self.fixtureData())
     }

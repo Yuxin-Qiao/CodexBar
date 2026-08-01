@@ -104,8 +104,12 @@ public enum UsageEventAggregator {
         let tokenEntries = daily.filter { $0.totalTokens != nil }
         let totalTokens = tokenEntries.isEmpty ? nil : Self.sum(tokenEntries.compactMap(\.totalTokens))
         let requests = tokenEntries.isEmpty ? nil : Self.sum(tokenEntries.compactMap(\.requestCount))
+        // Publish the headline cost only when every token-bearing day is fully priced. A day whose
+        // cost was withheld (mixed priced/unpriced usage) must not be silently dropped via
+        // compactMap, or the remaining priced subtotal would masquerade as the complete total.
+        let hasUnpricedTokenDay = daily.contains { $0.totalTokens != nil && $0.costUSD == nil }
         let costs = daily.compactMap(\.costUSD)
-        let totalCost = costs.isEmpty ? nil : costs.reduce(0, +)
+        let totalCost = (costs.isEmpty || hasUnpricedTokenDay) ? nil : costs.reduce(0, +)
 
         return CostUsageTokenSnapshot(
             sessionTokens: nil,
@@ -113,7 +117,7 @@ public enum UsageEventAggregator {
             last30DaysTokens: totalTokens,
             last30DaysCostUSD: totalCost,
             last30DaysRequests: requests,
-            currencyCode: costs.isEmpty ? "XXX" : "USD",
+            currencyCode: totalCost == nil ? "XXX" : "USD",
             historyDays: historyDays,
             historyCoverageIsEstablished: true,
             historyLabel: options.historyLabel,
@@ -185,7 +189,8 @@ public enum UsageEventAggregator {
                 model: event.model,
                 inputTokens: uncachedInput,
                 cacheReadInputTokens: cacheRead,
-                outputTokens: billingOutput),
+                outputTokens: billingOutput,
+                cacheCreationInputTokens: cacheCreation),
             catalog: modelsDevCatalog,
             cacheRoot: modelsDevCacheRoot),
             cost.isFinite

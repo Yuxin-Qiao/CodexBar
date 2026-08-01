@@ -98,6 +98,37 @@ struct UsageEventAggregatorTests {
     }
 
     @Test
+    func `headline cost is withheld when any token day is unpriced`() {
+        // Day 1 is fully priced via a provider-reported cost; day 2 has real tokens but no price.
+        // The priced day alone must not be published as the 30-day total.
+        let snapshot = UsageEventAggregator.aggregate(
+            events: [
+                UnifiedUsageEvent(
+                    day: "2026-07-27",
+                    model: "glm-5.2",
+                    inputTokens: 100,
+                    outputTokens: 50,
+                    providerCostUSD: 0.5,
+                    pricingProviderIDs: ["zai"]),
+                UnifiedUsageEvent(
+                    day: "2026-07-28",
+                    model: "unknown-model",
+                    inputTokens: 100,
+                    outputTokens: 50,
+                    pricingProviderIDs: ["no-such-provider"]),
+            ],
+            historyDays: 30,
+            now: self.now,
+            options: .init(historyLabel: "Test"))
+        #expect(snapshot?.daily.count == 2)
+        #expect(snapshot?.daily.first?.costUSD == 0.5)
+        #expect(snapshot?.daily.last?.costUSD == nil)
+        // Tokens still aggregate, but the headline cost is withheld as incomplete.
+        #expect(snapshot?.last30DaysTokens == 300)
+        #expect(snapshot?.last30DaysCostUSD == nil)
+    }
+
+    @Test
     func `degraded model-only events surface without token totals`() {
         let snapshot = UsageEventAggregator.aggregate(
             events: [

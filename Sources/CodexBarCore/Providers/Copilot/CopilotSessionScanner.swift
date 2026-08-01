@@ -183,9 +183,10 @@ public enum CopilotSessionScanner {
             .appendingPathComponent(".copilot", isDirectory: true)
     }
 
-    /// Traces the model to the real vendor that bills it. Copilot is a harness: the model name is
-    /// the billing evidence, so a Claude model is priced at Anthropic's rate, a GPT model at
-    /// OpenAI's, and so on.
+    /// Vendor used *only* to look up the rate for a model. Copilot is a harness with no explicit
+    /// billing-provider field on its local events, so the model name is the only rate evidence:
+    /// a Claude model is priced at Anthropic's rate, a GPT model at OpenAI's, and so on. This
+    /// never changes ownership — the usage stays attributed to Copilot (see `billingProvider`).
     private static func pricingProviderIDs(for model: String) -> [String] {
         if model.hasPrefix("claude-") { return ["anthropic"] }
         if model.hasPrefix("gpt-") || model.hasPrefix("o1") || model.hasPrefix("o3") || model.hasPrefix("o4") {
@@ -195,13 +196,12 @@ public enum CopilotSessionScanner {
         return []
     }
 
-    private static func billingProvider(for model: String) -> String? {
-        if model.hasPrefix("claude-") { return UsageProvider.claude.rawValue }
-        if model.hasPrefix("gpt-") || model.hasPrefix("o1") || model.hasPrefix("o3") || model.hasPrefix("o4") {
-            return UsageProvider.openai.rawValue
-        }
-        if model.hasPrefix("gemini-") { return UsageProvider.gemini.rawValue }
-        return UsageProvider.copilot.rawValue
+    /// Billing ownership always stays with Copilot. The local Copilot event carries no explicit
+    /// routing or billing-provider field, so attributing a `claude-*`/`gpt-*`/`gemini-*` model to
+    /// another provider would mix Copilot activity into that provider's rows based only on a name.
+    /// The vendor is used solely as the rate-lookup key in `pricingProviderIDs`.
+    private static func billingProvider(for _: String) -> String? {
+        UsageProvider.copilot.rawValue
     }
 
     /// Normalizes Copilot's model ids to the pricing keys used by the built-in tables and
