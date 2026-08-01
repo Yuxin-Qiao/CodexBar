@@ -680,7 +680,13 @@ struct SpendDashboardModel: Equatable, Sendable {
             }
         }
 
-        let hasCompleteHistory = Self.hasCompleteTokenHistory(input, displayCalendar: calendar)
+        // A successful scan that found no sessions is confirmed zero activity: every covered day
+        // renders as zero instead of unavailable. Nonempty histories must still reconcile their
+        // aggregate against the daily entries.
+        let confirmedZeroHistory = input.snapshot.daily.isEmpty
+            && input.snapshot.last30DaysTokens == nil
+        let hasCompleteHistory = confirmedZeroHistory
+            || Self.hasCompleteTokenHistory(input, displayCalendar: calendar)
         let aggregateIsInconsistent = input.snapshot.last30DaysTokens != nil && !hasCompleteHistory
         if hasUnplacedTokens || aggregateIsInconsistent {
             invalidDays.formUnion(coveredDays)

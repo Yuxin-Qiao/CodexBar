@@ -167,6 +167,30 @@ struct SpendActivityHeatmapTests {
     }
 
     @Test
+    func `established empty history with nil aggregate is confirmed zero activity`() throws {
+        let now = try #require(Self.calendar.date(from: DateComponents(year: 2026, month: 7, day: 16)))
+        // Codex's tokenSnapshot returns an empty daily array with last30DaysTokens nil for a
+        // successful scan of an account with no sessions in the window.
+        let model = SpendDashboardModel.build(
+            inputs: [
+                .init(
+                    provider: .codex,
+                    displayName: "Codex",
+                    snapshot: Self.snapshot(
+                        entries: [],
+                        historyDays: 365,
+                        last30DaysTokens: nil,
+                        historyCoverageIsEstablished: true)),
+            ],
+            requestedDays: 30,
+            now: now,
+            calendar: Self.calendar)
+
+        #expect(!model.tokenActivity.isEmpty)
+        #expect(model.tokenActivity.allSatisfy { $0.totalTokens == 0 })
+    }
+
+    @Test
     func `weekly and cumulative activity preserve unavailable coverage`() throws {
         let start = try #require(Self.calendar.date(from: DateComponents(year: 2026, month: 7, day: 5)))
         let today = try #require(Self.calendar.date(byAdding: .day, value: 13, to: start))
