@@ -339,6 +339,62 @@ struct CostUsageClaudeKeyNamespaceTests {
     }
 
     @Test
+    func `partial transitions bridge through all three key forms`() throws {
+        // One stream emitting pair:m:r -> msg:m -> req:r (each a larger cumulative
+        // snapshot) must collapse to a single row; the message-only row keeps the bridge
+        // to the paired key so the request-only row still finds the same identity class.
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2025, month: 12, day: 23)
+        let iso0 = env.isoString(for: day)
+        let iso1 = env.isoString(for: day.addingTimeInterval(1))
+        let iso2 = env.isoString(for: day.addingTimeInterval(2))
+
+        func row(messageId: String?, requestId: String?, timestamp: String, input: Int, output: Int) -> [String: Any] {
+            var message: [String: Any] = [
+                "model": "claude-sonnet-4-20250514",
+                "usage": [
+                    "input_tokens": input,
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 0,
+                    "output_tokens": output,
+                ],
+            ]
+            if let messageId {
+                message["id"] = messageId
+            }
+            var row: [String: Any] = [
+                "type": "assistant",
+                "timestamp": timestamp,
+                "sessionId": "session-identity-bridge",
+                "isSidechain": false,
+                "message": message,
+            ]
+            if let requestId {
+                row["requestId"] = requestId
+            }
+            return row
+        }
+
+        let fileURL = try env.writeClaudeProjectFile(
+            relativePath: "project-a/identity-bridge.jsonl",
+            contents: env.jsonl([
+                row(messageId: "x", requestId: "y", timestamp: iso0, input: 10, output: 5),
+                row(messageId: "x", requestId: nil, timestamp: iso1, input: 100, output: 50),
+                row(messageId: nil, requestId: "y", timestamp: iso2, input: 200, output: 100),
+            ]))
+
+        let parsed = CostUsageScanner.parseClaudeFile(
+            fileURL: fileURL,
+            range: CostUsageScanner.CostUsageDayRange(since: day, until: day),
+            providerFilter: .all)
+
+        #expect(parsed.rows.count == 1)
+        #expect(parsed.rows[0].input == 200)
+    }
+
+    @Test
     func `append refresh supersedes partial row when paired row grows`() throws {
         // Incremental refresh: the cached message-only row is replaced by the appended
         // paired cumulative row instead of being summed.

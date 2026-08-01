@@ -131,6 +131,7 @@ extension CostUsageScanner {
 
         let pathRole = Self.claudePathRole(fileURL: fileURL)
         var keyedRows: [String: ClaudeUsageRow] = [:]
+        var canonicalKeys: [String] = []
         var unkeyedRows: [ClaudeUsageRow] = []
 
         let maxLineBytes = 512 * 1024
@@ -231,7 +232,7 @@ extension CostUsageScanner {
 
                         // Streaming chunks share message.id and/or requestId inside a file.
                         // Keep overwriting so the final cumulative chunk wins.
-                        if !Self.claudeInsertRow(row, into: &keyedRows) {
+                        if !Self.claudeInsertRow(row, into: &keyedRows, canonicalKeys: &canonicalKeys) {
                             // Older logs omit IDs; treat each line as distinct to avoid dropping usage.
                             unkeyedRows.append(row)
                         }
@@ -243,7 +244,7 @@ extension CostUsageScanner {
             parsedBytes = startOffset
         }
 
-        let rows = keyedRows.keys.sorted().compactMap { keyedRows[$0] } + unkeyedRows
+        let rows = canonicalKeys.sorted().compactMap { keyedRows[$0] } + unkeyedRows
         var days: [String: [String: [Int]]] = [:]
         for row in rows {
             let tokens = ClaudeTokens(
@@ -276,16 +277,17 @@ extension CostUsageScanner {
 
     private static func mergeClaudeRows(existing: [ClaudeUsageRow], delta: [ClaudeUsageRow]) -> [ClaudeUsageRow] {
         var keyedRows: [String: ClaudeUsageRow] = [:]
+        var canonicalKeys: [String] = []
         var unkeyedRows: [ClaudeUsageRow] = []
 
-        for row in existing where !Self.claudeInsertRow(row, into: &keyedRows) {
+        for row in existing where !Self.claudeInsertRow(row, into: &keyedRows, canonicalKeys: &canonicalKeys) {
             unkeyedRows.append(row)
         }
-        for row in delta where !Self.claudeInsertRow(row, into: &keyedRows) {
+        for row in delta where !Self.claudeInsertRow(row, into: &keyedRows, canonicalKeys: &canonicalKeys) {
             unkeyedRows.append(row)
         }
 
-        return keyedRows.keys.sorted().compactMap { keyedRows[$0] } + unkeyedRows
+        return canonicalKeys.sorted().compactMap { keyedRows[$0] } + unkeyedRows
     }
 
     private static func claudeInFileKey(_ row: ClaudeUsageRow) -> String? {
@@ -304,64 +306,96 @@ extension CostUsageScanner {
         return nil
     }
 
-    /// Inserts a row and supersedes any row that shares its identity.
+    /// Inserts a row into its stream identity equivalence class.
     ///
-    /// A cumulative chunk may gain or lose the optional second identifier on a later chunk
-    /// of the same response. The newly inserted row replaces the other row only when its
-    /// token total is at least as large, the signal that it is a cumulative snapshot
-    /// rather than a distinct call that happens to reuse the ID.
+    /// `msg:`, `req:`, and `pair:` keys can all describe the same response: a cumulative
+    /// chunk may gain or lose the optional second identifier, or bridge through both
+    /// partial forms. All matching keys are aliases of one class. A newly inserted row
+    /// replaces the whole class only when its token total is at least as large as the
+    /// class's largest member, the signal that it is a cumulative snapshot rather than a
+    /// distinct call that happens to reuse an ID. A smaller row starts its own class.
     private static func claudeInsertRow(
         _ row: ClaudeUsageRow,
-        into keyedRows: inout [String: ClaudeUsageRow]) -> Bool
+        into keyedRows: inout [String: ClaudeUsageRow],
+        canonicalKeys: inout [String]) -> Bool
     {
         guard let key = claudeInFileKey(row) else {
             return false
         }
-        keyedRows[key] = row
-        if key.hasPrefix("pair:") {
-            if let messageId = Self.claudeNonEmptyID(row.messageId) {
-                Self.claudeSupersedeIfCumulative(
-                    row,
-                    existingKey: "msg:\(messageId)",
-                    keyedRows: &keyedRows)
+        let classKeys = Self.claudeClassKeys(for: row, keyedRows: keyedRows)
+        guard let representative = classKeys
+            .compactMap({ keyedRows[$0] })
+            .max(by: { Self.claudeRowTotalTokens($0) < Self.claudeRowTotalTokens($1) })
+        else {
+            keyedRows[key] = row
+            canonicalKeys.append(key)
+            return true
+        }
+
+        if Self.claudeRowTotalTokens(row) >= Self.claudeRowTotalTokens(representative) {
+            let canonicalKey = classKeys.first { $0.hasPrefix("pair:") } ?? classKeys[0]
+            canonicalKeys.removeAll { classKeys.contains($0) }
+            canonicalKeys.append(canonicalKey)
+            for classKey in classKeys {
+                keyedRows[classKey] = row
             }
-            if let requestId = Self.claudeNonEmptyID(row.requestId) {
-                Self.claudeSupersedeIfCumulative(
-                    row,
-                    existingKey: "req:\(requestId)",
-                    keyedRows: &keyedRows)
-            }
-        } else if key.hasPrefix("msg:") {
-            let messageId = String(key.dropFirst(4))
-            for pairKey in keyedRows.keys where pairKey.hasPrefix("pair:\(messageId):") {
-                Self.claudeSupersedeIfCumulative(row, existingKey: pairKey, keyedRows: &keyedRows)
-            }
-        } else if key.hasPrefix("req:") {
-            let requestId = String(key.dropFirst(4))
-            for pairKey in keyedRows.keys
-                where pairKey.hasPrefix("pair:") && pairKey.hasSuffix(":\(requestId)")
+        } else {
+            keyedRows[key] = row
+            if !classKeys.contains(where: { $0 != key && canonicalKeys.contains($0) }),
+               let alternate = classKeys.first(where: { $0 != key && keyedRows[$0] != nil })
             {
-                Self.claudeSupersedeIfCumulative(row, existingKey: pairKey, keyedRows: &keyedRows)
+                canonicalKeys.append(alternate)
+            }
+            if !canonicalKeys.contains(key) {
+                canonicalKeys.append(key)
             }
         }
         return true
     }
 
-    private static func claudeSupersedeIfCumulative(
-        _ row: ClaudeUsageRow,
-        existingKey: String,
-        keyedRows: inout [String: ClaudeUsageRow])
+    private static func claudeClassKeys(
+        for row: ClaudeUsageRow,
+        keyedRows: [String: ClaudeUsageRow]) -> [String]
     {
-        guard let existing = keyedRows[existingKey],
-              claudeRowTotalTokens(row) >= claudeRowTotalTokens(existing)
-        else {
-            return
+        let messageId = Self.claudeNonEmptyID(row.messageId)
+        let requestId = Self.claudeNonEmptyID(row.requestId)
+        var keys: Set<String> = []
+        if let messageId, let requestId {
+            keys.insert("pair:\(messageId):\(requestId)")
+            if keyedRows["msg:\(messageId)"] != nil {
+                keys.insert("msg:\(messageId)")
+            }
+            if keyedRows["req:\(requestId)"] != nil {
+                keys.insert("req:\(requestId)")
+            }
+        } else if let messageId {
+            keys.insert("msg:\(messageId)")
+            for pairKey in keyedRows.keys where pairKey.hasPrefix("pair:\(messageId):") {
+                keys.insert(pairKey)
+                let requestId = String(pairKey.dropFirst("pair:\(messageId):".count))
+                if keyedRows["req:\(requestId)"] != nil {
+                    keys.insert("req:\(requestId)")
+                }
+            }
+        } else if let requestId {
+            keys.insert("req:\(requestId)")
+            for pairKey in keyedRows.keys
+                where pairKey.hasPrefix("pair:") && pairKey.hasSuffix(":\(requestId)")
+            {
+                keys.insert(pairKey)
+                let messageId = String(pairKey.dropLast(requestId.count + 1).dropFirst("pair:".count))
+                if keyedRows["msg:\(messageId)"] != nil {
+                    keys.insert("msg:\(messageId)")
+                }
+            }
         }
-        keyedRows.removeValue(forKey: existingKey)
+        return Array(keys)
     }
 
     private static func claudeRowTotalTokens(_ row: ClaudeUsageRow) -> Int {
-        row.input + row.cacheRead + (row.cacheCreate ?? 0) + (row.cacheCreate1h ?? 0) + row.output
+        // `cacheCreate1h` is a subset of `cacheCreate`, so counting both would inflate
+        // the cumulative-snapshot comparison.
+        row.input + row.cacheRead + (row.cacheCreate ?? 0) + row.output
     }
 
     private static func claudeNonEmptyID(_ value: String?) -> String? {
@@ -405,49 +439,15 @@ extension CostUsageScanner {
             }
         }
 
-        // Apply the same cumulative-snapshot rule across files: a winning row supersedes a
-        // row with the same messageId/requestId in another file when its token total is at
-        // least as large, in either identity direction.
-        let reconciledKeys = Array(winners.keys)
-        for key in reconciledKeys {
+        // Consolidate stream identities across files with the same equivalence classes as
+        // per-file parsing, emitting one row per class.
+        var keyedRows: [String: ClaudeUsageRow] = [:]
+        var canonicalKeys: [String] = []
+        for key in winners.keys.sorted() {
             guard let winner = winners[key]?.row else { continue }
-            if key.hasPrefix("pair:") {
-                if let messageId = Self.claudeNonEmptyID(winner.messageId),
-                   let partial = winners["msg:\(messageId)"]?.row,
-                   Self.claudeRowTotalTokens(winner) >= Self.claudeRowTotalTokens(partial)
-                {
-                    winners.removeValue(forKey: "msg:\(messageId)")
-                }
-                if let requestId = Self.claudeNonEmptyID(winner.requestId),
-                   let partial = winners["req:\(requestId)"]?.row,
-                   Self.claudeRowTotalTokens(winner) >= Self.claudeRowTotalTokens(partial)
-                {
-                    winners.removeValue(forKey: "req:\(requestId)")
-                }
-            } else if key.hasPrefix("msg:") {
-                let messageId = String(key.dropFirst(4))
-                for pairKey in reconciledKeys where pairKey.hasPrefix("pair:\(messageId):") {
-                    if let pair = winners[pairKey]?.row,
-                       Self.claudeRowTotalTokens(winner) >= Self.claudeRowTotalTokens(pair)
-                    {
-                        winners.removeValue(forKey: pairKey)
-                    }
-                }
-            } else if key.hasPrefix("req:") {
-                let requestId = String(key.dropFirst(4))
-                for pairKey in reconciledKeys
-                    where pairKey.hasPrefix("pair:") && pairKey.hasSuffix(":\(requestId)")
-                {
-                    if let pair = winners[pairKey]?.row,
-                       Self.claudeRowTotalTokens(winner) >= Self.claudeRowTotalTokens(pair)
-                    {
-                        winners.removeValue(forKey: pairKey)
-                    }
-                }
-            }
+            _ = Self.claudeInsertRow(winner, into: &keyedRows, canonicalKeys: &canonicalKeys)
         }
-
-        rows.append(contentsOf: winners.keys.sorted().compactMap { winners[$0]?.row })
+        rows.append(contentsOf: canonicalKeys.sorted().compactMap { keyedRows[$0] })
         return rows
     }
 
