@@ -490,9 +490,7 @@ private struct SpendActivityDailyGrid: View {
         .accessibilityChildren {
             ForEach(self.series.daily.indices.filter(self.series.isVisible), id: \.self) { index in
                 if let date = self.series.date(at: index) {
-                    Text(self.accessibilityTokenValue(at: index))
-                        .accessibilityLabel(SpendActivityDateFormatting.mediumDateString(date))
-                        .accessibilityValue(self.accessibilityTokenValue(at: index))
+                    Text(self.accessibilityDescription(at: index, date: date))
                 }
             }
         }
@@ -668,7 +666,7 @@ private struct SpendActivityDailyGrid: View {
 
     private var accessibilityValue: String {
         if let index = self.activeIndex, let date = self.series.date(at: index) {
-            return "\(SpendActivityDateFormatting.mediumDateString(date)): \(self.accessibilityTokenValue(at: index))"
+            return self.accessibilityDescription(at: index, date: date)
         }
         let total = UsageFormatter.tokenCountString(Self.saturatingTotal(self.series.daily))
         guard self.series.hasUnknownCoverage else { return total }
@@ -676,6 +674,10 @@ private struct SpendActivityDailyGrid: View {
             covered: self.series.coveredDayCount,
             requested: self.series.visibleDayCount)
         return "\(total) · \(coverage)"
+    }
+
+    private func accessibilityDescription(at index: Int, date: Date) -> String {
+        "\(SpendActivityDateFormatting.mediumDateString(date)): \(self.accessibilityTokenValue(at: index))"
     }
 
     private func accessibilityTokenValue(at index: Int) -> String {
