@@ -750,9 +750,16 @@ private struct SpendActivityWeekGrid: View {
             .offset(x: gridFrame.minX)
         }
         .aspectRatio(CGFloat(self.columns + 2) / CGFloat(self.rows), contentMode: .fit)
-        .accessibilityElement(children: .ignore)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel(L("Token activity"))
         .accessibilityValue(self.accessibilityValue)
+        .accessibilityChildren {
+            ForEach(self.activity.values.indices.filter(self.isVisible), id: \.self) { index in
+                if let weekStart = self.series.weekStartDate(at: index) {
+                    Text(self.accessibilityDescription(at: index, weekStart: weekStart))
+                }
+            }
+        }
     }
 
     @ViewBuilder
@@ -817,6 +824,13 @@ private struct SpendActivityWeekGrid: View {
             covered: self.series.coveredDayCount,
             requested: self.series.visibleDayCount)
         return "\(total) · \(coverage)"
+    }
+
+    private func accessibilityDescription(at index: Int, weekStart: Date) -> String {
+        let value = self.activity.isCovered[index]
+            ? UsageFormatter.tokenCountString(self.activity.values[index])
+            : L("Unavailable")
+        return "\(SpendActivityDateFormatting.mediumDateString(weekStart)): \(value)"
     }
 }
 
