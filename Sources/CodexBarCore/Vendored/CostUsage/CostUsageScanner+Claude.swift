@@ -304,7 +304,7 @@ extension CostUsageScanner {
 
         if let messageId, !messageId.isEmpty {
             if let requestId, !requestId.isEmpty {
-                return "\(messageId):\(requestId)"
+                return "pair:\(messageId):\(requestId)"
             }
             return "msg:\(messageId)"
         }
