@@ -290,6 +290,5 @@ public enum MiniMaxSessionScanner {
         }
         return String(cString: cString)
     }
-
 }
 #endif

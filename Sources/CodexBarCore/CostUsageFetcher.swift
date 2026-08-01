@@ -269,7 +269,7 @@ public struct CostUsageFetcher: Sendable {
             options.refreshMinIntervalSeconds = 0
         }
         if forceRefresh {
-            Self.configureFullRescan(&options, progress: codexProgress)
+            self.configureFullRescan(&options, progress: codexProgress)
         }
     }
 
