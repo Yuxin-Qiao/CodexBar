@@ -675,4 +675,90 @@ struct CostUsageClaudeSessionEdgeTests {
         #expect(parsed.rows.count == 2)
         #expect(parsed.rows.map(\.input).sorted() == [100, 150])
     }
+
+    @Test
+    func `parent precedence wins over larger sidechain alias row`() throws {
+        // A copied sidechain row with a larger cumulative total and persisted aliases
+        // must not replace the parent row during cross-file reconciliation.
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2025, month: 12, day: 23)
+        let iso0 = env.isoString(for: day)
+        let iso1 = env.isoString(for: day.addingTimeInterval(1))
+
+        let parentRow: [String: Any] = [
+            "type": "assistant",
+            "timestamp": iso0,
+            "sessionId": "session-parent-precedence",
+            "requestId": "r",
+            "isSidechain": false,
+            "message": [
+                "id": "m",
+                "model": "claude-sonnet-4-20250514",
+                "usage": [
+                    "input_tokens": 100,
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 0,
+                    "output_tokens": 1,
+                ],
+            ],
+        ]
+        let sidechainPair: [String: Any] = [
+            "type": "assistant",
+            "timestamp": iso0,
+            "sessionId": "session-parent-precedence",
+            "requestId": "r",
+            "isSidechain": true,
+            "message": [
+                "id": "m",
+                "model": "claude-sonnet-4-20250514",
+                "usage": [
+                    "input_tokens": 50,
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 0,
+                    "output_tokens": 1,
+                ],
+            ],
+        ]
+        let sidechainMessageOnly: [String: Any] = [
+            "type": "assistant",
+            "timestamp": iso1,
+            "sessionId": "session-parent-precedence",
+            "isSidechain": true,
+            "message": [
+                "id": "m",
+                "model": "claude-sonnet-4-20250514",
+                "usage": [
+                    "input_tokens": 200,
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 0,
+                    "output_tokens": 1,
+                ],
+            ],
+        ]
+
+        _ = try env.writeClaudeProjectFile(
+            relativePath: "project-a/parent.jsonl",
+            contents: env.jsonl([parentRow]))
+        _ = try env.writeClaudeProjectFile(
+            relativePath: "project-a/sub/agent-sidechain.jsonl",
+            contents: env.jsonl([sidechainPair, sidechainMessageOnly]))
+
+        var options = CostUsageScanner.Options(
+            codexSessionsRoot: nil,
+            claudeProjectsRoots: [env.claudeProjectsRoot],
+            cacheRoot: env.cacheRoot)
+        options.refreshMinIntervalSeconds = 0
+
+        let report = CostUsageScanner.loadDailyReport(
+            provider: .claude,
+            since: day,
+            until: day,
+            now: day,
+            options: options)
+
+        #expect(report.data.count == 1)
+        #expect(report.data[0].inputTokens == 100)
+    }
 }

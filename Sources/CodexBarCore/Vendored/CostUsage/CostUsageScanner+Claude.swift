@@ -659,7 +659,13 @@ extension CostUsageScanner {
                         || row.aliasMessageIds != nil
                         || row.aliasRequestIds != nil
                     if aliasInvolved {
-                        if Self.claudeRowTotalTokens(row) >= Self.claudeRowTotalTokens(existing.row) {
+                        let provenanceDiffers = existing.row.isSidechain != row.isSidechain
+                            || existing.row.pathRole != row.pathRole
+                        if provenanceDiffers {
+                            if Self.claudeRowWins(lhs: candidate, rhs: existing) {
+                                winners[canonicalKey] = candidate
+                            }
+                        } else if Self.claudeRowTotalTokens(row) >= Self.claudeRowTotalTokens(existing.row) {
                             winners[canonicalKey] = candidate
                         }
                     } else if Self.claudeRowWins(lhs: candidate, rhs: existing) {
