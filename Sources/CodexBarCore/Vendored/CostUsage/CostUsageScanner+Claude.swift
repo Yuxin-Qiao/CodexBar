@@ -457,6 +457,11 @@ extension CostUsageScanner {
             mergedRow.aliasMessageIds = aliasMessages.isEmpty ? nil : Array(aliasMessages).sorted()
             mergedRow.aliasRequestIds = aliasRequests.isEmpty ? nil : Array(aliasRequests).sorted()
             mergedRow.quarantined = quarantinedKeys.contains(key) ? true : row.quarantined
+            Self.claudeRetireSupersededPairs(
+                for: mergedRow,
+                keyedRows: &keyedRows,
+                canonicalKeys: &canonicalKeys,
+                identityIndex: &identityIndex)
             let canonicalKey = sessionClassKeys.first { $0.hasPrefix("pair:") } ?? key
             canonicalKeys.subtract(sessionClassKeys)
             if !canonicalKeys.contains(canonicalKey) {
@@ -484,6 +489,38 @@ extension CostUsageScanner {
             }
         }
         return true
+    }
+
+    private static func claudeRetireSupersededPairs(
+        for row: ClaudeUsageRow,
+        keyedRows: inout [String: ClaudeUsageRow],
+        canonicalKeys: inout Set<String>,
+        identityIndex: inout [String: Set<String>])
+    {
+        let messageId = Self.claudeNonEmptyID(row.messageId)
+        let requestId = Self.claudeNonEmptyID(row.requestId)
+        if let messageId {
+            for aliasRequestId in row.aliasRequestIds ?? [] where aliasRequestId != requestId {
+                let oldPairKey = "pair:\(Self.claudeEscapeKeyComponent(messageId)):"
+                    + Self.claudeEscapeKeyComponent(aliasRequestId)
+                if let oldRow = keyedRows[oldPairKey] {
+                    Self.claudeUnindexKey(oldPairKey, for: oldRow, identityIndex: &identityIndex)
+                    keyedRows.removeValue(forKey: oldPairKey)
+                }
+                canonicalKeys.remove(oldPairKey)
+            }
+        }
+        if let requestId {
+            for aliasMessageId in row.aliasMessageIds ?? [] where aliasMessageId != messageId {
+                let oldPairKey = "pair:\(Self.claudeEscapeKeyComponent(aliasMessageId)):"
+                    + Self.claudeEscapeKeyComponent(requestId)
+                if let oldRow = keyedRows[oldPairKey] {
+                    Self.claudeUnindexKey(oldPairKey, for: oldRow, identityIndex: &identityIndex)
+                    keyedRows.removeValue(forKey: oldPairKey)
+                }
+                canonicalKeys.remove(oldPairKey)
+            }
+        }
     }
 
     private static func claudeUnindexKey(

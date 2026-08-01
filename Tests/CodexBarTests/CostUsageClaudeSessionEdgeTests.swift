@@ -450,4 +450,59 @@ struct CostUsageClaudeSessionEdgeTests {
         #expect(report.data.count == 1)
         #expect(report.data[0].inputTokens == 110)
     }
+
+    @Test
+    func `identifier transition retires the previous pair`() throws {
+        // pair(m1,r) -> req(r) -> pair(m2,r) is one stream; the old pair(m1,r) must not
+        // remain canonical and double-count the cumulative totals.
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2025, month: 12, day: 23)
+        let iso0 = env.isoString(for: day)
+        let iso1 = env.isoString(for: day.addingTimeInterval(1))
+        let iso2 = env.isoString(for: day.addingTimeInterval(2))
+
+        func row(messageId: String?, requestId: String?, timestamp: String, input: Int) -> [String: Any] {
+            var message: [String: Any] = [
+                "model": "claude-sonnet-4-20250514",
+                "usage": [
+                    "input_tokens": input,
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 0,
+                    "output_tokens": 1,
+                ],
+            ]
+            if let messageId {
+                message["id"] = messageId
+            }
+            var row: [String: Any] = [
+                "type": "assistant",
+                "timestamp": timestamp,
+                "sessionId": "session-pair-transition",
+                "isSidechain": false,
+                "message": message,
+            ]
+            if let requestId {
+                row["requestId"] = requestId
+            }
+            return row
+        }
+
+        let fileURL = try env.writeClaudeProjectFile(
+            relativePath: "project-a/pair-transition.jsonl",
+            contents: env.jsonl([
+                row(messageId: "m1", requestId: "r", timestamp: iso0, input: 100),
+                row(messageId: nil, requestId: "r", timestamp: iso1, input: 150),
+                row(messageId: "m2", requestId: "r", timestamp: iso2, input: 300),
+            ]))
+
+        let parsed = CostUsageScanner.parseClaudeFile(
+            fileURL: fileURL,
+            range: CostUsageScanner.CostUsageDayRange(since: day, until: day),
+            providerFilter: .all)
+
+        #expect(parsed.rows.count == 1)
+        #expect(parsed.rows[0].input == 300)
+    }
 }
