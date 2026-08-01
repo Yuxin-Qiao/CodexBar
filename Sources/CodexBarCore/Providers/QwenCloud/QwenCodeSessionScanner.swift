@@ -1,11 +1,15 @@
 import Foundation
 
-/// Reads Qwen Code's local JSONL history.
+/// Reads Qwen Code's local JSONL history as a thin parser over the shared aggregation engine.
 ///
-/// Qwen stores assistant messages under `~/.qwen/projects/*/chats/*.jsonl`.
-/// The format is also consumed by tokscale. The scanner is deliberately
-/// bounded and cancellable so enabling a long history cannot turn dashboard
-/// refresh into an unbounded filesystem crawl.
+/// Qwen stores assistant messages under `~/.qwen/projects/*/chats/*.jsonl`. The format is also
+/// consumed by tokscale. The scanner is deliberately bounded and cancellable so enabling a long
+/// history cannot turn dashboard refresh into an unbounded filesystem crawl.
+///
+/// This scanner only walks files and maps each assistant message to a `UnifiedUsageEvent`. The
+/// cached-prefix split (Qwen's `promptTokenCount` already includes `cachedContentTokenCount`),
+/// models.dev pricing, reasoning/output accounting, day bucketing, and snapshot construction are
+/// all handled once by `UsageEventAggregator`.
 public enum QwenCodeSessionScanner {
     public static let homeEnvironmentKey = "QWEN_HOME"
     public static let defaultHistoryDays = 30
@@ -24,120 +28,6 @@ public enum QwenCodeSessionScanner {
         let model: String?
         let timestamp: String?
         let usageMetadata: Usage?
-    }
-
-    private struct DayModelKey: Hashable {
-        let day: String
-        let model: String
-    }
-
-    private struct TokenAccumulator {
-        var input = 0
-        var output = 0
-        var cacheRead = 0
-        var reasoning = 0
-        var requests = 0
-        var cost = 0.0
-        var sawCost = false
-        /// Set when at least one message in this accumulator carried billable usage but had no
-        /// resolvable price. The merged day/entry cost must then stay nil so the dashboard does not
-        /// present a partial subtotal as the complete day total.
-        var sawUnpricedUsage = false
-
-        mutating func add(
-            usage: WireMessage.Usage,
-            model: String,
-            modelsDevCatalog: ModelsDevCatalog?,
-            modelsDevCacheRoot: URL?) -> Bool
-        {
-            // Gemini-style `promptTokenCount` already includes the cached prefix
-            // (`cachedContentTokenCount` is a subset of it). Passing the full prompt as input AND the
-            // cached portion again as cache-read would bill the cached tokens twice, so split the
-            // prompt into its uncached remainder.
-            guard let promptTotal = Self.valid(usage.promptTokenCount),
-                  let candidates = Self.valid(usage.candidatesTokenCount),
-                  let reasoning = Self.valid(usage.thoughtsTokenCount),
-                  let cacheRead = Self.valid(usage.cachedContentTokenCount),
-                  let billingOutput = Self.adding(candidates, reasoning)
-            else {
-                return false
-            }
-            let uncachedInput = max(0, promptTotal - cacheRead)
-            guard let nextInput = Self.adding(self.input, uncachedInput),
-                  let nextOutput = Self.adding(self.output, billingOutput),
-                  let nextCacheRead = Self.adding(self.cacheRead, cacheRead),
-                  let nextReasoning = Self.adding(self.reasoning, reasoning),
-                  let nextRequests = Self.adding(self.requests, 1)
-            else {
-                return false
-            }
-            guard promptTotal > 0 || billingOutput > 0 || cacheRead > 0 else { return false }
-            self.input = nextInput
-            self.output = nextOutput
-            self.cacheRead = nextCacheRead
-            self.reasoning = nextReasoning
-            self.requests = nextRequests
-            if let cost = CostUsagePricing.modelsDevCostUSD(
-                request: .init(
-                    providerIDs: ["alibaba", "alibaba-cn"],
-                    model: model,
-                    inputTokens: uncachedInput,
-                    cacheReadInputTokens: cacheRead,
-                    outputTokens: billingOutput),
-                catalog: modelsDevCatalog,
-                cacheRoot: modelsDevCacheRoot),
-                cost.isFinite
-            {
-                let nextCost = self.cost + cost
-                if nextCost.isFinite {
-                    self.cost = nextCost
-                    self.sawCost = true
-                }
-            } else {
-                self.sawUnpricedUsage = true
-            }
-            return true
-        }
-
-        mutating func merge(_ other: Self) -> Bool {
-            guard let input = Self.adding(self.input, other.input),
-                  let output = Self.adding(self.output, other.output),
-                  let cacheRead = Self.adding(self.cacheRead, other.cacheRead),
-                  let reasoning = Self.adding(self.reasoning, other.reasoning),
-                  let requests = Self.adding(self.requests, other.requests)
-            else {
-                return false
-            }
-            self.input = input
-            self.output = output
-            self.cacheRead = cacheRead
-            self.reasoning = reasoning
-            self.requests = requests
-            if other.sawCost {
-                let nextCost = self.cost + other.cost
-                if other.cost.isFinite, nextCost.isFinite {
-                    self.cost = nextCost
-                    self.sawCost = true
-                }
-            }
-            self.sawUnpricedUsage = self.sawUnpricedUsage || other.sawUnpricedUsage
-            return true
-        }
-
-        var total: Int? {
-            guard let inputAndCache = Self.adding(self.input, self.cacheRead) else { return nil }
-            return Self.adding(inputAndCache, self.output)
-        }
-
-        private static func valid(_ value: Int?) -> Int? {
-            guard let value, value >= 0 else { return 0 }
-            return value
-        }
-
-        private static func adding(_ lhs: Int, _ rhs: Int) -> Int? {
-            let result = lhs.addingReportingOverflow(rhs)
-            return result.overflow ? nil : result.partialValue
-        }
     }
 
     public static func scan(
@@ -191,8 +81,8 @@ public enum QwenCodeSessionScanner {
         let parseTimestamp: (String) -> Date? = { raw in
             iso8601Fractional.date(from: raw) ?? iso8601.date(from: raw)
         }
-        let modelsDevCatalog = CostUsagePricing.modelsDevCatalog(now: now, cacheRoot: modelsDevCacheRoot)
-        var values: [DayModelKey: TokenAccumulator] = [:]
+
+        var events: [UnifiedUsageEvent] = []
         var visitedFiles = 0
         var visitedBytes = 0
 
@@ -237,19 +127,23 @@ public enum QwenCodeSessionScanner {
                     let model = message.model?
                         .trimmingCharacters(in: .whitespacesAndNewlines)
                     let normalizedModel = model?.isEmpty == false ? model! : "unknown"
-                    let key = DayModelKey(
+                    // Reasoning ("thoughts") is billed as output. Fold it into the event's output so
+                    // the engine prices output correctly, and also pass it through as the reasoning
+                    // sub-bucket for display. `promptTokenCount` carries no separate total, so the
+                    // engine falls back to subtracting the cached prefix.
+                    let candidates = max(0, usage.candidatesTokenCount ?? 0)
+                    let thoughts = max(0, usage.thoughtsTokenCount ?? 0)
+                    events.append(UnifiedUsageEvent(
                         day: CostUsageLocalDay.key(from: eventDay, calendar: calendar),
-                        model: normalizedModel)
-                    var accumulator = values[key] ?? TokenAccumulator()
-                    guard accumulator.add(
-                        usage: usage,
                         model: normalizedModel,
-                        modelsDevCatalog: modelsDevCatalog,
-                        modelsDevCacheRoot: modelsDevCacheRoot)
-                    else {
-                        return
-                    }
-                    values[key] = accumulator
+                        billingProviderID: UsageProvider.qwencloud.rawValue,
+                        inputTokens: usage.promptTokenCount,
+                        outputTokens: candidates + thoughts,
+                        totalTokens: nil,
+                        cacheReadTokens: usage.cachedContentTokenCount,
+                        cacheCreationTokens: nil,
+                        reasoningTokens: thoughts,
+                        pricingProviderIDs: ["alibaba", "alibaba-cn"]))
                 }
             } catch is CancellationError {
                 throw CancellationError()
@@ -258,27 +152,14 @@ public enum QwenCodeSessionScanner {
             }
         }
 
-        guard !values.isEmpty else { return nil }
-        let daily = self.makeDaily(values: values)
-        guard let totalTokens = self.sum(daily.compactMap(\.totalTokens)),
-              let requests = self.sum(daily.compactMap(\.requestCount))
-        else {
-            return nil
-        }
-        let costs = daily.compactMap(\.costUSD)
-        return CostUsageTokenSnapshot(
-            sessionTokens: nil,
-            sessionCostUSD: nil,
-            last30DaysTokens: totalTokens,
-            last30DaysCostUSD: costs.isEmpty ? nil : costs.reduce(0, +),
-            last30DaysRequests: requests,
-            currencyCode: costs.isEmpty ? "XXX" : "USD",
+        return UsageEventAggregator.aggregate(
+            events: events,
             historyDays: days,
-            historyCoverageIsEstablished: true,
-            historyLabel: "Qwen Code CLI",
-            costSource: .estimated,
-            daily: daily,
-            updatedAt: now)
+            now: now,
+            options: .init(
+                historyLabel: "Qwen Code CLI",
+                defaultBillingProviderID: UsageProvider.qwencloud.rawValue,
+                modelsDevCacheRoot: modelsDevCacheRoot))
     }
 
     public static func homeURL(
@@ -292,57 +173,5 @@ public enum QwenCodeSessionScanner {
         }
         return FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".qwen", isDirectory: true)
-    }
-
-    private static func makeDaily(values: [DayModelKey: TokenAccumulator])
-        -> [CostUsageDailyReport.Entry]
-    {
-        let byDay = Dictionary(grouping: values, by: \.key.day)
-        return byDay.keys.sorted().compactMap { day in
-            let models = (byDay[day] ?? []).sorted {
-                $0.key.model.localizedCaseInsensitiveCompare($1.key.model) == .orderedAscending
-            }
-            var total = TokenAccumulator()
-            var breakdowns: [CostUsageDailyReport.ModelBreakdown] = []
-            for (key, value) in models {
-                guard let modelTotal = value.total, total.merge(value) else { return nil }
-                breakdowns.append(CostUsageDailyReport.ModelBreakdown(
-                    modelName: key.model,
-                    billingProviderID: UsageProvider.qwencloud.rawValue,
-                    costUSD: value.sawCost ? value.cost : nil,
-                    totalTokens: modelTotal,
-                    inputTokens: value.input,
-                    cacheReadTokens: value.cacheRead,
-                    cacheCreationTokens: 0,
-                    outputTokens: value.output,
-                    reasoningTokens: value.reasoning,
-                    requestCount: value.requests))
-            }
-            guard let dayTotal = total.total else { return nil }
-            // Withhold the day cost whenever any contributing model could not be priced, so the
-            // dashboard treats the day as partially priced instead of a confident complete total.
-            let dayCost = total.sawCost && !total.sawUnpricedUsage ? total.cost : nil
-            return CostUsageDailyReport.Entry(
-                date: day,
-                inputTokens: total.input,
-                outputTokens: total.output,
-                cacheReadTokens: total.cacheRead,
-                cacheCreationTokens: 0,
-                totalTokens: dayTotal,
-                requestCount: total.requests,
-                costUSD: dayCost,
-                modelsUsed: breakdowns.map(\.modelName),
-                modelBreakdowns: breakdowns)
-        }
-    }
-
-    private static func sum(_ values: [Int]) -> Int? {
-        var result = 0
-        for value in values {
-            let addition = result.addingReportingOverflow(value)
-            guard !addition.overflow else { return nil }
-            result = addition.partialValue
-        }
-        return result
     }
 }

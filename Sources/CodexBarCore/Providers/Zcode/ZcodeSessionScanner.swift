@@ -1,6 +1,6 @@
 import Foundation
 
-/// Reads ZCode's local JSONL rollout history.
+/// Reads ZCode's local JSONL rollout history as a thin parser over the shared aggregation engine.
 ///
 /// ZCode stores one file per session under `~/.zcode/cli/rollout/model-io-sess_*.jsonl`. Each
 /// line is a single billable request with `completedAt` (RFC 3339), `model.modelId` (e.g.
@@ -8,12 +8,10 @@ import Foundation
 /// plan), and `response.usage` carrying `inputTokens`, `outputTokens`, `totalTokens`,
 /// `cacheReadTokens`, and `cacheWriteTokens`.
 ///
-/// ZCode's `inputTokens` already includes the cached prefix, mirroring tokscale's zcode handling:
-/// `inputTokens + outputTokens == totalTokens` even when `cacheReadTokens > 0`. We therefore
-/// cross-check against `totalTokens` and split the prompt into its uncached remainder so cached
-/// tokens are never billed twice. Usage is priced at the vendor's official Z.ai API rate (the
-/// coding-plan catalog entries are zero-priced because the plan is a flat subscription); only
-/// when no official rate is known does the day stay partially priced.
+/// This scanner only walks files and maps each request to a `UnifiedUsageEvent`. The cached-prefix
+/// double-count (ZCode's `inputTokens` already includes the cached prefix), models.dev pricing at
+/// the official Z.ai rate, day bucketing, and snapshot construction are all handled once by
+/// `UsageEventAggregator` — nothing here re-implements them.
 public enum ZcodeSessionScanner {
     public static let homeEnvironmentKey = "ZCODE_HOME"
     public static let defaultHistoryDays = 30
@@ -41,133 +39,6 @@ public enum ZcodeSessionScanner {
         let completedAt: String?
         let model: Model?
         let response: Response?
-    }
-
-    private struct DayModelKey: Hashable {
-        let day: String
-        let model: String
-    }
-
-    private struct TokenAccumulator {
-        var input = 0
-        var output = 0
-        var cacheRead = 0
-        var cacheWrite = 0
-        var requests = 0
-        var cost = 0.0
-        var sawCost = false
-        /// Set when at least one request in this accumulator carried billable usage but had no
-        /// resolvable price. The merged day/entry cost then stays nil so the dashboard does not
-        /// present a partial subtotal as the complete day total.
-        var sawUnpricedUsage = false
-
-        mutating func add(
-            usage: WireMessage.Usage,
-            model: String,
-            modelsDevCatalog: ModelsDevCatalog?,
-            modelsDevCacheRoot: URL?) -> Bool
-        {
-            guard let rawInput = Self.valid(usage.inputTokens),
-                  let output = Self.valid(usage.outputTokens),
-                  let cacheRead = Self.valid(usage.cacheReadTokens),
-                  let cacheWrite = Self.valid(usage.cacheWriteTokens),
-                  let total = Self.valid(usage.totalTokens)
-            else {
-                return false
-            }
-            // Normalize the cached-prefix double count. When `input + output == total` the input
-            // already includes the cached prefix, so the billable uncached input is
-            // `input - cacheRead`. When `input + cacheRead + output == total` the input is already
-            // uncached. Fall back to subtracting the cache when total is inconsistent.
-            let uncachedInput: Int = if let inputPlusOutput = Self.adding(rawInput, output), inputPlusOutput == total {
-                max(0, rawInput - cacheRead)
-            } else if let withCache = Self.adding(rawInput, cacheRead),
-                      let withCacheAndOutput = Self.adding(withCache, output),
-                      withCacheAndOutput == total
-            {
-                rawInput
-            } else {
-                max(0, rawInput - cacheRead)
-            }
-            guard let nextInput = Self.adding(self.input, uncachedInput),
-                  let nextOutput = Self.adding(self.output, output),
-                  let nextCacheRead = Self.adding(self.cacheRead, cacheRead),
-                  let nextCacheWrite = Self.adding(self.cacheWrite, cacheWrite),
-                  let nextRequests = Self.adding(self.requests, 1)
-            else {
-                return false
-            }
-            guard uncachedInput > 0 || output > 0 || cacheRead > 0 else { return false }
-            self.input = nextInput
-            self.output = nextOutput
-            self.cacheRead = nextCacheRead
-            self.cacheWrite = nextCacheWrite
-            self.requests = nextRequests
-            // Price at the official Z.ai API rate (zhipuai is the same vendor's alias). The
-            // `zai-coding-plan`/`zhipuai-coding-plan` catalogs are intentionally excluded: they are
-            // zero-priced flat subscriptions, and we report the API-equivalent value to stay
-            // consistent with how other subscription tools are estimated.
-            if let cost = CostUsagePricing.modelsDevCostUSD(
-                request: .init(
-                    providerIDs: ["zai", "zhipuai"],
-                    model: model,
-                    inputTokens: uncachedInput,
-                    cacheReadInputTokens: cacheRead,
-                    outputTokens: output),
-                catalog: modelsDevCatalog,
-                cacheRoot: modelsDevCacheRoot),
-                cost.isFinite
-            {
-                let nextCost = self.cost + cost
-                if nextCost.isFinite {
-                    self.cost = nextCost
-                    self.sawCost = true
-                }
-            } else {
-                self.sawUnpricedUsage = true
-            }
-            return true
-        }
-
-        mutating func merge(_ other: Self) -> Bool {
-            guard let input = Self.adding(self.input, other.input),
-                  let output = Self.adding(self.output, other.output),
-                  let cacheRead = Self.adding(self.cacheRead, other.cacheRead),
-                  let cacheWrite = Self.adding(self.cacheWrite, other.cacheWrite),
-                  let requests = Self.adding(self.requests, other.requests)
-            else {
-                return false
-            }
-            self.input = input
-            self.output = output
-            self.cacheRead = cacheRead
-            self.cacheWrite = cacheWrite
-            self.requests = requests
-            if other.sawCost {
-                let nextCost = self.cost + other.cost
-                if other.cost.isFinite, nextCost.isFinite {
-                    self.cost = nextCost
-                    self.sawCost = true
-                }
-            }
-            self.sawUnpricedUsage = self.sawUnpricedUsage || other.sawUnpricedUsage
-            return true
-        }
-
-        var total: Int? {
-            guard let inputAndCache = Self.adding(self.input, self.cacheRead) else { return nil }
-            return Self.adding(inputAndCache, self.output)
-        }
-
-        private static func valid(_ value: Int?) -> Int? {
-            guard let value, value >= 0 else { return 0 }
-            return value
-        }
-
-        private static func adding(_ lhs: Int, _ rhs: Int) -> Int? {
-            let result = lhs.addingReportingOverflow(rhs)
-            return result.overflow ? nil : result.partialValue
-        }
     }
 
     public static func scan(
@@ -214,15 +85,14 @@ public enum ZcodeSessionScanner {
         let start = calendar.date(byAdding: .day, value: -(days - 1), to: end) ?? end
         let decoder = JSONDecoder()
         // ZCode emits RFC 3339 timestamps with fractional seconds (`2026-06-14T17:23:26.382Z`).
-        // The whole-second formatter rejects them, so try the fractional variant first.
         let iso8601Fractional = ISO8601DateFormatter()
         iso8601Fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let iso8601 = ISO8601DateFormatter()
         let parseTimestamp: (String) -> Date? = { raw in
             iso8601Fractional.date(from: raw) ?? iso8601.date(from: raw)
         }
-        let modelsDevCatalog = CostUsagePricing.modelsDevCatalog(now: now, cacheRoot: modelsDevCacheRoot)
-        var values: [DayModelKey: TokenAccumulator] = [:]
+
+        var events: [UnifiedUsageEvent] = []
         var visitedFiles = 0
         var visitedBytes = 0
 
@@ -270,19 +140,18 @@ public enum ZcodeSessionScanner {
                     let normalizedModel = model?.isEmpty == false
                         ? model!.lowercased()
                         : "unknown"
-                    let key = DayModelKey(
+                    events.append(UnifiedUsageEvent(
                         day: CostUsageLocalDay.key(from: eventDay, calendar: calendar),
-                        model: normalizedModel)
-                    var accumulator = values[key] ?? TokenAccumulator()
-                    guard accumulator.add(
-                        usage: usage,
                         model: normalizedModel,
-                        modelsDevCatalog: modelsDevCatalog,
-                        modelsDevCacheRoot: modelsDevCacheRoot)
-                    else {
-                        return
-                    }
-                    values[key] = accumulator
+                        billingProviderID: UsageProvider.zai.rawValue,
+                        inputTokens: usage.inputTokens,
+                        outputTokens: usage.outputTokens,
+                        totalTokens: usage.totalTokens,
+                        cacheReadTokens: usage.cacheReadTokens,
+                        cacheCreationTokens: usage.cacheWriteTokens,
+                        // Price at the official Z.ai API rate; the zero-priced coding-plan catalogs
+                        // are intentionally excluded so we report the API-equivalent value.
+                        pricingProviderIDs: ["zai", "zhipuai"]))
                 }
             } catch is CancellationError {
                 throw CancellationError()
@@ -291,27 +160,14 @@ public enum ZcodeSessionScanner {
             }
         }
 
-        guard !values.isEmpty else { return nil }
-        let daily = self.makeDaily(values: values)
-        guard let totalTokens = self.sum(daily.compactMap(\.totalTokens)),
-              let requests = self.sum(daily.compactMap(\.requestCount))
-        else {
-            return nil
-        }
-        let costs = daily.compactMap(\.costUSD)
-        return CostUsageTokenSnapshot(
-            sessionTokens: nil,
-            sessionCostUSD: nil,
-            last30DaysTokens: totalTokens,
-            last30DaysCostUSD: costs.isEmpty ? nil : costs.reduce(0, +),
-            last30DaysRequests: requests,
-            currencyCode: costs.isEmpty ? "XXX" : "USD",
+        return UsageEventAggregator.aggregate(
+            events: events,
             historyDays: days,
-            historyCoverageIsEstablished: true,
-            historyLabel: "ZCode",
-            costSource: .estimated,
-            daily: daily,
-            updatedAt: now)
+            now: now,
+            options: .init(
+                historyLabel: "ZCode",
+                defaultBillingProviderID: UsageProvider.zai.rawValue,
+                modelsDevCacheRoot: modelsDevCacheRoot))
     }
 
     public static func homeURL(
@@ -325,57 +181,5 @@ public enum ZcodeSessionScanner {
         }
         return FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".zcode", isDirectory: true)
-    }
-
-    private static func makeDaily(values: [DayModelKey: TokenAccumulator])
-        -> [CostUsageDailyReport.Entry]
-    {
-        let byDay = Dictionary(grouping: values, by: \.key.day)
-        return byDay.keys.sorted().compactMap { day in
-            let models = (byDay[day] ?? []).sorted {
-                $0.key.model.localizedCaseInsensitiveCompare($1.key.model) == .orderedAscending
-            }
-            var total = TokenAccumulator()
-            var breakdowns: [CostUsageDailyReport.ModelBreakdown] = []
-            for (key, value) in models {
-                guard let modelTotal = value.total, total.merge(value) else { return nil }
-                breakdowns.append(CostUsageDailyReport.ModelBreakdown(
-                    modelName: key.model,
-                    billingProviderID: UsageProvider.zai.rawValue,
-                    costUSD: value.sawCost ? value.cost : nil,
-                    totalTokens: modelTotal,
-                    inputTokens: value.input,
-                    cacheReadTokens: value.cacheRead,
-                    cacheCreationTokens: value.cacheWrite,
-                    outputTokens: value.output,
-                    reasoningTokens: 0,
-                    requestCount: value.requests))
-            }
-            guard let dayTotal = total.total else { return nil }
-            // Withhold the day cost whenever any contributing model could not be priced, so the
-            // dashboard treats the day as partially priced instead of a confident complete total.
-            let dayCost = total.sawCost && !total.sawUnpricedUsage ? total.cost : nil
-            return CostUsageDailyReport.Entry(
-                date: day,
-                inputTokens: total.input,
-                outputTokens: total.output,
-                cacheReadTokens: total.cacheRead,
-                cacheCreationTokens: total.cacheWrite,
-                totalTokens: dayTotal,
-                requestCount: total.requests,
-                costUSD: dayCost,
-                modelsUsed: breakdowns.map(\.modelName),
-                modelBreakdowns: breakdowns)
-        }
-    }
-
-    private static func sum(_ values: [Int]) -> Int? {
-        var result = 0
-        for value in values {
-            let addition = result.addingReportingOverflow(value)
-            guard !addition.overflow else { return nil }
-            result = addition.partialValue
-        }
-        return result
     }
 }

@@ -97,7 +97,11 @@ public enum CursorLocalActivityScanner {
         sqlite3_bind_int64(stmt, 1, startMs)
         sqlite3_bind_int64(stmt, 2, endMs)
 
-        var modelsByDay: [String: Set<String>] = [:]
+        // Degraded source: emit one model-only event per distinct (day, model). The aggregator
+        // surfaces these as token-less entries; we de-duplicate here so a busy day does not turn
+        // into tens of thousands of identical events.
+        var seen: Set<String> = []
+        var events: [UnifiedUsageEvent] = []
         while true {
             try checkCancellation()
             let stepResult = sqlite3_step(stmt)
@@ -110,39 +114,21 @@ public enum CursorLocalActivityScanner {
             guard !model.isEmpty else { continue }
             let day = calendar.startOfDay(for: Date(timeIntervalSince1970: TimeInterval(seconds)))
             let dayKey = CostUsageLocalDay.key(from: day, calendar: calendar)
-            modelsByDay[dayKey, default: []].insert(model)
+            let dedupKey = "\(dayKey)\u{1f}\(model)"
+            guard seen.insert(dedupKey).inserted else { continue }
+            events.append(UnifiedUsageEvent(
+                day: dayKey,
+                model: model,
+                billingProviderID: UsageProvider.cursor.rawValue))
         }
 
-        guard !modelsByDay.isEmpty else { return nil }
-        let daily = modelsByDay.keys.sorted().map { dayKey in
-            let models = (modelsByDay[dayKey] ?? []).sorted {
-                $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
-            }
-            return CostUsageDailyReport.Entry(
-                date: dayKey,
-                inputTokens: nil,
-                outputTokens: nil,
-                cacheReadTokens: nil,
-                cacheCreationTokens: nil,
-                totalTokens: nil,
-                requestCount: nil,
-                costUSD: nil,
-                modelsUsed: models,
-                modelBreakdowns: nil)
-        }
-        return CostUsageTokenSnapshot(
-            sessionTokens: nil,
-            sessionCostUSD: nil,
-            last30DaysTokens: nil,
-            last30DaysCostUSD: nil,
-            last30DaysRequests: nil,
-            currencyCode: "XXX",
+        return UsageEventAggregator.aggregate(
+            events: events,
             historyDays: days,
-            historyCoverageIsEstablished: true,
-            historyLabel: "Cursor",
-            costSource: .estimated,
-            daily: daily,
-            updatedAt: now)
+            now: now,
+            options: .init(
+                historyLabel: "Cursor",
+                defaultBillingProviderID: UsageProvider.cursor.rawValue))
     }
 }
 #endif

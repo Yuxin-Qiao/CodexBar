@@ -18,6 +18,7 @@ public enum LocalHistoryBuiltInScanners {
             AntigravityLocalHistoryScanner(),
             QwenCodeLocalHistoryScanner(),
             ZcodeLocalHistoryScanner(),
+            CopilotLocalHistoryScanner(),
         ]
         #if canImport(SQLite3) || canImport(CSQLite3)
         scanners.append(CursorLocalHistoryScanner())
@@ -167,6 +168,28 @@ public struct ZcodeLocalHistoryScanner: LocalHistoryScanning {
 
     public func scan(context: LocalHistoryScanContext) throws -> CostUsageTokenSnapshot? {
         try ZcodeSessionScanner.scanCancellable(
+            environment: context.environment,
+            fileManager: context.fileManager,
+            historyDays: context.historyDays,
+            now: context.now,
+            calendar: context.calendar,
+            modelsDevCacheRoot: context.modelsDevCacheRoot,
+            checkCancellation: context.checkCancellation)
+    }
+}
+
+public struct CopilotLocalHistoryScanner: LocalHistoryScanning {
+    public init() {}
+    public let source: ProviderLocalHistorySource = .copilot
+    public let displayName = "GitHub Copilot"
+    public let homeEnvironmentKey: String? = CopilotSessionScanner.homeEnvironmentKey
+
+    public func homeURL(environment: [String: String]) -> URL? {
+        CopilotSessionScanner.homeURL(environment: environment)
+    }
+
+    public func scan(context: LocalHistoryScanContext) throws -> CostUsageTokenSnapshot? {
+        try CopilotSessionScanner.scanCancellable(
             environment: context.environment,
             fileManager: context.fileManager,
             historyDays: context.historyDays,

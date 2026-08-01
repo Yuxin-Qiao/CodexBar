@@ -94,34 +94,18 @@ public enum TraeLocalActivityScanner {
         guard !models.isEmpty || lastActive != nil else { return nil }
 
         // Anchor the (single) record on the last active day when known, otherwise today. Trae
-        // exposes no per-day token history, so there is exactly one degraded entry.
+        // exposes no per-day token history, so there is exactly one degraded entry per model.
         let anchor = lastActive ?? now
         let anchorDay = calendar.startOfDay(for: anchor)
         let dayKey = CostUsageLocalDay.key(from: anchorDay, calendar: calendar)
-        let entry = CostUsageDailyReport.Entry(
-            date: dayKey,
-            inputTokens: nil,
-            outputTokens: nil,
-            cacheReadTokens: nil,
-            cacheCreationTokens: nil,
-            totalTokens: nil,
-            requestCount: nil,
-            costUSD: nil,
-            modelsUsed: models.isEmpty ? nil : models,
-            modelBreakdowns: nil)
-        return CostUsageTokenSnapshot(
-            sessionTokens: nil,
-            sessionCostUSD: nil,
-            last30DaysTokens: nil,
-            last30DaysCostUSD: nil,
-            last30DaysRequests: nil,
-            currencyCode: "XXX",
+        let events = models.map { model in
+            UnifiedUsageEvent(day: dayKey, model: model)
+        }
+        return UsageEventAggregator.aggregate(
+            events: events,
             historyDays: days,
-            historyCoverageIsEstablished: true,
-            historyLabel: "Trae",
-            costSource: .estimated,
-            daily: [entry],
-            updatedAt: now)
+            now: now,
+            options: .init(historyLabel: "Trae"))
     }
 
     /// Reads the per-agent selected-model map and returns the de-duplicated, cleaned model names
