@@ -333,7 +333,7 @@ private struct SpendActivityDailyGrid: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(UsageFormatter.tokenCountString(tokens))
                     .font(.caption.weight(.semibold))
-                Text(date, format: .dateTime.month(.abbreviated).day().year())
+                Text(date, format: .dateTime.month(.abbreviated).day().year().locale(codexBarLocalizedLocale()))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -357,15 +357,17 @@ private struct SpendActivityDailyGrid: View {
                     .frame(maxHeight: .infinity, alignment: .center)
             }
         }
-        .frame(width: 16)
+        .frame(width: 22)
     }
 
     private func weekdayLabel(_ row: Int) -> String {
         // Rows start at Sunday (Codex order), but only label a few to avoid clutter.
+        // Keep the gutter in English (like GitHub's contribution graph): single CJK glyphs
+        // such as 「一/三/五」 render awkwardly in the narrow vertical gutter.
         switch row {
-        case 1: L("Mo")
-        case 3: L("We")
-        case 5: L("Fr")
+        case 1: "Mon"
+        case 3: "Wed"
+        case 5: "Fri"
         default: ""
         }
     }
@@ -385,7 +387,7 @@ private struct SpendActivityDailyGrid: View {
             }
         }
         .frame(height: 12)
-        .padding(.leading, 20) // align with the grid (gutter width + spacing)
+        .padding(.leading, 26) // align with the grid (gutter width + spacing)
     }
 
     private struct MonthMarker {
@@ -395,7 +397,7 @@ private struct SpendActivityDailyGrid: View {
 
     private func monthMarkers(pitch: CGFloat) -> [MonthMarker] {
         let formatter = DateFormatter()
-        formatter.locale = .autoupdatingCurrent
+        formatter.locale = codexBarLocalizedLocale()
         formatter.dateFormat = "MMM"
         var markers: [MonthMarker] = []
         var lastLabel = ""
@@ -441,7 +443,7 @@ private struct SpendActivityWeekGrid: View {
         // as the empty track.
         let maxValue = self.values.max() ?? 0
         HStack(alignment: .top, spacing: 4) {
-            Spacer().frame(width: 16) // align with the daily grid's weekday gutter
+            Spacer().frame(width: 22) // align with the daily grid's weekday gutter
             GeometryReader { geo in
                 let pitch = geo.size.width / CGFloat(self.columns)
                 let rowPitch = geo.size.height / CGFloat(self.rows)
@@ -540,10 +542,13 @@ private struct SpendActivityWeekGrid: View {
         return String(format: L("%@ tokens in the week of %@"), count, date)
     }
 
-    private static let dayFormatter: DateFormatter = {
+    /// Follows the in-app language selection, not the macOS system locale, so the tooltip date
+    /// matches the rest of the dashboard even when the two differ.
+    private static var dayFormatter: DateFormatter {
         let formatter = DateFormatter()
+        formatter.locale = codexBarLocalizedLocale()
         formatter.dateStyle = .medium
         formatter.timeStyle = .none
         return formatter
-    }()
+    }
 }
