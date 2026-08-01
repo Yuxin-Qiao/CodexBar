@@ -19,6 +19,11 @@ public struct ProviderLocalHistorySource: RawRepresentable, Hashable, Sendable {
     public static let miniMax = Self(rawValue: "miniMax")
     public static let openCode = Self(rawValue: "openCode")
     public static let qwenCode = Self(rawValue: "qwenCode")
+    public static let zcode = Self(rawValue: "zcode")
+    /// Degraded sources: the tool is recognized and model activity is reported, but no per-request
+    /// token usage is available locally (billing is server-side).
+    public static let cursorLocal = Self(rawValue: "cursorLocal")
+    public static let traeLocal = Self(rawValue: "traeLocal")
 
     public static let builtIn: [Self] = [
         .antigravity,
@@ -27,6 +32,9 @@ public struct ProviderLocalHistorySource: RawRepresentable, Hashable, Sendable {
         .miniMax,
         .openCode,
         .qwenCode,
+        .zcode,
+        .cursorLocal,
+        .traeLocal,
     ]
 
     /// Built-in adapter identifiers shipped by this build. Custom identifiers
