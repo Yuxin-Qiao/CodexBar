@@ -230,7 +230,7 @@ public enum SubprocessRunner {
                 launchError = error
                 let desc = error.localizedDescription
                 if desc.contains("Text file busy") || desc.contains("ETXTBSY"), attempt < 4 {
-                    Thread.sleep(forTimeInterval: 0.02)
+                    try? await Task.sleep(nanoseconds: 20_000_000)
                     continue
                 }
                 break
