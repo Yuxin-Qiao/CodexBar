@@ -373,6 +373,9 @@ extension CostUsageScanner {
         guard let key = claudeInFileKey(row) else {
             return false
         }
+        if row.quarantined == true {
+            quarantinedKeys.insert(key)
+        }
         let indexedClassKeys = Self.claudeClassKeys(for: row, ownKey: key, identityIndex: identityIndex)
         let classKeys = (keyedRows[key] != nil && key.hasPrefix("pair:") ? [key] : indexedClassKeys).filter {
             // Paired rows are unique identities: another pair with the same messageId is a
@@ -393,8 +396,10 @@ extension CostUsageScanner {
             // A sessionless row cannot tell which established session it belongs to;
             // keep it separate rather than bridging two distinct sessions.
             quarantinedKeys.insert(key)
-            keyedRows[key] = row
-            Self.claudeIndexKey(key, for: row, identityIndex: &identityIndex)
+            var quarantinedRow = row
+            quarantinedRow.quarantined = true
+            keyedRows[key] = quarantinedRow
+            Self.claudeIndexKey(key, for: quarantinedRow, identityIndex: &identityIndex)
             if !canonicalKeys.contains(key) {
                 canonicalKeys.insert(key)
             }
@@ -413,16 +418,35 @@ extension CostUsageScanner {
         }
 
         if Self.claudeRowTotalTokens(row) >= Self.claudeRowTotalTokens(representative) {
+            var mergedRow = row
+            var aliasMessages = Set(row.aliasMessageIds ?? [])
+            var aliasRequests = Set(row.aliasRequestIds ?? [])
+            for classKey in sessionClassKeys {
+                guard let member = keyedRows[classKey] else { continue }
+                if let messageId = Self.claudeNonEmptyID(member.messageId),
+                   messageId != Self.claudeNonEmptyID(row.messageId)
+                {
+                    aliasMessages.insert(messageId)
+                }
+                if let requestId = Self.claudeNonEmptyID(member.requestId),
+                   requestId != Self.claudeNonEmptyID(row.requestId)
+                {
+                    aliasRequests.insert(requestId)
+                }
+            }
+            mergedRow.aliasMessageIds = aliasMessages.isEmpty ? nil : Array(aliasMessages).sorted()
+            mergedRow.aliasRequestIds = aliasRequests.isEmpty ? nil : Array(aliasRequests).sorted()
+            mergedRow.quarantined = quarantinedKeys.contains(key) ? true : row.quarantined
             let canonicalKey = sessionClassKeys.first { $0.hasPrefix("pair:") } ?? key
             canonicalKeys.subtract(sessionClassKeys)
             if !canonicalKeys.contains(canonicalKey) {
                 canonicalKeys.insert(canonicalKey)
             }
-            keyedRows[key] = row
-            Self.claudeIndexKey(key, for: row, identityIndex: &identityIndex)
+            keyedRows[key] = mergedRow
+            Self.claudeIndexKey(key, for: mergedRow, identityIndex: &identityIndex)
             for classKey in sessionClassKeys {
-                keyedRows[classKey] = row
-                Self.claudeIndexKey(classKey, for: row, identityIndex: &identityIndex)
+                keyedRows[classKey] = mergedRow
+                Self.claudeIndexKey(classKey, for: mergedRow, identityIndex: &identityIndex)
             }
         } else {
             keyedRows[key] = row
@@ -451,6 +475,12 @@ extension CostUsageScanner {
         }
         if let requestId {
             identityIndex["r:\(requestId)", default: []].insert(key)
+        }
+        for aliasMessageId in row.aliasMessageIds ?? [] {
+            identityIndex["m:\(Self.claudeEscapeKeyComponent(aliasMessageId))", default: []].insert(key)
+        }
+        for aliasRequestId in row.aliasRequestIds ?? [] {
+            identityIndex["r:\(Self.claudeEscapeKeyComponent(aliasRequestId))", default: []].insert(key)
         }
     }
 

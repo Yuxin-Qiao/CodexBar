@@ -983,6 +983,15 @@ enum CostUsageScanner {
         let output: Int
         let costNanos: Int
         let costPriced: Bool?
+
+        /// Additional identifiers this stream has been seen with, persisted so
+        /// incremental refreshes can rebuild identity aliases from the cache.
+        var aliasMessageIds: [String]?
+        var aliasRequestIds: [String]?
+
+        /// Marks a sessionless row that was kept separate because multiple known
+        /// sessions reuse its identifier.
+        var quarantined: Bool?
     }
 
     static func loadDailyReport(
