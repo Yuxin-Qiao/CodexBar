@@ -657,6 +657,36 @@ enum SpendDashboardSource {
                 try await loaders.qwenCode(QwenCodeSpendSnapshotLoadContext(
                     homePath: homePath, now: now, historyDays: days))
             },
+            // New registry-era sources. These call the scanner directly (no separate injectable
+            // loader) because their coverage lives in the Core scanner suites; the dashboard only
+            // needs the home path threaded through.
+            LocalHistoryAdapter(source: .zcode, displayName: "ZCode") { homePath, now, days in
+                try await CostUsageScanExecutor.run { checkCancellation in
+                    try ZcodeSessionScanner.scanCancellable(
+                        environment: [ZcodeSessionScanner.homeEnvironmentKey: homePath],
+                        historyDays: days,
+                        now: now,
+                        checkCancellation: checkCancellation)
+                }
+            },
+            LocalHistoryAdapter(source: .copilot, displayName: "GitHub Copilot") { homePath, now, days in
+                try await CostUsageScanExecutor.run { checkCancellation in
+                    try CopilotSessionScanner.scanCancellable(
+                        environment: [CopilotSessionScanner.homeEnvironmentKey: homePath],
+                        historyDays: days,
+                        now: now,
+                        checkCancellation: checkCancellation)
+                }
+            },
+            LocalHistoryAdapter(source: .cursorLocal, displayName: "Cursor") { homePath, now, days in
+                try await CostUsageScanExecutor.run { checkCancellation in
+                    try CursorLocalActivityScanner.scanCancellable(
+                        environment: [CursorLocalActivityScanner.homeEnvironmentKey: homePath],
+                        historyDays: days,
+                        now: now,
+                        checkCancellation: checkCancellation)
+                }
+            },
         ]
         return Dictionary(uniqueKeysWithValues: adapters.map { ($0.source, $0) })
     }
@@ -731,6 +761,21 @@ enum SpendDashboardSource {
             .appendingPathComponent("antigravity", isDirectory: true)
     }
 
+    /// Main-actor capture of the Cursor home feeding `CursorLocalActivityScanner` (the scanner
+    /// appends `ai-tracking/ai-code-tracking.db` to whatever `CURSOR_HOME` resolves to).
+    private static func cursorLocalHomeURL(
+        environment: [String: String] = ProcessInfo.processInfo.environment) -> URL
+    {
+        if let override = environment[CursorLocalActivityScanner.homeEnvironmentKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !override.isEmpty
+        {
+            return URL(fileURLWithPath: override, isDirectory: true)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".cursor", isDirectory: true)
+    }
+
     @MainActor
     static func costCapableProviders(store: UsageStore) -> [UsageProvider] {
         store.enabledProvidersForDisplay().filter {
@@ -768,6 +813,9 @@ enum SpendDashboardSource {
             .miniMax: { self.miniMaxHomeURL(environment: $0) },
             .antigravity: { self.antigravityHomeURL(environment: $0) },
             .qwenCode: { QwenCodeSessionScanner.homeURL(environment: $0) },
+            .zcode: { ZcodeSessionScanner.homeURL(environment: $0) },
+            .copilot: { CopilotSessionScanner.homeURL(environment: $0) },
+            .cursorLocal: { self.cursorLocalHomeURL(environment: $0) },
         ]
         // Unknown adapter identifiers cannot be scanned until their plugin
         // registers a resolver. Returning an impossible path keeps request

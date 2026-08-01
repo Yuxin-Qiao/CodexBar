@@ -34,6 +34,7 @@ public enum CopilotProviderDescriptor {
                 ]),
             tokenCost: ProviderTokenCostConfig(
                 supportsTokenCost: false,
+                localHistorySources: [.copilot],
                 noDataMessage: { "Copilot cost summary is not supported." }),
             pace: ProviderPaceCapability(
                 resetWindowPace: .resetDatePresent,

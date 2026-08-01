@@ -134,15 +134,22 @@ struct SpendDashboardModelTests {
         let localDescriptors = descriptors.filter { !$0.tokenCost.localHistorySources.isEmpty }
         let declaredSources = localDescriptors.flatMap(\.tokenCost.localHistorySources)
 
-        #expect(Set(declaredSources) == Set(ProviderLocalHistorySource.allCases))
+        // Every source a dashboard provider declares must be a known local-history source, and no
+        // source may be declared twice. `allCases` may intentionally contain sources with no
+        // dashboard provider (e.g. `.traeLocal`, a degraded model-only source with no
+        // UsageProvider), so the relationship is subset, not equality.
+        #expect(Set(declaredSources).isSubset(of: Set(ProviderLocalHistorySource.allCases)))
         #expect(declaredSources.count == Set(declaredSources).count)
         #expect(Set(localDescriptors.map(\.id)) == [
             .antigravity,
+            .copilot,
+            .cursor,
             .gemini,
             .kimi,
             .minimax,
             .opencode,
             .qwencloud,
+            .zai,
         ])
 
         let dashboardProviders = Set(descriptors

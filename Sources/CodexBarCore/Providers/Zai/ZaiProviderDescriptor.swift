@@ -33,6 +33,7 @@ public enum ZaiProviderDescriptor {
                 ]),
             tokenCost: ProviderTokenCostConfig(
                 supportsTokenCost: false,
+                localHistorySources: [.zcode],
                 noDataMessage: { "z.ai cost summary is not supported." }),
             fetchPlan: .apiToken(
                 strategyID: "zai.api",

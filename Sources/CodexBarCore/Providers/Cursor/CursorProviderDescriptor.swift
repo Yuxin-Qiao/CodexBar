@@ -35,6 +35,7 @@ public enum CursorProviderDescriptor {
                 ]),
             tokenCost: ProviderTokenCostConfig(
                 supportsTokenCost: true,
+                localHistorySources: [.cursorLocal],
                 noDataMessage: { "No Cursor cost usage found. Sign in to Cursor in your browser or the Cursor app." }),
             pace: ProviderPaceCapability(resetWindowPace: .windowDurationPresent),
             fetchPlan: ProviderFetchPlan(

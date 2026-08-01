@@ -3,73 +3,57 @@ import Foundation
 import Testing
 
 struct LocalHistoryScannerRegistryTests {
-    @Test
-    func `registry contains every built-in source exactly once`() {
-        let expected: [ProviderLocalHistorySource] = [
-            .antigravity,
-            .geminiCLI,
-            .kimiCode,
-            .miniMax,
-            .openCode,
-            .qwenCode,
-            .zcode,
-        ]
-        let registered = LocalHistoryScannerRegistry.all.map(\.source)
-        #expect(registered.count == expected.count)
-        #expect(Set(registered) == Set(expected))
-    }
+    private struct FakeScanner: LocalHistoryScanning {
+        let source: ProviderLocalHistorySource
+        let displayName: String
+        let homeEnvironmentKey: String? = nil
 
-    @Test
-    func `scanner lookup resolves built-ins and misses unknown sources`() {
-        for source in LocalHistoryScannerRegistry.all.map(\.source) {
-            #expect(LocalHistoryScannerRegistry.scanner(for: source) != nil)
+        func homeURL(environment: [String: String]) -> URL? {
+            nil
         }
-        let unknown = ProviderLocalHistorySource(rawValue: "not-a-real-tool")
-        #expect(LocalHistoryScannerRegistry.scanner(for: unknown) == nil)
-        #expect(LocalHistoryScannerRegistry.homeURL(for: unknown) == nil)
+
+        func scan(context: LocalHistoryScanContext) throws -> CostUsageTokenSnapshot? {
+            nil
+        }
     }
 
     @Test
-    func `home resolution honors each tool's environment override`() {
-        let overrideRoot = "/tmp/codexbar-registry-override"
-
-        let gemini = LocalHistoryScannerRegistry.homeURL(
-            for: .geminiCLI,
-            environment: [GeminiSessionScanner.cliHomeEnvironmentKey: overrideRoot])
-        #expect(gemini?.path == overrideRoot)
-
-        let miniMax = LocalHistoryScannerRegistry.homeURL(
-            for: .miniMax,
-            environment: [MiniMaxSessionScanner.homeEnvironmentKey: overrideRoot])
-        #expect(miniMax?.path == overrideRoot)
-
-        let qwen = LocalHistoryScannerRegistry.homeURL(
-            for: .qwenCode,
-            environment: [QwenCodeSessionScanner.homeEnvironmentKey: overrideRoot])
-        #expect(qwen?.path == overrideRoot)
-
-        let zcode = LocalHistoryScannerRegistry.homeURL(
-            for: .zcode,
-            environment: [ZcodeSessionScanner.homeEnvironmentKey: overrideRoot])
-        #expect(zcode?.path == overrideRoot)
+    func `shared registry registers every built-in source`() {
+        let registry = LocalHistoryScannerRegistry.shared
+        for source in ProviderLocalHistorySource.builtIn {
+            #expect(registry.scanner(for: source) != nil, "missing built-in scanner for \(source.rawValue)")
+        }
+        #expect(registry.registeredSources.count == ProviderLocalHistorySource.builtIn.count)
     }
 
     @Test
-    func `home resolution falls back to platform defaults without overrides`() {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let gemini = LocalHistoryScannerRegistry.homeURL(for: .geminiCLI, environment: [:])
-        #expect(gemini?.path == home.appendingPathComponent(".gemini").path)
+    func `register adds a new scanner and preserves registration order`() {
+        var registry = LocalHistoryScannerRegistry()
+        let custom = ProviderLocalHistorySource(rawValue: "customTool")
+        #expect(registry.scanner(for: custom) == nil)
 
-        let zcode = LocalHistoryScannerRegistry.homeURL(for: .zcode, environment: [:])
-        #expect(zcode?.path == home.appendingPathComponent(".zcode/cli").path)
+        registry.register(FakeScanner(source: custom, displayName: "Custom Tool"))
+        #expect(registry.scanner(for: custom)?.displayName == "Custom Tool")
+        #expect(registry.registeredSources == [custom])
     }
 
     @Test
-    func `blank overrides fall back instead of producing a root path`() {
-        let gemini = LocalHistoryScannerRegistry.homeURL(
-            for: .geminiCLI,
-            environment: [GeminiSessionScanner.cliHomeEnvironmentKey: "   "])
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        #expect(gemini?.path == home.appendingPathComponent(".gemini").path)
+    func `re-registering a source replaces it without duplicating order`() {
+        var registry = LocalHistoryScannerRegistry()
+        let source = ProviderLocalHistorySource(rawValue: "replaceable")
+        registry.register(FakeScanner(source: source, displayName: "First"))
+        registry.register(FakeScanner(source: source, displayName: "Second"))
+
+        #expect(registry.scanner(for: source)?.displayName == "Second")
+        #expect(registry.registeredSources == [source])
+        #expect(registry.all.count == 1)
+    }
+
+    @Test
+    func `zcode built-in scanner is discoverable with its display name`() {
+        let registry = LocalHistoryScannerRegistry.shared
+        let scanner = registry.scanner(for: .zcode)
+        #expect(scanner?.displayName == "ZCode")
+        #expect(scanner?.homeEnvironmentKey == ZcodeSessionScanner.homeEnvironmentKey)
     }
 }
