@@ -103,6 +103,8 @@ extension CodexBarCLI {
 
         Description:
           Print local token cost usage from Claude/Codex native logs plus supported pi and OMP sessions.
+          Pi provider usage is attributed to its CodexBar counterpart (Codex, Claude, DeepSeek, Gemini, xAI, ...)
+          and uses pi's reported per-message cost when available.
           This does not require web or CLI access and uses cached scan results unless --refresh is provided.
 
         Examples:

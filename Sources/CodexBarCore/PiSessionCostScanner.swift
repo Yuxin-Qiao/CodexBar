@@ -15,6 +15,7 @@ private final class PiSessionISO8601FormatterBox: @unchecked Sendable {
     }()
 }
 
+// swiftlint:disable:next type_body_length
 enum PiSessionCostScanner {
     struct Options {
         var piSessionsRoot: URL?
@@ -75,12 +76,15 @@ enum PiSessionCostScanner {
 
     private static let costScale = 1_000_000_000.0
     /// Bump for Pi-only cost formula changes not represented by the parser or pricing fingerprints.
-    private static let costFormulaVersion = 1
+    private static let costFormulaVersion = 2
     private static let maxLineBytes = 16 * 1024 * 1024
     private static let maxSafeRoundedInt = Double(Int.max) - 1
     private static let sessionStartFilenameRegex = try? NSRegularExpression(
         pattern: "^(\\d{4}-\\d{2}-\\d{2})T(\\d{2})-(\\d{2})-(\\d{2})-(\\d{3})Z_")
     private static let isoFormatterBox = PiSessionISO8601FormatterBox()
+    /// Bucket for usage recorded on tool results, compactions, and branch summaries. Matches
+    /// pi's own `Tools/summaries` attribution so session totals reconcile with `/session`.
+    private static let toolsSummariesModelName = "Tools/summaries"
 
     static func loadDailyReport(
         provider: UsageProvider,
@@ -107,7 +111,7 @@ enum PiSessionCostScanner {
         options: Options = Options(),
         checkCancellation: CostUsageScanner.CancellationCheck?) throws -> CostUsageDailyReport
     {
-        guard provider == .codex || provider == .claude else {
+        guard mappedTargetProviders.contains(provider) else {
             return CostUsageDailyReport(data: [], summary: nil)
         }
 
@@ -224,7 +228,7 @@ enum PiSessionCostScanner {
         cacheRoot: URL? = nil,
         calendar: Calendar = .current) -> CachedDailyReportResult?
     {
-        guard provider == .codex || provider == .claude else { return nil }
+        guard mappedTargetProviders.contains(provider) else { return nil }
 
         let range = CostUsageScanner.CostUsageDayRange(since: since, until: until, calendar: calendar)
         let cache = PiSessionCostCacheIO.load(cacheRoot: cacheRoot)
@@ -255,7 +259,7 @@ enum PiSessionCostScanner {
                 modelsDevArtifact: modelsDevArtifact,
                 formulaVersion: Self.costFormulaVersion,
                 parserHash: CodexParserHash.value,
-                modelsDevProviderIDs: ["anthropic", "openai"]))
+                modelsDevProviderIDs: Self.modelsDevProviderIDsForPricing))
     }
 
     private static func requestedWindowExpandsCache(
@@ -518,40 +522,62 @@ enum PiSessionCostScanner {
                         else { return }
                         guard let type = object["type"] as? String else { return }
 
-                        if type == "session" {
+                        switch type {
+                        case "session":
                             sessionID = sessionID ?? self.sessionIdentifier(from: object)
-                            return
-                        }
-
-                        if type == "model_change" {
+                        case "model_change":
                             currentModelContext = self.modelContext(from: object)
+                        case "message":
+                            guard let message = object["message"] as? [String: Any] else { return }
+                            let role = (message["role"] as? String) ?? ""
+                            if role == "assistant" {
+                                let identity = self.resolveAssistantIdentity(
+                                    entry: object,
+                                    message: message,
+                                    fallback: currentModelContext)
+                                guard let identity else { return }
+                                guard let date = self.timestampDate(entry: object, message: message) else { return }
+                                let dayKey = CostUsageScanner.CostUsageDayRange.dayKey(
+                                    from: date,
+                                    calendar: range.calendar)
+                                let usage = self.extractUsage(
+                                    provider: identity.provider,
+                                    modelName: identity.modelName,
+                                    message: message,
+                                    pricingDate: date,
+                                    pricingContext: pricingContext)
+                                add(
+                                    provider: identity.provider,
+                                    dayKey: dayKey,
+                                    modelName: identity.modelName,
+                                    usage: usage,
+                                    entryID: self.entryIdentifier(from: object))
+                            } else if role == "toolResult",
+                                      let usageDict = message["usage"] as? [String: Any],
+                                      let context = currentModelContext
+                            {
+                                self.addAncillaryUsage(
+                                    entry: object,
+                                    usage: usageDict,
+                                    context: context,
+                                    range: range,
+                                    pricingContext: pricingContext,
+                                    add: add)
+                            }
+                        case "compaction", "branch_summary":
+                            guard let usageDict = object["usage"] as? [String: Any],
+                                  let context = currentModelContext
+                            else { return }
+                            self.addAncillaryUsage(
+                                entry: object,
+                                usage: usageDict,
+                                context: context,
+                                range: range,
+                                pricingContext: pricingContext,
+                                add: add)
+                        default:
                             return
                         }
-
-                        guard type == "message", let message = object["message"] as? [String: Any] else { return }
-                        guard (message["role"] as? String) == "assistant" else { return }
-
-                        let identity = self.resolveAssistantIdentity(
-                            entry: object,
-                            message: message,
-                            fallback: currentModelContext)
-                        guard let identity else { return }
-                        guard let date = self.timestampDate(entry: object, message: message) else { return }
-                        let dayKey = CostUsageScanner.CostUsageDayRange.dayKey(
-                            from: date,
-                            calendar: range.calendar)
-                        let usage = self.extractUsage(
-                            provider: identity.provider,
-                            modelName: identity.modelName,
-                            message: message,
-                            pricingDate: date,
-                            pricingContext: pricingContext)
-                        add(
-                            provider: identity.provider,
-                            dayKey: dayKey,
-                            modelName: identity.modelName,
-                            usage: usage,
-                            entryID: self.entryIdentifier(from: object))
                     }
                 })
         } catch is CancellationError {
@@ -582,6 +608,27 @@ enum PiSessionCostScanner {
         let candidate = (object["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !candidate.isEmpty, candidate.utf8.count <= 1024 else { return nil }
         return candidate
+    }
+
+    // swiftlint:disable:next function_parameter_count
+    private static func addAncillaryUsage(
+        entry: [String: Any],
+        usage: [String: Any],
+        context: PiModelContext,
+        range: CostUsageScanner.CostUsageDayRange,
+        pricingContext: ModelsDevPricingContext?,
+        add: (UsageProvider, String, String, PiPackedUsage, String?) -> Void)
+    {
+        guard let date = self.timestampDate(entry: entry, message: [:]) else { return }
+        let dayKey = CostUsageScanner.CostUsageDayRange.dayKey(from: date, calendar: range.calendar)
+        guard let provider = UsageProvider(rawValue: context.providerRawValue) else { return }
+        let packed = self.extractUsage(
+            provider: provider,
+            modelName: Self.toolsSummariesModelName,
+            message: ["usage": usage],
+            pricingDate: date,
+            pricingContext: pricingContext)
+        add(provider, dayKey, Self.toolsSummariesModelName, packed, self.entryIdentifier(from: entry))
     }
 
     private static func rebuildDailyUsage(
@@ -700,7 +747,13 @@ enum PiSessionCostScanner {
     }
 
     private static func extractModelText(entry: [String: Any], message: [String: Any]) -> String? {
-        for value in [message["model"], entry["model"], message["modelId"], entry["modelId"]] {
+        for value in [
+            message["responseModel"],
+            message["model"],
+            entry["model"],
+            message["modelId"],
+            entry["modelId"],
+        ] {
             if let model = (value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !model.isEmpty {
                 return model
             }
@@ -801,14 +854,20 @@ enum PiSessionCostScanner {
             cacheWriteTokens: cacheWrite,
             outputTokens: output,
             totalTokens: totalTokens)
-        // Pi-compatible JSONL does not record Anthropic cache retention, so use Pi's persisted default tariff.
-        let costUSD = self.computedCostUSD(
-            provider: provider,
-            modelName: modelName,
-            usage: rawUsage,
-            pricingDate: pricingDate,
-            pricingContext: pricingContext)
-        let costNanos = costUSD.map { Int64(($0 * self.costScale).rounded()) } ?? 0
+        // Pi records exact per-message costs. Prefer that over our own estimate; fall back to
+        // the models.dev catalog when the session omits cost (or reports a zero total).
+        let reportedCostNanos = self.reportedCostNanos(usage: usage)
+        // Pi-compatible JSONL does not record Anthropic cache retention, so use Pi's persisted
+        // default tariff when the session omitted a per-message cost.
+        let costUSD = reportedCostNanos > 0
+            ? Double(reportedCostNanos) / self.costScale
+            : self.computedCostUSD(
+                provider: provider,
+                modelName: modelName,
+                usage: rawUsage,
+                pricingDate: pricingDate,
+                pricingContext: pricingContext)
+        let costNanos = costUSD.map { Int64(($0 * self.costScale).rounded()) } ?? reportedCostNanos
 
         return PiPackedUsage(
             inputTokens: rawUsage.inputTokens,
@@ -819,6 +878,24 @@ enum PiSessionCostScanner {
             costNanos: costNanos,
             costSampleCount: costUSD == nil ? 0 : 1,
             usageSampleCount: 1)
+    }
+
+    private static func reportedCostNanos(usage: [String: Any]) -> Int64 {
+        guard let cost = usage["cost"] as? [String: Any] else { return 0 }
+        let total = self.readNonNegativeDouble(cost["total"])
+        if let total {
+            return Int64((total * Self.costScale).rounded())
+        }
+        let components = [
+            cost["input"],
+            cost["output"],
+            cost["cacheRead"],
+            cost["cacheWrite"],
+        ]
+        let sum = components.reduce(0.0) { partial, value in
+            partial + (self.readNonNegativeDouble(value) ?? 0)
+        }
+        return Int64((sum * Self.costScale).rounded())
     }
 
     private static func computedCostUSD(
@@ -833,7 +910,7 @@ enum PiSessionCostScanner {
             // Pi records input, cache reads, and cache writes as disjoint counts. Codex pricing
             // expects cached/write tokens to be subsets of total input, so reconstruct that total
             // here and pass writes separately (1.25x input for GPT-5.6 when rates are known).
-            CostUsagePricing.codexCostUSD(
+            return CostUsagePricing.codexCostUSD(
                 model: modelName,
                 inputTokens: usage.inputTokens + usage.cacheReadTokens + usage.cacheWriteTokens,
                 cachedInputTokens: usage.cacheReadTokens,
@@ -842,7 +919,7 @@ enum PiSessionCostScanner {
                 modelsDevCatalog: pricingContext?.catalog,
                 modelsDevCacheRoot: pricingContext?.cacheRoot)
         case .claude:
-            CostUsagePricing.claudeCostUSD(
+            return CostUsagePricing.claudeCostUSD(
                 model: modelName,
                 inputTokens: usage.inputTokens,
                 cacheReadInputTokens: usage.cacheReadTokens,
@@ -852,7 +929,48 @@ enum PiSessionCostScanner {
                 modelsDevCatalog: pricingContext?.catalog,
                 modelsDevCacheRoot: pricingContext?.cacheRoot)
         default:
-            nil
+            guard let providerID = modelsDevProviderID(for: provider),
+                  let lookup = pricingContext?.catalog?.pricing(providerID: providerID, modelID: modelName)
+                  ?? ModelsDevPricingPipeline.lookup(
+                      providerID: providerID,
+                      modelID: modelName,
+                      cacheRoot: pricingContext?.cacheRoot)
+            else { return nil }
+            let pricing = lookup.pricing
+            let inputRate = pricing.inputCostPerToken
+            let cacheReadRate = pricing.cacheReadInputCostPerToken ?? inputRate
+            let cacheWriteRate = pricing.cacheCreationInputCostPerToken ?? inputRate
+            return Double(usage.inputTokens) * inputRate
+                + Double(usage.cacheReadTokens) * cacheReadRate
+                + Double(usage.cacheWriteTokens) * cacheWriteRate
+                + Double(usage.outputTokens) * pricing.outputCostPerToken
+        }
+    }
+
+    // swiftlint:disable:next cyclomatic_complexity
+    private static func modelsDevProviderID(for provider: UsageProvider) -> String? {
+        switch provider {
+        case .codex: "openai"
+        case .claude: "anthropic"
+        case .deepseek: "deepseek"
+        case .gemini: "google"
+        case .vertexai: "google-vertex"
+        case .xai: "xai"
+        case .openrouter: "openrouter"
+        case .kimi: "kimi"
+        case .minimax: "minimax"
+        case .moonshot: "moonshot"
+        case .qwencloud: "qwen"
+        case .zai: "zai"
+        case .opencode: "opencode"
+        case .opencodego: "opencode-go"
+        case .copilot: "github"
+        case .mistral: "mistral"
+        case .groq: "groq"
+        case .bedrock: "amazon-bedrock"
+        case .azureopenai: "azure"
+        case .mimo: "xiaomi"
+        default: nil
         }
     }
 
@@ -872,19 +990,90 @@ enum PiSessionCostScanner {
         }
         return 0
     }
+
+    private static func readNonNegativeDouble(_ value: Any?) -> Double? {
+        guard let value else { return nil }
+        if let number = value as? NSNumber {
+            let numeric = number.doubleValue
+            guard numeric.isFinite, numeric >= 0, numeric <= self.maxSafeRoundedInt else { return nil }
+            return numeric
+        }
+        if let string = value as? String,
+           let numeric = Double(string),
+           numeric.isFinite,
+           numeric >= 0,
+           numeric <= self.maxSafeRoundedInt
+        {
+            return numeric
+        }
+        return nil
+    }
 }
 
 extension PiSessionCostScanner {
+    // swiftlint:disable:next cyclomatic_complexity
     private static func mappedProvider(fromPiProvider provider: String) -> UsageProvider? {
         switch provider.lowercased() {
-        case "openai-codex":
-            .codex
         case "anthropic":
             .claude
+        case "openai-codex":
+            .codex
+        case "openai":
+            .openai
+        case "deepseek":
+            .deepseek
+        case "google":
+            .gemini
+        case "google-vertex":
+            .vertexai
+        case "xai":
+            .xai
+        case "openrouter":
+            .openrouter
+        case "kimi-coding":
+            .kimi
+        case "minimax", "minimax-cn":
+            .minimax
+        case "moonshotai", "moonshotai-cn":
+            .moonshot
+        case "qwen-token-plan", "qwen-token-plan-cn":
+            .qwencloud
+        case "zai", "zai-coding-cn":
+            .zai
+        case "opencode":
+            .opencode
+        case "opencode-go":
+            .opencodego
+        case "github-copilot":
+            .copilot
+        case "mistral":
+            .mistral
+        case "groq":
+            .groq
+        case "amazon-bedrock":
+            .bedrock
+        case "azure-openai-responses":
+            .azureopenai
+        case "xiaomi", "xiaomi-token-plan-cn", "xiaomi-token-plan-ams", "xiaomi-token-plan-sgp":
+            .mimo
         default:
             nil
         }
     }
+
+    /// Every CodexBar provider that pi sessions can be attributed to. Used to decide whether a
+    /// pi report exists for a provider and whether `loadTokenSnapshot` should merge it.
+    static let mappedTargetProviders: Set<UsageProvider> = [
+        .codex, .openai, .claude, .deepseek, .gemini, .vertexai, .xai, .openrouter, .kimi, .minimax,
+        .moonshot, .qwencloud, .zai, .opencode, .opencodego, .copilot, .mistral, .groq,
+        .bedrock, .azureopenai, .mimo,
+    ]
+
+    private static let modelsDevProviderIDsForPricing: Set<String> = [
+        "anthropic", "openai", "deepseek", "google", "google-vertex", "xai", "openrouter",
+        "moonshot", "kimi", "minimax", "qwen", "zai", "opencode", "opencode-go", "github",
+        "mistral", "groq", "amazon-bedrock", "azure", "xiaomi",
+    ]
 
     private static func buildReport(
         provider: UsageProvider,

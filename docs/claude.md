@@ -221,10 +221,12 @@ Model-scoped weekly-window proof (synthetic data, no real accounts or credential
   - Deduplicates streaming chunks by `message.id + requestId` (usage is cumulative per chunk).
   - pi and OMP sessions attribute `anthropic` assistant usage to Claude and bucket it by assistant-turn timestamp, so a
     single pi-compatible session can contribute to multiple models/days.
+  - Pi's reported per-message cost is preferred over the models.dev estimate; tool-result, compaction, and
+    branch-summary usage is bucketed under `Tools/summaries`. See [pi.md](pi.md).
   - Matching assistant entry IDs within the same session are counted once across roots; distinct turns are retained.
 - Cache:
   - Native + merged provider cache: `~/Library/Caches/CodexBar/cost-usage/claude-v2.json`
-  - pi-compatible session cache: `~/Library/Caches/CodexBar/cost-usage/pi-sessions-v7.json`
+  - pi-compatible session cache: `~/Library/Caches/CodexBar/cost-usage/pi-sessions-v9.json`
 
 ## Key files
 - OAuth: `Sources/CodexBarCore/Providers/Claude/ClaudeOAuth/*`

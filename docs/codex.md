@@ -161,14 +161,17 @@ Example:
   - Native Codex logs parse `event_msg` token_count entries and `turn_context` model markers; when both are present,
     `turn_context` is authoritative for the model bucket.
   - pi and OMP sessions count assistant-message usage rows and attribute `openai-codex` assistant usage to Codex.
+  - Other pi providers map onto their CodexBar counterparts (DeepSeek, Gemini, xAI, OpenRouter, ...); see
+    [pi.md](pi.md). Pi's reported per-message cost is preferred over the models.dev estimate.
   - pi-compatible assistant usage is bucketed by assistant-turn timestamp, so mixed-model sessions can contribute to
     multiple days/models correctly.
+  - Tool-result, compaction, and branch-summary usage is bucketed under `Tools/summaries`.
   - Matching assistant entry IDs within the same session are counted once across roots; distinct turns are retained.
   - Native conversation rows reuse the corrected cached per-file totals and existing pricing tables. They are hidden
     when pi-compatible usage joins the aggregate because the native-only rows would not reconcile with the merged total.
 - Cache:
   - Native + merged provider cache: `~/Library/Caches/CodexBar/cost-usage/codex-v11.json`
-  - pi-compatible session cache: `~/Library/Caches/CodexBar/cost-usage/pi-sessions-v7.json`
+  - pi-compatible session cache: `~/Library/Caches/CodexBar/cost-usage/pi-sessions-v9.json`
 - Window: configurable 1-365 day rolling history, with a 60s minimum refresh interval.
 
 ### Usage & Spend account rows

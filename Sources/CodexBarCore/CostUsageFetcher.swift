@@ -334,7 +334,7 @@ public struct CostUsageFetcher: Sendable {
                     modelsDevCacheRoot: scanOptions.cacheRoot,
                     sessionRoots: roots)
             }
-            if includePiSessions, provider == .claude || (provider == .codex && shouldMergePiUsage) {
+            if includePiSessions, PiSessionCostScanner.mappedTargetProviders.contains(provider), shouldMergePiUsage {
                 let piReport = try PiSessionCostScanner.loadDailyReportCancellable(
                     provider: provider,
                     since: since,
