@@ -27,7 +27,10 @@ public enum CostUsageBillingProvider {
             "qwen": UsageProvider.qwencloud.rawValue,
             "z.ai": UsageProvider.zai.rawValue,
         ]
-        for namespace in components.reversed() {
+        // Nested routes bill through the outermost explicit provider (e.g.
+        // `openrouter/anthropic/claude-*` is owned by OpenRouter, not Anthropic), so walk the
+        // chain from the outside in and stop at the first recognizable route.
+        for namespace in components {
             if let alias = aliases[namespace] { return alias }
             if let provider = UsageProvider(rawValue: namespace) { return provider.rawValue }
         }
@@ -189,10 +192,13 @@ public struct CostUsageTokenSnapshot: Sendable, Equatable {
         let costs = entries.compactMap(\.costUSD)
         let tokens = entries.compactMap(\.totalTokens)
         let requests = entries.compactMap(\.requestCount)
+        // A token-bearing day without a price must withhold the whole window total: summing the
+        // priced remainder would present a partial estimate as the complete comparison figure.
+        let hasUnpricedTokenDay = entries.contains { $0.totalTokens != nil && $0.costUSD == nil }
         return CostUsageWindowSummary(
             days: days,
             totalTokens: tokens.isEmpty ? nil : tokens.reduce(0, +),
-            totalCostUSD: costs.isEmpty ? nil : costs.reduce(0, +),
+            totalCostUSD: hasUnpricedTokenDay ? nil : (costs.isEmpty ? nil : costs.reduce(0, +)),
             totalRequests: requests.isEmpty ? nil : requests.reduce(0, +),
             entryCount: entries.count)
     }
