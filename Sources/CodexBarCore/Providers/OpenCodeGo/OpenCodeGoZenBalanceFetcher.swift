@@ -115,10 +115,13 @@ extension OpenCodeGoUsageFetcher {
         }
     }
 
-    static func completedOptionalZenBalance(from task: Task<Double?, Error>) async throws -> Double? {
+    static func completedOptionalZenBalance(
+        from task: Task<Double?, Error>,
+        timeout: Duration? = Self.optionalZenBalanceJoinGrace) async throws -> Double?
+    {
         let race = OpenCodeGoZenBalanceTaskRace(sourceTask: task)
         do {
-            return try await race.value(timeout: self.optionalZenBalanceJoinGrace)
+            return try await race.value(timeout: timeout)
         } catch is CancellationError {
             throw CancellationError()
         } catch {

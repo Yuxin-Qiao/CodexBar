@@ -122,6 +122,7 @@ public struct OpenCodeGoUsageFetcher: Sendable {
         now: Date = Date(),
         workspaceIDOverride: String? = nil,
         includeZenBalance: Bool = true,
+        waitForZenBalance: Bool = false,
         session: URLSession? = nil) async throws -> OpenCodeGoUsageSnapshot
     {
         let session = session ?? self.redirectGuardSession
@@ -153,7 +154,7 @@ public struct OpenCodeGoUsageFetcher: Sendable {
             return try await self.fetchZenBalance(
                 workspaceID: workspaceID,
                 cookieHeader: requestCookieHeader,
-                timeout: timeout,
+                timeout: waitForZenBalance ? min(timeout, self.optionalZenBalanceTimeout) : timeout,
                 session: session)
         } : nil
         defer {
@@ -194,7 +195,9 @@ public struct OpenCodeGoUsageFetcher: Sendable {
         guard let zenBalanceTask else {
             return snapshot
         }
-        let zenBalance = try await self.completedOptionalZenBalance(from: zenBalanceTask)
+        let zenBalance = try await self.completedOptionalZenBalance(
+            from: zenBalanceTask,
+            timeout: waitForZenBalance ? nil : Self.optionalZenBalanceJoinGrace)
         return snapshot.withZenBalanceUSD(zenBalance)
     }
 

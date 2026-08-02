@@ -18,13 +18,14 @@ struct OpenCodeGoProviderStrategyTests {
     }
 
     private func makeContext(
+        runtime: ProviderRuntime = .app,
         sourceMode: ProviderSourceMode = .auto,
         env: [String: String] = [:],
         settings: ProviderSettingsSnapshot? = nil,
         selectedTokenAccountID: UUID? = nil) -> ProviderFetchContext
     {
         ProviderFetchContext(
-            runtime: .app,
+            runtime: runtime,
             sourceMode: sourceMode,
             includeCredits: false,
             webTimeout: 1,
@@ -140,5 +141,13 @@ struct OpenCodeGoProviderStrategyTests {
         #expect(strategy.shouldFallback(on: OpenCodeGoUsageError.invalidCredentials, context: autoContext))
         #expect(!strategy.shouldFallback(on: OpenCodeGoUsageError.networkError("timeout"), context: autoContext))
         #expect(!strategy.shouldFallback(on: OpenCodeGoSettingsError.missingCookie, context: webContext))
+    }
+
+    @Test
+    func `web strategy waits for zen balance only in cli runtime`() {
+        #expect(!OpenCodeGoUsageFetchStrategy.shouldWaitForZenBalance(
+            context: self.makeContext(runtime: .app)))
+        #expect(OpenCodeGoUsageFetchStrategy.shouldWaitForZenBalance(
+            context: self.makeContext(runtime: .cli)))
     }
 }

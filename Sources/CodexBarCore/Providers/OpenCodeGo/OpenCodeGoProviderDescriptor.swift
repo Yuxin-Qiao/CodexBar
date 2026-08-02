@@ -172,7 +172,11 @@ struct OpenCodeGoLocalUsageFetchStrategy: ProviderFetchStrategy {
                 return nil
             }
         }
-        let zenBalance = try await OpenCodeGoUsageFetcher.completedOptionalZenBalance(from: zenBalanceTask)
+        let zenBalance = try await OpenCodeGoUsageFetcher.completedOptionalZenBalance(
+            from: zenBalanceTask,
+            timeout: OpenCodeGoUsageFetchStrategy.shouldWaitForZenBalance(context: context)
+                ? nil
+                : OpenCodeGoUsageFetcher.optionalZenBalanceJoinGrace)
         return (snapshot.withZenBalanceUSD(zenBalance), false)
     }
 
@@ -187,7 +191,8 @@ struct OpenCodeGoLocalUsageFetchStrategy: ProviderFetchStrategy {
                 cookieHeader: cookieHeader,
                 timeout: context.webTimeout,
                 workspaceIDOverride: workspaceOverride,
-                includeZenBalance: context.includeOptionalUsage)
+                includeZenBalance: context.includeOptionalUsage,
+                waitForZenBalance: OpenCodeGoUsageFetchStrategy.shouldWaitForZenBalance(context: context))
         } catch OpenCodeGoUsageError.invalidCredentials {
             throw OpenCodeGoUsageError.invalidCredentials
         } catch is CancellationError {
@@ -226,6 +231,13 @@ struct OpenCodeGoUsageFetchStrategy: ProviderFetchStrategy {
     let id: String = "opencodego.web"
     let kind: ProviderFetchKind = .web
 
+    /// One-shot CLI usage reads are foreground commands, so a Zen balance that is merely slower
+    /// than the subscription page is worth waiting for (bounded by the balance request timeout).
+    /// The menu-bar app keeps the short optional join grace so refreshes never stall behind it.
+    static func shouldWaitForZenBalance(context: ProviderFetchContext) -> Bool {
+        context.runtime == .cli
+    }
+
     func isAvailable(_ context: ProviderFetchContext) async -> Bool {
         guard context.settings?.opencodego?.cookieSource != .off else { return false }
         return true
@@ -241,7 +253,8 @@ struct OpenCodeGoUsageFetchStrategy: ProviderFetchStrategy {
                 cookieHeader: cookieHeader,
                 timeout: context.webTimeout,
                 workspaceIDOverride: workspaceOverride,
-                includeZenBalance: context.includeOptionalUsage)
+                includeZenBalance: context.includeOptionalUsage,
+                waitForZenBalance: Self.shouldWaitForZenBalance(context: context))
             return self.makeResult(
                 usage: snapshot.toUsageSnapshot(),
                 sourceLabel: "web")
@@ -253,7 +266,8 @@ struct OpenCodeGoUsageFetchStrategy: ProviderFetchStrategy {
                 cookieHeader: cookieHeader,
                 timeout: context.webTimeout,
                 workspaceIDOverride: workspaceOverride,
-                includeZenBalance: context.includeOptionalUsage)
+                includeZenBalance: context.includeOptionalUsage,
+                waitForZenBalance: Self.shouldWaitForZenBalance(context: context))
             return self.makeResult(
                 usage: snapshot.toUsageSnapshot(),
                 sourceLabel: "web")

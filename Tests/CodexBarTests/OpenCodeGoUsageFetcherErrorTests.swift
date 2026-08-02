@@ -670,6 +670,80 @@ struct OpenCodeGoUsageFetcherErrorTests {
     }
 
     @Test
+    func `cli wait policy includes slow but successful zen balance`() async throws {
+        defer {
+            OpenCodeGoStubURLProtocol.handler = nil
+        }
+
+        OpenCodeGoStubURLProtocol.handler = { request in
+            guard let url = request.url else { throw URLError(.badURL) }
+            if url.path == "/workspace/wrk_TEST123" {
+                Thread.sleep(forTimeInterval: 1)
+                return Self.makeResponse(
+                    url: url,
+                    body: #"<html><body><h2>現在の残高 $98.76</h2></body></html>"#,
+                    statusCode: 200,
+                    contentType: "text/html")
+            }
+            return Self.makeResponse(
+                url: url,
+                body: Self.goUsagePageHTML(
+                    workspaceID: "wrk_TEST123",
+                    rolling: UsageWindow(percent: 17, resetInSec: 600),
+                    weekly: UsageWindow(percent: 75, resetInSec: 7200),
+                    monthly: nil),
+                statusCode: 200,
+                contentType: "text/html")
+        }
+
+        let start = ContinuousClock.now
+        let snapshot = try await OpenCodeGoUsageFetcher.fetchUsage(
+            cookieHeader: "auth=test",
+            timeout: 60,
+            workspaceIDOverride: "wrk_TEST123",
+            waitForZenBalance: true,
+            session: self.makeSession())
+        let elapsed = start.duration(to: ContinuousClock.now)
+
+        #expect(snapshot.rollingUsagePercent == 17)
+        #expect(snapshot.zenBalanceUSD == 98.76)
+        #expect(elapsed >= .milliseconds(900))
+    }
+
+    @Test
+    func `cli wait policy keeps subscription result when balance fetch fails`() async throws {
+        defer {
+            OpenCodeGoStubURLProtocol.handler = nil
+        }
+
+        OpenCodeGoStubURLProtocol.handler = { request in
+            guard let url = request.url else { throw URLError(.badURL) }
+            if url.path == "/workspace/wrk_TEST123" {
+                throw URLError(.timedOut)
+            }
+            return Self.makeResponse(
+                url: url,
+                body: Self.goUsagePageHTML(
+                    workspaceID: "wrk_TEST123",
+                    rolling: UsageWindow(percent: 17, resetInSec: 600),
+                    weekly: UsageWindow(percent: 75, resetInSec: 7200),
+                    monthly: nil),
+                statusCode: 200,
+                contentType: "text/html")
+        }
+
+        let snapshot = try await OpenCodeGoUsageFetcher.fetchUsage(
+            cookieHeader: "auth=test",
+            timeout: 60,
+            workspaceIDOverride: "wrk_TEST123",
+            waitForZenBalance: true,
+            session: self.makeSession())
+
+        #expect(snapshot.rollingUsagePercent == 17)
+        #expect(snapshot.zenBalanceUSD == nil)
+    }
+
+    @Test
     func `optional zen balance can be skipped by settings`() async throws {
         defer {
             OpenCodeGoStubURLProtocol.handler = nil
