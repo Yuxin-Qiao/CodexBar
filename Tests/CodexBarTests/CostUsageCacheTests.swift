@@ -104,7 +104,7 @@ struct CostUsageCacheTests {
 
         let loaded = PiSessionCostCacheIO.load(cacheRoot: root)
 
-        #expect(loaded.version == 8)
+        #expect(loaded.version == 9)
         #expect(loaded.lastScanUnixMs == 0)
         #expect(loaded.files.isEmpty)
     }
