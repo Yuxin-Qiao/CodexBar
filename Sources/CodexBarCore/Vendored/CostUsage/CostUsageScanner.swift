@@ -42,6 +42,9 @@ enum CostUsageScanner {
         var maxCodexScanBytesPerRefresh: Int64 = 512 * 1024 * 1024
         /// Prefer newest session files first so recent usage lands before catch-up work.
         var preferNewestCodexSessionsFirst: Bool = true
+        /// Called on the scan queue with (filesScanned, totalFiles) as each Codex session file
+        /// is parsed. Lets a manual full rescan surface progress instead of appearing stalled.
+        var progressHandler: (@Sendable (_ scanned: Int, _ total: Int) -> Void)?
 
         init(
             codexSessionsRoot: URL? = nil,
@@ -53,7 +56,8 @@ enum CostUsageScanner {
             forceRescan: Bool = false,
             maxCodexSessionFileBytes: Int64 = 256 * 1024 * 1024,
             maxCodexScanBytesPerRefresh: Int64 = 512 * 1024 * 1024,
-            preferNewestCodexSessionsFirst: Bool = true)
+            preferNewestCodexSessionsFirst: Bool = true,
+            progressHandler: (@Sendable (_ scanned: Int, _ total: Int) -> Void)? = nil)
         {
             self.codexSessionsRoot = codexSessionsRoot
             self.claudeProjectsRoots = claudeProjectsRoots
@@ -65,6 +69,7 @@ enum CostUsageScanner {
             self.maxCodexSessionFileBytes = max(0, maxCodexSessionFileBytes)
             self.maxCodexScanBytesPerRefresh = max(0, maxCodexScanBytesPerRefresh)
             self.preferNewestCodexSessionsFirst = preferNewestCodexSessionsFirst
+            self.progressHandler = progressHandler
         }
     }
 
@@ -2352,6 +2357,27 @@ enum CostUsageScanner {
             bufferedSubagentLines: nil)
     }
 
+    /// Test-only parser instrumentation. It remains nil in production, so normal scans do not
+    /// retain file paths or allocate a tracking set.
+    private(set) nonisolated(unsafe) static var _test_codexParsedFilePaths: Set<String>?
+    private static let testParsedFilePathsLock = NSLock()
+
+    static func _test_resetCodexParsedFilePaths() {
+        self.testParsedFilePathsLock.lock()
+        defer { self.testParsedFilePathsLock.unlock() }
+        self._test_codexParsedFilePaths = []
+    }
+
+    private static func recordTestParsedFilePath(_ path: String) {
+        self.testParsedFilePathsLock.lock()
+        defer { self.testParsedFilePathsLock.unlock() }
+        var normalized = URL(fileURLWithPath: path).standardizedFileURL.path
+        if normalized.hasPrefix("/private/var/") {
+            normalized = String(normalized.dropFirst("/private".count))
+        }
+        self._test_codexParsedFilePaths?.insert(normalized)
+    }
+
     // swiftlint:disable:next cyclomatic_complexity function_body_length
     static func parseCodexFileCancellable(
         fileURL: URL,
@@ -2372,6 +2398,7 @@ enum CostUsageScanner {
         inheritedTotalsResolver: ((String, String) throws -> CodexForkBaseline)? = nil,
         checkCancellation: CancellationCheck? = nil) throws -> CodexParseResult
     {
+        self.recordTestParsedFilePath(fileURL.path)
         var currentModel = initialModel
         var previousTotals = initialTotals
         var sessionId: String?
@@ -2410,16 +2437,26 @@ enum CostUsageScanner {
         var days: [String: [String: [Int]]] = [:]
         var rows: [CodexUsageRow] = []
 
-        func add(dayKey: String, model: String, input: Int, cached: Int, output: Int) {
+        func add(
+            dayKey: String,
+            model: String,
+            usage: (input: Int, cached: Int, output: Int, reasoning: Int?))
+        {
             guard CostUsageDayRange.isInRange(dayKey: dayKey, since: range.scanSinceKey, until: range.scanUntilKey)
             else { return }
             let normModel = CostUsagePricing.normalizeCodexModel(model)
 
             var dayModels = days[dayKey] ?? [:]
             var packed = dayModels[normModel] ?? [0, 0, 0]
-            packed[0] = (packed[safe: 0] ?? 0) + input
-            packed[1] = (packed[safe: 1] ?? 0) + cached
-            packed[2] = (packed[safe: 2] ?? 0) + output
+            packed[0] = (packed[safe: 0] ?? 0) + usage.input
+            packed[1] = (packed[safe: 1] ?? 0) + usage.cached
+            packed[2] = (packed[safe: 2] ?? 0) + usage.output
+            if let reasoning = usage.reasoning {
+                while packed.count < 4 {
+                    packed.append(0)
+                }
+                packed[3] = (packed[safe: 3] ?? 0) + reasoning
+            }
             dayModels[normModel] = packed
             days[dayKey] = dayModels
         }
@@ -2735,9 +2772,11 @@ enum CostUsageScanner {
             add(
                 dayKey: dayKey,
                 model: normModel,
-                input: deltaInput,
-                cached: deltaCached,
-                output: deltaOutput)
+                usage: (
+                    input: deltaInput,
+                    cached: deltaCached,
+                    output: deltaOutput,
+                    reasoning: deltaReasoning))
             if CostUsageDayRange.isInRange(
                 dayKey: dayKey,
                 since: range.scanSinceKey,
@@ -3482,12 +3521,15 @@ enum CostUsageScanner {
                 resources: resources,
                 checkCancellation: checkCancellation,
                 scanBudget: scanBudget)
-            for fileURL in files {
+            let totalFiles = files.count
+            options.progressHandler?(0, totalFiles)
+            for (index, fileURL) in files.enumerated() {
                 try Self.scanCodexFile(
                     fileURL: fileURL,
                     context: scanContext,
                     cache: &cache,
                     state: &scanState)
+                options.progressHandler?(index + 1, totalFiles)
             }
             if scanBudget.resumedPartialFileCount > 0 || scanBudget.deferredByBudgetFileCount > 0 {
                 Self.log.info(

@@ -204,7 +204,10 @@ struct CostUsageScannerBreakdownTests {
             CostUsageDailyReport.ModelBreakdown(
                 modelName: "gpt-5.2-codex",
                 costUSD: first.data[0].costUSD,
-                totalTokens: 110),
+                totalTokens: 110,
+                inputTokens: 100,
+                cacheReadTokens: 20,
+                outputTokens: 10),
         ])
         #expect(first.data[0].totalTokens == 110)
         #expect((first.data[0].costUSD ?? 0) > 0)
@@ -239,6 +242,101 @@ struct CostUsageScannerBreakdownTests {
         #expect(second.data[0].modelsUsed == ["gpt-5.2-codex"])
         #expect(second.data[0].totalTokens == 176)
         #expect((second.data[0].costUSD ?? 0) > (first.data[0].costUSD ?? 0))
+    }
+
+    @Test
+    func `codex daily report surfaces reasoning output tokens without changing billing output`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2026, month: 4, day: 11)
+        let iso0 = env.isoString(for: day)
+        let iso1 = env.isoString(for: day.addingTimeInterval(1))
+        let iso2 = env.isoString(for: day.addingTimeInterval(2))
+        let model = "openai/gpt-5.2-codex"
+
+        func tokenCount(
+            timestamp: String,
+            total: (input: Int, cached: Int, output: Int, reasoning: Int),
+            last: (input: Int, cached: Int, output: Int, reasoning: Int)) -> [String: Any]
+        {
+            func usage(_ value: (input: Int, cached: Int, output: Int, reasoning: Int)) -> [String: Any] {
+                [
+                    "input_tokens": value.input,
+                    "cached_input_tokens": value.cached,
+                    "output_tokens": value.output,
+                    "reasoning_output_tokens": value.reasoning,
+                ]
+            }
+            return [
+                "type": "event_msg",
+                "timestamp": timestamp,
+                "payload": [
+                    "type": "token_count",
+                    "info": [
+                        "model": model,
+                        "total_token_usage": usage(total),
+                        "last_token_usage": usage(last),
+                    ],
+                ],
+            ]
+        }
+
+        let fileURL = try env.writeCodexSessionFile(
+            day: day,
+            filename: "session.jsonl",
+            contents: env.jsonl([
+                self.codexTurnContext(timestamp: iso0, model: model),
+                tokenCount(
+                    timestamp: iso1,
+                    total: (input: 100, cached: 20, output: 10, reasoning: 6),
+                    last: (input: 100, cached: 20, output: 10, reasoning: 6)),
+            ]))
+
+        var options = CostUsageScanner.Options(
+            codexSessionsRoot: env.codexSessionsRoot,
+            claudeProjectsRoots: nil,
+            cacheRoot: env.cacheRoot,
+            codexTraceDatabaseURL: env.root.appendingPathComponent("missing-traces.sqlite"))
+        options.refreshMinIntervalSeconds = 0
+
+        let first = CostUsageScanner.loadDailyReport(
+            provider: .codex,
+            since: day,
+            until: day,
+            now: day,
+            options: options)
+        let firstBreakdown = try #require(first.data.first?.modelBreakdowns?.first)
+        // Reasoning is a sub-bucket of billing output: output and totals stay as before.
+        #expect(firstBreakdown.outputTokens == 10)
+        #expect(firstBreakdown.reasoningTokens == 6)
+        #expect(firstBreakdown.totalTokens == 110)
+        #expect(first.data.first?.totalTokens == 110)
+
+        // The incremental rescan rides the cached row path; reasoning must survive the roundtrip.
+        try env.jsonl([
+            self.codexTurnContext(timestamp: iso0, model: model),
+            tokenCount(
+                timestamp: iso1,
+                total: (input: 100, cached: 20, output: 10, reasoning: 6),
+                last: (input: 100, cached: 20, output: 10, reasoning: 6)),
+            tokenCount(
+                timestamp: iso2,
+                total: (input: 160, cached: 40, output: 16, reasoning: 9),
+                last: (input: 60, cached: 20, output: 6, reasoning: 3)),
+        ])
+        .write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let second = CostUsageScanner.loadDailyReport(
+            provider: .codex,
+            since: day,
+            until: day,
+            now: day,
+            options: options)
+        let secondBreakdown = try #require(second.data.first?.modelBreakdowns?.first)
+        #expect(secondBreakdown.outputTokens == 16)
+        #expect(secondBreakdown.reasoningTokens == 9)
+        #expect(secondBreakdown.totalTokens == 176)
     }
 
     @Test
@@ -6540,7 +6638,11 @@ struct CostUsageScannerBreakdownTests {
             CostUsageDailyReport.ModelBreakdown(
                 modelName: "claude-sonnet-4-20250514",
                 costUSD: report.data[0].costUSD,
-                totalTokens: 355),
+                totalTokens: 355,
+                inputTokens: 200,
+                cacheReadTokens: 25,
+                cacheCreationTokens: 50,
+                outputTokens: 80),
         ])
         #expect((report.data[0].costUSD ?? 0) > 0)
     }

@@ -406,7 +406,9 @@ struct CostUsageScannerPriorityTests {
             until: day,
             now: day,
             options: options)
-        #expect(first.summary?.totalCostUSD == nil)
+        // The auto-review harness is intentionally zero-priced until the completed response
+        // identifies the real model. Preserve that known zero instead of reporting unavailable.
+        #expect(first.summary?.totalCostUSD == 0)
 
         try CostUsageScannerCodexPriorityTests.insertTestLog(
             dbURL: dbURL,

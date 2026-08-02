@@ -148,6 +148,15 @@ enum CostUsagePricing {
             outputCostPerToken: 0,
             cacheReadInputCostPerToken: 0,
             displayLabel: "Research Preview"),
+        // Auto-review turns are an internal Codex feature billed within the subscription, not per
+        // token, so they carry no price. Pricing them at zero (like spark above) keeps those days
+        // "proven zero-cost" instead of unpriced, which would otherwise void the whole provider's
+        // cost history via the all-or-nothing completeness check.
+        "codex-auto-review": CodexPricing(
+            inputCostPerToken: 0,
+            outputCostPerToken: 0,
+            cacheReadInputCostPerToken: 0,
+            displayLabel: "Included"),
         "gpt-5.4": CodexPricing(
             inputCostPerToken: 2.5e-6,
             outputCostPerToken: 1.5e-5,
@@ -576,13 +585,34 @@ enum CostUsagePricing {
                 outputTokens: outputTokens)
         }
 
-        guard let pricing = self.codex[key] else { return nil }
-        return self.codexCostUSD(
-            pricing: pricing,
-            inputTokens: inputTokens,
-            cachedInputTokens: cachedInputTokens,
-            cacheWriteInputTokens: cacheWriteInputTokens,
-            outputTokens: outputTokens)
+        if let pricing = self.codex[key] {
+            return self.codexCostUSD(
+                pricing: pricing,
+                inputTokens: inputTokens,
+                cachedInputTokens: cachedInputTokens,
+                cacheWriteInputTokens: cacheWriteInputTokens,
+                outputTokens: outputTokens)
+        }
+
+        // Non-OpenAI models routed through a Codex-compatible endpoint (e.g. MiniMax / DeepSeek /
+        // Kimi). Price them at the vendor's official per-token rates so a single third-party day
+        // does not void the provider's whole cost history via the all-or-nothing check.
+        if let thirdParty = self.thirdPartyClaudeLookup(
+            model: model,
+            catalog: modelsDevCatalog,
+            cacheRoot: modelsDevCacheRoot)
+        {
+            return self.claudeCostUSD(
+                pricing: thirdParty,
+                tokens: ClaudeCostTokens(
+                    input: inputTokens,
+                    cacheRead: cachedInputTokens,
+                    cacheCreation: cacheWriteInputTokens,
+                    cacheCreation1h: 0,
+                    output: outputTokens))
+        }
+
+        return nil
     }
 
     static func codexPriorityCostUSD(
@@ -733,12 +763,26 @@ enum CostUsagePricing {
                 tokens: tokens)
         }
 
+        // Non-Anthropic models routed through a Claude-compatible endpoint (Kimi / DeepSeek /
+        // MiniMax coding plans): price them at the vendor's official per-token rates so the spend
+        // dashboard shows an equivalent-cost estimate instead of "unavailable".
+        if let thirdParty = self.thirdPartyClaudeLookup(
+            model: model,
+            catalog: modelsDevCatalog,
+            cacheRoot: modelsDevCacheRoot)
+        {
+            return self.claudeCostUSD(pricing: thirdParty, tokens: tokens)
+        }
+
         guard let pricing = self.claude[key] else { return nil }
         return self.claudeCostUSD(
             pricing: pricing,
             tokens: tokens)
     }
 
+    /// Maps a non-Anthropic model seen on the Claude endpoint to its vendor's official models.dev
+    /// pricing. `kimi-for-coding` is a subscription alias; it is priced as Moonshot's kimi-k2.6,
+    /// the current default coding model. Returns nil when no official rate is known.
     private static func claudeCostUSD(
         pricing: ClaudePricing,
         tokens: ClaudeCostTokens) -> Double
@@ -791,21 +835,5 @@ enum CostUsagePricing {
 
     static func modelsDevCatalog(now: Date = Date(), cacheRoot: URL? = nil) -> ModelsDevCatalog? {
         ModelsDevCache.load(now: now, cacheRoot: cacheRoot).artifact?.catalog
-    }
-
-    private static func modelsDevLookup(
-        providerID: String,
-        model: String,
-        catalog: ModelsDevCatalog?,
-        cacheRoot: URL?) -> ModelsDevPricingLookup?
-    {
-        if let catalog {
-            return catalog.pricing(providerID: providerID, modelID: model)
-        }
-
-        return ModelsDevPricingPipeline.lookup(
-            providerID: providerID,
-            modelID: model,
-            cacheRoot: cacheRoot)
     }
 }

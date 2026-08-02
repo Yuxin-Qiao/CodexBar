@@ -5,6 +5,32 @@ import Testing
 @Suite(.serialized)
 struct CostUsageFetcherTests {
     @Test
+    func `local history providers support token snapshot`() {
+        // Providers that opt into `localHistorySources` (Copilot, Antigravity, Kimi, MiniMax,
+        // OpenCode, Qwen) get their snapshot from a registered local scanner, so the fetcher must
+        // report them as snapshot-capable even though `supportsTokenCost` is false.
+        #expect(CostUsageFetcher.supportsTokenSnapshot(.copilot))
+        #expect(CostUsageFetcher.supportsTokenSnapshot(.antigravity))
+        #expect(CostUsageFetcher.supportsTokenSnapshot(.kimi))
+        #expect(CostUsageFetcher.supportsTokenSnapshot(.minimax))
+        #expect(CostUsageFetcher.supportsTokenSnapshot(.opencode))
+        #expect(CostUsageFetcher.supportsTokenSnapshot(.qwencloud))
+        // A provider with neither a remote path nor local history sources stays unsupported.
+        #expect(!CostUsageFetcher.supportsTokenSnapshot(.grok))
+    }
+
+    @Test
+    func `full rescan also lifts the per-file byte cap`() {
+        var options = CostUsageScanner.Options()
+        CostUsageFetcher.configureFullRescan(&options, progress: nil)
+        #expect(options.forceRescan)
+        #expect(options.maxCodexScanBytesPerRefresh == 0)
+        // A session file larger than the 256 MiB default cap must not be partially parsed on a
+        // full rescan, or the manual result can never converge for that file.
+        #expect(options.maxCodexSessionFileBytes == 0)
+    }
+
+    @Test
     func `fetcher scopes codex history to selected codex home`() async throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }
@@ -705,7 +731,11 @@ extension CostUsageFetcherTests {
             CostUsageDailyReport.ModelBreakdown(
                 modelName: "claude-sonnet-4-6",
                 costUSD: nativeCost + piCost,
-                totalTokens: 205),
+                totalTokens: 205,
+                inputTokens: 150,
+                cacheReadTokens: 9,
+                cacheCreationTokens: 16,
+                outputTokens: 30),
         ])
     }
 

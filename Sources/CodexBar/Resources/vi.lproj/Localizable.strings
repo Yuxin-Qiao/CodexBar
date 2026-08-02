@@ -1263,6 +1263,7 @@
 "No local cost history yet" = "Chưa có lịch sử chi phí cục bộ";
 "Turn on cost tracking or refresh after using a supported provider." = "Bật tính năng theo dõi chi phí hoặc làm mới sau khi sử dụng nhà cung cấp được hỗ trợ.";
 "Refresh failures" = "Lần làm mới thất bại";
+"Scanning history %d/%d" = "Scanning history %d/%d";
 "Native currencies stay separate; Codex account rows exclude Pi session history." = "Đơn vị tiền tệ gốc được giữ riêng biệt; các hàng tài khoản Codex không bao gồm lịch sử phiên Pi.";
 "Spend unavailable" = "Không có dữ liệu chi tiêu";
 "Model breakdown unavailable" = "Phân tích theo mô hình không khả dụng";

@@ -1,12 +1,68 @@
 import Foundation
 
+/// Stable identifier for a local usage-history adapter.
+///
+/// This is intentionally an open value type instead of an enum. Provider
+/// descriptors can opt into new adapters without expanding a central switch,
+/// which keeps the dashboard extensible as tools add or change local formats.
+public struct ProviderLocalHistorySource: RawRepresentable, Hashable, Sendable {
+    public let rawValue: String
+
+    public init(rawValue: String) {
+        precondition(!rawValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        self.rawValue = rawValue
+    }
+
+    public static let antigravity = Self(rawValue: "antigravity")
+    public static let geminiCLI = Self(rawValue: "geminiCLI")
+    public static let kimiCode = Self(rawValue: "kimiCode")
+    public static let miniMax = Self(rawValue: "miniMax")
+    public static let openCode = Self(rawValue: "openCode")
+    public static let qwenCode = Self(rawValue: "qwenCode")
+    public static let zcode = Self(rawValue: "zcode")
+    public static let copilot = Self(rawValue: "copilot")
+    /// Degraded sources: the tool is recognized and model activity is reported, but no per-request
+    /// token usage is available locally (billing is server-side).
+    public static let cursorLocal = Self(rawValue: "cursorLocal")
+    public static let traeLocal = Self(rawValue: "traeLocal")
+
+    public static let builtIn: [Self] = [
+        .antigravity,
+        .geminiCLI,
+        .kimiCode,
+        .miniMax,
+        .openCode,
+        .qwenCode,
+        .zcode,
+        .copilot,
+        .cursorLocal,
+        .traeLocal,
+    ]
+
+    /// Built-in adapter identifiers shipped by this build. Custom identifiers
+    /// remain valid even though they are not present in this inventory.
+    public static var allCases: [Self] {
+        self.builtIn
+    }
+}
+
 public struct ProviderTokenCostConfig: Sendable {
     public let supportsTokenCost: Bool
+    public let localHistorySources: [ProviderLocalHistorySource]
     public let noDataMessage: @Sendable () -> String
 
-    public init(supportsTokenCost: Bool, noDataMessage: @escaping @Sendable () -> String) {
+    public init(
+        supportsTokenCost: Bool,
+        localHistorySources: [ProviderLocalHistorySource] = [],
+        noDataMessage: @escaping @Sendable () -> String)
+    {
         self.supportsTokenCost = supportsTokenCost
+        self.localHistorySources = localHistorySources
         self.noDataMessage = noDataMessage
+    }
+
+    public var supportsDashboardHistory: Bool {
+        self.supportsTokenCost || !self.localHistorySources.isEmpty
     }
 }
 
@@ -207,7 +263,9 @@ public enum ProviderDescriptorRegistry {
     public static func register(_ descriptor: ProviderDescriptor) -> ProviderDescriptor {
         self.lock.lock()
         defer { self.lock.unlock() }
-        if self.store.byID[descriptor.id] == nil {
+        if let index = self.store.ordered.firstIndex(where: { $0.id == descriptor.id }) {
+            self.store.ordered[index] = descriptor
+        } else {
             self.store.ordered.append(descriptor)
         }
         self.store.byID[descriptor.id] = descriptor
@@ -227,8 +285,9 @@ public enum ProviderDescriptorRegistry {
 
     public static func descriptor(for id: UsageProvider) -> ProviderDescriptor {
         self.ensureBootstrapped()
+        self.lock.lock()
+        defer { self.lock.unlock() }
         if let found = self.store.byID[id] { return found }
-        if let found = self.all.first(where: { $0.id == id }) { return found }
         fatalError("Missing ProviderDescriptor for \(id.rawValue)")
     }
 

@@ -36,6 +36,7 @@ public enum KimiProviderDescriptor {
                 ]),
             tokenCost: ProviderTokenCostConfig(
                 supportsTokenCost: false,
+                localHistorySources: [.kimiCode],
                 noDataMessage: { "Kimi cost summary is not supported." }),
             pace: ProviderPaceCapability(
                 resetWindowPace: .windowDuration(minutes: self.weeklyWindowMinutes)),

@@ -115,7 +115,15 @@ struct SpendDashboardPane: View {
                 self.controller.refresh()
             } label: {
                 if self.controller.isRefreshing {
-                    ProgressView().controlSize(.small)
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        if let progress = self.controller.codexScanProgress, progress.total > 0 {
+                            Text(L("Scanning history %d/%d", progress.scanned, progress.total))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                    }
                 } else {
                     Label(L("Refresh"), systemImage: "arrow.clockwise")
                 }
