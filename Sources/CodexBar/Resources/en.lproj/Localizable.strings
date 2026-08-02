@@ -1272,12 +1272,24 @@
 "Spend unavailable" = "Spend unavailable";
 "Model breakdown unavailable" = "Model breakdown unavailable";
 "Local estimated history" = "Local estimated history";
-"Coverage" = "Coverage";
+"Coverage" = "Common complete coverage";
 "Estimated spend" = "Estimated spend";
 "Tracked tokens" = "Tracked tokens";
 "Subscriptions" = "Subscriptions";
 "By subscription" = "By subscription";
 "No model-level history" = "No model-level history";
+"Tokens" = "Tokens";
+"Tracked model tokens" = "Tracked model tokens";
+"Priced model spend" = "Priced model spend";
+"Partial model history: incomplete source-days are excluded." = "Partial model history: incomplete source-days are excluded.";
+"No priced model history" = "No priced model history";
+"Other" = "Other";
+"Show all %d models" = "Show all %d models";
+"Show top 20" = "Show top 20";
+"Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers." = "Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers.";
+"Metric" = "Metric";
+"%d days of usage data across %d models" = "%d days of usage data across %d models";
+"%@ in · %@ out" = "%@ in · %@ out";
 "Daily estimated spend" = "Daily estimated spend";
 "≈%d full 5h windows of weekly left · %d windows until reset" = "≈%d full 5h windows of weekly left · %d windows until reset";
 "Weekly cannot run out before reset at this pace" = "Weekly cannot run out before reset at this pace";
@@ -1289,6 +1301,20 @@
 "Coding Plan" = "Coding Plan";
 "Agent Plan" = "Agent Plan";
 "Team" = "Team";
+
+"7-day average" = "7-day average";
+"Input" = "Input";
+"Output" = "Output";
+"Cache write" = "Cache write";
+"Reasoning" = "Reasoning";
+"%@ in" = "%@ in";
+"%@ out" = "%@ out";
+"%@ cache read" = "%@ cache read";
+"%@ cache write" = "%@ cache write";
+"%@ reasoning" = "%@ reasoning";
+"estimated" = "estimated";
+"Estimated costs are priced from local logs and may differ from provider bills." = "Estimated costs are priced from local logs and may differ from provider bills.";
+"Usage details for %@" = "Usage details for %@";
 
 /* Menu bar layout editor */
 "menu_bar_layout_title" = "Layout";
@@ -1359,9 +1385,34 @@
 "Cumulative" = "Cumulative";
 "Token activity" = "Token activity";
 "View" = "View";
+
+/* Token usage dashboard (usage & spend) */
+"By model" = "By model";
+"By tool" = "By tool";
+"7-day avg" = "7-day avg";
 "in the last year" = "in the last year";
 "No activity in the last 12 months" = "No activity in the last 12 months";
 "Each column = 1 week" = "Each column = 1 week";
 "Running total" = "Running total";
 "Less" = "Less";
 "More" = "More";
+"Mo" = "Mo";
+"We" = "We";
+"Fr" = "Fr";
+"Estimated" = "Estimated";
+"No per-client model history" = "No per-client model history";
+"Same-model comparison" = "Same-model comparison";
+"Observed history for the same model and time range; workload differences still apply." = "Observed history for the same model and time range; workload differences still apply.";
+"Show fewer models" = "Show fewer models";
+"%d models" = "%d models";
+"%d%% context reuse" = "%d%% context reuse";
+"%d projects" = "%d projects";
+"%d sessions" = "%d sessions";
+"%d days covered" = "%d days covered";
+"%d%% reuse" = "%d%% reuse";
+"Reuse unavailable" = "Reuse unavailable";
+"%@ per 1M tokens" = "%@ per 1M tokens";
+"%d days" = "%d days";
+
+"Cumulative %@ tokens as of %@" = "Cumulative %@ tokens as of %@";
+"%@ tokens in the week of %@" = "%@ tokens in the week of %@";

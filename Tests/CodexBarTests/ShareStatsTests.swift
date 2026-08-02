@@ -79,9 +79,14 @@ struct ShareStatsTests {
     @Test
     func `subscription labels require a plan tier provider contract`() {
         #expect(Self.subscriptionName(provider: .codex, rawName: "pro")?.displayName == "Pro 20x")
-        #expect(Self.subscriptionName(provider: .codex, rawName: "Plus Plan")?.displayName == "Plus")
+        #expect(Self.subscriptionName(
+            provider: .codex,
+            rawName: "Plus Plan")?.displayName == "ChatGPT Plus")
         #expect(Self.subscriptionName(provider: .cursor, rawName: "Cursor Pro")?.displayName == "Cursor Pro")
         #expect(Self.subscriptionName(provider: .gemini, rawName: "Paid")?.displayName == "Paid")
+        #expect(Self.subscriptionName(
+            provider: .antigravity,
+            rawName: "Google AI Pro")?.displayName == "Google AI Pro")
         #expect(Self.subscriptionName(provider: .copilot, rawName: "Business")?.displayName == "Business")
         #expect(Self.subscriptionName(provider: .perplexity, rawName: "Max")?.displayName == "Max")
         #expect(Self.subscriptionName(provider: .windsurf, rawName: "Teams")?.displayName == "Teams")
@@ -106,6 +111,19 @@ struct ShareStatsTests {
             from: [unidentified, fallback],
             provider: .codex)
         #expect(name?.displayName == "Pro 20x")
+    }
+
+    @Test
+    func `private dashboard accepts future plan tiers but rejects authentication labels`() {
+        let future = Self.snapshot(provider: .cursor, rawName: "Cursor Super Pro")
+        let auth = Self.snapshot(provider: .cursor, rawName: "API key")
+        let spend = Self.snapshot(provider: .mistral, rawName: "API spend: $12.34 this month")
+        let status = Self.snapshot(provider: .mistral, rawName: "Mistral Enterprise")
+
+        #expect(SpendSubscriptionPlan.from(snapshot: future, provider: .cursor)?.displayName == "Cursor Super Pro")
+        #expect(SpendSubscriptionPlan.from(snapshot: auth, provider: .cursor) == nil)
+        #expect(SpendSubscriptionPlan.from(snapshot: spend, provider: .mistral) == nil)
+        #expect(SpendSubscriptionPlan.from(snapshot: status, provider: .mistral) == nil)
     }
 
     @Test
@@ -152,6 +170,7 @@ struct ShareStatsTests {
                     coveredDayCount: 7),
             ],
             models: rows,
+            modelAnalysis: .empty,
             dailyPoints: [],
             totalTokens: 1,
             totalCost: nil,
@@ -207,6 +226,7 @@ struct ShareStatsTests {
                         totalTokens: nil,
                         totalCost: nil),
                 ],
+                modelAnalysis: .empty,
                 dailyPoints: [],
                 totalTokens: 10,
                 totalCost: -.infinity,
@@ -367,6 +387,7 @@ struct ShareStatsTests {
                         totalTokens: 1000,
                         totalCost: 1),
                 ],
+                modelAnalysis: .empty,
                 dailyPoints: [],
                 totalTokens: 300,
                 totalCost: 12,
@@ -402,6 +423,7 @@ struct ShareStatsTests {
                         totalTokens: 200,
                         totalCost: 4)
                 },
+                modelAnalysis: .empty,
                 dailyPoints: [],
                 totalTokens: nil,
                 totalCost: nil,

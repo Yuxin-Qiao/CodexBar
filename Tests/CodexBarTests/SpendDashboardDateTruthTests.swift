@@ -194,13 +194,18 @@ struct SpendDashboardDateTruthTests {
             now: Self.now,
             calendar: Self.calendar)
 
-        #expect(model.groups.map(\.currencyCode) == ["EUR", "USD"])
+        #expect(model.groups.map(\.currencyCode) == ["EUR", "USD", "XXX"])
         let eur = try #require(model.groups.first(where: { $0.currencyCode == "EUR" }))
         let usd = try #require(model.groups.first(where: { $0.currencyCode == "USD" }))
+        let unpriced = try #require(model.groups.first(where: { $0.currencyCode == "XXX" }))
         #expect(eur.providers.map(\.id) == ["eur"])
         #expect(eur.totalCost == 3)
         #expect(usd.providers.map(\.id) == ["usd"])
         #expect(usd.totalCost == 2)
+        #expect(Set(unpriced.providers.map(\.id)) == ["blank", "unknown"])
+        #expect(unpriced.providers.allSatisfy { $0.totalCost == nil })
+        #expect(unpriced.totalCost == nil)
+        #expect(unpriced.dailyPoints.isEmpty)
     }
 
     @Test
@@ -333,7 +338,7 @@ struct SpendDashboardDateTruthTests {
             let usd = try #require(groups.first(where: { $0.currencyCode == "USD" }))
 
             #expect(usd.totalCost == 7)
-            #expect(usd.totalTokens == nil)
+            #expect(usd.totalTokens == 10)
             #expect(usd.modelHistoryCompleteness == .complete)
             #expect(usd.models.map(\.totalCost) == [4, 3])
             #expect(usd.models.first(where: { $0.provider == .claude })?.totalTokens == nil)
@@ -343,7 +348,7 @@ struct SpendDashboardDateTruthTests {
                 dailyPoints: usd.dailyPoints,
                 aggregateTotal: usd.totalCost).content == .chart)
 
-            #expect(cad.totalCost == nil)
+            #expect(cad.totalCost == 5)
             #expect(cad.totalTokens == 30)
             #expect(cad.modelHistoryCompleteness == .incomplete)
             #expect(cad.models.map(\.provider) == [.mistral])
@@ -419,7 +424,7 @@ struct SpendDashboardDateTruthTests {
             calendar: Self.calendar).groups.first)
 
         #expect(group.totalCost == 20)
-        #expect(group.totalTokens == nil)
+        #expect(group.totalTokens == 62)
         #expect(group.modelHistoryCompleteness == .complete)
         #expect(group.models.map(\.modelName) == ["overflow", "mismatch", "negative", "valid"])
         #expect(group.models.map(\.totalCost) == [7, 6, 5, 2])
@@ -449,8 +454,8 @@ struct SpendDashboardDateTruthTests {
 
         #expect(usd.providers.first(where: { $0.id == "malformed" })?.totalCost == nil)
         #expect(usd.providers.first(where: { $0.id == "malformed" })?.totalTokens == nil)
-        #expect(usd.totalCost == nil)
-        #expect(usd.totalTokens == nil)
+        #expect(usd.totalCost == 4)
+        #expect(usd.totalTokens == 10)
         #expect(usd.modelHistoryCompleteness == .incomplete)
         #expect(usd.models.map(\.provider) == [.codex])
         #expect(usd.models.map(\.totalCost) == [4])
@@ -541,11 +546,15 @@ struct SpendDashboardDateTruthTests {
             now: Self.now,
             calendar: Self.calendar).groups.first)
 
-        #expect(costGroup.totalCost == nil)
+        // The provider's aggregate cost figure (10) contradicts the local per-day logs (3).
+        // The daily-sum fallback keeps the spend figure available by summing the per-day costs
+        // instead of voiding the whole provider, so cost stays visible while tokens stay intact.
+        #expect(costGroup.totalCost == 3)
         #expect(costGroup.totalTokens == 30)
         #expect(costGroup.dailyPoints.isEmpty)
-        #expect(costGroup.modelHistoryCompleteness == .incomplete)
-        #expect(costGroup.models.isEmpty)
+        #expect(costGroup.modelHistoryCompleteness == .complete)
+        #expect(costGroup.models.map(\.totalCost) == [3])
+        #expect(costGroup.models.map(\.totalTokens) == [30])
 
         #expect(tokenGroup.totalCost == 3)
         #expect(tokenGroup.totalTokens == nil)
@@ -625,7 +634,7 @@ struct SpendDashboardDateTruthTests {
         let eur = try #require(groups.first(where: { $0.currencyCode == "EUR" }))
         let usd = try #require(groups.first(where: { $0.currencyCode == "USD" }))
 
-        #expect(usd.totalCost == nil)
+        #expect(usd.totalCost == 4)
         #expect(usd.modelHistoryCompleteness == .incomplete)
         #expect(usd.models.map(\.provider) == [.codex])
         #expect(usd.models.map(\.totalCost) == [4])
@@ -733,7 +742,7 @@ struct SpendDashboardDateTruthTests {
         let usd = try #require(groups.first(where: { $0.currencyCode == "USD" }))
 
         #expect(usd.totalCost == 0)
-        #expect(usd.totalTokens == nil)
+        #expect(usd.totalTokens == 0)
         #expect(usd.modelHistoryCompleteness == .complete)
         #expect(eur.totalCost == nil)
         #expect(eur.totalTokens == 0)

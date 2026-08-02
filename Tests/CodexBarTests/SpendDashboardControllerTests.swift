@@ -7,6 +7,55 @@ import Testing
 @Suite(.serialized)
 struct SpendDashboardControllerTests {
     @Test
+    func `empty codex history loads as successful inactive source`() async {
+        let now = Date(timeIntervalSince1970: 1_784_179_200)
+        let recorder = SpendDashboardCodexLoadRecorder()
+        let account = CodexSpendScanRequest(
+            id: "inactive",
+            displayName: "Codex",
+            source: .profileHome(path: "/synthetic/codex-home"),
+            homePath: "/synthetic/codex-home",
+            authFingerprint: nil,
+            authFileWasReadable: false,
+            cacheIdentity: "inactive-cache")
+        let request = SpendDashboardLoadRequest(
+            configuration: Self.configuration(account: "inactive|inactive-cache"),
+            capturedInputs: [],
+            unavailableSourceIDs: [],
+            codexRequests: [account],
+            now: now,
+            force: false)
+
+        let result = await SpendDashboardSource.load(request, codexSnapshotLoader: { context in
+            await recorder.record(context)
+            return CostUsageTokenSnapshot(
+                sessionTokens: nil,
+                sessionCostUSD: nil,
+                last30DaysTokens: 0,
+                last30DaysCostUSD: 0,
+                historyDays: context.historyDays,
+                daily: [],
+                updatedAt: context.now)
+        })
+        let contexts = await recorder.contexts
+
+        #expect(result.inputs.count == 1)
+        #expect(result.inputs.first?.id == "codex:inactive")
+        #expect(result.inputs.first?.snapshot.daily.isEmpty == true)
+        #expect(result.failedSourceIDs.isEmpty)
+        // The 365-day token-activity loader shares the same closure, so one logical load
+        // records two contexts (cost scan + activity scan).
+        #expect(contexts.count == 2)
+        #expect(contexts.first?.account == account)
+        #expect(contexts.first?.cacheRoot.lastPathComponent == "inactive-cache")
+        #expect(contexts.first?.now == now)
+        #expect(contexts.first?.force == false)
+        #expect(contexts.first?.historyDays == SpendDashboardSource.scanDays)
+        #expect(contexts.first?.refreshPricingInBackground == false)
+        #expect(contexts.first?.includePiSessions == false)
+    }
+
+    @Test
     func `Codex auth rotation invalidates stale spend while retaining unrelated providers`() async throws {
         let home = FileManager.default.temporaryDirectory
             .appendingPathComponent(
@@ -1161,6 +1210,14 @@ private actor SpendDashboardCapturedInputStore {
 
     func replace(with inputs: [SpendDashboardModel.ProviderInput]) {
         self.inputs = inputs
+    }
+}
+
+private actor SpendDashboardCodexLoadRecorder {
+    private(set) var contexts: [CodexSpendSnapshotLoadContext] = []
+
+    func record(_ context: CodexSpendSnapshotLoadContext) {
+        self.contexts.append(context)
     }
 }
 

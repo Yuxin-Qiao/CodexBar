@@ -41,6 +41,12 @@ struct CodexSpendScanRequest: Equatable, Sendable {
     let cacheIdentity: String
 }
 
+struct LocalSpendHistoryRequest: Equatable, Sendable {
+    let source: ProviderLocalHistorySource
+    let provider: UsageProvider
+    let homePath: String
+}
+
 enum SpendDashboardRequestBuildMode: Equatable, Sendable {
     case refreshMissing
     case forceRefresh
@@ -65,8 +71,33 @@ struct SpendDashboardLoadRequest: Sendable {
     let unavailableSourceIDs: Set<String>
     let confirmedEmptySourceIDs: Set<String>
     let codexRequests: [CodexSpendScanRequest]
+    let localHistoryRequests: [LocalSpendHistoryRequest]
     let now: Date
     let force: Bool
+
+    var kimiCodeHomePath: String? {
+        self.localHistoryRequests.first { $0.source == .kimiCode }?.homePath
+    }
+
+    var geminiCLIHomePath: String? {
+        self.localHistoryRequests.first { $0.source == .geminiCLI }?.homePath
+    }
+
+    var openCodeDataHomePath: String? {
+        self.localHistoryRequests.first { $0.source == .openCode }?.homePath
+    }
+
+    var miniMaxHomePath: String? {
+        self.localHistoryRequests.first { $0.source == .miniMax }?.homePath
+    }
+
+    var antigravityHomePath: String? {
+        self.localHistoryRequests.first { $0.source == .antigravity }?.homePath
+    }
+
+    var qwenCodeHomePath: String? {
+        self.localHistoryRequests.first { $0.source == .qwenCode }?.homePath
+    }
 
     init(
         configuration: SpendDashboardConfiguration,
@@ -74,6 +105,12 @@ struct SpendDashboardLoadRequest: Sendable {
         unavailableSourceIDs: Set<String>,
         confirmedEmptySourceIDs: Set<String> = [],
         codexRequests: [CodexSpendScanRequest],
+        localHistoryRequests: [LocalSpendHistoryRequest]? = nil,
+        kimiCodeHomePath: String? = nil,
+        geminiCLIHomePath: String? = nil,
+        openCodeDataHomePath: String? = nil,
+        miniMaxHomePath: String? = nil,
+        antigravityHomePath: String? = nil,
         now: Date,
         force: Bool)
     {
@@ -82,6 +119,23 @@ struct SpendDashboardLoadRequest: Sendable {
         self.unavailableSourceIDs = unavailableSourceIDs
         self.confirmedEmptySourceIDs = confirmedEmptySourceIDs
         self.codexRequests = codexRequests
+        self.localHistoryRequests = localHistoryRequests ?? [
+            kimiCodeHomePath.map {
+                LocalSpendHistoryRequest(source: .kimiCode, provider: .kimi, homePath: $0)
+            },
+            geminiCLIHomePath.map {
+                LocalSpendHistoryRequest(source: .geminiCLI, provider: .gemini, homePath: $0)
+            },
+            openCodeDataHomePath.map {
+                LocalSpendHistoryRequest(source: .openCode, provider: .opencode, homePath: $0)
+            },
+            miniMaxHomePath.map {
+                LocalSpendHistoryRequest(source: .miniMax, provider: .minimax, homePath: $0)
+            },
+            antigravityHomePath.map {
+                LocalSpendHistoryRequest(source: .antigravity, provider: .antigravity, homePath: $0)
+            },
+        ].compactMap(\.self)
         self.now = now
         self.force = force
     }
@@ -119,11 +173,60 @@ struct CodexSpendSnapshotLoadContext: Sendable {
     var progress: (@Sendable (_ scanned: Int, _ total: Int) -> Void)?
 }
 
+struct KimiCodeSpendSnapshotLoadContext: Sendable {
+    let homePath: String
+    let now: Date
+    let historyDays: Int
+}
+
+struct GeminiSpendSnapshotLoadContext: Sendable {
+    let homePath: String
+    let now: Date
+    let historyDays: Int
+}
+
+struct OpenCodeSpendSnapshotLoadContext: Sendable {
+    let homePath: String
+    let now: Date
+    let historyDays: Int
+}
+
+struct MiniMaxSpendSnapshotLoadContext: Sendable {
+    let homePath: String
+    let now: Date
+    let historyDays: Int
+}
+
+struct AntigravitySpendSnapshotLoadContext: Sendable {
+    let homePath: String
+    let now: Date
+    let historyDays: Int
+}
+
+struct QwenCodeSpendSnapshotLoadContext: Sendable {
+    let homePath: String
+    let now: Date
+    let historyDays: Int
+}
+
 enum SpendDashboardSource {
     typealias CodexSnapshotLoader = @Sendable (CodexSpendSnapshotLoadContext) async throws
         -> CostUsageTokenSnapshot
 
-    static let scanDays = 30
+    typealias KimiCodeSnapshotLoader = @Sendable (KimiCodeSpendSnapshotLoadContext) async throws
+        -> CostUsageTokenSnapshot?
+    typealias GeminiSnapshotLoader = @Sendable (GeminiSpendSnapshotLoadContext) async throws
+        -> CostUsageTokenSnapshot?
+    typealias OpenCodeSnapshotLoader = @Sendable (OpenCodeSpendSnapshotLoadContext) async throws
+        -> CostUsageTokenSnapshot?
+    typealias MiniMaxSnapshotLoader = @Sendable (MiniMaxSpendSnapshotLoadContext) async throws
+        -> CostUsageTokenSnapshot?
+    typealias AntigravitySnapshotLoader = @Sendable (AntigravitySpendSnapshotLoadContext) async throws
+        -> CostUsageTokenSnapshot?
+    typealias QwenCodeSnapshotLoader = @Sendable (QwenCodeSpendSnapshotLoadContext) async throws
+        -> CostUsageTokenSnapshot?
+
+    static let scanDays = 365
     static let activityScanDays = SpendDashboardModel.tokenActivityDayCount
     private static let activitySnapshotCache = SpendDashboardCodexActivitySnapshotCache()
 
@@ -150,7 +253,8 @@ enum SpendDashboardSource {
         SpendDashboardConfiguration(
             costUsageEnabled: settings.costUsageEnabled,
             preferredCurrencyCode: settings.preferredCurrencyCode,
-            providerIDs: providers.map(\.rawValue),
+            providerIDs: Array(Set(
+                (providers + self.localModelHistoryProviders(store: store)).map(\.rawValue))).sorted(),
             codexAccountIdentities: codexRequests.map { "\($0.id)|\($0.cacheIdentity)" },
             codexAccountDisplayNames: self.codexDisplayNamesByID(codexRequests),
             sourceOwnershipFingerprints: self.sourceOwnershipFingerprints(
@@ -241,6 +345,9 @@ enum SpendDashboardSource {
             inputs.append(SpendDashboardModel.ProviderInput(
                 provider: provider,
                 displayName: store.metadata(for: provider).displayName,
+                subscriptionName: SpendSubscriptionPlan
+                    .from(snapshot: store.snapshot(for: provider), provider: provider)?
+                    .displayName,
                 snapshot: snapshot))
         }
         return SpendDashboardLoadRequest(
@@ -249,6 +356,7 @@ enum SpendDashboardSource {
             unavailableSourceIDs: unavailableSourceIDs,
             confirmedEmptySourceIDs: confirmedEmptySourceIDs,
             codexRequests: codexRequests,
+            localHistoryRequests: self.localHistoryRequests(store: store),
             now: captureNow,
             force: mode.forcesLoader)
     }
@@ -271,22 +379,80 @@ enum SpendDashboardSource {
             })
     }
 
+    private struct LocalHistoryAdapter {
+        let source: ProviderLocalHistorySource
+        let displayName: String
+        let load: @Sendable (String, Date, Int) async throws -> CostUsageTokenSnapshot?
+    }
+
+    private struct LocalHistoryLoaders {
+        let kimiCode: KimiCodeSnapshotLoader
+        let gemini: GeminiSnapshotLoader
+        let openCode: OpenCodeSnapshotLoader
+        let miniMax: MiniMaxSnapshotLoader
+        let antigravity: AntigravitySnapshotLoader
+        let qwenCode: QwenCodeSnapshotLoader
+    }
+
+    /// A local tool whose usage snapshot is loaded from a home directory via a
+    /// registered, injectable adapter.
+    private struct LocalSnapshotSource {
+        let homePath: String?
+        let sourceID: String
+        let provider: UsageProvider
+        let displayName: String
+        let load: (String) async throws -> CostUsageTokenSnapshot?
+
+        func loadInput() async throws -> SpendDashboardModel.ProviderInput? {
+            guard let homePath else { return nil }
+            guard let snapshot = try await self.load(homePath) else { return nil }
+            return SpendDashboardModel.ProviderInput(
+                id: self.sourceID,
+                provider: self.provider,
+                displayName: self.displayName,
+                modelProviderName: ProviderDescriptorRegistry.descriptor(for: self.provider)
+                    .metadata.displayName,
+                snapshot: snapshot)
+        }
+    }
+
     static func load(
         _ request: SpendDashboardLoadRequest,
         codexProgress: (@Sendable (_ scanned: Int, _ total: Int) -> Void)? = nil,
-        codexSnapshotLoader: CodexSnapshotLoader) async -> SpendDashboardLoadResult
+        codexSnapshotLoader: @escaping CodexSnapshotLoader) async -> SpendDashboardLoadResult
     {
         await self.load(
             request,
+            codexProgress: codexProgress,
             codexSnapshotLoader: codexSnapshotLoader,
             codexActivitySnapshotLoader: codexSnapshotLoader)
     }
 
     static func load(
         _ request: SpendDashboardLoadRequest,
-        codexSnapshotLoader: CodexSnapshotLoader,
-        codexActivitySnapshotLoader: CodexSnapshotLoader) async -> SpendDashboardLoadResult
+        codexProgress: (@Sendable (_ scanned: Int, _ total: Int) -> Void)? = nil,
+        codexSnapshotLoader: @escaping CodexSnapshotLoader,
+        codexActivitySnapshotLoader: CodexSnapshotLoader? = nil,
+        kimiCodeSnapshotLoader: @escaping KimiCodeSnapshotLoader = { context in
+            try await Self.loadKimiCodeSnapshot(context)
+        },
+        geminiSnapshotLoader: @escaping GeminiSnapshotLoader = { context in
+            try await Self.loadGeminiSnapshot(context)
+        },
+        openCodeSnapshotLoader: @escaping OpenCodeSnapshotLoader = { context in
+            try await Self.loadOpenCodeSnapshot(context)
+        },
+        miniMaxSnapshotLoader: @escaping MiniMaxSnapshotLoader = { context in
+            try await Self.loadMiniMaxSnapshot(context)
+        },
+        antigravitySnapshotLoader: @escaping AntigravitySnapshotLoader = { context in
+            try await Self.loadAntigravitySnapshot(context)
+        },
+        qwenCodeSnapshotLoader: @escaping QwenCodeSnapshotLoader = { context in
+            try await Self.loadQwenCodeSnapshot(context)
+        }) async -> SpendDashboardLoadResult
     {
+        let codexActivitySnapshotLoader = codexActivitySnapshotLoader ?? codexSnapshotLoader
         var inputs = request.capturedInputs
         var failedSourceIDs = request.unavailableSourceIDs
         var invalidatedSourceIDs: Set<String> = []
@@ -340,6 +506,7 @@ enum SpendDashboardSource {
                     provider: .codex,
                     displayName: account.displayName,
                     modelProviderName: ProviderDescriptorRegistry.descriptor(for: .codex).metadata.displayName,
+                    subscriptionName: nil,
                     snapshot: snapshot,
                     tokenActivitySnapshot: tokenActivitySnapshot))
             } catch is CancellationError {
@@ -350,6 +517,46 @@ enum SpendDashboardSource {
                     invalidatedSourceIDs: invalidatedSourceIDs)
             } catch {
                 failedSourceIDs.insert(sourceID)
+            }
+        }
+        let adapters = self.localHistoryAdapters(loaders: LocalHistoryLoaders(
+            kimiCode: kimiCodeSnapshotLoader,
+            gemini: geminiSnapshotLoader,
+            openCode: openCodeSnapshotLoader,
+            miniMax: miniMaxSnapshotLoader,
+            antigravity: antigravitySnapshotLoader,
+            qwenCode: qwenCodeSnapshotLoader))
+        let localSources: [LocalSnapshotSource] = request.localHistoryRequests.compactMap { localRequest in
+            guard let adapter = adapters[localRequest.source] else {
+                failedSourceIDs.insert(self.localSourceID(for: localRequest))
+                return nil
+            }
+            return LocalSnapshotSource(
+                homePath: localRequest.homePath,
+                sourceID: self.localSourceID(for: localRequest),
+                provider: localRequest.provider,
+                displayName: adapter.displayName,
+                load: { homePath in
+                    try await adapter.load(homePath, request.now, Self.scanDays)
+                })
+        }
+        for source in localSources {
+            do {
+                if let input = try await source.loadInput() {
+                    inputs.append(input)
+                    // The spend dashboard's canonical history for these providers is the local
+                    // scanner. A failed/unchanged live quota publication must not remain as a
+                    // refresh warning after the corresponding local history loaded successfully.
+                    failedSourceIDs.remove(source.provider.rawValue)
+                }
+            } catch is CancellationError {
+                failedSourceIDs.insert(source.sourceID)
+                return SpendDashboardLoadResult(
+                    inputs: [],
+                    failedSourceIDs: failedSourceIDs,
+                    invalidatedSourceIDs: invalidatedSourceIDs)
+            } catch {
+                failedSourceIDs.insert(source.sourceID)
             }
         }
         let lateInvalidatedSourceIDs = Set(request.codexRequests.compactMap { account in
@@ -381,11 +588,223 @@ enum SpendDashboardSource {
             codexProgress: context.progress)
     }
 
+    private static func loadKimiCodeSnapshot(
+        _ context: KimiCodeSpendSnapshotLoadContext) async throws -> CostUsageTokenSnapshot?
+    {
+        try await CostUsageScanExecutor.run { checkCancellation in
+            try KimiCodeSessionScanner.scanCancellable(
+                environment: [KimiSettingsReader.codeHomeEnvironmentKey: context.homePath],
+                historyDays: context.historyDays,
+                now: context.now,
+                checkCancellation: checkCancellation)
+        }
+    }
+
+    private static func loadGeminiSnapshot(
+        _ context: GeminiSpendSnapshotLoadContext) async throws -> CostUsageTokenSnapshot?
+    {
+        try await CostUsageScanExecutor.run { checkCancellation in
+            try GeminiSessionScanner.scanCancellable(
+                environment: [GeminiSessionScanner.cliHomeEnvironmentKey: context.homePath],
+                historyDays: context.historyDays,
+                now: context.now,
+                checkCancellation: checkCancellation)
+        }
+    }
+
+    private static func loadOpenCodeSnapshot(
+        _ context: OpenCodeSpendSnapshotLoadContext) async throws -> CostUsageTokenSnapshot?
+    {
+        try await CostUsageScanExecutor.run { checkCancellation in
+            try OpenCodeSessionScanner.scanCancellable(
+                environment: [OpenCodeSessionScanner.dataHomeEnvironmentKey: context.homePath],
+                historyDays: context.historyDays,
+                now: context.now,
+                checkCancellation: checkCancellation)
+        }
+    }
+
+    private static func loadMiniMaxSnapshot(
+        _ context: MiniMaxSpendSnapshotLoadContext) async throws -> CostUsageTokenSnapshot?
+    {
+        try await CostUsageScanExecutor.run { checkCancellation in
+            try MiniMaxSessionScanner.scanCancellable(
+                environment: [MiniMaxSessionScanner.homeEnvironmentKey: context.homePath],
+                historyDays: context.historyDays,
+                now: context.now,
+                checkCancellation: checkCancellation)
+        }
+    }
+
+    private static func loadAntigravitySnapshot(
+        _ context: AntigravitySpendSnapshotLoadContext) async throws -> CostUsageTokenSnapshot?
+    {
+        try await CostUsageScanExecutor.run { checkCancellation in
+            try AntigravitySessionScanner.scanCancellable(
+                environment: [AntigravitySessionScanner.homeEnvironmentKey: context.homePath],
+                historyDays: context.historyDays,
+                now: context.now,
+                checkCancellation: checkCancellation)
+        }
+    }
+
+    private static func loadQwenCodeSnapshot(
+        _ context: QwenCodeSpendSnapshotLoadContext) async throws -> CostUsageTokenSnapshot?
+    {
+        try await CostUsageScanExecutor.run { checkCancellation in
+            try QwenCodeSessionScanner.scanCancellable(
+                environment: [QwenCodeSessionScanner.homeEnvironmentKey: context.homePath],
+                historyDays: context.historyDays,
+                now: context.now,
+                checkCancellation: checkCancellation)
+        }
+    }
+
+    private static func localHistoryAdapters(loaders: LocalHistoryLoaders)
+        -> [ProviderLocalHistorySource: LocalHistoryAdapter]
+    {
+        let adapters = [
+            LocalHistoryAdapter(source: .kimiCode, displayName: "Kimi Code CLI") { homePath, now, days in
+                try await loaders.kimiCode(KimiCodeSpendSnapshotLoadContext(
+                    homePath: homePath, now: now, historyDays: days))
+            },
+            LocalHistoryAdapter(source: .geminiCLI, displayName: "Gemini CLI") { homePath, now, days in
+                try await loaders.gemini(GeminiSpendSnapshotLoadContext(
+                    homePath: homePath, now: now, historyDays: days))
+            },
+            LocalHistoryAdapter(source: .openCode, displayName: "OpenCode") { homePath, now, days in
+                try await loaders.openCode(OpenCodeSpendSnapshotLoadContext(
+                    homePath: homePath, now: now, historyDays: days))
+            },
+            LocalHistoryAdapter(source: .miniMax, displayName: "MiniMax Code") { homePath, now, days in
+                try await loaders.miniMax(MiniMaxSpendSnapshotLoadContext(
+                    homePath: homePath, now: now, historyDays: days))
+            },
+            LocalHistoryAdapter(source: .antigravity, displayName: "Antigravity") { homePath, now, days in
+                try await loaders.antigravity(AntigravitySpendSnapshotLoadContext(
+                    homePath: homePath, now: now, historyDays: days))
+            },
+            LocalHistoryAdapter(source: .qwenCode, displayName: "Qwen Code CLI") { homePath, now, days in
+                try await loaders.qwenCode(QwenCodeSpendSnapshotLoadContext(
+                    homePath: homePath, now: now, historyDays: days))
+            },
+        ]
+        return Dictionary(uniqueKeysWithValues: adapters.map { ($0.source, $0) })
+    }
+
+    private static func localSourceID(for request: LocalSpendHistoryRequest) -> String {
+        let descriptor = ProviderDescriptorRegistry.descriptor(for: request.provider)
+        if descriptor.tokenCost.localHistorySources.count == 1 {
+            return "\(request.provider.rawValue):local"
+        }
+        return "\(request.provider.rawValue):local:\(request.source.rawValue)"
+    }
+
+    /// Main-actor capture of the Gemini CLI home, mirroring `KimiSettingsReader.kimiCodeHomeURL`
+    /// (the scanner itself appends `tmp` to whatever `GEMINI_CLI_HOME` resolves to).
+    private static func geminiCLIHomeURL(
+        environment: [String: String] = ProcessInfo.processInfo.environment) -> URL
+    {
+        if let override = environment[GeminiSessionScanner.cliHomeEnvironmentKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !override.isEmpty
+        {
+            return URL(fileURLWithPath: override, isDirectory: true)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".gemini", isDirectory: true)
+    }
+
+    /// Main-actor capture of the XDG data home feeding `OpenCodeSessionScanner` (the scanner
+    /// itself appends `opencode/storage/message` to whatever `XDG_DATA_HOME` resolves to).
+    private static func openCodeDataHomeURL(
+        environment: [String: String] = ProcessInfo.processInfo.environment) -> URL
+    {
+        if let override = environment[OpenCodeSessionScanner.dataHomeEnvironmentKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !override.isEmpty
+        {
+            return URL(fileURLWithPath: override, isDirectory: true)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".local", isDirectory: true)
+            .appendingPathComponent("share", isDirectory: true)
+    }
+
+    /// Main-actor capture of the MiniMax home feeding `MiniMaxSessionScanner` (the scanner itself
+    /// appends `v2/sqlite/runtime-state.sqlite` to whatever `MINIMAX_HOME` resolves to).
+    private static func miniMaxHomeURL(
+        environment: [String: String] = ProcessInfo.processInfo.environment) -> URL
+    {
+        if let override = environment[MiniMaxSessionScanner.homeEnvironmentKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !override.isEmpty
+        {
+            return URL(fileURLWithPath: override, isDirectory: true)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".minimax", isDirectory: true)
+    }
+
+    /// Main-actor capture of the Antigravity home feeding `AntigravitySessionScanner` (the scanner
+    /// itself appends `conversations` to whatever `ANTIGRAVITY_HOME` resolves to).
+    private static func antigravityHomeURL(
+        environment: [String: String] = ProcessInfo.processInfo.environment) -> URL
+    {
+        if let override = environment[AntigravitySessionScanner.homeEnvironmentKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !override.isEmpty
+        {
+            return URL(fileURLWithPath: override, isDirectory: true)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".gemini", isDirectory: true)
+            .appendingPathComponent("antigravity", isDirectory: true)
+    }
+
     @MainActor
     static func costCapableProviders(store: UsageStore) -> [UsageProvider] {
         store.enabledProvidersForDisplay().filter {
             ProviderDescriptorRegistry.descriptor(for: $0).tokenCost.supportsDashboardHistory
         }
+    }
+
+    @MainActor
+    static func localModelHistoryProviders(store: UsageStore) -> [UsageProvider] {
+        store.enabledProvidersForDisplay().filter {
+            !ProviderDescriptorRegistry.descriptor(for: $0).tokenCost.localHistorySources.isEmpty
+        }
+    }
+
+    @MainActor
+    static func localHistoryRequests(store: UsageStore) -> [LocalSpendHistoryRequest] {
+        self.localModelHistoryProviders(store: store).flatMap { provider in
+            ProviderDescriptorRegistry.descriptor(for: provider).tokenCost.localHistorySources.map { source in
+                LocalSpendHistoryRequest(
+                    source: source,
+                    provider: provider,
+                    homePath: self.localHistoryHomeURL(for: source).path)
+            }
+        }
+    }
+
+    private static func localHistoryHomeURL(
+        for source: ProviderLocalHistorySource,
+        environment: [String: String] = ProcessInfo.processInfo.environment) -> URL
+    {
+        let resolvers: [ProviderLocalHistorySource: ([String: String]) -> URL] = [
+            .kimiCode: { KimiSettingsReader.kimiCodeHomeURL(environment: $0) },
+            .geminiCLI: { self.geminiCLIHomeURL(environment: $0) },
+            .openCode: { self.openCodeDataHomeURL(environment: $0) },
+            .miniMax: { self.miniMaxHomeURL(environment: $0) },
+            .antigravity: { self.antigravityHomeURL(environment: $0) },
+            .qwenCode: { QwenCodeSessionScanner.homeURL(environment: $0) },
+        ]
+        // Unknown adapter identifiers cannot be scanned until their plugin
+        // registers a resolver. Returning an impossible path keeps request
+        // construction deterministic; loading reports the source as failed.
+        return resolvers[source]?(environment)
+            ?? URL(fileURLWithPath: "/.codexbar/unknown-local-history-source", isDirectory: true)
     }
 
     @MainActor
@@ -775,6 +1194,7 @@ final class SpendDashboardController {
     }
 
     private(set) var failedSourceCount = 0
+    private(set) var failedSourceIDs: Set<String> = []
     private(set) var generation: UInt64 = 0
     private(set) var configuration: SpendDashboardConfiguration?
     private(set) var selectedDays: Int
@@ -788,6 +1208,7 @@ final class SpendDashboardController {
     private var loadTask: Task<Void, Never>?
     private var loadedInputs: [SpendDashboardModel.ProviderInput] = []
     private var loadedAt = Date()
+    private var lastCompletedLoadAt: Date?
     private var lastSuccessfulConfiguration: SpendDashboardConfiguration?
     private var phase = LoadPhase.ordinary
 
@@ -854,12 +1275,14 @@ final class SpendDashboardController {
         if !invalidatedSourceIDs.isEmpty {
             self.loadedInputs.removeAll { invalidatedSourceIDs.contains($0.id) }
             self.failedSourceCount = 0
+            self.failedSourceIDs = []
             self.rebuildModel()
         }
 
         guard configuration.costUsageEnabled, !configuration.providerIDs.isEmpty else {
             self.loadedInputs = []
             self.failedSourceCount = 0
+            self.failedSourceIDs = []
             self.isRefreshing = false
             self.lastSuccessfulConfiguration = configuration
             self.phase = .ordinary
@@ -1021,8 +1444,10 @@ final class SpendDashboardController {
         self.configuration = request.configuration
         self.loadedInputs = nextInputs
         self.loadedAt = request.now
+        self.lastCompletedLoadAt = self.nowProvider()
         self.lastSuccessfulConfiguration = request.configuration
         self.failedSourceCount = result.failedSourceCount
+        self.failedSourceIDs = result.failedSourceIDs
         self.isRefreshing = false
         self.progressStore.value = nil
         self.phase = .ordinary
@@ -1057,7 +1482,9 @@ final class SpendDashboardController {
             !forceFailed.contains(input.id) &&
             !invalidated.contains(input.id) &&
             !outcome.confirmedEmptySourceIDs.contains(input.id) &&
-            (forcedCodexIDs.contains(input.id) || barrierFailed.contains(input.id))
+            (forcedCodexIDs.contains(input.id) ||
+                barrierFailed.contains(input.id) ||
+                Self.isLocalHistorySource(input.id))
         {
             inputs.append(input)
             capturedIDs.insert(input.id)
@@ -1068,6 +1495,10 @@ final class SpendDashboardController {
                 failedSourceIDs: forceFailed.union(barrierFailed),
                 invalidatedSourceIDs: invalidated),
             confirmedEmptySourceIDs: outcome.confirmedEmptySourceIDs)
+    }
+
+    private static func isLocalHistorySource(_ sourceID: String) -> Bool {
+        sourceID.hasSuffix(":local") || sourceID.contains(":local:")
     }
 
     func refresh() {
@@ -1083,10 +1514,20 @@ final class SpendDashboardController {
         self.rebuildModel()
     }
 
-    func refreshDateWindow(now: Date? = nil) {
-        self.loadedAt = now ?? self.nowProvider()
+    func refreshDateWindow(
+        now: Date? = nil,
+        reloadIfOlderThan minimumReloadInterval: TimeInterval? = 0)
+    {
+        let now = now ?? self.nowProvider()
+        self.loadedAt = now
         self.rebuildModel()
         guard let configuration else { return }
+        guard let minimumReloadInterval else { return }
+        if let lastCompletedLoadAt,
+           now.timeIntervalSince(lastCompletedLoadAt) < minimumReloadInterval
+        {
+            return
+        }
         let nextPhase: LoadPhase = self.phase.manualRefreshOutstanding ? .forcing : .ordinary
         self.startLoad(configuration: configuration, phase: nextPhase)
     }
@@ -1134,6 +1575,7 @@ final class SpendDashboardController {
             provider: input.provider,
             displayName: displayName,
             modelProviderName: input.modelProviderName,
+            subscriptionName: input.subscriptionName,
             snapshot: input.snapshot,
             tokenActivitySnapshot: input.tokenActivitySnapshot)
     }
@@ -1186,6 +1628,6 @@ final class SpendDashboardController {
     }
 
     private static func normalizedDays(_ value: Int) -> Int {
-        value == 7 ? 7 : 30
+        [7, 30, 365].contains(value) ? value : 30
     }
 }

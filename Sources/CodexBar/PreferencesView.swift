@@ -43,6 +43,7 @@ enum SettingsPane: Hashable {
 struct PreferencesView: View {
     @Bindable var settings: SettingsStore
     @Bindable var store: UsageStore
+    @Bindable var spendDashboardController: SpendDashboardController
     let updater: UpdaterProviding
     @Bindable var selection: PreferencesSelection
     let managedCodexAccountCoordinator: ManagedCodexAccountCoordinator
@@ -53,6 +54,7 @@ struct PreferencesView: View {
     init(
         settings: SettingsStore,
         store: UsageStore,
+        spendDashboardController: SpendDashboardController,
         updater: UpdaterProviding,
         selection: PreferencesSelection,
         managedCodexAccountCoordinator: ManagedCodexAccountCoordinator = ManagedCodexAccountCoordinator(),
@@ -61,6 +63,7 @@ struct PreferencesView: View {
     {
         self.settings = settings
         self.store = store
+        self.spendDashboardController = spendDashboardController
         self.updater = updater
         self.selection = selection
         self.managedCodexAccountCoordinator = managedCodexAccountCoordinator
@@ -124,7 +127,10 @@ struct PreferencesView: View {
         case .general:
             GeneralPane(settings: self.settings)
         case .usageSpend:
-            SpendDashboardPane(settings: self.settings, store: self.store)
+            SpendDashboardPane(
+                settings: self.settings,
+                store: self.store,
+                controller: self.spendDashboardController)
         case .notifications:
             NotificationsPane(settings: self.settings)
         case .menuBar:

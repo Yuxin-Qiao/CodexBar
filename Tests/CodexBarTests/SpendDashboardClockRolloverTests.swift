@@ -96,6 +96,42 @@ struct SpendDashboardClockRolloverTests {
         #expect(controller.model.groups.first?.dailyPoints.count == 1)
     }
 
+    @Test
+    func `recent background load prevents an immediate foreground rescan`() async throws {
+        let loadedAt = try #require(ISO8601DateFormatter().date(from: "2026-07-16T12:00:00Z"))
+        let clock = LockIsolated(loadedAt)
+        let loadCount = LockIsolated(0)
+        let controller = SpendDashboardController(
+            requestBuilder: { mode in
+                SpendDashboardLoadRequest(
+                    configuration: Self.configuration,
+                    capturedInputs: [],
+                    unavailableSourceIDs: [],
+                    codexRequests: [],
+                    now: clock.value,
+                    force: mode.forcesLoader)
+            },
+            loader: { _ in
+                loadCount.setValue(loadCount.value + 1)
+                return SpendDashboardLoadResult(inputs: [], failedSourceIDs: [])
+            },
+            nowProvider: { clock.value })
+
+        controller.update(configuration: Self.configuration)
+        await Self.waitUntil { !controller.isRefreshing }
+        #expect(loadCount.value == 1)
+
+        clock.setValue(loadedAt.addingTimeInterval(60))
+        controller.refreshDateWindow(reloadIfOlderThan: 5 * 60)
+        await Task.yield()
+        #expect(loadCount.value == 1)
+
+        clock.setValue(loadedAt.addingTimeInterval(5 * 60))
+        controller.refreshDateWindow(reloadIfOlderThan: 5 * 60)
+        await Self.waitUntil { !controller.isRefreshing }
+        #expect(loadCount.value == 2)
+    }
+
     private static let configuration = SpendDashboardConfiguration(
         costUsageEnabled: true,
         providerIDs: [UsageProvider.codex.rawValue],

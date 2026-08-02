@@ -1274,6 +1274,18 @@
 "Subscriptions" = "Gói đăng ký";
 "By subscription" = "Theo gói đăng ký";
 "No model-level history" = "Không có lịch sử theo mô hình";
+"Tokens" = "Tokens";
+"Tracked model tokens" = "Token mô hình được theo dõi";
+"Priced model spend" = "Chi tiêu mô hình đã định giá";
+"Partial model history: incomplete source-days are excluded." = "Partial model history: incomplete source-days are excluded.";
+"No priced model history" = "Không có lịch sử mô hình đã định giá";
+"Other" = "Other";
+"Show all %d models" = "Hiển thị tất cả %d mô hình";
+"Show top 20" = "Hiển thị 20 hàng đầu";
+"Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers." = "Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers.";
+"Metric" = "Chỉ số";
+"%d days of usage data across %d models" = "%d ngày của dữ liệu Mức sử dụng trên %d mô hình";
+"%@ in · %@ out" = "%@ đầu vào · %@ đầu ra";
 "Daily estimated spend" = "Chi tiêu ước tính hằng ngày";
 "≈%d full 5h windows of weekly left · %d windows until reset" = "Còn ≈%d cửa sổ 5 giờ đầy đủ của hạn mức tuần · %d cửa sổ đến khi đặt lại";
 "Weekly cannot run out before reset at this pace" = "Với tốc độ này, hạn mức tuần không thể hết trước khi đặt lại";
@@ -1285,6 +1297,20 @@
 "Coding Plan" = "Gói lập trình";
 "Agent Plan" = "Gói tác nhân";
 "Team" = "Nhóm";
+
+"7-day average" = "Trung bình 7 ngày";
+"Input" = "Đầu vào";
+"Output" = "Đầu ra";
+"Cache write" = "Ghi bộ nhớ đệm";
+"Reasoning" = "Suy luận";
+"%@ in" = "%@ đầu vào";
+"%@ out" = "%@ đầu ra";
+"%@ cache read" = "%@ đọc bộ nhớ đệm";
+"%@ cache write" = "%@ ghi bộ nhớ đệm";
+"%@ reasoning" = "%@ suy luận";
+"estimated" = "ước tính";
+"Estimated costs are priced from local logs and may differ from provider bills." = "Chi phí ước tính được tính từ nhật ký cục bộ theo giá niêm yết và có thể khác với hóa đơn của nhà cung cấp.";
+"Usage details for %@" = "Chi tiết sử dụng cho %@";
 
 /* Menu bar layout editor */
 "menu_bar_layout_title" = "Bố cục";
@@ -1355,9 +1381,36 @@
 "Cumulative" = "Tích lũy";
 "Token activity" = "Hoạt động token";
 "View" = "Chế độ xem";
+
+/* Token usage dashboard (usage & spend) */
+"By model" = "Theo mô hình";
+"By tool" = "Theo công cụ";
+"7-day avg" = "TB 7 ngày";
 "in the last year" = "trong năm qua";
 "No activity in the last 12 months" = "Không có hoạt động trong 12 tháng qua";
 "Each column = 1 week" = "Mỗi cột = 1 tuần";
 "Running total" = "Tổng lũy kế";
 "Less" = "Ít";
 "More" = "Nhiều";
+"Mo" = "T2";
+"We" = "T4";
+"Fr" = "T6";
+"Estimated" = "Ước tính";
+"No per-client model history" = "Không có lịch sử mô hình theo ứng dụng";
+
+"Cumulative %@ tokens as of %@" = "Tích lũy %@ token tính đến %@";
+"%@ tokens in the week of %@" = "%@ token trong tuần từ %@";
+
+/* Tool comparison evidence (English fallback) */
+"Same-model comparison" = "Same-model comparison";
+"Observed history for the same model and time range; workload differences still apply." = "Observed history for the same model and time range; workload differences still apply.";
+"Show fewer models" = "Show fewer models";
+"Reuse unavailable" = "Reuse unavailable";
+"%d models" = "%d models";
+"%d projects" = "%d projects";
+"%d sessions" = "%d sessions";
+"%d days" = "%d days";
+"%d days covered" = "%d days covered";
+"%d%% context reuse" = "%d%% context reuse";
+"%d%% reuse" = "%d%% reuse";
+"%@ per 1M tokens" = "%@ per 1M tokens";

@@ -1275,6 +1275,18 @@
 "Subscriptions" = "Подписки";
 "By subscription" = "По подпискам";
 "No model-level history" = "Нет истории по моделям";
+"Tokens" = "Tokens";
+"Tracked model tokens" = "Отслеживаемые токены моделей";
+"Priced model spend" = "Расходы по тарифицированным моделям";
+"Partial model history: incomplete source-days are excluded." = "Partial model history: incomplete source-days are excluded.";
+"No priced model history" = "Нет истории по тарифицированным моделям";
+"Other" = "Other";
+"Show all %d models" = "Показать все модели (%d)";
+"Show top 20" = "Показать первые 20";
+"Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers." = "Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers.";
+"Metric" = "Метрика";
+"%d days of usage data across %d models" = "Данные об использовании за %d дней по %d моделям";
+"%@ in · %@ out" = "%@ вх. · %@ исх.";
 "Daily estimated spend" = "Предполагаемые ежедневные расходы";
 "≈%d full 5h windows of weekly left · %d windows until reset" = "≈%d полных 5-часовых окон недельного лимита · %d окон до сброса";
 "Weekly cannot run out before reset at this pace" = "При таком темпе недельный лимит не может закончиться до сброса";
@@ -1286,6 +1298,20 @@
 "Coding Plan" = "План программирования";
 "Agent Plan" = "План агента";
 "Team" = "Команда";
+
+"7-day average" = "Среднее за 7 дней";
+"Input" = "Входные";
+"Output" = "Выходные";
+"Cache write" = "Запись кэша";
+"Reasoning" = "Рассуждения";
+"%@ in" = "%@ входные";
+"%@ out" = "%@ выходные";
+"%@ cache read" = "%@ чтение кэша";
+"%@ cache write" = "%@ запись кэша";
+"%@ reasoning" = "%@ рассуждения";
+"estimated" = "оценка";
+"Estimated costs are priced from local logs and may differ from provider bills." = "Оценочные затраты рассчитываются по локальным журналам по прейскурантным ценам и могут отличаться от счетов провайдеров.";
+"Usage details for %@" = "Сведения об использовании за %@";
 
 /* Menu bar layout editor */
 "menu_bar_layout_title" = "Компоновка";
@@ -1356,9 +1382,36 @@
 "Cumulative" = "Накопительно";
 "Token activity" = "Активность токенов";
 "View" = "Вид";
+
+/* Token usage dashboard (usage & spend) */
+"By model" = "По модели";
+"By tool" = "По инструменту";
+"7-day avg" = "Ср. за 7 дн.";
 "in the last year" = "за последний год";
 "No activity in the last 12 months" = "Нет активности за последние 12 месяцев";
 "Each column = 1 week" = "Каждый столбец = 1 неделя";
 "Running total" = "Накопленный итог";
 "Less" = "Меньше";
 "More" = "Больше";
+"Mo" = "пн";
+"We" = "ср";
+"Fr" = "пт";
+"Estimated" = "Оценочно";
+"No per-client model history" = "Нет истории моделей по клиентам";
+
+"Cumulative %@ tokens as of %@" = "Всего %@ токенов на %@";
+"%@ tokens in the week of %@" = "%@ токенов за неделю от %@";
+
+/* Tool comparison evidence (English fallback) */
+"Same-model comparison" = "Same-model comparison";
+"Observed history for the same model and time range; workload differences still apply." = "Observed history for the same model and time range; workload differences still apply.";
+"Show fewer models" = "Show fewer models";
+"Reuse unavailable" = "Reuse unavailable";
+"%d models" = "%d models";
+"%d projects" = "%d projects";
+"%d sessions" = "%d sessions";
+"%d days" = "%d days";
+"%d days covered" = "%d days covered";
+"%d%% context reuse" = "%d%% context reuse";
+"%d%% reuse" = "%d%% reuse";
+"%@ per 1M tokens" = "%@ per 1M tokens";

@@ -13,23 +13,22 @@ struct ProviderIconResourcesTests {
 
         let slugs = [
             "codex",
-            "claude",
             "clinepass",
-            "zai",
+            "antigravity",
+            "claude",
+            "gemini",
+            "kimi",
             "minimax",
             "cursor",
             "opencode",
             "opencodego",
             "alibaba",
-            "gemini",
-            "antigravity",
             "factory",
             "copilot",
             "devin",
             "crof",
             "commandcode",
             "t3chat",
-            "kimi",
             "longcat",
             "bedrock",
             "elevenlabs",
@@ -88,6 +87,17 @@ struct ProviderIconResourcesTests {
         #expect(first === second)
         #expect(first.size == NSSize(width: 16, height: 16))
         #expect(first.isTemplate)
+    }
+
+    @Test
+    func `official color provider icons preserve template rendering`() throws {
+        ProviderBrandIcon.resetCacheForTesting()
+        defer { ProviderBrandIcon.resetCacheForTesting() }
+
+        for provider in [UsageProvider.antigravity, .claude, .gemini, .kimi, .minimax] {
+            let image = try #require(ProviderBrandIcon.image(for: provider))
+            #expect(image.isTemplate, "\(provider.rawValue) must use template rendering for global UI")
+        }
     }
 
     @Test

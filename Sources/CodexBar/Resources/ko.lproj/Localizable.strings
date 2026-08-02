@@ -1241,6 +1241,18 @@
 "Subscriptions" = "구독";
 "By subscription" = "구독별";
 "No model-level history" = "모델별 내역이 없습니다";
+"Tokens" = "Tokens";
+"Tracked model tokens" = "추적된 모델 토큰";
+"Priced model spend" = "가격이 책정된 모델 지출";
+"Partial model history: incomplete source-days are excluded." = "Partial model history: incomplete source-days are excluded.";
+"No priced model history" = "가격이 책정된 모델 기록 없음";
+"Other" = "Other";
+"Show all %d models" = "%d개 모델 모두 표시";
+"Show top 20" = "상위 20개 표시";
+"Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers." = "Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers.";
+"Metric" = "지표";
+"%d days of usage data across %d models" = "%2$d개 모델의 %1$d일간 사용량 데이터";
+"%@ in · %@ out" = "%@ 입력 · %@ 출력";
 "Daily estimated spend" = "일별 예상 지출";
 "≈%d full 5h windows of weekly left · %d windows until reset" = "주간 한도 약 %d개의 전체 5시간 창 남음 · 재설정까지 %d개 창";
 "Weekly cannot run out before reset at this pace" = "이 속도라면 재설정 전에 주간 한도를 소진할 수 없습니다";
@@ -1252,6 +1264,20 @@
 "Coding Plan" = "코딩 요금제";
 "Agent Plan" = "에이전트 요금제";
 "Team" = "팀";
+
+"7-day average" = "7일 평균";
+"Input" = "입력";
+"Output" = "출력";
+"Cache write" = "캐시 쓰기";
+"Reasoning" = "추론";
+"%@ in" = "%@ 입력";
+"%@ out" = "%@ 출력";
+"%@ cache read" = "%@ 캐시 읽기";
+"%@ cache write" = "%@ 캐시 쓰기";
+"%@ reasoning" = "%@ 추론";
+"estimated" = "추정";
+"Estimated costs are priced from local logs and may differ from provider bills." = "추정 비용은 로컬 로그를 기준으로 정가로 계산되며, 제공업체 청구서와 다를 수 있습니다.";
+"Usage details for %@" = "%@ 사용량 세부 정보";
 
 /* Menu bar layout editor */
 "menu_bar_layout_title" = "레이아웃";
@@ -1322,9 +1348,36 @@
 "Cumulative" = "누적";
 "Token activity" = "토큰 활동";
 "View" = "보기";
+
+/* Token usage dashboard (usage & spend) */
+"By model" = "모델별";
+"By tool" = "도구별";
+"7-day avg" = "7일 평균";
 "in the last year" = "지난 1년";
 "No activity in the last 12 months" = "지난 12개월 동안 활동 없음";
 "Each column = 1 week" = "각 열 = 1주";
 "Running total" = "누적 합계";
 "Less" = "적음";
 "More" = "많음";
+"Mo" = "월";
+"We" = "수";
+"Fr" = "금";
+"Estimated" = "추정";
+"No per-client model history" = "클이언트별 모델 기록 없음";
+
+"Cumulative %@ tokens as of %@" = "%2$@ 기준 누적 %1$@ 토큰";
+"%@ tokens in the week of %@" = "%2$@ 주에 %1$@ 토큰";
+
+/* Tool comparison evidence (English fallback) */
+"Same-model comparison" = "Same-model comparison";
+"Observed history for the same model and time range; workload differences still apply." = "Observed history for the same model and time range; workload differences still apply.";
+"Show fewer models" = "Show fewer models";
+"Reuse unavailable" = "Reuse unavailable";
+"%d models" = "%d models";
+"%d projects" = "%d projects";
+"%d sessions" = "%d sessions";
+"%d days" = "%d days";
+"%d days covered" = "%d days covered";
+"%d%% context reuse" = "%d%% context reuse";
+"%d%% reuse" = "%d%% reuse";
+"%@ per 1M tokens" = "%@ per 1M tokens";

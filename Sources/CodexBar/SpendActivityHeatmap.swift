@@ -299,6 +299,30 @@ struct SpendActivityHeatmapView: View {
         self._series = State(initialValue: SpendActivitySeries.make(from: points, now: now))
     }
 
+    /// Per-currency-group entry point: folds the model analysis' per-model daily values into
+    /// per-day totals, preserving "unknown" days so the heatmap never fabricates inactivity.
+    init(analysis: SpendDashboardModel.ModelAnalysis, now: Date = Date()) {
+        var totalsByDay: [Date: Int] = [:]
+        var unknownDays: Set<Date> = []
+        for value in analysis.dailyValues {
+            let day = Calendar.current.startOfDay(for: value.day)
+            guard let tokens = value.totalTokens else {
+                totalsByDay.removeValue(forKey: day)
+                unknownDays.insert(day)
+                continue
+            }
+            guard !unknownDays.contains(day) else { continue }
+            let sum = (totalsByDay[day] ?? 0).addingReportingOverflow(tokens)
+            totalsByDay[day] = sum.overflow ? Int.max : sum.partialValue
+        }
+        let points = Set(totalsByDay.keys).union(unknownDays).sorted().map { day in
+            SpendDashboardModel.TokenActivityPoint(
+                day: day,
+                totalTokens: unknownDays.contains(day) ? nil : totalsByDay[day])
+        }
+        self.init(points: points, now: now)
+    }
+
     var body: some View {
         let hasActivity = (self.series.daily.max() ?? 0) > 0
         let hasUnknownCoverage = self.series.hasUnknownCoverage

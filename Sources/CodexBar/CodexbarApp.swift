@@ -34,6 +34,7 @@ struct CodexBarApp: App {
     @State private var store: UsageStore
     @State private var managedCodexAccountCoordinator: ManagedCodexAccountCoordinator
     @State private var codexAccountPromotionCoordinator: CodexAccountPromotionCoordinator
+    @State private var spendDashboardController: SpendDashboardController
     private let preferencesSelection: PreferencesSelection
     private let account: AccountInfo
 
@@ -78,6 +79,9 @@ struct CodexBarApp: App {
         let browserDetection = BrowserDetection(cacheTTL: BrowserDetection.defaultCacheTTL)
         let account = fetcher.loadAccountInfo()
         let store = UsageStore(fetcher: fetcher, browserDetection: browserDetection, settings: settings)
+        let spendDashboardController = SpendDashboardController(requestBuilder: { mode in
+            await SpendDashboardSource.makeRequest(settings: settings, store: store, mode: mode)
+        })
         let codexAccountPromotionCoordinator = CodexAccountPromotionCoordinator(
             settingsStore: settings,
             usageStore: store,
@@ -87,6 +91,7 @@ struct CodexBarApp: App {
         _store = State(wrappedValue: store)
         _managedCodexAccountCoordinator = State(wrappedValue: managedCodexAccountCoordinator)
         _codexAccountPromotionCoordinator = State(wrappedValue: codexAccountPromotionCoordinator)
+        _spendDashboardController = State(wrappedValue: spendDashboardController)
         self.account = account
         CodexBarLog.setLogLevel(settings.debugLogLevel)
         self.appDelegate.configure(.init(
@@ -95,7 +100,8 @@ struct CodexBarApp: App {
             account: account,
             selection: preferencesSelection,
             managedCodexAccountCoordinator: managedCodexAccountCoordinator,
-            codexAccountPromotionCoordinator: codexAccountPromotionCoordinator))
+            codexAccountPromotionCoordinator: codexAccountPromotionCoordinator,
+            spendDashboardController: spendDashboardController))
     }
 
     @SceneBuilder
@@ -112,6 +118,7 @@ struct CodexBarApp: App {
             PreferencesView(
                 settings: self.settings,
                 store: self.store,
+                spendDashboardController: self.spendDashboardController,
                 updater: self.appDelegate.updaterController,
                 selection: self.preferencesSelection,
                 managedCodexAccountCoordinator: self.managedCodexAccountCoordinator,
@@ -374,6 +381,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let selection: PreferencesSelection
         let managedCodexAccountCoordinator: ManagedCodexAccountCoordinator
         let codexAccountPromotionCoordinator: CodexAccountPromotionCoordinator
+        let spendDashboardController: SpendDashboardController?
     }
 
     let updaterController: UpdaterProviding = makeUpdaterController()
@@ -390,6 +398,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var preferencesSelection: PreferencesSelection?
     private var managedCodexAccountCoordinator: ManagedCodexAccountCoordinator?
     private var codexAccountPromotionCoordinator: CodexAccountPromotionCoordinator?
+    private var spendDashboardController: SpendDashboardController?
+    private var spendDashboardWarmupTask: Task<Void, Never>?
     private var hasInstalledLimitResetObservers = false
     #if DEBUG
     private var debugMemoryPressureObserver: NSObjectProtocol?
@@ -405,6 +415,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.preferencesSelection = dependencies.selection
         self.managedCodexAccountCoordinator = dependencies.managedCodexAccountCoordinator
         self.codexAccountPromotionCoordinator = dependencies.codexAccountPromotionCoordinator
+        self.spendDashboardController = dependencies.spendDashboardController
     }
 
     func applicationWillFinishLaunching(_ notification: Notification) {
@@ -417,6 +428,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.installDebugMemoryPressureObserverIfNeeded()
         #endif
         self.ensureStatusController()
+        self.scheduleSpendDashboardWarmup()
         Task { @MainActor [weak self] in
             await Task.yield()
             guard let settings = self?.settings else { return }
@@ -452,6 +464,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        self.spendDashboardWarmupTask?.cancel()
+        self.spendDashboardWarmupTask = nil
+        self.spendDashboardController?.stop()
         self.memoryPressureMonitor.stop()
         #if DEBUG
         self.removeDebugMemoryPressureObserver()
@@ -460,6 +475,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.confettiOverlayController.dismiss()
         self.dismissAppKitWindowsForShutdown()
         self.terminateActiveProcessesForAppShutdown()
+    }
+
+    private func scheduleSpendDashboardWarmup() {
+        guard self.spendDashboardWarmupTask == nil,
+              let controller = self.spendDashboardController,
+              let settings = self.settings,
+              let store = self.store
+        else {
+            return
+        }
+        self.spendDashboardWarmupTask = Task(priority: .utility) { @MainActor [weak self] in
+            defer { self?.spendDashboardWarmupTask = nil }
+            do {
+                try await Task.sleep(for: .seconds(5))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled, settings.costUsageEnabled else { return }
+            controller.update(configuration: SpendDashboardSource.configuration(settings: settings, store: store))
+        }
     }
 
     func runProviderLoginFlow(_ provider: UsageProvider) async {
@@ -556,9 +591,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 selection,
                 managedCodexAccountCoordinator,
                 codexAccountPromotionCoordinator)
-            if let statusController = self.statusController as? StatusItemController {
-                MenuSwitchFlickerProbe.startIfRequested(controller: statusController)
-            }
             return
         }
 

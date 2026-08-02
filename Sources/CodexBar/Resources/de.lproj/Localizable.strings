@@ -1274,6 +1274,18 @@
 "Subscriptions" = "Abonnements";
 "By subscription" = "Nach Abonnement";
 "No model-level history" = "Kein Verlauf auf Modellebene";
+"Tokens" = "Tokens";
+"Tracked model tokens" = "Erfasste Modell-Tokens";
+"Priced model spend" = "Bepreiste Modellausgaben";
+"Partial model history: incomplete source-days are excluded." = "Partial model history: incomplete source-days are excluded.";
+"No priced model history" = "Kein Verlauf bepreister Modelle";
+"Other" = "Other";
+"Show all %d models" = "Alle %d Modelle anzeigen";
+"Show top 20" = "Top 20 anzeigen";
+"Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers." = "Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers.";
+"Metric" = "Metrik";
+"%d days of usage data across %d models" = "%d Tage Nutzungsdaten für %d Modelle";
+"%@ in · %@ out" = "%@ ein · %@ aus";
 "Daily estimated spend" = "Geschätzte tägliche Ausgaben";
 "≈%d full 5h windows of weekly left · %d windows until reset" = "≈%d volle 5-Std.-Fenster des Wochenlimits übrig · %d Fenster bis zum Reset";
 "Weekly cannot run out before reset at this pace" = "Das Wochenlimit kann bei diesem Tempo nicht vor dem Reset aufgebraucht sein";
@@ -1285,6 +1297,20 @@
 "Coding Plan" = "Coding-Plan";
 "Agent Plan" = "Agentenplan";
 "Team" = "Team";
+
+"7-day average" = "7-Tage-Durchschnitt";
+"Input" = "Eingabe";
+"Output" = "Ausgabe";
+"Cache write" = "Cache-Schreibvorgänge";
+"Reasoning" = "Reasoning";
+"%@ in" = "%@ Eingabe";
+"%@ out" = "%@ Ausgabe";
+"%@ cache read" = "%@ Cache-Lesevorgänge";
+"%@ cache write" = "%@ Cache-Schreibvorgänge";
+"%@ reasoning" = "%@ Reasoning";
+"estimated" = "geschätzt";
+"Estimated costs are priced from local logs and may differ from provider bills." = "Geschätzte Kosten werden aus lokalen Protokollen zu Listenpreisen berechnet und können von den Anbieterrechnungen abweichen.";
+"Usage details for %@" = "Nutzungsdetails für %@";
 
 /* Menu bar layout editor */
 "menu_bar_layout_title" = "Layout";
@@ -1355,9 +1381,36 @@
 "Cumulative" = "Kumulativ";
 "Token activity" = "Token-Aktivität";
 "View" = "Ansicht";
+
+/* Token usage dashboard (usage & spend) */
+"By model" = "Nach Modell";
+"By tool" = "Nach Tool";
+"7-day avg" = "7-Tage-Ø";
 "in the last year" = "im letzten Jahr";
 "No activity in the last 12 months" = "Keine Aktivität in den letzten 12 Monaten";
 "Each column = 1 week" = "Jede Spalte = 1 Woche";
 "Running total" = "Laufende Summe";
 "Less" = "Weniger";
 "More" = "Mehr";
+"Mo" = "Mo";
+"We" = "Mi";
+"Fr" = "Fr";
+"Estimated" = "Geschätzt";
+"No per-client model history" = "Keinen Modellverlauf pro Client";
+
+"Cumulative %@ tokens as of %@" = "Kumulativ %@ Token bis %@";
+"%@ tokens in the week of %@" = "%@ Token in der Woche vom %@";
+
+/* Tool comparison evidence (English fallback) */
+"Same-model comparison" = "Same-model comparison";
+"Observed history for the same model and time range; workload differences still apply." = "Observed history for the same model and time range; workload differences still apply.";
+"Show fewer models" = "Show fewer models";
+"Reuse unavailable" = "Reuse unavailable";
+"%d models" = "%d models";
+"%d projects" = "%d projects";
+"%d sessions" = "%d sessions";
+"%d days" = "%d days";
+"%d days covered" = "%d days covered";
+"%d%% context reuse" = "%d%% context reuse";
+"%d%% reuse" = "%d%% reuse";
+"%@ per 1M tokens" = "%@ per 1M tokens";

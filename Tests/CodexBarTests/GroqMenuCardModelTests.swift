@@ -5,7 +5,7 @@ import Testing
 
 extension StatusMenuTests {
     @Test
-    func `groq cost data stays reachable via inline dashboard regardless of cost row gating`() throws {
+    func `groq cost data is available in both generic and inline dashboards`() throws {
         StatusItemController.menuCardRenderingEnabled = true
         StatusItemController.setMenuRefreshEnabledForTesting(false)
         defer { self.disableMenuCardsForTesting() }
@@ -51,15 +51,11 @@ extension StatusMenuTests {
             statusBar: self.makeStatusBarForTesting())
         defer { controller.releaseStatusItemsForTesting() }
 
-        // Groq's descriptor sets `tokenCost.supportsTokenCost = false`, so the generic Cost
-        // row/submenu is unreachable regardless of display style or `tokenCostMenuSectionEnabled`
-        // (that guard runs first in `tokenUsageSection`) — Groq relies solely on the inline
-        // dashboard for its cost data, same as openai/mistral. This locks in that Groq's absence
-        // from the "Cost" row is unaffected by which provider set gates that row, so a future
-        // predicate change there can't silently break Groq the way it silently broke when this
-        // row's gate briefly reused `usesProviderCostHistoryAsPrimaryDashboard`.
+        // Groq exposes structured token and cost history, so it participates in the descriptor-
+        // driven generic Cost section while retaining its richer provider-specific dashboard.
         let model = try #require(controller.menuCardModel(for: .groq))
-        #expect(model.tokenUsage == nil)
+        #expect(model.tokenUsage?.sessionLine == "Today: $0.00 · 0 tokens")
+        #expect(model.tokenUsage?.monthLine == "Last 30 days: $1.50 · 150 tokens")
         #expect(model.inlineUsageDashboard != nil)
     }
 }

@@ -1277,6 +1277,18 @@
 "Subscriptions" = "الاشتراكات";
 "By subscription" = "حسب الاشتراك";
 "No model-level history" = "لا يوجد سجل على مستوى النموذج";
+"Tokens" = "Tokens";
+"Tracked model tokens" = "رموز النماذج المتتبعة";
+"Priced model spend" = "إنفاق النماذج المسعّرة";
+"Partial model history: incomplete source-days are excluded." = "Partial model history: incomplete source-days are excluded.";
+"No priced model history" = "لا يوجد سجل للنماذج المسعّرة";
+"Other" = "Other";
+"Show all %d models" = "عرض جميع النماذج (%d)";
+"Show top 20" = "عرض أول 20";
+"Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers." = "Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers.";
+"Metric" = "المقياس";
+"%d days of usage data across %d models" = "%d بيانات الاستخدام عبر نماذج %d";
+"%@ in · %@ out" = "%@ داخل · %@ خارج";
 "Daily estimated spend" = "الإنفاق اليومي التقديري";
 "≈%d full 5h windows of weekly left · %d windows until reset" = "≈%d نافذة كاملة مدتها 5 ساعات متبقية من الأسبوعي · %d نافذة حتى إعادة التعيين";
 "Weekly cannot run out before reset at this pace" = "لا يمكن أن ينفد الحد الأسبوعي قبل إعادة التعيين بهذه الوتيرة";
@@ -1288,6 +1300,20 @@
 "Coding Plan" = "خطة البرمجة";
 "Agent Plan" = "خطة الوكيل";
 "Team" = "فريق";
+
+"7-day average" = "متوسط 7 أيام";
+"Input" = "الإدخال";
+"Output" = "الإخراج";
+"Cache write" = "كتابة ذاكرة التخزين المؤقت";
+"Reasoning" = "الاستدلال";
+"%@ in" = "%@ إدخال";
+"%@ out" = "%@ إخراج";
+"%@ cache read" = "%@ قراءة التخزين المؤقت";
+"%@ cache write" = "%@ كتابة التخزين المؤقت";
+"%@ reasoning" = "%@ استدلال";
+"estimated" = "تقديري";
+"Estimated costs are priced from local logs and may differ from provider bills." = "يتم احتساب التكاليف التقديرية من السجلات المحلية بأسعار القائمة وقد تختلف عن فواتير مزودي الخدمة.";
+"Usage details for %@" = "تفاصيل الاستخدام ليوم %@";
 
 /* Menu bar layout editor */
 "menu_bar_layout_title" = "التخطيط";
@@ -1358,9 +1384,36 @@
 "Cumulative" = "تراكمي";
 "Token activity" = "نشاط الرموز";
 "View" = "عرض";
+
+/* Token usage dashboard (usage & spend) */
+"By model" = "حسب النموذج";
+"By tool" = "حسب الأداة";
+"7-day avg" = "متوسط 7 أيام";
 "in the last year" = "في العام الماضي";
 "No activity in the last 12 months" = "لا يوجد نشاط في آخر 12 شهرًا";
 "Each column = 1 week" = "كل عمود = أسبوع واحد";
 "Running total" = "الإجمالي التراكمي";
 "Less" = "أقل";
 "More" = "أكثر";
+"Mo" = "إث";
+"We" = "أر";
+"Fr" = "جم";
+"Estimated" = "تقديري";
+"No per-client model history" = "لا يوجد سجل نماذج لكل عميل";
+
+"Cumulative %@ tokens as of %@" = "%@ رمزًا تراكميًا حتى %@";
+"%@ tokens in the week of %@" = "%@ رمزًا في أسبوع %@";
+
+/* Tool comparison evidence (English fallback) */
+"Same-model comparison" = "Same-model comparison";
+"Observed history for the same model and time range; workload differences still apply." = "Observed history for the same model and time range; workload differences still apply.";
+"Show fewer models" = "Show fewer models";
+"Reuse unavailable" = "Reuse unavailable";
+"%d models" = "%d models";
+"%d projects" = "%d projects";
+"%d sessions" = "%d sessions";
+"%d days" = "%d days";
+"%d days covered" = "%d days covered";
+"%d%% context reuse" = "%d%% context reuse";
+"%d%% reuse" = "%d%% reuse";
+"%@ per 1M tokens" = "%@ per 1M tokens";

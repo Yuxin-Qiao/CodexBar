@@ -115,8 +115,10 @@ struct ShareStatsSubscriptionName: Sendable, Equatable {
 
     private static let labelsByProvider: [String: [String: String]] = [
         UsageProvider.codex.rawValue: [
-            "guest": "Guest", "free": "Free", "go": "Go", "plus": "Plus", "plus plan": "Plus",
-            "chatgpt plus": "Plus", "chatgpt-plus": "Plus", "chatgpt_plus": "Plus",
+            "guest": "Guest", "free": "Free", "go": "Go",
+            "plus": "ChatGPT Plus", "plus plan": "ChatGPT Plus",
+            "chatgpt plus": "ChatGPT Plus", "chatgpt-plus": "ChatGPT Plus",
+            "chatgpt_plus": "ChatGPT Plus",
             "pro": "Pro 20x", "codex pro": "Pro 20x",
             "prolite": "Pro 5x", "pro_lite": "Pro 5x", "pro-lite": "Pro 5x",
             "pro lite": "Pro 5x", "codex pro lite": "Pro 5x",
@@ -155,6 +157,7 @@ struct ShareStatsSubscriptionName: Sendable, Equatable {
         ],
         UsageProvider.antigravity.rawValue: [
             "free": "Free", "paid": "Paid", "pro": "Pro",
+            "google ai pro": "Google AI Pro", "google one ai pro": "Google AI Pro",
             "ultra": "Google AI Ultra", "google ai ultra": "Google AI Ultra",
         ],
         UsageProvider.copilot.rawValue: [
@@ -209,6 +212,10 @@ struct ShareStatsSubscriptionName: Sendable, Equatable {
     ]
 
     /// Converts plan-bearing provider identity into a closed, non-identifying share-card value.
+    static func hasPlanIdentityContract(for provider: UsageProvider) -> Bool {
+        self.labelsByProvider[provider.rawValue] != nil
+    }
+
     static func from(snapshot: UsageSnapshot?, provider: UsageProvider) -> Self? {
         guard let identity = snapshot?.identity(for: provider),
               let rawName = identity.loginMethod,

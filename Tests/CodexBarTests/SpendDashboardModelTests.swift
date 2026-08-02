@@ -3,26 +3,73 @@ import Foundation
 import Testing
 @testable import CodexBar
 
+// swiftlint:disable type_body_length
 struct SpendDashboardModelTests {
     @Test
     func `count labels avoid plural agreement and localize numbers`() {
         CodexBarLocalizationOverride.$appLanguage.withValue("en") {
             #expect(spendDashboardRefreshFailureText(1) == "Refresh failures: 1")
             #expect(spendDashboardRefreshFailureText(2) == "Refresh failures: 2")
-            #expect(spendDashboardCoverageText(covered: 3, requested: 7) == "Coverage: 3 / 7")
+            #expect(spendDashboardCoverageText(
+                covered: 30,
+                requested: 365) == "Common complete coverage: 30d · Time range: Cumulative")
         }
         CodexBarLocalizationOverride.$appLanguage.withValue("de") {
             #expect(spendDashboardRefreshFailureText(1234) == "Fehlgeschlagene Aktualisierungen: 1.234")
-            #expect(spendDashboardCoverageText(covered: 3, requested: 30) == "Abdeckung: 3 / 30")
+            #expect(spendDashboardCoverageText(
+                covered: 7,
+                requested: 30) == "Abdeckung: 7d · Zeitraum: 30d")
         }
         CodexBarLocalizationOverride.$appLanguage.withValue("fa") {
             #expect(codexBarLocalizedInteger(12) == "۱۲")
             #expect(spendDashboardDayRangeText(7) == "۷ روز")
             #expect(spendDashboardDayRangeText(30) == "۳۰ روز")
+            #expect(spendDashboardDayRangeText(365) == "تجمعی")
             #expect(spendDashboardRankText(1234) == "#۱٬۲۳۴")
             #expect(spendDashboardRefreshFailureText(2) == "\(L("Refresh failures")): ۲")
-            #expect(spendDashboardCoverageText(covered: 3, requested: 30) == "پوشش: ۳ / ۳۰")
+            #expect(spendDashboardCoverageText(
+                covered: 7,
+                requested: 30) == "پوشش: ۷ روز · بازه زمانی: ۳۰ روز")
         }
+    }
+
+    @Test
+    func `tracked token subtotal keeps known values when another subscription is incomplete`() throws {
+        let known = Self.input(id: "known", provider: .codex, currency: "USD", cost: 2)
+        let incomplete = SpendDashboardModel.ProviderInput(
+            id: "incomplete",
+            provider: .minimax,
+            displayName: "MiniMax",
+            snapshot: CostUsageTokenSnapshot(
+                sessionTokens: nil,
+                sessionCostUSD: nil,
+                last30DaysTokens: nil,
+                last30DaysCostUSD: nil,
+                currencyCode: "USD",
+                historyDays: 30,
+                daily: [CostUsageDailyReport.Entry(
+                    date: "2026-07-16",
+                    inputTokens: nil,
+                    outputTokens: nil,
+                    totalTokens: nil,
+                    costUSD: nil,
+                    modelsUsed: ["MiniMax-M3"],
+                    modelBreakdowns: [CostUsageDailyReport.ModelBreakdown(
+                        modelName: "MiniMax-M3",
+                        costUSD: nil,
+                        totalTokens: nil)])],
+                updatedAt: Self.now))
+
+        let group = try #require(SpendDashboardModel.build(
+            inputs: [known, incomplete],
+            requestedDays: 30,
+            now: Self.now,
+            calendar: Self.calendar).groups.first)
+
+        let miniMax = try #require(group.providers.first { $0.provider == .minimax })
+        let knownTokens = try #require(known.snapshot.daily.first?.totalTokens)
+        #expect(miniMax.totalTokens == nil)
+        #expect(group.totalTokens == knownTokens)
     }
 
     @Test
@@ -68,7 +115,54 @@ struct SpendDashboardModelTests {
         let providers = Set(ProviderDescriptorRegistry.all
             .filter(\.tokenCost.supportsTokenCost)
             .map(\.id))
-        #expect(providers == [.codex, .claude, .vertexai, .openai, .mistral, .bedrock, .cursor, .opencodego])
+        #expect(providers == [
+            .bedrock,
+            .claude,
+            .codex,
+            .cursor,
+            .groq,
+            .mistral,
+            .openai,
+            .opencodego,
+            .vertexai,
+        ])
+    }
+
+    @Test
+    func `dashboard history capability is declared by provider descriptors`() {
+        let descriptors = ProviderDescriptorRegistry.all
+        let localDescriptors = descriptors.filter { !$0.tokenCost.localHistorySources.isEmpty }
+        let declaredSources = localDescriptors.flatMap(\.tokenCost.localHistorySources)
+
+        // zcode / traeLocal / cursorLocal exist in the registry but no descriptor opts them
+        // into the dashboard yet; that declaration belongs to a follow-up local-history PR.
+        #expect(Set(declaredSources) == [
+            .antigravity,
+            .copilot,
+            .geminiCLI,
+            .kimiCode,
+            .miniMax,
+            .openCode,
+            .qwenCode,
+        ])
+        #expect(declaredSources.count == Set(declaredSources).count)
+        #expect(Set(localDescriptors.map(\.id)) == [
+            .antigravity,
+            .copilot,
+            .gemini,
+            .kimi,
+            .minimax,
+            .opencode,
+            .qwencloud,
+        ])
+
+        let dashboardProviders = Set(descriptors
+            .filter(\.tokenCost.supportsDashboardHistory)
+            .map(\.id))
+        let expectedProviders = Set(descriptors
+            .filter { $0.tokenCost.supportsTokenCost || !$0.tokenCost.localHistorySources.isEmpty }
+            .map(\.id))
+        #expect(dashboardProviders == expectedProviders)
     }
 
     @Test
@@ -181,6 +275,180 @@ struct SpendDashboardModelTests {
     }
 
     @Test
+    func `all model chart starts at earliest available model day`() throws {
+        let earlier = try Self.calendar.startOfDay(for: #require(
+            Self.calendar.date(byAdding: .day, value: -74, to: Self.now)))
+        let paddedStart = try #require(Self.calendar.date(byAdding: .day, value: -3, to: earlier))
+        let input = SpendDashboardModel.ProviderInput(
+            provider: .claude,
+            displayName: "Claude",
+            snapshot: Self.snapshot(
+                currency: "USD",
+                entries: [
+                    Self.entry(day: "2026-05-03", cost: 1, model: "early"),
+                    Self.entry(day: "2026-07-16", cost: 1, model: "current"),
+                ],
+                historyDays: 365))
+        let model = SpendDashboardModel.build(
+            inputs: [input],
+            requestedDays: 365,
+            now: Self.now,
+            calendar: Self.calendar)
+        let domain = try #require(model.modelChartDomain)
+        let today = Self.calendar.startOfDay(for: Self.now)
+        let end = try #require(Self.calendar.date(byAdding: .day, value: 1, to: today))
+
+        #expect(domain == paddedStart...end)
+        #expect(model.modelAnalysis.rows.map(\.displayName) == ["early", "current"])
+    }
+
+    @Test
+    func `cumulative model chart ignores zero-only edges and follows observed activity`() throws {
+        let input = SpendDashboardModel.ProviderInput(
+            provider: .claude,
+            displayName: "Claude",
+            snapshot: Self.snapshot(
+                currency: "USD",
+                entries: [
+                    Self.entry(day: "2026-02-01", cost: 0, tokens: 0, model: "idle-start"),
+                    Self.entry(day: "2026-05-01", cost: 1, model: "active"),
+                    Self.entry(day: "2026-05-10", cost: 1, model: "active"),
+                    Self.entry(day: "2026-07-16", cost: 0, tokens: 0, model: "idle-end"),
+                ],
+                historyDays: 365))
+        let model = SpendDashboardModel.build(
+            inputs: [input],
+            requestedDays: 365,
+            now: Self.now,
+            calendar: Self.calendar)
+        let domain = try #require(model.modelChartDomain)
+        let expectedStart = try #require(Self.calendar.date(
+            from: DateComponents(year: 2026, month: 4, day: 30)))
+        let expectedEnd = try #require(Self.calendar.date(
+            from: DateComponents(year: 2026, month: 5, day: 12)))
+
+        #expect(domain == expectedStart...expectedEnd)
+    }
+
+    @Test
+    func `cumulative model chart drops a negligible legacy island before a long empty gap`() throws {
+        let input = SpendDashboardModel.ProviderInput(
+            provider: .claude,
+            displayName: "Claude",
+            snapshot: Self.snapshot(
+                currency: "USD",
+                entries: [
+                    Self.entry(day: "2026-02-08", cost: 0.01, tokens: 1000, model: "legacy"),
+                    // This later gap is larger than the leading legacy gap. The chart must still
+                    // evaluate the leading sparse island instead of looking only at the maximum gap.
+                    Self.entry(day: "2026-04-01", cost: 10, tokens: 1_000_000, model: "active"),
+                    Self.entry(day: "2026-06-15", cost: 10, tokens: 1_000_000, model: "active"),
+                    Self.entry(day: "2026-07-16", cost: 10, tokens: 1_000_000, model: "active"),
+                ],
+                historyDays: 365))
+        let model = SpendDashboardModel.build(
+            inputs: [input],
+            requestedDays: 365,
+            now: Self.now,
+            calendar: Self.calendar)
+        let domain = try #require(model.modelChartDomain)
+        let expectedStart = try #require(Self.calendar.date(
+            from: DateComponents(year: 2026, month: 3, day: 27)))
+        let expectedEnd = try #require(Self.calendar.date(
+            from: DateComponents(year: 2026, month: 7, day: 17)))
+
+        #expect(domain == expectedStart...expectedEnd)
+        #expect(model.modelAnalysis.rows.map(\.displayName).contains("legacy"))
+    }
+
+    @Test
+    func `cumulative model chart keeps an old island with meaningful contribution`() throws {
+        let input = SpendDashboardModel.ProviderInput(
+            provider: .claude,
+            displayName: "Claude",
+            snapshot: Self.snapshot(
+                currency: "USD",
+                entries: [
+                    Self.entry(day: "2026-02-08", cost: 10, tokens: 1_000_000, model: "legacy"),
+                    Self.entry(day: "2026-05-01", cost: 10, tokens: 1_000_000, model: "active"),
+                    Self.entry(day: "2026-06-15", cost: 10, tokens: 1_000_000, model: "active"),
+                    Self.entry(day: "2026-07-16", cost: 10, tokens: 1_000_000, model: "active"),
+                ],
+                historyDays: 365))
+        let model = SpendDashboardModel.build(
+            inputs: [input],
+            requestedDays: 365,
+            now: Self.now,
+            calendar: Self.calendar)
+        let domain = try #require(model.modelChartDomain)
+        let expectedStart = try #require(Self.calendar.date(
+            from: DateComponents(year: 2026, month: 2, day: 1)))
+        let expectedEnd = try #require(Self.calendar.date(
+            from: DateComponents(year: 2026, month: 7, day: 17)))
+
+        #expect(domain == expectedStart...expectedEnd)
+    }
+
+    @Test
+    func `cumulative model chart keeps a compact seven day fallback without activity`() throws {
+        let input = SpendDashboardModel.ProviderInput(
+            provider: .claude,
+            displayName: "Claude",
+            snapshot: Self.snapshot(
+                currency: "USD",
+                entries: [
+                    Self.entry(day: "2026-02-01", cost: 0, tokens: 0, model: "idle"),
+                ],
+                historyDays: 365))
+        let model = SpendDashboardModel.build(
+            inputs: [input],
+            requestedDays: 365,
+            now: Self.now,
+            calendar: Self.calendar)
+        let domain = try #require(model.modelChartDomain)
+        let expectedStart = try #require(Self.calendar.date(
+            byAdding: .day,
+            value: -6,
+            to: Self.calendar.startOfDay(for: Self.now)))
+        let expectedEnd = try #require(Self.calendar.date(
+            byAdding: .day,
+            value: 1,
+            to: Self.calendar.startOfDay(for: Self.now)))
+
+        #expect(domain == expectedStart...expectedEnd)
+    }
+
+    @Test
+    func `model range stays independent from overview range`() throws {
+        let earlier = try Self.calendar.startOfDay(for: #require(
+            Self.calendar.date(byAdding: .day, value: -74, to: Self.now)))
+        let paddedStart = try #require(Self.calendar.date(byAdding: .day, value: -3, to: earlier))
+        let input = SpendDashboardModel.ProviderInput(
+            provider: .claude,
+            displayName: "Claude",
+            snapshot: Self.snapshot(
+                currency: "USD",
+                entries: [
+                    Self.entry(day: "2026-05-03", cost: 1, model: "early"),
+                    Self.entry(day: "2026-07-16", cost: 1, model: "current"),
+                ],
+                historyDays: 365))
+        let model = SpendDashboardModel.build(
+            inputs: [input],
+            requestedDays: 30,
+            now: Self.now,
+            calendar: Self.calendar)
+        let allDomain = try #require(model.modelChartDomain(for: 365))
+        let today = Self.calendar.startOfDay(for: Self.now)
+        let end = try #require(Self.calendar.date(byAdding: .day, value: 1, to: today))
+
+        #expect(model.groups.first?.modelAnalysis.rows.map(\.displayName) == ["current"])
+        #expect(model.modelAnalysis(for: 30).rows.map(\.displayName) == ["current"])
+        #expect(model.modelAnalysis(for: 365).rows.map(\.displayName) == ["early", "current"])
+        #expect(allDomain == paddedStart...end)
+    }
+
+    @Test
     func `currency coverage intersects disjoint provider windows`() throws {
         let earlier = try SpendDashboardModel.ProviderInput(
             id: "earlier",
@@ -260,8 +528,8 @@ struct SpendDashboardModelTests {
             now: Self.now,
             calendar: Self.calendar).groups.first)
 
-        #expect(group.totalCost == nil)
-        #expect(group.totalTokens == nil)
+        #expect(group.totalCost == 4)
+        #expect(group.totalTokens == 10)
         #expect(group.modelHistoryCompleteness == .incomplete)
         #expect(group.models.map(\.provider) == [.claude])
         #expect(group.models.map(\.modelName) == ["test-model"])
@@ -317,6 +585,443 @@ struct SpendDashboardModelTests {
         #expect(eur.models.isEmpty)
         #expect(usd.modelHistoryCompleteness == .complete)
         #expect(usd.models.map(\.totalCost) == [4])
+    }
+
+    @Test
+    func `model analysis merges exact normalized names without changing overview rows`() throws {
+        let first = SpendDashboardModel.ProviderInput(
+            id: "claude-source",
+            provider: .claude,
+            displayName: "Claude",
+            snapshot: Self.snapshot(currency: "USD", entries: [
+                Self.entry(day: "2026-07-16", cost: 2, tokens: 20, model: " Model-A "),
+            ]))
+        let second = SpendDashboardModel.ProviderInput(
+            id: "codex-source",
+            provider: .codex,
+            displayName: "Codex",
+            snapshot: Self.snapshot(currency: "USD", entries: [
+                Self.entry(day: "2026-07-16", cost: 3, tokens: 30, model: "model-a"),
+            ]))
+        let group = try #require(SpendDashboardModel.build(
+            inputs: [first, second],
+            requestedDays: 7,
+            now: Self.now,
+            calendar: Self.calendar).groups.first)
+        let row = try #require(group.modelAnalysis.rows.first)
+
+        #expect(group.models.count == 2)
+        #expect(group.modelAnalysis.rows.count == 1)
+        #expect(row.id == "model-a")
+        #expect(row.rawModelNames == ["Model-A", "model-a"])
+        #expect(row.totalTokens == 50)
+        #expect(row.estimatedCost == 5)
+        #expect(row.contributions.map(\.sourceID) == ["claude-source", "codex-source"])
+        #expect(group.modelAnalysis.dailyValues.map(\.totalTokens) == [50])
+        #expect(group.modelAnalysis.dailyValues.map(\.estimatedCost) == [5])
+        #expect(group.modelAnalysis.tokenCoverage == .complete)
+        #expect(group.modelAnalysis.costCoverage == .complete)
+    }
+
+    @Test
+    func `model analysis merges claude spellings across providers and snapshot dates`() throws {
+        let claude = SpendDashboardModel.ProviderInput(
+            id: "claude-source",
+            provider: .claude,
+            displayName: "Claude",
+            snapshot: Self.snapshot(currency: "USD", entries: [
+                Self.entry(day: "2026-07-16", cost: 2, tokens: 20, model: "claude-sonnet-4-5"),
+            ]))
+        let vertex = SpendDashboardModel.ProviderInput(
+            id: "vertex-source",
+            provider: .vertexai,
+            displayName: "Vertex AI",
+            snapshot: Self.snapshot(currency: "USD", entries: [
+                Self.entry(day: "2026-07-16", cost: 3, tokens: 30, model: "anthropic/claude-sonnet-4-5-20250929"),
+            ]))
+        let group = try #require(SpendDashboardModel.build(
+            inputs: [claude, vertex],
+            requestedDays: 7,
+            now: Self.now,
+            calendar: Self.calendar).groups.first)
+        let row = try #require(group.modelAnalysis.rows.first)
+
+        #expect(group.modelAnalysis.rows.count == 1)
+        #expect(row.id == "claude-sonnet-4-5")
+        #expect(row.displayName == "Claude Sonnet 4.5")
+        #expect(row.rawModelNames == ["claude-sonnet-4-5", "anthropic/claude-sonnet-4-5-20250929"])
+        #expect(row.providers == [.claude, .vertexai])
+        #expect(row.providerNames == ["Claude", "Vertex AI"])
+        #expect(row.totalTokens == 50)
+        #expect(row.estimatedCost == 5)
+        #expect(row.contributions.map(\.sourceID) == ["claude-source", "vertex-source"])
+        #expect(group.modelAnalysis.dailyValues.map(\.totalTokens) == [50])
+    }
+
+    @Test
+    func `model analysis merges dated snapshots into the base model row`() throws {
+        let codex = SpendDashboardModel.ProviderInput(
+            id: "codex-source",
+            provider: .codex,
+            displayName: "Codex",
+            snapshot: Self.snapshot(currency: "USD", entries: [
+                Self.entry(day: "2026-07-16", cost: 2, tokens: 20, model: "gpt-5"),
+            ]))
+        let openai = SpendDashboardModel.ProviderInput(
+            id: "openai-source",
+            provider: .openai,
+            displayName: "OpenAI",
+            snapshot: Self.snapshot(currency: "USD", entries: [
+                Self.entry(day: "2026-07-16", cost: 3, tokens: 30, model: "gpt-5-2025-08-07"),
+            ]))
+        let group = try #require(SpendDashboardModel.build(
+            inputs: [codex, openai],
+            requestedDays: 7,
+            now: Self.now,
+            calendar: Self.calendar).groups.first)
+        let row = try #require(group.modelAnalysis.rows.first)
+
+        #expect(group.modelAnalysis.rows.count == 1)
+        #expect(row.id == "gpt-5")
+        #expect(row.providers == [.codex, .openai])
+        #expect(row.providerNames == ["Codex", "OpenAI"])
+        #expect(row.totalTokens == 50)
+        #expect(row.estimatedCost == 5)
+    }
+
+    @Test
+    func `model analysis keeps semantic model variants in separate rows`() throws {
+        let snapshot = Self.snapshot(currency: "USD", entries: [
+            Self.entryWithBreakdowns(
+                day: "2026-07-16",
+                totalCost: 6,
+                totalTokens: 60,
+                breakdowns: [
+                    .init(modelName: "gpt-5", costUSD: 1, totalTokens: 10),
+                    .init(modelName: "gpt-5-codex", costUSD: 2, totalTokens: 20),
+                    .init(modelName: "gpt-5-mini", costUSD: 3, totalTokens: 30),
+                ]),
+        ])
+        let group = try #require(SpendDashboardModel.build(
+            inputs: [.init(provider: .codex, displayName: "Codex", snapshot: snapshot)],
+            requestedDays: 7,
+            now: Self.now,
+            calendar: Self.calendar).groups.first)
+
+        #expect(group.modelAnalysis.rows.map(\.id) == ["gpt-5-mini", "gpt-5-codex", "gpt-5"])
+        #expect(group.modelAnalysis.rows.map(\.totalTokens) == [30, 20, 10])
+    }
+
+    @Test
+    func `model analysis keeps kimi alias display names`() throws {
+        let snapshot = Self.snapshot(currency: "USD", entries: [
+            Self.entry(day: "2026-07-16", cost: 1, tokens: 10, model: "kimi-code/kimi-for-coding"),
+        ])
+        let group = try #require(SpendDashboardModel.build(
+            inputs: [.init(provider: .kimi, displayName: "Kimi", snapshot: snapshot)],
+            requestedDays: 7,
+            now: Self.now,
+            calendar: Self.calendar).groups.first)
+        let row = try #require(group.modelAnalysis.rows.first)
+
+        #expect(group.modelAnalysis.rows.count == 1)
+        #expect(row.id == "kimi for coding")
+        #expect(row.displayName == "Kimi for Coding")
+        #expect(row.rawModelNames == ["kimi-code/kimi-for-coding"])
+    }
+
+    @Test
+    func `model analysis excludes incomplete source days and labels partial coverage`() throws {
+        let snapshot = Self.snapshot(currency: "USD", entries: [
+            Self.entry(day: "2026-07-16", cost: 4, tokens: 40, model: "model-a"),
+            Self.entryWithBreakdowns(
+                day: "2026-07-15",
+                totalCost: 5,
+                totalTokens: 50,
+                breakdowns: [.init(modelName: "model-a", costUSD: 3, totalTokens: 30)]),
+        ])
+        let group = try #require(SpendDashboardModel.build(
+            inputs: [.init(provider: .claude, displayName: "Claude", snapshot: snapshot)],
+            requestedDays: 7,
+            now: Self.now,
+            calendar: Self.calendar).groups.first)
+        let row = try #require(group.modelAnalysis.rows.first)
+
+        #expect(group.models.isEmpty)
+        #expect(row.totalTokens == 40)
+        #expect(row.estimatedCost == 4)
+        #expect(group.modelAnalysis.tokenCoverage == .partial)
+        #expect(group.modelAnalysis.costCoverage == .partial)
+        #expect(group.modelAnalysis.dailyValues.count == 1)
+    }
+
+    @Test
+    func `model analysis preserves complete token splits and leaves total-only models unchanged`() throws {
+        let snapshot = Self.snapshot(currency: "USD", entries: [
+            Self.entryWithBreakdowns(
+                day: "2026-07-16",
+                totalCost: 0,
+                totalTokens: 196,
+                breakdowns: [
+                    .init(
+                        modelName: "split-model",
+                        costUSD: 0,
+                        totalTokens: 100,
+                        inputTokens: 60,
+                        cacheReadTokens: 20,
+                        outputTokens: 20),
+                    .init(
+                        modelName: "total-only-model",
+                        costUSD: 0,
+                        totalTokens: 96),
+                ]),
+        ])
+        let analysis = SpendDashboardModel.build(
+            inputs: [.init(provider: .claude, displayName: "Claude", snapshot: snapshot)],
+            requestedDays: 7,
+            now: Self.now,
+            calendar: Self.calendar).modelAnalysis
+        let split = try #require(analysis.rows.first(where: { $0.id == "split-model" }))
+        let totalOnly = try #require(analysis.rows.first(where: { $0.id == "total-only-model" }))
+        let daily = try #require(analysis.dailyValues.first(where: { $0.modelID == "split-model" }))
+
+        // Explicit buckets are carried as-is: cache reads no longer fold into the input bucket.
+        #expect(split.totalTokens == 100)
+        #expect(split.inputTokens == 60)
+        #expect(split.outputTokens == 20)
+        #expect(split.cacheReadTokens == 20)
+        #expect(split.cacheCreationTokens == nil)
+        #expect(split.reasoningTokens == nil)
+        #expect(totalOnly.totalTokens == 96)
+        #expect(totalOnly.inputTokens == nil)
+        #expect(totalOnly.outputTokens == nil)
+        #expect(totalOnly.cacheReadTokens == nil)
+        #expect(daily.inputTokens == 60)
+        #expect(daily.outputTokens == 20)
+        #expect(daily.cacheReadTokens == 20)
+    }
+
+    @Test
+    func `model analysis carries reasoning and cache creation buckets to rows and daily values`() throws {
+        let snapshot = Self.snapshot(currency: "USD", entries: [
+            Self.entryWithBreakdowns(
+                day: "2026-07-16",
+                totalCost: 0,
+                totalTokens: 120,
+                breakdowns: [
+                    .init(
+                        modelName: "reasoning-model",
+                        costUSD: 0,
+                        totalTokens: 120,
+                        inputTokens: 50,
+                        cacheReadTokens: 10,
+                        cacheCreationTokens: 5,
+                        outputTokens: 55,
+                        reasoningTokens: 30),
+                ]),
+        ])
+        let analysis = SpendDashboardModel.build(
+            inputs: [.init(provider: .codex, displayName: "Codex", snapshot: snapshot)],
+            requestedDays: 7,
+            now: Self.now,
+            calendar: Self.calendar).modelAnalysis
+        let row = try #require(analysis.rows.first(where: { $0.id == "reasoning-model" }))
+        let daily = try #require(analysis.dailyValues.first(where: { $0.modelID == "reasoning-model" }))
+
+        #expect(row.inputTokens == 50)
+        #expect(row.outputTokens == 55)
+        #expect(row.cacheReadTokens == 10)
+        #expect(row.cacheCreationTokens == 5)
+        // Reasoning is a sub-bucket of output: 30 of the 55 output tokens, never added on top.
+        #expect(row.reasoningTokens == 30)
+        #expect(daily.reasoningTokens == 30)
+        #expect(daily.cacheCreationTokens == 5)
+    }
+
+    @Test
+    func `model analysis normalizes cache inclusive input so explicit buckets sum to the total`() throws {
+        // Codex-shape breakdowns report cache-inclusive input (input + output == total).
+        let snapshot = Self.snapshot(currency: "USD", entries: [
+            Self.entryWithBreakdowns(
+                day: "2026-07-16",
+                totalCost: 0,
+                totalTokens: 110,
+                breakdowns: [
+                    .init(
+                        modelName: "codex-shaped-model",
+                        costUSD: 0,
+                        totalTokens: 110,
+                        inputTokens: 100,
+                        cacheReadTokens: 20,
+                        outputTokens: 10,
+                        reasoningTokens: 4),
+                ]),
+        ])
+        let analysis = SpendDashboardModel.build(
+            inputs: [.init(provider: .codex, displayName: "Codex", snapshot: snapshot)],
+            requestedDays: 7,
+            now: Self.now,
+            calendar: Self.calendar).modelAnalysis
+        let row = try #require(analysis.rows.first(where: { $0.id == "codex-shaped-model" }))
+
+        #expect(row.inputTokens == 80)
+        #expect(row.outputTokens == 10)
+        #expect(row.cacheReadTokens == 20)
+        #expect(row.reasoningTokens == 4)
+    }
+
+    @Test
+    func `model analysis falls back to inferred input for legacy breakdowns without split fields`() throws {
+        let snapshot = Self.snapshot(currency: "USD", entries: [
+            Self.entryWithBreakdowns(
+                day: "2026-07-16",
+                totalCost: 0,
+                totalTokens: 100,
+                breakdowns: [
+                    .init(
+                        modelName: "legacy-model",
+                        costUSD: 0,
+                        totalTokens: 100,
+                        outputTokens: 25),
+                ]),
+        ])
+        let analysis = SpendDashboardModel.build(
+            inputs: [.init(provider: .claude, displayName: "Claude", snapshot: snapshot)],
+            requestedDays: 7,
+            now: Self.now,
+            calendar: Self.calendar).modelAnalysis
+        let row = try #require(analysis.rows.first(where: { $0.id == "legacy-model" }))
+
+        // Legacy inference: everything non-output counts as input, optional buckets stay unknown.
+        #expect(row.inputTokens == 75)
+        #expect(row.outputTokens == 25)
+        #expect(row.cacheReadTokens == nil)
+        #expect(row.cacheCreationTokens == nil)
+        #expect(row.reasoningTokens == nil)
+    }
+
+    @Test
+    func `model analysis degrades mixed source shapes to the legacy input inference`() throws {
+        // Merged-source breakdowns (e.g. cache-inclusive Codex native plus cache-exclusive Pi)
+        // fit neither explicit shape; the row keeps the legacy split and the shape-independent
+        // reasoning bucket instead of losing the split entirely.
+        let snapshot = Self.snapshot(currency: "USD", entries: [
+            Self.entryWithBreakdowns(
+                day: "2026-07-16",
+                totalCost: 0,
+                totalTokens: 130,
+                breakdowns: [
+                    .init(
+                        modelName: "merged-shape-model",
+                        costUSD: 0,
+                        totalTokens: 130,
+                        inputTokens: 105,
+                        cacheReadTokens: 20,
+                        cacheCreationTokens: 5,
+                        outputTokens: 20,
+                        reasoningTokens: 8),
+                ]),
+        ])
+        let analysis = SpendDashboardModel.build(
+            inputs: [.init(provider: .codex, displayName: "Codex", snapshot: snapshot)],
+            requestedDays: 7,
+            now: Self.now,
+            calendar: Self.calendar).modelAnalysis
+        let row = try #require(analysis.rows.first(where: { $0.id == "merged-shape-model" }))
+
+        #expect(row.inputTokens == 110)
+        #expect(row.outputTokens == 20)
+        #expect(row.cacheReadTokens == nil)
+        #expect(row.cacheCreationTokens == nil)
+        #expect(row.reasoningTokens == 8)
+    }
+
+    @Test
+    func `model analysis drops optional buckets any contributing breakdown does not report`() throws {
+        let snapshot = Self.snapshot(currency: "USD", entries: [
+            Self.entryWithBreakdowns(
+                day: "2026-07-16",
+                totalCost: 0,
+                totalTokens: 220,
+                breakdowns: [
+                    .init(
+                        modelName: "mixed-model",
+                        costUSD: 0,
+                        totalTokens: 120,
+                        inputTokens: 50,
+                        cacheReadTokens: 10,
+                        cacheCreationTokens: 5,
+                        outputTokens: 55,
+                        reasoningTokens: 30),
+                    .init(
+                        modelName: "mixed-model",
+                        costUSD: 0,
+                        totalTokens: 100,
+                        inputTokens: 75,
+                        outputTokens: 25),
+                ]),
+        ])
+        let analysis = SpendDashboardModel.build(
+            inputs: [.init(provider: .claude, displayName: "Claude", snapshot: snapshot)],
+            requestedDays: 7,
+            now: Self.now,
+            calendar: Self.calendar).modelAnalysis
+        let row = try #require(analysis.rows.first(where: { $0.id == "mixed-model" }))
+
+        // input/output stay complete (both breakdowns resolve a split); the optional buckets
+        // vanish because the second breakdown does not report them.
+        #expect(row.inputTokens == 125)
+        #expect(row.outputTokens == 80)
+        #expect(row.cacheReadTokens == nil)
+        #expect(row.cacheCreationTokens == nil)
+        #expect(row.reasoningTokens == nil)
+    }
+
+    @Test
+    func `model analysis flags rows whose cost is estimated and clears provider reported rows`() throws {
+        let day = "2026-07-16"
+        let estimated = SpendDashboardModel.ProviderInput(
+            id: "estimated-source",
+            provider: .claude,
+            displayName: "Claude",
+            snapshot: Self.snapshot(currency: "USD", entries: [
+                Self.entryWithBreakdowns(
+                    day: day,
+                    totalCost: 4,
+                    totalTokens: 40,
+                    breakdowns: [.init(modelName: "shared-model", costUSD: 4, totalTokens: 40)]),
+            ]))
+        let providerReported = SpendDashboardModel.ProviderInput(
+            id: "billed-source",
+            provider: .cursor,
+            displayName: "Cursor",
+            snapshot: Self.snapshot(
+                currency: "USD",
+                entries: [
+                    Self.entryWithBreakdowns(
+                        day: day,
+                        totalCost: 6,
+                        totalTokens: 60,
+                        breakdowns: [.init(modelName: "shared-model", costUSD: 6, totalTokens: 60)]),
+                ],
+                costSource: .providerReported))
+        let analysis = SpendDashboardModel.build(
+            inputs: [estimated, providerReported],
+            requestedDays: 7,
+            now: Self.now,
+            calendar: Self.calendar).modelAnalysis
+        let mixed = try #require(analysis.rows.first(where: { $0.id == "shared-model" }))
+        #expect(mixed.estimatedCost == 10)
+        #expect(mixed.costIsEstimated == true)
+
+        let billedOnly = SpendDashboardModel.build(
+            inputs: [providerReported],
+            requestedDays: 7,
+            now: Self.now,
+            calendar: Self.calendar).modelAnalysis
+        let billedRow = try #require(billedOnly.rows.first(where: { $0.id == "shared-model" }))
+        #expect(billedRow.estimatedCost == 6)
+        #expect(billedRow.costIsEstimated == false)
     }
 
     @Test
@@ -395,7 +1100,7 @@ struct SpendDashboardModelTests {
 
         #expect(group.providers.first(where: { $0.id == "invalid" })?.totalCost == nil)
         #expect(group.totalCost == nil)
-        #expect(group.totalTokens == nil)
+        #expect(group.totalTokens == 20)
         #expect(group.dailyPoints.isEmpty)
     }
 
@@ -418,6 +1123,10 @@ struct SpendDashboardModelTests {
         #expect(group.modelHistoryCompleteness == .incomplete)
         #expect(group.models.isEmpty)
         #expect(group.dailyPoints.isEmpty)
+        #expect(group.modelAnalysis.rows.first?.totalTokens == 40)
+        #expect(group.modelAnalysis.rows.first?.estimatedCost == 4)
+        #expect(group.modelAnalysis.tokenCoverage == .partial)
+        #expect(group.modelAnalysis.costCoverage == .partial)
     }
 
     @Test
@@ -513,7 +1222,7 @@ struct SpendDashboardModelTests {
         #expect(group.providers.first(where: { $0.id == "nonfinite" })?.totalTokens == 2)
         #expect(group.providers.filter { $0.id != "nonfinite" }.allSatisfy { $0.totalTokens == nil })
         #expect(group.totalCost == nil)
-        #expect(group.totalTokens == nil)
+        #expect(group.totalTokens == 2)
     }
 
     @Test
@@ -595,7 +1304,9 @@ struct SpendDashboardModelTests {
         #expect(group.modelHistoryCompleteness == .incomplete)
         #expect(group.models.isEmpty)
     }
+}
 
+extension SpendDashboardModelTests {
     @Test
     func `blank model names fail closed unless their usage is explicitly zero`() throws {
         let incomplete = Self.snapshot(currency: "USD", entries: [Self.entryWithBreakdowns(
@@ -724,6 +1435,43 @@ struct SpendDashboardModelTests {
     }
 
     @Test
+    func `partial provider pricing is labelled partial without hiding known spend`() throws {
+        let priced = Self.input(id: "priced", provider: .codex, currency: "USD", cost: 4)
+        let unpriced = SpendDashboardModel.ProviderInput(
+            id: "unpriced",
+            provider: .qwencloud,
+            displayName: "Qwen Code",
+            snapshot: Self.snapshot(
+                currency: "USD",
+                entries: [Self.entry(day: "2026-07-16", cost: nil, tokens: 12)]))
+        let group = try #require(SpendDashboardModel.build(
+            inputs: [priced, unpriced],
+            requestedDays: 7,
+            now: Self.now,
+            calendar: Self.calendar).groups.first)
+
+        #expect(group.totalCost == 4)
+        #expect(group.costCoverage == .partial)
+        #expect(group.pricedProviderCount == 1)
+    }
+
+    @Test
+    func `global model analysis never sums costs across currencies`() {
+        let usd = Self.input(id: "usd", provider: .codex, currency: "USD", cost: 4)
+        let eur = Self.input(id: "eur", provider: .claude, currency: "EUR", cost: 3)
+        let model = SpendDashboardModel.build(
+            inputs: [usd, eur],
+            requestedDays: 7,
+            now: Self.now,
+            calendar: Self.calendar)
+
+        #expect(model.groups.count == 2)
+        #expect(model.modelAnalysis.rows.allSatisfy { $0.estimatedCost == nil })
+        #expect(model.modelAnalysis.costCoverage == .unavailable)
+        #expect(model.modelAnalysis.dailyValues.allSatisfy { $0.estimatedCost == nil })
+    }
+
+    @Test
     func `Codex requests freeze source home auth and cache identity`() throws {
         let id = try #require(UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"))
         let home = FileManager.default.temporaryDirectory
@@ -753,6 +1501,7 @@ struct SpendDashboardModelTests {
         #expect(!request.authFileWasReadable)
         #expect(request.displayName == "Codex · #2")
         #expect(request.cacheIdentity.count == 64)
+        #expect(SpendDashboardSource.scanDays == 365)
         #expect(SpendDashboardSource.codexRequest(
             account: account,
             homePath: "relative/path",
@@ -814,6 +1563,7 @@ struct SpendDashboardModelTests {
         currency: String,
         entries: [CostUsageDailyReport.Entry],
         historyDays: Int = 30,
+        costSource: CostUsageCostSource = .estimated,
         updatedAt: Date = now) -> CostUsageTokenSnapshot
     {
         CostUsageTokenSnapshot(
@@ -823,6 +1573,7 @@ struct SpendDashboardModelTests {
             last30DaysCostUSD: nil,
             currencyCode: currency,
             historyDays: historyDays,
+            costSource: costSource,
             daily: entries,
             updatedAt: updatedAt)
     }
@@ -868,3 +1619,5 @@ struct SpendDashboardModelTests {
         return calendar
     }
 }
+
+// swiftlint:enable type_body_length

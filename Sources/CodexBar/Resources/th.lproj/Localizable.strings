@@ -1277,6 +1277,18 @@
 "Subscriptions" = "การสมัครสมาชิก";
 "By subscription" = "แยกตามการสมัครสมาชิก";
 "No model-level history" = "ไม่มีประวัติระดับโมเดล";
+"Tokens" = "Tokens";
+"Tracked model tokens" = "โทเค็นโมเดลที่ติดตาม";
+"Priced model spend" = "ค่าใช้จ่ายโมเดลที่กำหนดราคา";
+"Partial model history: incomplete source-days are excluded." = "Partial model history: incomplete source-days are excluded.";
+"No priced model history" = "ไม่มีประวัติโมเดลที่กำหนดราคา";
+"Other" = "Other";
+"Show all %d models" = "แสดงโมเดลทั้งหมด %d รายการ";
+"Show top 20" = "แสดง 20 อันดับแรก";
+"Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers." = "Model names are grouped after trimming and case-insensitive exact matching. Sources are not deduplicated across providers.";
+"Metric" = "ตัวชี้วัด";
+"%d days of usage data across %d models" = "ข้อมูลการใช้งาน %d วันในโมเดล %d";
+"%@ in · %@ out" = "%@ ขาเข้า · %@ ขาออก";
 "Daily estimated spend" = "ค่าใช้จ่ายรายวันโดยประมาณ";
 "≈%d full 5h windows of weekly left · %d windows until reset" = "เหลือโควตารายสัปดาห์ ≈%d ช่วงเต็ม 5 ชม. · อีก %d ช่วงจนรีเซ็ต";
 "Weekly cannot run out before reset at this pace" = "ด้วยอัตรานี้ โควตารายสัปดาห์จะไม่หมดก่อนรีเซ็ต";
@@ -1288,6 +1300,20 @@
 "Coding Plan" = "แผนการเขียนโค้ด";
 "Agent Plan" = "แผนเอเจนต์";
 "Team" = "ทีม";
+
+"7-day average" = "ค่าเฉลี่ย 7 วัน";
+"Input" = "อินพุต";
+"Output" = "เอาต์พุต";
+"Cache write" = "เขียนแคช";
+"Reasoning" = "การให้เหตุผล";
+"%@ in" = "%@ อินพุต";
+"%@ out" = "%@ เอาต์พุต";
+"%@ cache read" = "%@ อ่านแคช";
+"%@ cache write" = "%@ เขียนแคช";
+"%@ reasoning" = "%@ การให้เหตุผล";
+"estimated" = "โดยประมาณ";
+"Estimated costs are priced from local logs and may differ from provider bills." = "ค่าใช้จ่ายโดยประมาณคำนวณจากบันทึกในเครื่องตามราคาประกาศ และอาจแตกต่างจากใบแจ้งหนี้ของผู้ให้บริการ";
+"Usage details for %@" = "รายละเอียดการใช้งานสำหรับ %@";
 
 /* Menu bar layout editor */
 "menu_bar_layout_title" = "เค้าโครง";
@@ -1358,9 +1384,36 @@
 "Cumulative" = "สะสม";
 "Token activity" = "กิจกรรมโทเทน";
 "View" = "มุมมอง";
+
+/* Token usage dashboard (usage & spend) */
+"By model" = "ตามโมเดล";
+"By tool" = "ตามเครื่องมือ";
+"7-day avg" = "ค่าเฉลี่ย 7 วัน";
 "in the last year" = "ในปีที่ผ่านมา";
 "No activity in the last 12 months" = "ไม่มีกิจกรรมในช่วง 12 เดือนที่ผ่านมา";
 "Each column = 1 week" = "แต่ละคอลัมน์ = 1 สัปดาห์";
 "Running total" = "ยอดรวมสะสม";
 "Less" = "น้อย";
 "More" = "มาก";
+"Mo" = "จ";
+"We" = "พ";
+"Fr" = "ศ";
+"Estimated" = "โดยประมาณ";
+"No per-client model history" = "ไม่มีประวัติโมเดลต่อไคลเอนต์";
+
+"Cumulative %@ tokens as of %@" = "%@ โทเทนสะสมถึง %@";
+"%@ tokens in the week of %@" = "%@ โทเทนในสัปดาห์ของ %@";
+
+/* Tool comparison evidence (English fallback) */
+"Same-model comparison" = "Same-model comparison";
+"Observed history for the same model and time range; workload differences still apply." = "Observed history for the same model and time range; workload differences still apply.";
+"Show fewer models" = "Show fewer models";
+"Reuse unavailable" = "Reuse unavailable";
+"%d models" = "%d models";
+"%d projects" = "%d projects";
+"%d sessions" = "%d sessions";
+"%d days" = "%d days";
+"%d days covered" = "%d days covered";
+"%d%% context reuse" = "%d%% context reuse";
+"%d%% reuse" = "%d%% reuse";
+"%@ per 1M tokens" = "%@ per 1M tokens";
