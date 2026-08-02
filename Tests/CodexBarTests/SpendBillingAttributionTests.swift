@@ -119,6 +119,33 @@ struct SpendBillingAttributionTests {
     }
 
     @Test
+    func `moonshotai billing aliases map to the Moonshot API vendor`() throws {
+        let inputs = [
+            SpendDashboardModel.ProviderInput(
+                id: "claude",
+                provider: .claude,
+                displayName: "Claude Code",
+                snapshot: Self.snapshot([
+                    Self.entry(model: "kimi-k3", cost: 12, tokens: 120, billingProviderID: "moonshotai"),
+                    Self.entry(model: "kimi-k2.6", cost: 3, tokens: 30, billingProviderID: "moonshotai-cn"),
+                ])),
+        ]
+
+        let group = try #require(SpendDashboardModel.build(
+            inputs: inputs,
+            requestedDays: 30,
+            now: Self.now,
+            calendar: Self.calendar).groups.first)
+
+        let moonshot = try #require(group.providers.first { $0.provider == .moonshot })
+        #expect(moonshot.id == "billing:moonshot:claude")
+        #expect(moonshot.displayName == "Moonshot / Kimi API")
+        #expect(moonshot.totalTokens == 150)
+        #expect(moonshot.totalCost == 15)
+        #expect(group.providers.contains { $0.provider == .kimi } == false)
+    }
+
+    @Test
     func `only explicit model namespaces become billing evidence`() {
         #expect(CostUsageBillingProvider.providerID(fromNamespacedModel: "MiniMax-M3") == nil)
         #expect(CostUsageBillingProvider.providerID(fromNamespacedModel: "minimax/MiniMax-M3") == "minimax")

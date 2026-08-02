@@ -161,54 +161,6 @@ struct SpendDashboardLoadResult: Sendable {
     }
 }
 
-struct CodexSpendSnapshotLoadContext: Sendable {
-    let account: CodexSpendScanRequest
-    let cacheRoot: URL
-    let now: Date
-    let force: Bool
-    let historyDays: Int
-    let refreshPricingInBackground: Bool
-    let includePiSessions: Bool
-    /// Reports Codex full-rescan progress (filesScanned, totalFiles) from the scan queue.
-    var progress: (@Sendable (_ scanned: Int, _ total: Int) -> Void)?
-}
-
-struct KimiCodeSpendSnapshotLoadContext: Sendable {
-    let homePath: String
-    let now: Date
-    let historyDays: Int
-}
-
-struct GeminiSpendSnapshotLoadContext: Sendable {
-    let homePath: String
-    let now: Date
-    let historyDays: Int
-}
-
-struct OpenCodeSpendSnapshotLoadContext: Sendable {
-    let homePath: String
-    let now: Date
-    let historyDays: Int
-}
-
-struct MiniMaxSpendSnapshotLoadContext: Sendable {
-    let homePath: String
-    let now: Date
-    let historyDays: Int
-}
-
-struct AntigravitySpendSnapshotLoadContext: Sendable {
-    let homePath: String
-    let now: Date
-    let historyDays: Int
-}
-
-struct QwenCodeSpendSnapshotLoadContext: Sendable {
-    let homePath: String
-    let now: Date
-    let historyDays: Int
-}
-
 enum SpendDashboardSource {
     typealias CodexSnapshotLoader = @Sendable (CodexSpendSnapshotLoadContext) async throws
         -> CostUsageTokenSnapshot
@@ -224,6 +176,8 @@ enum SpendDashboardSource {
     typealias AntigravitySnapshotLoader = @Sendable (AntigravitySpendSnapshotLoadContext) async throws
         -> CostUsageTokenSnapshot?
     typealias QwenCodeSnapshotLoader = @Sendable (QwenCodeSpendSnapshotLoadContext) async throws
+        -> CostUsageTokenSnapshot?
+    typealias CopilotSnapshotLoader = @Sendable (CopilotSpendSnapshotLoadContext) async throws
         -> CostUsageTokenSnapshot?
 
     static let scanDays = 365
@@ -392,6 +346,7 @@ enum SpendDashboardSource {
         let miniMax: MiniMaxSnapshotLoader
         let antigravity: AntigravitySnapshotLoader
         let qwenCode: QwenCodeSnapshotLoader
+        let copilot: CopilotSnapshotLoader
     }
 
     /// A local tool whose usage snapshot is loaded from a home directory via a
@@ -450,6 +405,9 @@ enum SpendDashboardSource {
         },
         qwenCodeSnapshotLoader: @escaping QwenCodeSnapshotLoader = { context in
             try await Self.loadQwenCodeSnapshot(context)
+        },
+        copilotSnapshotLoader: @escaping CopilotSnapshotLoader = { context in
+            try await Self.loadCopilotSnapshot(context)
         }) async -> SpendDashboardLoadResult
     {
         let codexActivitySnapshotLoader = codexActivitySnapshotLoader ?? codexSnapshotLoader
@@ -525,7 +483,8 @@ enum SpendDashboardSource {
             openCode: openCodeSnapshotLoader,
             miniMax: miniMaxSnapshotLoader,
             antigravity: antigravitySnapshotLoader,
-            qwenCode: qwenCodeSnapshotLoader))
+            qwenCode: qwenCodeSnapshotLoader,
+            copilot: copilotSnapshotLoader))
         let localSources: [LocalSnapshotSource] = request.localHistoryRequests.compactMap { localRequest in
             guard let adapter = adapters[localRequest.source] else {
                 failedSourceIDs.insert(self.localSourceID(for: localRequest))
@@ -543,6 +502,10 @@ enum SpendDashboardSource {
         for source in localSources {
             do {
                 if let input = try await source.loadInput() {
+                    // The local scanner is the canonical history for this provider. Drop the
+                    // quota publication snapshot for the same provider so its totals are not
+                    // summed twice when a refresh also published a snapshot.
+                    inputs.removeAll { $0.provider == source.provider && $0.id != source.sourceID }
                     inputs.append(input)
                     // The spend dashboard's canonical history for these providers is the local
                     // scanner. A failed/unchanged live quota publication must not remain as a
@@ -660,6 +623,18 @@ enum SpendDashboardSource {
         }
     }
 
+    private static func loadCopilotSnapshot(
+        _ context: CopilotSpendSnapshotLoadContext) async throws -> CostUsageTokenSnapshot?
+    {
+        try await CostUsageScanExecutor.run { checkCancellation in
+            try CopilotSessionScanner.scanCancellable(
+                environment: [CopilotSessionScanner.homeEnvironmentKey: context.homePath],
+                historyDays: context.historyDays,
+                now: context.now,
+                checkCancellation: checkCancellation)
+        }
+    }
+
     private static func localHistoryAdapters(loaders: LocalHistoryLoaders)
         -> [ProviderLocalHistorySource: LocalHistoryAdapter]
     {
@@ -686,6 +661,10 @@ enum SpendDashboardSource {
             },
             LocalHistoryAdapter(source: .qwenCode, displayName: "Qwen Code CLI") { homePath, now, days in
                 try await loaders.qwenCode(QwenCodeSpendSnapshotLoadContext(
+                    homePath: homePath, now: now, historyDays: days))
+            },
+            LocalHistoryAdapter(source: .copilot, displayName: "GitHub Copilot") { homePath, now, days in
+                try await loaders.copilot(CopilotSpendSnapshotLoadContext(
                     homePath: homePath, now: now, historyDays: days))
             },
         ]
@@ -799,6 +778,7 @@ enum SpendDashboardSource {
             .miniMax: { self.miniMaxHomeURL(environment: $0) },
             .antigravity: { self.antigravityHomeURL(environment: $0) },
             .qwenCode: { QwenCodeSessionScanner.homeURL(environment: $0) },
+            .copilot: { CopilotSessionScanner.homeURL(environment: $0) },
         ]
         // Unknown adapter identifiers cannot be scanned until their plugin
         // registers a resolver. Returning an impossible path keeps request
