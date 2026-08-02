@@ -605,6 +605,9 @@
 "overview_enable_merge_icons_hint" = "Włącz Scal ikony, aby skonfigurować dostawców zakładki Przegląd.";
 "overview_no_providers_hint" = "Brak włączonych dostawców dla Przeglądu.";
 "overview_rows_follow_order" = "Wiersze Przeglądu zawsze podążają za kolejnością dostawców.";
+
+"overview_totals_title" = "All providers";
+"overview_totals_unpriced" = "Unpriced";
 "overview_no_providers_selected" = "Nie wybrano dostawców";
 "agent_sessions_title" = "Sesje agentów";
 "agent_sessions_subtitle" = "Pokazuj w menu lokalne oraz wykryte przez SSH sesje Codex i Claude Code.";

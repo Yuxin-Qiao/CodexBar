@@ -594,6 +594,9 @@
 "overview_enable_merge_icons_hint" = "Ative Mesclar Ícones para configurar provedores da aba Visão geral.";
 "overview_no_providers_hint" = "Nenhum provedor ativado disponível para Visão geral.";
 "overview_rows_follow_order" = "As linhas da Visão geral sempre seguem a ordem dos provedores.";
+
+"overview_totals_title" = "All providers";
+"overview_totals_unpriced" = "Unpriced";
 "overview_no_providers_selected" = "Nenhum provedor selecionado";
 "agent_sessions_title" = "Sessões de agentes";
 "agent_sessions_subtitle" = "Mostra no menu sessões locais e descobertas via SSH do Codex e Claude Code.";

@@ -576,6 +576,9 @@
 "overview_enable_merge_icons_hint" = "Activa Combinar as iconas para configurar os provedores da lapela Resumo.";
 "overview_no_providers_hint" = "Non hai provedores activados dispoñibles para o Resumo.";
 "overview_rows_follow_order" = "As filas de Resumo sempre seguen a orde dos provedores.";
+
+"overview_totals_title" = "All providers";
+"overview_totals_unpriced" = "Unpriced";
 "overview_no_providers_selected" = "Non se seleccionou ningún provedor";
 "agent_sessions_title" = "Sesións de axentes";
 "agent_sessions_subtitle" = "Amosa no menú as sesións de Codex e Claude Code locais e descubertas mediante SSH.";

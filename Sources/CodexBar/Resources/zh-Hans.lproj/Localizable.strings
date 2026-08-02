@@ -574,6 +574,8 @@
 "overview_no_providers_hint" = "“概览”中没有可用的已启用提供商。";
 "overview_rows_follow_order" = "概览行始终遵循提供商顺序。";
 "overview_no_providers_selected" = "未选择提供商";
+"overview_totals_title" = "所有提供商";
+"overview_totals_unpriced" = "未定价";
 "agent_sessions_title" = "智能体会话";
 "agent_sessions_subtitle" = "在菜单中显示本地及通过 SSH 发现的 Codex 和 Claude Code 会话。";
 "agent_sessions_hosts_title" = "其他 SSH 主机";

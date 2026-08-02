@@ -8,7 +8,7 @@ import SwiftUI
 
 extension StatusItemController {
     static let menuCardBaseWidth: CGFloat = 310
-    private static let maxOverviewProviders = SettingsStore.mergedOverviewProviderLimit
+    static let overviewUnifiedRowIdentifier = "overviewUnifiedRow"
     static let overviewRowIdentifierPrefix = "overviewRow-"
     static let persistentRefreshMenuItemID = "persistentRefreshAction"
     private static let defaultMenuOpenRefreshDelay: Duration = .seconds(1.2)
@@ -557,68 +557,11 @@ extension StatusItemController {
         menuWidth: CGFloat,
         captureMenu: NSMenu? = nil) -> Bool
     {
-        // Rows may be built into a detached scratch menu for in-place reconciliation;
-        // interaction closures must always reference the live menu they end up serving.
-        let interactionMenu = captureMenu ?? menu
-        let overviewProviders = self.settings.reconcileMergedOverviewSelectedProviders(
-            activeProviders: enabledProviders)
-        let rows: [(provider: UsageProvider, model: UsageMenuCardView.Model)] = overviewProviders
-            .compactMap { provider in
-                guard let model = self.menuCardModel(for: provider) else { return nil }
-                guard !model.isOverviewErrorOnly else { return nil }
-                return (provider: provider, model: model)
-            }
-        guard !rows.isEmpty else { return false }
-
-        let t0 = CACurrentMediaTime()
-        defer { self.logChartRenderDurationIfSlow("addOverviewRows(\(rows.count))", startedAt: t0) }
-
-        for (index, row) in rows.enumerated() {
-            let identifier = "\(Self.overviewRowIdentifierPrefix)\(row.provider.rawValue)"
-            let storageText = self.store.storageFootprintText(for: row.provider)
-            let submenu = self.makeOverviewRowSubmenu(
-                provider: row.provider,
-                model: row.model,
-                width: menuWidth)
-            let item = self.makeMenuCardItem(
-                OverviewMenuCardRowView(model: row.model, storageText: storageText, width: menuWidth),
-                id: identifier,
-                width: menuWidth,
-                heightCacheScope: row.provider.rawValue,
-                heightCacheFingerprint: row.model.heightFingerprint(
-                    section: "overview",
-                    additional: [UsageMenuCardView.Model.heightFingerprintField("storage", storageText)]),
-                submenu: submenu,
-                containsInteractiveControls: row.model.subtitleStyle == .error || row.model.usesLiveSubtitle,
-                usesGPUSelection: true,
-                onClick: { [weak self, weak interactionMenu] in
-                    guard let self, let interactionMenu else { return }
-                    self.selectOverviewProvider(row.provider, menu: interactionMenu)
-                })
-            if submenu == nil {
-                // Keep plain rows wired for keyboard activation and accessibility action paths.
-                item.target = self
-                item.action = #selector(self.selectOverviewProvider(_:))
-            }
-            menu.addItem(item)
-            if index < rows.count - 1 {
-                menu.addItem(.separator())
-            }
+        guard let unifiedModel = self.makeOverviewUnifiedModel(enabledProviders: enabledProviders) else {
+            return false
         }
+        self.addOverviewUnifiedCard(unifiedModel, to: menu, menuWidth: menuWidth)
         return true
-    }
-
-    private func addOverviewEmptyState(to menu: NSMenu, enabledProviders: [UsageProvider]) {
-        let resolvedProviders = self.settings.resolvedMergedOverviewProviders(
-            activeProviders: enabledProviders,
-            maxVisibleProviders: Self.maxOverviewProviders)
-        let message = resolvedProviders.isEmpty
-            ? L("No providers selected for Overview.")
-            : L("No overview data available.")
-        let item = NSMenuItem(title: message, action: nil, keyEquivalent: "")
-        item.isEnabled = false
-        item.representedObject = "overviewEmptyState"
-        menu.addItem(item)
     }
 
     private func addMenuCards(to menu: NSMenu, context: MenuCardContext, captureMenu: NSMenu? = nil) -> Bool {
@@ -1094,12 +1037,6 @@ extension StatusItemController {
         return enabled.first(where: { self.store.isProviderAvailable($0) }) ?? enabled.first
     }
 
-    func includesOverviewTab(enabledProviders: [UsageProvider]) -> Bool {
-        !self.settings.resolvedMergedOverviewProviders(
-            activeProviders: enabledProviders,
-            maxVisibleProviders: Self.maxOverviewProviders).isEmpty
-    }
-
     func resolvedSwitcherSelection(
         enabledProviders: [UsageProvider],
         includesOverview: Bool) -> ProviderSwitcherSelection
@@ -1235,7 +1172,7 @@ extension StatusItemController {
         {
             return self.settings.resolvedMergedOverviewProviders(
                 activeProviders: enabledProviders,
-                maxVisibleProviders: Self.maxOverviewProviders)
+                maxVisibleProviders: SettingsStore.mergedOverviewProviderLimit)
         }
 
         if let provider = self.menuProvider(for: menu)

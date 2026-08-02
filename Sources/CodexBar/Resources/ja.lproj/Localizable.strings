@@ -595,6 +595,8 @@
 "overview_no_providers_hint" = "概要に使用できる有効なプロバイダがありません。";
 "overview_rows_follow_order" = "概要の行は常にプロバイダの並び順に従います。";
 "overview_no_providers_selected" = "プロバイダが選択されていません";
+"overview_totals_title" = "すべてのプロバイダ";
+"overview_totals_unpriced" = "価格情報なし";
 "agent_sessions_title" = "エージェントセッション";
 "agent_sessions_subtitle" = "ローカルおよび SSH で検出された Codex と Claude Code のセッションをメニューに表示します。";
 "agent_sessions_hosts_title" = "追加の SSH ホスト";

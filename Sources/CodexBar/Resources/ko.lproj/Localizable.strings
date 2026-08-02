@@ -587,6 +587,8 @@
 "overview_no_providers_hint" = "개요에 사용할 수 있는 활성화된 공급자가 없습니다.";
 "overview_rows_follow_order" = "개요 행은 항상 공급자 순서를 따릅니다.";
 "overview_no_providers_selected" = "선택된 공급자 없음";
+"overview_totals_title" = "모든 공급자";
+"overview_totals_unpriced" = "가격 정보 없음";
 "agent_sessions_title" = "에이전트 세션";
 "agent_sessions_subtitle" = "메뉴에 로컬 및 SSH로 검색된 Codex 및 Claude Code 세션을 표시합니다.";
 "agent_sessions_hosts_title" = "추가 SSH 호스트";

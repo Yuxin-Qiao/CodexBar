@@ -595,6 +595,9 @@
 "overview_enable_merge_icons_hint" = "Aktivieren Sie \"Symbole zusammenführen\", um Anbieter für die Registerkarte \"Übersicht\" zu konfigurieren.";
 "overview_no_providers_hint" = "Für die Übersicht sind keine aktivierten Anbieter verfügbar.";
 "overview_rows_follow_order" = "Übersichtszeilen folgen immer der Anbieterreihenfolge.";
+
+"overview_totals_title" = "All providers";
+"overview_totals_unpriced" = "Unpriced";
 "overview_no_providers_selected" = "Keine Anbieter ausgewählt";
 "agent_sessions_title" = "Agenten-Sitzungen";
 "agent_sessions_subtitle" = "Lokale und über SSH erkannte Codex- und Claude-Code-Sitzungen im Menü anzeigen.";

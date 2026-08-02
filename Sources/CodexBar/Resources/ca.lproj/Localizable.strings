@@ -581,6 +581,9 @@
 "overview_enable_merge_icons_hint" = "Activeu Combina les icones per configurar els proveïdors de la pestanya Resum.";
 "overview_no_providers_hint" = "No hi ha proveïdors activats disponibles per al Resum.";
 "overview_rows_follow_order" = "Les files del Resum sempre segueixen l'ordre dels proveïdors.";
+
+"overview_totals_title" = "All providers";
+"overview_totals_unpriced" = "Unpriced";
 "overview_no_providers_selected" = "No hi ha cap proveïdor seleccionat";
 "agent_sessions_title" = "Sessions d'agents";
 "agent_sessions_subtitle" = "Mostreu al menú les sessions locals i descobertes per SSH de Codex i Claude Code.";

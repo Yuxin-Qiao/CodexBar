@@ -603,6 +603,9 @@
 "overview_enable_merge_icons_hint" = "فعال سازی Merge Icons برای پیکربندی ارائه دهندگان تب نمای کلی.";
 "overview_no_providers_hint" = "هیچ ارائه دهنده فعالی برای مرور کلی در دسترس نیست.";
 "overview_rows_follow_order" = "ردیف های نمای کلی همیشه مطابق با ترتیب ارائه دهنده انجام می شوند.";
+
+"overview_totals_title" = "All providers";
+"overview_totals_unpriced" = "Unpriced";
 "overview_no_providers_selected" = "هیچ ارائه دهنده ای انتخاب نشده است";
 "agent_sessions_title" = "جلسات عامل‌ها";
 "agent_sessions_subtitle" = "جلسات محلی و جلسات Codex و Claude Code یافته‌شده از طریق SSH را در منو نمایش دهید.";

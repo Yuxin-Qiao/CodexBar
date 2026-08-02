@@ -598,6 +598,9 @@
 "overview_enable_merge_icons_hint" = "Включите «Объединять значки», чтобы настроить провайдеров вкладки «Обзор».";
 "overview_no_providers_hint" = "Нет включённых провайдеров для обзора.";
 "overview_rows_follow_order" = "Строки обзора всегда следуют порядку провайдеров.";
+
+"overview_totals_title" = "All providers";
+"overview_totals_unpriced" = "Unpriced";
 "overview_no_providers_selected" = "Провайдеры не выбраны";
 "agent_sessions_title" = "Сеансы агентов";
 "agent_sessions_subtitle" = "Показывать в меню локальные и обнаруженные по SSH сеансы Codex и Claude Code.";

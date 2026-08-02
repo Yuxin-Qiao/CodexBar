@@ -614,6 +614,11 @@ extension StatusItemController: StatusItemMenuPersistentActionDelegate {
         }
     }
 
+    func openUsageSpendPane() {
+        self.preferencesSelection.pane = .usageSpend
+        self.openSettings(pane: nil)
+    }
+
     @objc func quit() {
         let openMenus = Array(self.openMenus.values)
         for menu in openMenus {

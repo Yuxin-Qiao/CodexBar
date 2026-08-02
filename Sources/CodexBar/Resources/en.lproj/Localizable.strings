@@ -604,6 +604,8 @@
 "overview_no_providers_hint" = "No enabled providers available for Overview.";
 "overview_rows_follow_order" = "Overview rows always follow provider order.";
 "overview_no_providers_selected" = "No providers selected";
+"overview_totals_title" = "All providers";
+"overview_totals_unpriced" = "Unpriced";
 "agent_sessions_title" = "Agent sessions";
 "agent_sessions_subtitle" = "Show local and SSH-discovered Codex and Claude Code sessions in the menu.";
 "agent_sessions_hosts_title" = "Additional SSH hosts";

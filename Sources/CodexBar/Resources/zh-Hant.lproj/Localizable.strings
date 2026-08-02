@@ -597,6 +597,8 @@
 "overview_no_providers_hint" = "「概覽」中沒有可用的已啟用提供者。";
 "overview_rows_follow_order" = "概覽列一律依提供者順序排列。";
 "overview_no_providers_selected" = "未選擇提供者";
+"overview_totals_title" = "所有提供者";
+"overview_totals_unpriced" = "未定價";
 "agent_sessions_title" = "Agent 工作階段";
 "agent_sessions_subtitle" = "在選單中顯示本機及透過 SSH 發現的 Codex 和 Claude Code 工作階段。";
 "agent_sessions_hosts_title" = "其他 SSH 主機";
