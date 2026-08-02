@@ -1048,7 +1048,7 @@ struct SpendModelsSection: View {
     }
 
     private func metricText(_ value: Double) -> String {
-        spendModelsChartMetricText(value, metric: self.sortMetric)
+        spendModelsChartMetricText(value, metric: self.sortMetric, currencyCode: self.currencyCode)
     }
 
     private func axisMetricText(_ value: Double) -> String {

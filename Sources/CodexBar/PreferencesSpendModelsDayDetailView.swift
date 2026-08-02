@@ -380,7 +380,8 @@ struct SpendModelsDayDetailView: View {
                         model,
                         metric: self.metric,
                         totalTokens: self.detail.totalTokens,
-                        totalCost: self.detail.totalCost))
+                        totalCost: self.detail.totalCost,
+                        currencyCode: self.currencyCode))
                         .font(SpendModelsListStyle.secondaryFont)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
@@ -400,7 +401,8 @@ struct SpendModelsDayDetailView: View {
                 model,
                 metric: self.metric,
                 totalTokens: self.detail.totalTokens,
-                totalCost: self.detail.totalCost))
+                totalCost: self.detail.totalCost,
+                currencyCode: self.currencyCode))
             .accessibilityHint(model.buckets.isEmpty
                 ? ""
                 : (self.expandedModelID == model.id ? L("Collapse") : L("Expand")))

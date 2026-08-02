@@ -154,7 +154,7 @@ struct SpendBillingAttributionTests {
         #expect(CostUsageBillingProvider.providerID(
             fromNamespacedModel: "gateway/team/moonshot/kimi-k2") == "moonshot")
         #expect(CostUsageBillingProvider.providerID(
-            fromNamespacedModel: "openrouter/anthropic/claude-sonnet-4") == "claude")
+            fromNamespacedModel: "openrouter/anthropic/claude-sonnet-4") == "openrouter")
         #expect(CostUsageBillingProvider.providerID(fromNamespacedModel: "gateway/team/model") == nil)
         #expect(CostUsageBillingProvider.providerID(fromNamespacedModel: "/unowned") == nil)
     }

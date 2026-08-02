@@ -229,6 +229,10 @@ struct SpendModelsPresentationTests {
     func `chart values follow the selected metric unit`() {
         #expect(spendModelsChartMetricText(632_000_000, metric: .tokens) == "632M")
         #expect(spendModelsChartMetricText(89.29, metric: .estimatedSpend) == "$89.29")
+        #expect(spendModelsChartMetricText(
+            89.29,
+            metric: .estimatedSpend,
+            currencyCode: "EUR") == "€89.29")
     }
 
     @Test
@@ -502,6 +506,12 @@ struct SpendModelsPresentationTests {
             metric: .estimatedSpend,
             totalTokens: 100,
             totalCost: 8) == "$8.00 · 100%")
+        #expect(spendModelsDayDetailModelSummaryText(
+            priced,
+            metric: .estimatedSpend,
+            totalTokens: 100,
+            totalCost: 8,
+            currencyCode: "EUR") == "€8.00 · 100%")
         #expect(spendModelsDayDetailModelSummaryText(
             unpriced,
             metric: .estimatedSpend,
