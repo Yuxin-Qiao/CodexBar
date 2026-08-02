@@ -239,18 +239,19 @@ public struct OpenCodeGoUsageFetcher: Sendable {
         guard let requestCookieHeader = OpenCodeWebCookieSupport.requestCookieHeader(from: cookieHeader) else {
             throw OpenCodeGoUsageError.invalidCredentials
         }
+        let requestTimeout = min(timeout, self.optionalZenBalanceTimeout)
         let workspaceID: String = if let override = self.normalizeWorkspaceID(workspaceIDOverride) {
             override
         } else {
             try await self.fetchWorkspaceID(
                 cookieHeader: requestCookieHeader,
-                timeout: timeout,
+                timeout: requestTimeout,
                 session: session)
         }
         return try await self.fetchOptionalZenBalance(
             workspaceID: workspaceID,
             cookieHeader: requestCookieHeader,
-            timeout: min(timeout, self.optionalZenBalanceTimeout),
+            timeout: requestTimeout,
             session: session)
     }
 
