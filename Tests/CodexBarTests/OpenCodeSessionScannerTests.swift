@@ -273,14 +273,80 @@ struct OpenCodeSessionScannerTests {
                 created: "2026-07-10T09:03:00Z",
                 tokens: #"{"input":10,"output":0,"cache":{"read":0,"write":0}}"#),
             to: session.appendingPathComponent("msg_small.json"))
+        for (fileName, modified) in [
+            ("msg_neg.json", "2026-07-10T09:00:00Z"),
+            ("msg_neg_reasoning.json", "2026-07-10T09:01:00Z"),
+            ("msg_huge.json", "2026-07-10T09:02:00Z"),
+            ("msg_small.json", "2026-07-10T09:03:00Z"),
+        ] {
+            try FileManager.default.setAttributes(
+                [.modificationDate: Self.date(modified)],
+                ofItemAtPath: session.appendingPathComponent(fileName).path)
+        }
 
         let snapshot = try #require(Self.scan(root: root, now: Self.date("2026-07-12T12:00:00Z")))
 
-        // Only the Int.max record survives; the follow-up record overflows the accumulator and
-        // is dropped without poisoning the bucket.
+        // The newest record survives; the Int.max record overflows the accumulator and is dropped
+        // without poisoning the bucket.
         #expect(snapshot.last30DaysRequests == 1)
-        #expect(snapshot.last30DaysTokens == Int.max)
-        #expect(snapshot.daily.first?.inputTokens == Int.max)
+        #expect(snapshot.last30DaysTokens == 10)
+        #expect(snapshot.daily.first?.inputTokens == 10)
+    }
+
+    @Test
+    func `file cap prefers the most recently modified messages`() throws {
+        let root = try Self.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let oldSession = try Self.makeSessionDir(root, "ses_old")
+        let midSession = try Self.makeSessionDir(root, "ses_mid")
+        let newSession = try Self.makeSessionDir(root, "ses_new")
+        let now = Self.date("2026-07-12T12:00:00Z")
+
+        let oldURL = oldSession.appendingPathComponent("msg_old.json")
+        let midURL = midSession.appendingPathComponent("msg_mid.json")
+        let newURL = newSession.appendingPathComponent("msg_new.json")
+        try Self.write(
+            Self.assistantMessage(
+                id: "msg_old",
+                modelID: "claude-sonnet-4",
+                created: "2026-07-05T09:00:00Z",
+                tokens: #"{"input":1000,"output":0,"cache":{"read":0,"write":0}}"#),
+            to: oldURL)
+        try Self.write(
+            Self.assistantMessage(
+                id: "msg_mid",
+                modelID: "claude-sonnet-4",
+                created: "2026-07-08T09:00:00Z",
+                tokens: #"{"input":100,"output":0,"cache":{"read":0,"write":0}}"#),
+            to: midURL)
+        try Self.write(
+            Self.assistantMessage(
+                id: "msg_new",
+                modelID: "claude-sonnet-4",
+                created: "2026-07-10T09:00:00Z",
+                tokens: #"{"input":10,"output":0,"cache":{"read":0,"write":0}}"#),
+            to: newURL)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Self.date("2026-07-05T09:00:00Z")],
+            ofItemAtPath: oldURL.path)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Self.date("2026-07-08T09:00:00Z")],
+            ofItemAtPath: midURL.path)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Self.date("2026-07-10T09:00:00Z")],
+            ofItemAtPath: newURL.path)
+
+        let snapshot = try #require(try OpenCodeSessionScanner.scanCancellable(
+            environment: [OpenCodeSessionScanner.dataHomeEnvironmentKey: root.path],
+            historyDays: 30,
+            now: now,
+            calendar: Self.utcCalendar,
+            fileLimit: 2))
+
+        // The two newest files win; the old session is omitted even though enumeration order
+        // could surface it first.
+        #expect(snapshot.last30DaysTokens == 110)
+        #expect(snapshot.last30DaysRequests == 2)
     }
 
     @Test

@@ -199,7 +199,8 @@ public enum OpenCodeSessionScanner {
         historyDays: Int = defaultHistoryDays,
         now: Date = Date(),
         calendar: Calendar = .current,
-        checkCancellation: @escaping () throws -> Void = {}) throws -> CostUsageTokenSnapshot?
+        checkCancellation: @escaping () throws -> Void = {},
+        fileLimit: Int? = nil) throws -> CostUsageTokenSnapshot?
     {
         try checkCancellation()
         let days = max(1, historyDays)
@@ -219,7 +220,8 @@ public enum OpenCodeSessionScanner {
             environment: environment,
             fileManager: fileManager,
             context: &context,
-            checkCancellation: checkCancellation))
+            checkCancellation: checkCancellation,
+            fileLimit: fileLimit ?? self.maximumFiles))
 
         var values: [DayModelKey: TokenAccumulator] = [:]
         var costs: [DayModelKey: Double] = [:]
@@ -330,7 +332,8 @@ public enum OpenCodeSessionScanner {
         environment: [String: String],
         fileManager: FileManager,
         context: inout ScanContext,
-        checkCancellation: () throws -> Void) throws -> [UsageRecord]
+        checkCancellation: () throws -> Void,
+        fileLimit: Int) throws -> [UsageRecord]
     {
         let start = context.start
         let end = context.end
@@ -346,12 +349,10 @@ public enum OpenCodeSessionScanner {
 
         let decoder = JSONDecoder()
         var records: [UsageRecord] = []
-        var visitedFiles = 0
-        var visitedBytes = 0
+        var candidates: [(url: URL, modificationDate: Date?, size: Int)] = []
         while let url = enumerator.nextObject() as? URL {
             try checkCancellation()
             guard url.pathExtension.lowercased() == "json" else { continue }
-            guard visitedFiles < self.maximumFiles else { break }
             let resourceValues = try? url.resourceValues(
                 forKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey])
             guard resourceValues?.isRegularFile == true else { continue }
@@ -361,12 +362,21 @@ public enum OpenCodeSessionScanner {
                 continue
             }
             let size = max(0, resourceValues?.fileSize ?? 0)
-            guard size <= self.maximumFileBytes,
-                  size <= self.maximumBytes - visitedBytes
-            else {
-                continue
-            }
-            visitedFiles += 1
+            guard size <= self.maximumFileBytes else { continue }
+            candidates.append((url, resourceValues?.contentModificationDate, size))
+        }
+        // The cap must prefer the most recent messages: session directories are enumerated in
+        // arbitrary order, so an unsorted first-N pass can fill the cap with old sessions and
+        // omit the recent usage the dashboard actually needs.
+        let cappedCandidates = candidates
+            .sorted { ($0.modificationDate ?? .distantPast) > ($1.modificationDate ?? .distantPast) }
+            .prefix(fileLimit)
+        var visitedBytes = 0
+        for candidate in cappedCandidates {
+            try checkCancellation()
+            let url = candidate.url
+            let size = candidate.size
+            guard size <= self.maximumBytes - visitedBytes else { continue }
             visitedBytes += size
             guard let data = try? Data(contentsOf: url),
                   let message = try? decoder.decode(WireMessage.self, from: data)
