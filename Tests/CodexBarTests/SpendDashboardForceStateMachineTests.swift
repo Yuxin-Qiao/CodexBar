@@ -407,6 +407,8 @@ struct SpendDashboardForceStateMachineTests {
         await Self.waitForCodexGate(codexGate)
         controller.update(configuration: confirmedEmpty)
         await codexGate.resume(codexInput.snapshot)
+        await Self.waitForCodexGate(codexGate)
+        await codexGate.resume(codexInput.snapshot)
         await Self.waitUntil { !controller.isRefreshing }
 
         let settledGeneration = controller.generation
@@ -475,6 +477,8 @@ struct SpendDashboardForceStateMachineTests {
         controller.refresh()
         await Self.waitForCodexGate(codexGate)
         controller.update(configuration: unavailable)
+        await codexGate.resume(codexInput.snapshot)
+        await Self.waitForCodexGate(codexGate)
         await codexGate.resume(codexInput.snapshot)
         await Self.waitForBuildGate(captureGate)
         controller.update(configuration: latest)

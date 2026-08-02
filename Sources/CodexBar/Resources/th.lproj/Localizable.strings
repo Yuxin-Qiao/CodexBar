@@ -1354,3 +1354,13 @@
 "Cost today unavailable" = "ค่าใช้จ่ายวันนี้: ไม่พร้อมใช้งาน";
 "30-day cost unavailable" = "ค่าใช้จ่าย 30 วัน: ไม่พร้อมใช้งาน";
 "Resets" = "การรีเซ็ต";
+
+"Cumulative" = "สะสม";
+"Token activity" = "กิจกรรมโทเทน";
+"View" = "มุมมอง";
+"in the last year" = "ในปีที่ผ่านมา";
+"No activity in the last 12 months" = "ไม่มีกิจกรรมในช่วง 12 เดือนที่ผ่านมา";
+"Each column = 1 week" = "แต่ละคอลัมน์ = 1 สัปดาห์";
+"Running total" = "ยอดรวมสะสม";
+"Less" = "น้อย";
+"More" = "มาก";

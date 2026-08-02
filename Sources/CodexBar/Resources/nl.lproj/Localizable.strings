@@ -1350,3 +1350,13 @@
 "Cost today unavailable" = "Kosten vandaag: Niet beschikbaar";
 "30-day cost unavailable" = "Kosten 30 dagen: Niet beschikbaar";
 "Resets" = "Resets";
+
+"Cumulative" = "Cumulatief";
+"Token activity" = "Token-activiteit";
+"View" = "Weergave";
+"in the last year" = "in het afgelopen jaar";
+"No activity in the last 12 months" = "Geen activiteit in de afgelopen 12 maanden";
+"Each column = 1 week" = "Elke kolom = 1 week";
+"Running total" = "Lopend totaal";
+"Less" = "Minder";
+"More" = "Meer";

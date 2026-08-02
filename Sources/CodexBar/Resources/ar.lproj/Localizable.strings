@@ -1354,3 +1354,13 @@
 "Cost today unavailable" = "تكلفة اليوم: غير متوفر";
 "30-day cost unavailable" = "تكلفة 30 يوماً: غير متوفر";
 "Resets" = "إعادات الضبط";
+
+"Cumulative" = "تراكمي";
+"Token activity" = "نشاط الرموز";
+"View" = "عرض";
+"in the last year" = "في العام الماضي";
+"No activity in the last 12 months" = "لا يوجد نشاط في آخر 12 شهرًا";
+"Each column = 1 week" = "كل عمود = أسبوع واحد";
+"Running total" = "الإجمالي التراكمي";
+"Less" = "أقل";
+"More" = "أكثر";

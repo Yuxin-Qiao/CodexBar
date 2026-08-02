@@ -1354,3 +1354,13 @@
 "Cost today unavailable" = "هزینهٔ امروز: در دسترس نیست";
 "30-day cost unavailable" = "هزینهٔ ۳۰ روز: در دسترس نیست";
 "Resets" = "بازنشانی‌ها";
+
+"Cumulative" = "تجمعی";
+"Token activity" = "فعالیت توکن";
+"View" = "نمایش";
+"in the last year" = "در سال گذشته";
+"No activity in the last 12 months" = "هیچ فعالیتی در ۱۲ ماه گذشته وجود ندارد";
+"Each column = 1 week" = "هر ستون = ۱ هفته";
+"Running total" = "مجموع تجمعی";
+"Less" = "کمتر";
+"More" = "بیشتر";

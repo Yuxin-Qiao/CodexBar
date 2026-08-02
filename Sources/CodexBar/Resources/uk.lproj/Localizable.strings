@@ -1350,3 +1350,13 @@
 "Cost today unavailable" = "Вартість сьогодні: Недоступний";
 "30-day cost unavailable" = "Вартість за 30 днів: Недоступний";
 "Resets" = "Скидання";
+
+"Cumulative" = "Наростаючим підсумком";
+"Token activity" = "Активність токенів";
+"View" = "Вигляд";
+"in the last year" = "за останній рік";
+"No activity in the last 12 months" = "Немає активності за останні 12 місяців";
+"Each column = 1 week" = "Кожен стовпець = 1 тиждень";
+"Running total" = "Накопичений підсумок";
+"Less" = "Менше";
+"More" = "Більше";

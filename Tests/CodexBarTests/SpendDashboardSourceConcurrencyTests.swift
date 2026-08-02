@@ -50,6 +50,8 @@ struct SpendDashboardSourceConcurrencyTests {
             to: CodexAuthFingerprint.authFileURL(homePath: failed.homePath),
             options: .atomic)
         await gate.resume(snapshot: laterSnapshot)
+        await Self.waitForCodexGate(gate)
+        await gate.resume(snapshot: laterSnapshot)
 
         let result = await loadTask.value
         #expect(result.inputs.map(\.id) == ["codex:later"])
