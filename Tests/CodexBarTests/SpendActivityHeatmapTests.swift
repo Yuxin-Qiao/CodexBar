@@ -128,7 +128,7 @@ struct SpendActivityHeatmapTests {
         let oldDate = try #require(Self.calendar.date(from: DateComponents(year: 2025, month: 8, day: 1)))
         #expect(model.groups.first?.totalTokens == 10)
         #expect(model.groups.first?.totalCost == 2)
-        #expect(model.groups.first?.coveredDayCount == 1)
+        #expect(model.groups.first?.coveredDayCount == 30)
         #expect(model.tokenActivity.first { $0.day == oldDate }?.totalTokens == 40)
         #expect(model.tokenActivity.first { $0.day == now }?.totalTokens == 10)
     }
