@@ -1045,7 +1045,7 @@ struct SpendDashboardControllerRevisionTests {
             #expect(controller.model.groups.first?.providers.first?.totalCost == mutation.expectedCost)
             #expect(
                 controller.model.groups.first?.modelHistoryCompleteness == mutation.expectedCompleteness)
-            #expect(controller.model.groups.first?.dailyPoints.isEmpty == true)
+            #expect(controller.model.groups.first?.coveredDayCount == 0)
         }
     }
 

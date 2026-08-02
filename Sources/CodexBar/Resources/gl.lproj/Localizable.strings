@@ -1285,7 +1285,6 @@
 "Metric" = "Métrica";
 "%d days of usage data across %d models" = "%d días de datos de uso en %d modelos";
 "%@ in · %@ out" = "%@ de entrada · %@ de saída";
-"Daily estimated spend" = "Gasto diario estimado";
 "≈%d full 5h windows of weekly left · %d windows until reset" = "≈%d xanelas completas de 5 h de cota semanal · %d xanelas ata o restablecemento";
 "Weekly cannot run out before reset at this pace" = "A cota semanal non pode esgotarse antes do restablecemento a este ritmo";
 "Weekly can run out ≈%d windows early" = "A cota semanal pode esgotarse ≈%d xanelas antes";

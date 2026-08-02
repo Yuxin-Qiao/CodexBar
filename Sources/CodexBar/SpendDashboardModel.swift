@@ -59,74 +59,6 @@ struct SpendDashboardModel: Equatable, Sendable {
         }
     }
 
-    struct DailyPoint: Identifiable, Equatable, Sendable {
-        let sourceID: String
-        let provider: UsageProvider
-        let providerName: String
-        let toolKind: SpendToolIdentity.Kind
-        let day: Date
-        let cost: Double
-        let stackStart: Double
-        let stackEnd: Double
-
-        var id: String {
-            "\(self.sourceID):\(Int(self.day.timeIntervalSince1970))"
-        }
-
-        init(
-            sourceID: String,
-            provider: UsageProvider,
-            providerName: String,
-            toolKind: SpendToolIdentity.Kind = .other,
-            day: Date,
-            cost: Double,
-            stackStart: Double,
-            stackEnd: Double)
-        {
-            self.sourceID = sourceID
-            self.provider = provider
-            self.providerName = providerName
-            self.toolKind = toolKind
-            self.day = day
-            self.cost = cost
-            self.stackStart = stackStart
-            self.stackEnd = stackEnd
-        }
-    }
-
-    struct DailySpendModel: Identifiable, Equatable, Sendable {
-        let id: String
-        let displayName: String
-        let modelProvider: UsageProvider
-        let tokens: Int?
-        let cost: Double?
-    }
-
-    struct DailySpendTool: Identifiable, Equatable, Sendable {
-        let sourceID: String
-        let provider: UsageProvider
-        let displayName: String
-        let kind: SpendToolIdentity.Kind
-        let tokens: Int?
-        let cost: Double
-        let models: [DailySpendModel]
-
-        var id: String {
-            self.sourceID
-        }
-    }
-
-    struct DailySpendDetail: Identifiable, Equatable, Sendable {
-        let day: Date
-        let totalTokens: Int?
-        let totalCost: Double
-        let tools: [DailySpendTool]
-
-        var id: Date {
-            self.day
-        }
-    }
-
     struct TokenActivityPoint: Identifiable, Equatable, Sendable {
         let day: Date
         /// `nil` means at least one included source cannot establish coverage for this day.
@@ -297,8 +229,6 @@ struct SpendDashboardModel: Equatable, Sendable {
         let providers: [ProviderRow]
         let models: [ModelRow]
         var modelAnalysis: ModelAnalysis = .empty
-        let dailyPoints: [DailyPoint]
-        var dailySpendDetails: [DailySpendDetail] = []
         let totalTokens: Int?
         let totalCost: Double?
         let coveredDayCount: Int
@@ -522,20 +452,6 @@ struct SpendDashboardModel: Equatable, Sendable {
         var overflowedReasoningTokens = false
         var overflowedCost = false
     }
-
-    struct DailyKey: Hashable {
-        let day: Date
-        let sourceID: String
-    }
-
-    private struct DailyAccumulator {
-        let provider: UsageProvider
-        let providerName: String
-        let toolKind: SpendToolIdentity.Kind
-        var cost: Double?
-        var invalid = false
-        var overflowed = false
-    }
 }
 
 extension SpendDashboardModel {
@@ -581,17 +497,11 @@ extension SpendDashboardModel {
         let modelHistoryCompleteness = completeModelSummaries.count == summaries.count
             ? ModelHistoryCompleteness.complete
             : ModelHistoryCompleteness.incomplete
-        // Daily spend is an operational tool view: it answers which local app or harness generated
-        // the usage. Subscription ownership remains isolated to `providers` above.
-        let dailyPoints = Self.dailyPoints(summaries: summaries)
-        let dailySpendDetails = Self.dailySpendDetails(summaries: summaries)
         return CurrencyGroup(
             currencyCode: currencyCode,
             providers: providers,
             models: modelSummary.rows,
             modelAnalysis: modelAnalysis,
-            dailyPoints: dailyPoints,
-            dailySpendDetails: dailySpendDetails,
             // "Tracked tokens" is the subtotal we actually parsed, not a completeness assertion.
             // A source without token detail must not erase known tokens from every other source.
             // This mirrors Tokscale's aggregation: parsed token buckets always sum independently
@@ -1395,131 +1305,5 @@ extension SpendDashboardModel {
             dailyTotal = addition.partialValue
         }
         return aggregate == dailyTotal
-    }
-
-    private static func dailyPoints(summaries: [InputSummary]) -> [DailyPoint] {
-        var aggregates: [DailyKey: DailyAccumulator] = [:]
-        for summary in summaries where !summary.hasInvalidCostHistory {
-            let input = summary.input
-            for windowEntry in summary.entries {
-                let day = windowEntry.day
-                let entry = windowEntry.entry
-                let key = DailyKey(day: day, sourceID: input.id)
-                let tool = SpendToolIdentity.resolve(
-                    provider: input.provider,
-                    sourceName: input.displayName,
-                    providerName: input.modelProviderName)
-                var aggregate = aggregates[key] ?? DailyAccumulator(
-                    provider: input.provider,
-                    providerName: tool.displayName,
-                    toolKind: tool.kind,
-                    cost: 0)
-                if let cost = Self.validCost(entry.costUSD).map({ $0 * summary.costMultiplier }) {
-                    aggregate.cost = Self.add(cost, to: aggregate.cost, overflowed: &aggregate.overflowed)
-                } else {
-                    aggregate.invalid = true
-                }
-                aggregates[key] = aggregate
-            }
-        }
-
-        let byDay = Dictionary(grouping: aggregates, by: { $0.key.day })
-        return byDay.keys.sorted().flatMap { day -> [DailyPoint] in
-            let rows = (byDay[day] ?? [])
-                .filter { !$0.value.invalid && !$0.value.overflowed && $0.value.cost != nil }
-                .sorted { $0.key.sourceID < $1.key.sourceID }
-            guard let total = Self.completeCostSum(rows.map(\.value.cost)), total.isFinite else { return [] }
-            var cursor = 0.0
-            var points: [DailyPoint] = []
-            for (key, value) in rows {
-                guard let cost = value.cost else { return [] }
-                let start = cursor
-                cursor += cost
-                points.append(DailyPoint(
-                    sourceID: key.sourceID,
-                    provider: value.provider,
-                    providerName: value.providerName,
-                    toolKind: value.toolKind,
-                    day: day,
-                    cost: cost,
-                    stackStart: start,
-                    stackEnd: cursor))
-            }
-            return points
-        }
-    }
-
-    private static func dailySpendDetails(summaries: [InputSummary]) -> [DailySpendDetail] {
-        struct Key: Hashable {
-            let day: Date
-            let sourceID: String
-        }
-        struct ToolAccum {
-            let input: ProviderInput
-            let identity: SpendToolIdentity
-            var tokens: Int?
-            var cost = 0.0
-            var models: [String: (name: String, provider: UsageProvider, tokens: Int?, cost: Double?)] = [:]
-        }
-
-        var toolsByKey: [Key: ToolAccum] = [:]
-        for summary in summaries where !summary.hasInvalidCostHistory {
-            let input = summary.input
-            let identity = SpendToolIdentity.resolve(
-                provider: input.provider,
-                sourceName: input.displayName,
-                providerName: input.modelProviderName)
-            for windowEntry in summary.entries {
-                guard let entryCost = Self.validCost(windowEntry.entry.costUSD) else { continue }
-                let key = Key(day: windowEntry.day, sourceID: input.id)
-                var tool = toolsByKey[key] ?? ToolAccum(
-                    input: input,
-                    identity: identity,
-                    tokens: 0)
-                tool.cost += entryCost
-                tool.tokens = Self.addAvailable(windowEntry.entry.totalTokens, to: tool.tokens)
-                for breakdown in windowEntry.entry.modelBreakdowns ?? [] {
-                    let modelIdentity = SpendModelIdentity(rawName: breakdown.modelName, provider: input.provider)
-                    let modelProvider = SpendProviderIdentity.modelProvider(
-                        rawName: breakdown.modelName,
-                        fallback: input.provider)
-                    let existing = tool.models[modelIdentity.id]
-                    tool.models[modelIdentity.id] = (
-                        modelIdentity.displayName,
-                        modelProvider,
-                        Self.addAvailable(breakdown.totalTokens, to: existing?.tokens),
-                        Self.addAvailableCost(breakdown.costUSD, to: existing?.cost))
-                }
-                toolsByKey[key] = tool
-            }
-        }
-
-        let byDay = Dictionary(grouping: toolsByKey, by: \.key.day)
-        return byDay.keys.sorted().map { day in
-            let tools = byDay[day, default: []].map { key, value in
-                DailySpendTool(
-                    sourceID: key.sourceID,
-                    provider: value.input.provider,
-                    displayName: value.identity.displayName,
-                    kind: value.identity.kind,
-                    tokens: value.tokens,
-                    cost: value.cost,
-                    models: value.models.map { id, model in
-                        DailySpendModel(
-                            id: id,
-                            displayName: model.name,
-                            modelProvider: model.provider,
-                            tokens: model.tokens,
-                            cost: model.cost)
-                    }
-                    .sorted { ($0.cost ?? 0) > ($1.cost ?? 0) })
-            }
-            .sorted { $0.cost > $1.cost }
-            return DailySpendDetail(
-                day: day,
-                totalTokens: Self.availableIntSum(tools.map(\.tokens)),
-                totalCost: tools.reduce(0) { $0 + $1.cost },
-                tools: tools)
-        }
     }
 }

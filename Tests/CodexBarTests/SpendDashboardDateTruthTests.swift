@@ -37,8 +37,6 @@ struct SpendDashboardDateTruthTests {
         #expect(group.totalCost == 3)
         #expect(group.totalTokens == 30)
         #expect(group.coveredDayCount == 2)
-        #expect(group.dailyPoints.map(\.day) == [june30, july1])
-        #expect(group.dailyPoints.map(\.cost) == [1, 2])
     }
 
     @Test
@@ -103,7 +101,6 @@ struct SpendDashboardDateTruthTests {
             calendar: Self.calendar).groups.first)
         #expect(earlierGroup.providers.first?.coveredDayCount == 2)
         #expect(earlierGroup.providers.first?.totalCost == 3)
-        #expect(earlierGroup.dailyPoints.map(\.day) == [startDate, Self.calendar.startOfDay(for: endDate)])
 
         let recentGroup = try #require(SpendDashboardModel.build(
             inputs: [.init(provider: .mistral, displayName: "Mistral", snapshot: snapshot)],
@@ -113,7 +110,6 @@ struct SpendDashboardDateTruthTests {
         #expect(recentGroup.providers.first?.coveredDayCount == 0)
         #expect(recentGroup.providers.first?.totalCost == nil)
         #expect(recentGroup.providers.first?.totalTokens == nil)
-        #expect(recentGroup.dailyPoints.isEmpty)
     }
 
     @Test
@@ -148,8 +144,6 @@ struct SpendDashboardDateTruthTests {
         #expect(group.coveredDayCount == 2)
         #expect(group.totalCost == 3)
         #expect(group.totalTokens == 30)
-        #expect(group.dailyPoints.map(\.day) == [july14, july15])
-        #expect(group.dailyPoints.map(\.cost) == [1, 2])
     }
 
     @Test
@@ -178,7 +172,6 @@ struct SpendDashboardDateTruthTests {
         #expect(group.providers.first?.coveredDayCount == 0)
         #expect(group.totalCost == nil)
         #expect(group.totalTokens == nil)
-        #expect(group.dailyPoints.isEmpty)
     }
 
     @Test
@@ -205,7 +198,6 @@ struct SpendDashboardDateTruthTests {
         #expect(Set(unpriced.providers.map(\.id)) == ["blank", "unknown"])
         #expect(unpriced.providers.allSatisfy { $0.totalCost == nil })
         #expect(unpriced.totalCost == nil)
-        #expect(unpriced.dailyPoints.isEmpty)
     }
 
     @Test
@@ -228,7 +220,6 @@ struct SpendDashboardDateTruthTests {
         #expect(chf.totalCost == 5)
         #expect(usd.providers.map(\.id).sorted() == ["eur", "usd"])
         #expect(abs((usd.totalCost ?? 0) - (2 + 3 / eurRate)) < 1e-9)
-        #expect(abs((usd.dailyPoints.map(\.cost).reduce(0, +)) - (2 + 3 / eurRate)) < 1e-9)
     }
 
     @Test
@@ -245,7 +236,6 @@ struct SpendDashboardDateTruthTests {
         #expect(group.providers.first?.totalCost == nil)
         #expect(group.providers.first?.totalTokens == nil)
         #expect(group.modelHistoryCompleteness == .incomplete)
-        #expect(group.dailyPoints.isEmpty)
     }
 
     @Test
@@ -291,7 +281,6 @@ struct SpendDashboardDateTruthTests {
             #expect(group.providers.first?.totalTokens == testCase.totalTokens, Comment(rawValue: testCase.name))
             #expect(group.modelHistoryCompleteness == testCase.modelHistory, Comment(rawValue: testCase.name))
             #expect(group.models.map(\.totalCost) == (testCase.totalCost == nil ? [] : [3]))
-            #expect(group.dailyPoints.first?.cost == testCase.chartCost, Comment(rawValue: testCase.name))
         }
     }
 
@@ -343,26 +332,17 @@ struct SpendDashboardDateTruthTests {
             #expect(usd.models.map(\.totalCost) == [4, 3])
             #expect(usd.models.first(where: { $0.provider == .claude })?.totalTokens == nil)
             #expect(usd.models.first(where: { $0.provider == .codex })?.totalTokens == 10)
-            #expect(usd.dailyPoints.map(\.sourceID) == ["healthy-usd", "token-invalid"])
-            #expect(SpendDailyChartPresentation(
-                dailyPoints: usd.dailyPoints,
-                aggregateTotal: usd.totalCost).content == .chart)
 
             #expect(cad.totalCost == 5)
             #expect(cad.totalTokens == 30)
             #expect(cad.modelHistoryCompleteness == .incomplete)
             #expect(cad.models.map(\.provider) == [.mistral])
             #expect(cad.models.map(\.totalCost) == [5])
-            #expect(cad.dailyPoints.map(\.sourceID) == ["healthy-cad"])
-            #expect(SpendDailyChartPresentation(
-                dailyPoints: cad.dailyPoints,
-                aggregateTotal: cad.totalCost).content == .chart)
 
             #expect(eur.totalCost == 6)
             #expect(eur.totalTokens == 10)
             #expect(eur.modelHistoryCompleteness == .complete)
             #expect(eur.models.map(\.totalCost) == [6])
-            #expect(eur.dailyPoints.map(\.sourceID) == ["healthy-eur"])
         }
     }
 
@@ -429,7 +409,6 @@ struct SpendDashboardDateTruthTests {
         #expect(group.models.map(\.modelName) == ["overflow", "mismatch", "negative", "valid"])
         #expect(group.models.map(\.totalCost) == [7, 6, 5, 2])
         #expect(group.models.map(\.totalTokens) == [nil, nil, nil, 2])
-        #expect(Set(group.dailyPoints.map(\.sourceID)) == ["mismatch", "negative", "overflow", "valid"])
     }
 
     @Test
@@ -459,12 +438,9 @@ struct SpendDashboardDateTruthTests {
         #expect(usd.modelHistoryCompleteness == .incomplete)
         #expect(usd.models.map(\.provider) == [.codex])
         #expect(usd.models.map(\.totalCost) == [4])
-        #expect(usd.dailyPoints.map(\.sourceID) == ["healthy-usd"])
-        #expect(usd.dailyPoints.map(\.cost) == [4])
         #expect(eur.totalCost == 5)
         #expect(eur.totalTokens == 10)
         #expect(eur.modelHistoryCompleteness == .complete)
-        #expect(eur.dailyPoints.map(\.sourceID) == ["healthy-eur"])
     }
 
     @Test
@@ -495,7 +471,6 @@ struct SpendDashboardDateTruthTests {
             #expect(group.totalTokens == nil)
             #expect(group.modelHistoryCompleteness == .incomplete)
             #expect(group.models.isEmpty)
-            #expect(group.dailyPoints.isEmpty)
         }
     }
 
@@ -518,7 +493,6 @@ struct SpendDashboardDateTruthTests {
         #expect(group.totalTokens == 100)
         #expect(group.modelHistoryCompleteness == .complete)
         #expect(group.models.map(\.totalCost) == [10])
-        #expect(group.dailyPoints.map(\.cost) == [7, 3])
     }
 
     @Test
@@ -551,14 +525,12 @@ struct SpendDashboardDateTruthTests {
         // instead of voiding the whole provider, so cost stays visible while tokens stay intact.
         #expect(costGroup.totalCost == 3)
         #expect(costGroup.totalTokens == 30)
-        #expect(costGroup.dailyPoints.isEmpty)
         #expect(costGroup.modelHistoryCompleteness == .complete)
         #expect(costGroup.models.map(\.totalCost) == [3])
         #expect(costGroup.models.map(\.totalTokens) == [30])
 
         #expect(tokenGroup.totalCost == 3)
         #expect(tokenGroup.totalTokens == nil)
-        #expect(tokenGroup.dailyPoints.map(\.cost) == [3])
         #expect(tokenGroup.modelHistoryCompleteness == .complete)
         #expect(tokenGroup.models.map(\.totalCost) == [3])
         #expect(tokenGroup.models.map(\.totalTokens) == [nil])
@@ -585,7 +557,6 @@ struct SpendDashboardDateTruthTests {
         #expect(group.totalTokens == 30)
         #expect(group.models.map(\.totalCost) == [3])
         #expect(group.models.map(\.totalTokens) == [30])
-        #expect(group.dailyPoints.map(\.cost) == [3])
     }
 
     @Test
@@ -608,7 +579,6 @@ struct SpendDashboardDateTruthTests {
         #expect(group.totalTokens == 30)
         #expect(group.modelHistoryCompleteness == .complete)
         #expect(group.models.map(\.totalCost) == [3])
-        #expect(group.dailyPoints.map(\.cost) == [3])
     }
 
     @Test
@@ -638,12 +608,9 @@ struct SpendDashboardDateTruthTests {
         #expect(usd.modelHistoryCompleteness == .incomplete)
         #expect(usd.models.map(\.provider) == [.codex])
         #expect(usd.models.map(\.totalCost) == [4])
-        #expect(usd.dailyPoints.map(\.sourceID) == ["healthy-usd"])
-        #expect(usd.dailyPoints.map(\.cost) == [4])
         #expect(eur.totalCost == 5)
         #expect(eur.modelHistoryCompleteness == .complete)
         #expect(eur.models.map(\.totalCost) == [5])
-        #expect(eur.dailyPoints.map(\.sourceID) == ["healthy-eur"])
     }
 
     @Test
@@ -700,7 +667,6 @@ struct SpendDashboardDateTruthTests {
         #expect(group.totalCost == nil)
         #expect(group.totalTokens == nil)
         #expect(group.modelHistoryCompleteness == .incomplete)
-        #expect(group.dailyPoints.isEmpty)
     }
 
     @Test

@@ -268,8 +268,6 @@ struct SpendDashboardModelTests {
         let thirtyDayStart = try #require(Self.calendar.date(byAdding: .day, value: -29, to: anchor))
         let end = try #require(Self.calendar.date(byAdding: .day, value: 1, to: anchor))
 
-        #expect(sevenDays.dailyPoints.map(\.day) == [anchor])
-        #expect(thirtyDays.dailyPoints.map(\.day) == [anchor])
         #expect(sevenDays.chartDomain == sevenDayStart...end)
         #expect(thirtyDays.chartDomain == thirtyDayStart...end)
     }
@@ -477,7 +475,6 @@ struct SpendDashboardModelTests {
         #expect(group.providers.allSatisfy { $0.coveredDayCount == 7 })
         #expect(group.totalCost == 5)
         #expect(group.providers.map(\.id) == ["later", "earlier"])
-        #expect(group.dailyPoints.map(\.sourceID) == ["earlier", "later"])
     }
 
     @Test
@@ -1048,34 +1045,6 @@ struct SpendDashboardModelTests {
 
         #expect(group.totalCost == 4)
         #expect(group.coveredDayCount == 7)
-        #expect(group.dailyPoints.map(\.day) == [gregorian.startOfDay(for: now)])
-    }
-
-    @Test
-    func `daily values aggregate once and produce deterministic nonoverlapping stacks`() throws {
-        let first = SpendDashboardModel.ProviderInput(
-            id: "a",
-            provider: .claude,
-            displayName: "Claude",
-            snapshot: Self.snapshot(currency: "USD", entries: [
-                Self.entry(day: "2026-07-16", cost: 2),
-                Self.entry(day: "2026-07-16", cost: 3),
-            ]))
-        let second = SpendDashboardModel.ProviderInput(
-            id: "b",
-            provider: .codex,
-            displayName: "Codex",
-            snapshot: Self.snapshot(currency: "USD", entries: [Self.entry(day: "2026-07-16", cost: 4)]))
-        let group = try #require(SpendDashboardModel.build(
-            inputs: [second, first],
-            requestedDays: 7,
-            now: Self.now,
-            calendar: Self.calendar).groups.first)
-
-        #expect(group.dailyPoints.map(\.sourceID) == ["a", "b"])
-        #expect(group.dailyPoints.map(\.cost) == [5, 4])
-        #expect(group.dailyPoints.map(\.stackStart) == [0, 5])
-        #expect(group.dailyPoints.map(\.stackEnd) == [5, 9])
     }
 
     @Test
@@ -1101,7 +1070,6 @@ struct SpendDashboardModelTests {
         #expect(group.providers.first(where: { $0.id == "invalid" })?.totalCost == nil)
         #expect(group.totalCost == nil)
         #expect(group.totalTokens == 20)
-        #expect(group.dailyPoints.isEmpty)
     }
 
     @Test
@@ -1122,7 +1090,6 @@ struct SpendDashboardModelTests {
         #expect(group.totalTokens == nil)
         #expect(group.modelHistoryCompleteness == .incomplete)
         #expect(group.models.isEmpty)
-        #expect(group.dailyPoints.isEmpty)
         #expect(group.modelAnalysis.rows.first?.totalTokens == 40)
         #expect(group.modelAnalysis.rows.first?.estimatedCost == 4)
         #expect(group.modelAnalysis.tokenCoverage == .partial)
@@ -1146,7 +1113,6 @@ struct SpendDashboardModelTests {
         #expect(group.totalTokens == nil)
         #expect(group.modelHistoryCompleteness == .incomplete)
         #expect(group.models.isEmpty)
-        #expect(group.dailyPoints.isEmpty)
     }
 
     @Test
@@ -1173,7 +1139,6 @@ struct SpendDashboardModelTests {
         #expect(group.totalTokens == 30)
         #expect(group.modelHistoryCompleteness == .complete)
         #expect(group.models.map(\.totalCost) == [3])
-        #expect(group.dailyPoints.map(\.cost) == [3])
     }
 
     @Test
@@ -1357,37 +1322,6 @@ extension SpendDashboardModelTests {
 
         #expect(group.modelHistoryCompleteness == .incomplete)
         #expect(group.models.isEmpty)
-    }
-
-    @Test
-    func `incomplete duplicate day sources do not render partial chart stacks`() throws {
-        let missing = SpendDashboardModel.ProviderInput(
-            id: "missing",
-            provider: .claude,
-            displayName: "Missing",
-            snapshot: Self.snapshot(currency: "USD", entries: [
-                Self.entry(day: "2026-07-16", cost: 2),
-                Self.entry(day: "2026-07-16", cost: nil),
-            ]))
-        let overflow = SpendDashboardModel.ProviderInput(
-            id: "overflow",
-            provider: .codex,
-            displayName: "Overflow",
-            snapshot: Self.snapshot(currency: "USD", entries: [
-                Self.entry(day: "2026-07-16", cost: .greatestFiniteMagnitude),
-                Self.entry(day: "2026-07-16", cost: .greatestFiniteMagnitude),
-            ]))
-        let complete = Self.input(id: "complete", provider: .openai, currency: "USD", cost: 3)
-        let group = try #require(SpendDashboardModel.build(
-            inputs: [missing, overflow, complete],
-            requestedDays: 7,
-            now: Self.now,
-            calendar: Self.calendar).groups.first)
-
-        #expect(group.dailyPoints.map(\.sourceID) == ["complete"])
-        #expect(group.dailyPoints.map(\.cost) == [3])
-        #expect(group.dailyPoints.map(\.stackStart) == [0])
-        #expect(group.dailyPoints.map(\.stackEnd) == [3])
     }
 
     @Test

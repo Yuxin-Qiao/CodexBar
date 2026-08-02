@@ -28,7 +28,6 @@ struct SpendDashboardKimiModelTests {
         #expect(unpriced.totalCost == nil)
         #expect(unpriced.providers.map(\.totalCost) == [nil])
         #expect(unpriced.modelAnalysis.pricedCostTotal == nil)
-        #expect(unpriced.dailyPoints.isEmpty)
         #expect(model.modelAnalysis.rows.map(\.displayName) == ["Kimi K3", "GPT-test"])
         #expect(model.modelAnalysis.rows.map(\.totalTokens) == [90, 10])
         #expect(model.modelAnalysis.rows.first?.rawModelNames == ["kimi-code/k3"])

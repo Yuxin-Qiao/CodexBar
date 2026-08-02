@@ -1287,7 +1287,6 @@
 "Metric" = "Ölçüt";
 "%d days of usage data across %d models" = "%2$d model için %1$d günlük kullanım verisi";
 "%@ in · %@ out" = "%@ girdi · %@ çıktı";
-"Daily estimated spend" = "Günlük tahmini harcama";
 "≈%d full 5h windows of weekly left · %d windows until reset" = "Haftalık kotadan ≈%d tam 5 saatlik pencere kaldı · sıfırlamaya %d pencere";
 "Weekly cannot run out before reset at this pace" = "Bu hızda haftalık kota sıfırlamadan önce tükenemez";
 "Weekly can run out ≈%d windows early" = "Haftalık kota ≈%d pencere erken tükenebilir";

@@ -51,7 +51,7 @@ struct SpendDashboardClockRolloverTests {
         #expect(controller.generation == generation + 1)
         #expect(loadCount.value == 2)
         #expect(controller.model.groups.first?.totalCost == 6)
-        #expect(controller.model.groups.first?.dailyPoints.count == 1)
+        #expect(controller.model.groups.first?.coveredDayCount == 1)
     }
 
     @Test
@@ -93,7 +93,7 @@ struct SpendDashboardClockRolloverTests {
 
         #expect(controller.generation == 2)
         #expect(controller.model.groups.first?.totalCost == 6)
-        #expect(controller.model.groups.first?.dailyPoints.count == 1)
+        #expect(controller.model.groups.first?.coveredDayCount == 1)
     }
 
     @Test

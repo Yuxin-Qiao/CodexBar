@@ -1316,7 +1316,6 @@
 "Metric" = "指標";
 "%d days of usage data across %d models" = "%d 天使用量資料，涵蓋 %d 個模型";
 "%@ in · %@ out" = "%@ 輸入 · %@ 輸出";
-"Daily estimated spend" = "每日預估支出";
 "≈%d full 5h windows of weekly left · %d windows until reset" = "每週額度約剩 %d 個完整 5 小時視窗 · 距重置還有 %d 個視窗";
 "Weekly cannot run out before reset at this pace" = "依此速度，每週額度無法在重置前用完";
 "Weekly can run out ≈%d windows early" = "每週額度可能提前約 %d 個視窗用完";

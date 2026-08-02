@@ -1253,7 +1253,6 @@
 "Metric" = "지표";
 "%d days of usage data across %d models" = "%2$d개 모델의 %1$d일간 사용량 데이터";
 "%@ in · %@ out" = "%@ 입력 · %@ 출력";
-"Daily estimated spend" = "일별 예상 지출";
 "≈%d full 5h windows of weekly left · %d windows until reset" = "주간 한도 약 %d개의 전체 5시간 창 남음 · 재설정까지 %d개 창";
 "Weekly cannot run out before reset at this pace" = "이 속도라면 재설정 전에 주간 한도를 소진할 수 없습니다";
 "Weekly can run out ≈%d windows early" = "주간 한도가 약 %d개 창 일찍 소진될 수 있습니다";

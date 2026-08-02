@@ -88,8 +88,6 @@ extension SpendDashboardModel.CurrencyGroup {
                     totalCost: nil)
             },
             modelAnalysis: self.modelAnalysis.removingCosts(if: true),
-            dailyPoints: [],
-            dailySpendDetails: [],
             totalTokens: self.totalTokens,
             totalCost: nil,
             coveredDayCount: self.coveredDayCount,

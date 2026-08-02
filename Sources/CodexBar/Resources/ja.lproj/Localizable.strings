@@ -1286,7 +1286,6 @@
 "Metric" = "指標";
 "%d days of usage data across %d models" = "%2$dモデルにわたる%1$d日間の使用状況データ";
 "%@ in · %@ out" = "%@ 入力 · %@ 出力";
-"Daily estimated spend" = "日別推定支出";
 "≈%d full 5h windows of weekly left · %d windows until reset" = "週間枠は約%d回分の完全な5時間ウィンドウ · リセットまで%d回";
 "Weekly cannot run out before reset at this pace" = "このペースではリセット前に週間枠を使い切れません";
 "Weekly can run out ≈%d windows early" = "週間枠は約%dウィンドウ早く使い切る可能性があります";

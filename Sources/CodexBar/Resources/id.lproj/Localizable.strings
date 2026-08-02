@@ -1289,7 +1289,6 @@
 "Metric" = "Metrik";
 "%d days of usage data across %d models" = "%d hari data penggunaan di %d model";
 "%@ in · %@ out" = "%@ masuk · %@ keluar";
-"Daily estimated spend" = "Perkiraan pengeluaran harian";
 "≈%d full 5h windows of weekly left · %d windows until reset" = "≈%d jendela 5 jam penuh dari kuota mingguan tersisa · %d jendela hingga reset";
 "Weekly cannot run out before reset at this pace" = "Kuota mingguan tidak dapat habis sebelum reset dengan laju ini";
 "Weekly can run out ≈%d windows early" = "Kuota mingguan dapat habis ≈%d jendela lebih awal";

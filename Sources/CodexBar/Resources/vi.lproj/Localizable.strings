@@ -1286,7 +1286,6 @@
 "Metric" = "Chỉ số";
 "%d days of usage data across %d models" = "%d ngày của dữ liệu Mức sử dụng trên %d mô hình";
 "%@ in · %@ out" = "%@ đầu vào · %@ đầu ra";
-"Daily estimated spend" = "Chi tiêu ước tính hằng ngày";
 "≈%d full 5h windows of weekly left · %d windows until reset" = "Còn ≈%d cửa sổ 5 giờ đầy đủ của hạn mức tuần · %d cửa sổ đến khi đặt lại";
 "Weekly cannot run out before reset at this pace" = "Với tốc độ này, hạn mức tuần không thể hết trước khi đặt lại";
 "Weekly can run out ≈%d windows early" = "Hạn mức tuần có thể hết sớm ≈%d cửa sổ";

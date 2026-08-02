@@ -1284,7 +1284,6 @@
 "Metric" = "Mått";
 "%d days of usage data across %d models" = "%d dagar med användningsdata för %d modeller";
 "%@ in · %@ out" = "%@ in · %@ ut";
-"Daily estimated spend" = "Uppskattade dagliga utgifter";
 "≈%d full 5h windows of weekly left · %d windows until reset" = "≈%d fulla 5-timmarsfönster av veckokvoten kvar · %d fönster till återställning";
 "Weekly cannot run out before reset at this pace" = "Veckokvoten kan inte ta slut före återställningen i den här takten";
 "Weekly can run out ≈%d windows early" = "Veckokvoten kan ta slut ≈%d fönster tidigare";

@@ -1285,7 +1285,6 @@
 "Metric" = "Metriek";
 "%d days of usage data across %d models" = "%d dagen aan gebruiksgegevens voor %d modellen";
 "%@ in · %@ out" = "%@ in · %@ uit";
-"Daily estimated spend" = "Geschatte dagelijkse uitgaven";
 "≈%d full 5h windows of weekly left · %d windows until reset" = "≈%d volledige vensters van 5 uur aan weeklimiet over · %d vensters tot reset";
 "Weekly cannot run out before reset at this pace" = "Het weeklimiet kan bij dit tempo niet vóór de reset opraken";
 "Weekly can run out ≈%d windows early" = "Het weeklimiet kan ≈%d vensters eerder opraken";

@@ -1289,7 +1289,6 @@
 "Metric" = "المقياس";
 "%d days of usage data across %d models" = "%d بيانات الاستخدام عبر نماذج %d";
 "%@ in · %@ out" = "%@ داخل · %@ خارج";
-"Daily estimated spend" = "الإنفاق اليومي التقديري";
 "≈%d full 5h windows of weekly left · %d windows until reset" = "≈%d نافذة كاملة مدتها 5 ساعات متبقية من الأسبوعي · %d نافذة حتى إعادة التعيين";
 "Weekly cannot run out before reset at this pace" = "لا يمكن أن ينفد الحد الأسبوعي قبل إعادة التعيين بهذه الوتيرة";
 "Weekly can run out ≈%d windows early" = "قد ينفد الحد الأسبوعي مبكرًا بنحو %d نافذة";

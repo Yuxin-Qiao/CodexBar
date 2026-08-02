@@ -1289,7 +1289,6 @@
 "Metric" = "متریک";
 "%d days of usage data across %d models" = "%d روز داده های استفاده در مدل های %d";
 "%@ in · %@ out" = "%@ ورودی · %@ خروجی";
-"Daily estimated spend" = "برآورد هزینه روزانه";
 "≈%d full 5h windows of weekly left · %d windows until reset" = "حدود %d بازه کامل ۵ ساعته از سهم هفتگی مانده · %d بازه تا بازنشانی";
 "Weekly cannot run out before reset at this pace" = "با این روند، سهم هفتگی پیش از بازنشانی تمام نمی‌شود";
 "Weekly can run out ≈%d windows early" = "سهم هفتگی ممکن است حدود %d بازه زودتر تمام شود";

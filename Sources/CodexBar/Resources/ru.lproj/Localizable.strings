@@ -1287,7 +1287,6 @@
 "Metric" = "Метрика";
 "%d days of usage data across %d models" = "Данные об использовании за %d дней по %d моделям";
 "%@ in · %@ out" = "%@ вх. · %@ исх.";
-"Daily estimated spend" = "Предполагаемые ежедневные расходы";
 "≈%d full 5h windows of weekly left · %d windows until reset" = "≈%d полных 5-часовых окон недельного лимита · %d окон до сброса";
 "Weekly cannot run out before reset at this pace" = "При таком темпе недельный лимит не может закончиться до сброса";
 "Weekly can run out ≈%d windows early" = "Недельный лимит может закончиться на ≈%d окон раньше";

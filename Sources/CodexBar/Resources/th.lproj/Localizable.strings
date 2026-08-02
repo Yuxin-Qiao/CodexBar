@@ -1289,7 +1289,6 @@
 "Metric" = "ตัวชี้วัด";
 "%d days of usage data across %d models" = "ข้อมูลการใช้งาน %d วันในโมเดล %d";
 "%@ in · %@ out" = "%@ ขาเข้า · %@ ขาออก";
-"Daily estimated spend" = "ค่าใช้จ่ายรายวันโดยประมาณ";
 "≈%d full 5h windows of weekly left · %d windows until reset" = "เหลือโควตารายสัปดาห์ ≈%d ช่วงเต็ม 5 ชม. · อีก %d ช่วงจนรีเซ็ต";
 "Weekly cannot run out before reset at this pace" = "ด้วยอัตรานี้ โควตารายสัปดาห์จะไม่หมดก่อนรีเซ็ต";
 "Weekly can run out ≈%d windows early" = "โควตารายสัปดาห์อาจหมดเร็วขึ้น ≈%d ช่วง";

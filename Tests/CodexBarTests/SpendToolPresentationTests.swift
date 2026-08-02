@@ -102,20 +102,6 @@ struct SpendToolPresentationTests {
         #expect(total.value == 110)
     }
 
-    @Test
-    func `daily spend details preserve tool type models amounts and tokens`() throws {
-        let group = try #require(Self.model().groups.first)
-        let detail = try #require(group.dailySpendDetails.first)
-        let codex = try #require(detail.tools.first { $0.provider == .codex })
-
-        #expect(codex.kind == .desktop)
-        #expect(codex.displayName == "Codex Desktop")
-        #expect(codex.tokens == 70)
-        #expect(codex.cost == 1)
-        #expect(codex.models.first?.displayName == "GPT-5 Test")
-        #expect(codex.models.first?.modelProvider == .openai)
-    }
-
     private static func model() -> SpendDashboardModel {
         let inputs = [
             Self.input(
