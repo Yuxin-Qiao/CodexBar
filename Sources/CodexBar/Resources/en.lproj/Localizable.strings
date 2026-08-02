@@ -882,6 +882,8 @@
 "Total" = "Total";
 "tokens" = "tokens";
 "requests" = "requests";
+"CLIENTS & MODELS" = "CLIENTS & MODELS";
+"messages" = "messages";
 "Latest" = "Latest";
 "Monthly" = "Monthly";
 "Sonnet" = "Sonnet";

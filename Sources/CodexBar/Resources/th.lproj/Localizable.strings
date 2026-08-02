@@ -882,6 +882,8 @@
 "Total" = "รวม";
 "tokens" = "โทเค็น";
 "requests" = "คําขอ";
+"CLIENTS & MODELS" = "ไคลเอนต์และโมเดล";
+"messages" = "ข้อความ";
 "Latest" = "ล่าสุด";
 "Monthly" = "รายเดือน";
 "Sonnet" = "โคลง";

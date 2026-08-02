@@ -843,6 +843,8 @@
 "Total" = "합계";
 "tokens" = "토큰";
 "requests" = "요청";
+"CLIENTS & MODELS" = "클라이언트 및 모델";
+"messages" = "메시지";
 "Latest" = "최신";
 "Monthly" = "월간";
 "Sonnet" = "Sonnet";

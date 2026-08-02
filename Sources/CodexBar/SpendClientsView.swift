@@ -22,6 +22,11 @@ struct SpendClientModel: Identifiable, Equatable {
     let tokens: Int?
     let cost: Double?
     let costIsEstimated: Bool
+    let inputTokens: Int?
+    let outputTokens: Int?
+    let cacheReadTokens: Int?
+    let cacheCreationTokens: Int?
+    let reasoningTokens: Int?
     let requestCount: Int?
 }
 
@@ -112,6 +117,11 @@ enum SpendClientBreakdown {
                     tokens: accum.tokens,
                     cost: accum.cost,
                     costIsEstimated: accum.costIsEstimated,
+                    inputTokens: accum.inputTokens,
+                    outputTokens: accum.outputTokens,
+                    cacheReadTokens: accum.cacheReadTokens,
+                    cacheCreationTokens: accum.cacheCreationTokens,
+                    reasoningTokens: accum.reasoningTokens,
                     requestCount: accum.requestCount)
             }
             .sorted { ($0.tokens ?? -1) > ($1.tokens ?? -1) }
@@ -182,6 +192,48 @@ enum SpendClientBreakdown {
         guard let lhs, let rhs else { return nil }
         let result = lhs.addingReportingOverflow(rhs)
         return result.overflow ? nil : result.partialValue
+    }
+}
+
+// MARK: - 模型明细文本
+
+/// Composes the per-model token-bucket detail line shown under each model row.
+enum SpendClientModelDetailText {
+    static func detailText(model: SpendClientModel) -> String {
+        var parts: [String] = []
+        if let tokens = model.tokens {
+            parts.append(String(format: L("%@ tokens"), UsageFormatter.tokenCountString(tokens)))
+        }
+        let buckets: [(kind: SpendModelsDayDetailPresentation.BucketKind, tokens: Int?)] = [
+            (.input, model.inputTokens),
+            (.output, model.outputTokens),
+            (.cacheRead, model.cacheReadTokens),
+            (.cacheWrite, model.cacheCreationTokens),
+            (.reasoning, model.reasoningTokens),
+        ]
+        for bucket in buckets {
+            guard let tokens = bucket.tokens, tokens > 0 else { continue }
+            parts.append("\(bucket.kind.title) \(UsageFormatter.tokenCountString(tokens))")
+        }
+        if let requestCount = model.requestCount, requestCount > 0 {
+            parts.append("\(UsageFormatter.tokenCountString(requestCount)) \(L("messages"))")
+        }
+        return parts.joined(separator: " · ")
+    }
+}
+
+// MARK: - 模型花费文本
+
+/// Formats the model row's right-side metric: cost, falling back to tokens when unpriced.
+enum SpendClientModelMetricText {
+    static func text(cost: Double?, tokens: Int?, currencyCode: String) -> String {
+        if let cost {
+            return UsageFormatter.currencyString(cost, currencyCode: currencyCode)
+        }
+        if let tokens {
+            return UsageFormatter.tokenCountString(tokens)
+        }
+        return "—"
     }
 }
 
@@ -289,10 +341,8 @@ enum SpendToolComparisonPresentation {
 struct SpendClientsView: View {
     let analysis: SpendDashboardModel.ModelAnalysis
     let currencyCode: String
-    @State private var expandedGroupIDs: Set<String> = []
+    @State private var collapsedGroupIDs: Set<String> = []
     @State private var selectedComparisonID: String?
-
-    private static let collapsedModelLimit = 5
 
     var body: some View {
         let groups = SpendClientBreakdown.groups(from: self.analysis)
@@ -305,6 +355,9 @@ struct SpendClientsView: View {
                 .padding(.vertical, 10)
         } else {
             VStack(alignment: .leading, spacing: 12) {
+                Text(L("CLIENTS & MODELS"))
+                    .font(SpendModelsListStyle.tertiaryFont.weight(.semibold))
+                    .foregroundStyle(.secondary)
                 if !comparisons.isEmpty {
                     self.comparisonCard(comparisons)
                 }
@@ -385,99 +438,80 @@ struct SpendClientsView: View {
     }
 
     private func card(_ group: SpendClientGroup) -> some View {
-        let isExpanded = self.expandedGroupIDs.contains(group.id)
-        let visibleModels = isExpanded
-            ? group.models
-            : Array(group.models.prefix(Self.collapsedModelLimit))
+        let isCollapsed = self.collapsedGroupIDs.contains(group.id)
         return VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 7) {
-                SpendProviderIcon(
-                    provider: group.provider,
-                    size: SpendModelsListStyle.iconSize)
-                    .frame(
-                        width: SpendModelsListStyle.iconFrameSize,
-                        height: SpendModelsListStyle.iconFrameSize)
-                Text(cleanToolName(group.displayTitle))
-                    .font(SpendModelsListStyle.primaryEmphasizedFont)
-                Text(group.kind.displayName)
-                    .font(SpendModelsListStyle.tertiaryFont.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.secondary.opacity(0.12), in: Capsule())
-                if group.costIsEstimated {
-                    Text(L("Estimated"))
-                        .font(SpendModelsListStyle.tertiaryFont)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
-                        .background(Color.secondary.opacity(0.15), in: Capsule())
+            Button {
+                if isCollapsed {
+                    self.collapsedGroupIDs.remove(group.id)
+                } else {
+                    self.collapsedGroupIDs.insert(group.id)
                 }
-                Spacer()
-                Text(self.totalText(group))
-                    .font(SpendModelsListStyle.primaryFont)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
+            } label: {
+                HStack(spacing: 7) {
+                    SpendProviderIcon(
+                        provider: group.provider,
+                        size: SpendModelsListStyle.iconSize)
+                        .frame(
+                            width: SpendModelsListStyle.iconFrameSize,
+                            height: SpendModelsListStyle.iconFrameSize)
+                    Text(cleanToolName(group.displayTitle))
+                        .font(SpendModelsListStyle.primaryEmphasizedFont)
+                    Spacer()
+                    Text(self.totalText(group))
+                        .font(SpendModelsListStyle.primaryFont)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                    Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
             }
-            .padding(.bottom, 6)
+            .buttonStyle(.plain)
+            .padding(.bottom, isCollapsed ? 0 : 6)
 
-            Text(self.toolEvidenceSummary(group))
-                .font(SpendModelsListStyle.secondaryFont)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
-                .lineLimit(2)
-                .padding(.bottom, 8)
-                .padding(.leading, SpendModelsListStyle.iconFrameSize + 7)
-
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(visibleModels.enumerated()), id: \.element.id) { index, model in
-                    if index > 0 { Divider().padding(.vertical, 2) }
-                    self.modelRow(model)
-                }
-                if group.models.count > Self.collapsedModelLimit {
-                    Button {
-                        if isExpanded {
-                            self.expandedGroupIDs.remove(group.id)
-                        } else {
-                            self.expandedGroupIDs.insert(group.id)
-                        }
-                    } label: {
-                        HStack(spacing: 5) {
-                            Text(isExpanded
-                                ? L("Show fewer models")
-                                : String(format: L("Show all %d models"), group.models.count))
-                            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                                .font(.caption2.weight(.semibold))
-                        }
-                        .font(SpendModelsListStyle.secondaryFont.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 7)
+            if !isCollapsed {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(group.models.enumerated()), id: \.element.id) { index, model in
+                        if index > 0 { Divider().padding(.vertical, 2) }
+                        self.modelRow(model)
                     }
-                    .buttonStyle(.plain)
                 }
+                .padding(.leading, SpendModelsListStyle.modelIndent)
             }
-            .padding(.leading, SpendModelsListStyle.modelIndent)
         }
         .padding(14)
         .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private func modelRow(_ model: SpendClientModel) -> some View {
-        HStack(alignment: .center, spacing: 8) {
-            SpendProviderIcon(provider: model.modelProvider, size: SpendModelsListStyle.modelIconSize)
-                .frame(
-                    width: SpendModelsListStyle.modelIconFrameSize,
-                    height: SpendModelsListStyle.modelIconFrameSize)
-            Text(model.displayName)
-                .font(SpendModelsListStyle.primaryFont)
-                .lineLimit(1)
-            Spacer()
-            Text(self.modelMetric(model))
-                .font(SpendModelsListStyle.valueFont)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .center, spacing: 8) {
+                SpendProviderIcon(provider: model.modelProvider, size: SpendModelsListStyle.modelIconSize)
+                    .frame(
+                        width: SpendModelsListStyle.modelIconFrameSize,
+                        height: SpendModelsListStyle.modelIconFrameSize)
+                Text(model.displayName)
+                    .font(SpendModelsListStyle.primaryFont)
+                    .lineLimit(1)
+                Spacer()
+                Text(self.modelMetric(model))
+                    .font(SpendModelsListStyle.valueFont)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            .padding(.top, 5)
+
+            let detail = SpendClientModelDetailText.detailText(model: model)
+            if !detail.isEmpty {
+                Text(detail)
+                    .font(SpendModelsListStyle.tertiaryFont)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .padding(.leading, SpendModelsListStyle.modelIconFrameSize + 8)
+                    .padding(.bottom, 5)
+            }
         }
-        .padding(.vertical, 5)
     }
 
     private func totalText(_ group: SpendClientGroup) -> String {
@@ -492,38 +526,7 @@ struct SpendClientsView: View {
     }
 
     private func modelMetric(_ model: SpendClientModel) -> String {
-        var parts: [String] = []
-        if let tokens = model.tokens {
-            parts.append(UsageFormatter.tokenCountString(tokens))
-        }
-        if let cost = model.cost {
-            parts.append(UsageFormatter.currencyString(cost, currencyCode: self.currencyCode))
-        }
-        return parts.joined(separator: " · ")
-    }
-
-    private func toolEvidenceSummary(_ group: SpendClientGroup) -> String {
-        var parts = [String(format: L("%d models"), group.models.count)]
-        if let requests = group.requestCount {
-            parts.append(String(format: L("%@ requests"), UsageFormatter.tokenCountString(requests)))
-        }
-        if let rate = SpendToolComparisonPresentation.contextReuseRate(
-            input: group.inputTokens,
-            cacheRead: group.cacheReadTokens,
-            cacheCreation: group.cacheCreationTokens)
-        {
-            parts.append(String(format: L("%d%% context reuse"), Int((rate * 100).rounded())))
-        }
-        if let projects = group.projectCount {
-            parts.append(String(format: L("%d projects"), projects))
-        }
-        if let sessions = group.sessionCount {
-            parts.append(String(format: L("%d sessions"), sessions))
-        }
-        if group.coveredDayCount > 0 {
-            parts.append(String(format: L("%d days covered"), group.coveredDayCount))
-        }
-        return parts.joined(separator: " · ")
+        SpendClientModelMetricText.text(cost: model.cost, tokens: model.tokens, currencyCode: self.currencyCode)
     }
 
     private func comparisonMetrics(_ tool: SpendToolModelComparison.Tool) -> String {

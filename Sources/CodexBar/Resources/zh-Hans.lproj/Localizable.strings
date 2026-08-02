@@ -842,6 +842,8 @@
 "Total" = "总计";
 "tokens" = "token";
 "requests" = "请求";
+"CLIENTS & MODELS" = "客户端与模型";
+"messages" = "条消息";
 "Latest" = "最新";
 "Monthly" = "每月";
 "Sonnet" = "Sonnet";

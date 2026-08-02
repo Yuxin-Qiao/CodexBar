@@ -1077,6 +1077,8 @@
 "Azure OpenAI deployment name. AZURE_OPENAI_DEPLOYMENT_NAME is also supported." = "Azure OpenAI-distributionens namn. AZURE_OPENAI_DEPLOYMENT_NAME stöds också.";
 "Extra usage balance: %@" = "Saldo för extra användning: %@";
 "requests" = "förfrågningar";
+"CLIENTS & MODELS" = "Klienter och modeller";
+"messages" = "meddelanden";
 "CodexBar could not save the current system account before switching." = "CodexBar kunde inte spara det aktuella systemkontot före bytet.";
 "Stored in ~/.codexbar/config.json. For the official Kimi API, use Moonshot / Kimi API." = "Sparas i ~/.codexbar/config.json. För det officiella Kimi-API:t använder du Moonshot / Kimi API.";
 "Cookie: …\n\nor paste a cURL capture from the Abacus AI dashboard" = "Cookie: …\n\neller klistra in en cURL-fångst från Abacus AI-översikten";
