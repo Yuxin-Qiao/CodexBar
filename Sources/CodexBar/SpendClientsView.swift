@@ -357,6 +357,7 @@ struct SpendClientsView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Text(L("CLIENTS & MODELS"))
                     .font(SpendModelsListStyle.tertiaryFont.weight(.semibold))
+                    .tracking(1.2)
                     .foregroundStyle(.secondary)
                 if !comparisons.isEmpty {
                     self.comparisonCard(comparisons)
@@ -441,24 +442,26 @@ struct SpendClientsView: View {
         let isCollapsed = self.collapsedGroupIDs.contains(group.id)
         return VStack(alignment: .leading, spacing: 0) {
             Button {
-                if isCollapsed {
-                    self.collapsedGroupIDs.remove(group.id)
-                } else {
-                    self.collapsedGroupIDs.insert(group.id)
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    if isCollapsed {
+                        self.collapsedGroupIDs.remove(group.id)
+                    } else {
+                        self.collapsedGroupIDs.insert(group.id)
+                    }
                 }
             } label: {
-                HStack(spacing: 7) {
+                HStack(spacing: 10) {
                     SpendProviderIcon(
                         provider: group.provider,
-                        size: SpendModelsListStyle.iconSize)
+                        size: SpendModelsListStyle.clientIconSize)
                         .frame(
-                            width: SpendModelsListStyle.iconFrameSize,
-                            height: SpendModelsListStyle.iconFrameSize)
+                            width: SpendModelsListStyle.clientIconFrameSize,
+                            height: SpendModelsListStyle.clientIconFrameSize)
                     Text(cleanToolName(group.displayTitle))
-                        .font(SpendModelsListStyle.primaryEmphasizedFont)
+                        .font(SpendModelsListStyle.toolTitleFont)
                     Spacer()
                     Text(self.totalText(group))
-                        .font(SpendModelsListStyle.primaryFont)
+                        .font(SpendModelsListStyle.clientTotalsFont)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                     Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
@@ -468,50 +471,48 @@ struct SpendClientsView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .padding(.bottom, isCollapsed ? 0 : 6)
+            .padding(.bottom, isCollapsed ? 0 : 10)
 
             if !isCollapsed {
                 VStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(group.models.enumerated()), id: \.element.id) { index, model in
-                        if index > 0 { Divider().padding(.vertical, 2) }
+                    ForEach(group.models) { model in
                         self.modelRow(model)
                     }
                 }
-                .padding(.leading, SpendModelsListStyle.modelIndent)
+                .padding(.leading, SpendModelsListStyle.clientIconFrameSize + 10)
             }
         }
-        .padding(14)
-        .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(16)
+        .background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func modelRow(_ model: SpendClientModel) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .center, spacing: 8) {
-                SpendProviderIcon(provider: model.modelProvider, size: SpendModelsListStyle.modelIconSize)
+                SpendProviderIcon(provider: model.modelProvider, size: SpendModelsListStyle.modelRowIconSize)
                     .frame(
-                        width: SpendModelsListStyle.modelIconFrameSize,
-                        height: SpendModelsListStyle.modelIconFrameSize)
+                        width: SpendModelsListStyle.modelRowIconFrameSize,
+                        height: SpendModelsListStyle.modelRowIconFrameSize)
                 Text(model.displayName)
-                    .font(SpendModelsListStyle.primaryFont)
+                    .font(SpendModelsListStyle.modelNameFont)
                     .lineLimit(1)
                 Spacer()
                 Text(self.modelMetric(model))
-                    .font(SpendModelsListStyle.valueFont)
-                    .foregroundStyle(.secondary)
+                    .font(SpendModelsListStyle.modelCostFont)
                     .monospacedDigit()
             }
-            .padding(.top, 5)
 
             let detail = SpendClientModelDetailText.detailText(model: model)
             if !detail.isEmpty {
                 Text(detail)
-                    .font(SpendModelsListStyle.tertiaryFont)
+                    .font(SpendModelsListStyle.modelDetailFont)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
-                    .padding(.leading, SpendModelsListStyle.modelIconFrameSize + 8)
-                    .padding(.bottom, 5)
+                    .lineSpacing(3)
+                    .padding(.leading, SpendModelsListStyle.modelRowIconFrameSize + 8)
             }
         }
+        .padding(.vertical, 7)
     }
 
     private func totalText(_ group: SpendClientGroup) -> String {

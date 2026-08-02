@@ -478,7 +478,9 @@ struct SpendProviderIcon: View {
 
     var body: some View {
         Group {
-            if let icon = ProviderBrandIcon.image(for: self.provider) {
+            if let icon = ProviderBrandIcon.coloredImage(for: self.provider)
+                ?? ProviderBrandIcon.image(for: self.provider)
+            {
                 Image(nsImage: icon).resizable().scaledToFit()
             } else {
                 Image(systemName: "circle.dotted")
