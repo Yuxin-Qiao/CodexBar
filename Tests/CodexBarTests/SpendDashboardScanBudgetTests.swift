@@ -28,13 +28,13 @@ struct SpendDashboardScanBudgetTests {
         #expect(contexts.first?.cacheRoot.lastPathComponent == "inactive-cache")
         #expect(contexts.first?.now == now)
         #expect(contexts.first?.force == false)
-        #expect(contexts.first?.historyDays == 30)
+        #expect(contexts.first?.historyDays == SpendDashboardSource.scanDays)
         #expect(contexts.first?.refreshPricingInBackground == false)
         #expect(contexts.first?.includePiSessions == false)
-        #expect(contexts.last?.historyDays == 365)
+        #expect(contexts.last?.historyDays == SpendDashboardSource.activityScanDays)
         #expect(contexts.last?.force == false)
-        #expect(result.inputs.first?.snapshot.historyDays == 30)
-        #expect(result.inputs.first?.tokenActivitySnapshot.historyDays == 365)
+        #expect(result.inputs.first?.snapshot.historyDays == SpendDashboardSource.scanDays)
+        #expect(result.inputs.first?.tokenActivitySnapshot.historyDays == SpendDashboardSource.activityScanDays)
     }
 
     @Test
@@ -51,9 +51,9 @@ struct SpendDashboardScanBudgetTests {
             })
         let contexts = await recorder.contexts
 
-        #expect(SpendDashboardSource.scanDays == 30)
+        #expect(SpendDashboardSource.scanDays == 365)
         #expect(SpendDashboardSource.activityScanDays == 365)
-        #expect(contexts.map(\.historyDays) == [30, 365])
+        #expect(contexts.map(\.historyDays) == [365, 365])
         #expect(contexts.map(\.force) == [true, false])
     }
 
@@ -61,10 +61,12 @@ struct SpendDashboardScanBudgetTests {
     func `annual activity scan failure retains the normal spend snapshot`() async {
         let now = Date(timeIntervalSince1970: 1_784_179_200)
         let account = Self.account(id: "account", cacheIdentity: "activity-failure")
+        let recorder = SpendDashboardScanContextRecorder()
         let result = await SpendDashboardSource.load(
             Self.request(account: account, now: now, force: false),
             codexSnapshotLoader: { context in
-                if context.historyDays == SpendDashboardSource.activityScanDays {
+                await recorder.record(context)
+                if await recorder.contexts.count == 2 {
                     throw CocoaError(.fileReadUnknown)
                 }
                 return Self.snapshot(context: context, tokens: 10, cost: 1)
@@ -72,8 +74,8 @@ struct SpendDashboardScanBudgetTests {
 
         #expect(result.failedSourceIDs.isEmpty)
         #expect(result.inputs.count == 1)
-        #expect(result.inputs.first?.snapshot.historyDays == 30)
-        #expect(result.inputs.first?.tokenActivitySnapshot.historyDays == 30)
+        #expect(result.inputs.first?.snapshot.historyDays == SpendDashboardSource.scanDays)
+        #expect(result.inputs.first?.tokenActivitySnapshot.historyDays == SpendDashboardSource.scanDays)
     }
 
     @Test
