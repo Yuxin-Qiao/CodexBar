@@ -20,6 +20,7 @@ struct OpenCodeGoProviderStrategyTests {
     private func makeContext(
         runtime: ProviderRuntime = .app,
         sourceMode: ProviderSourceMode = .auto,
+        requiresOptionalUsageCompleteness: Bool = false,
         env: [String: String] = [:],
         settings: ProviderSettingsSnapshot? = nil,
         selectedTokenAccountID: UUID? = nil) -> ProviderFetchContext
@@ -28,6 +29,7 @@ struct OpenCodeGoProviderStrategyTests {
             runtime: runtime,
             sourceMode: sourceMode,
             includeCredits: false,
+            requiresOptionalUsageCompleteness: requiresOptionalUsageCompleteness,
             webTimeout: 1,
             webDebugDumpHTML: false,
             verbose: false,
@@ -144,10 +146,12 @@ struct OpenCodeGoProviderStrategyTests {
     }
 
     @Test
-    func `web strategy waits for zen balance only in cli runtime`() {
+    func `web strategy waits for zen balance only on usage completeness reads`() {
         #expect(!OpenCodeGoUsageFetchStrategy.shouldWaitForZenBalance(
             context: self.makeContext(runtime: .app)))
-        #expect(OpenCodeGoUsageFetchStrategy.shouldWaitForZenBalance(
+        #expect(!OpenCodeGoUsageFetchStrategy.shouldWaitForZenBalance(
             context: self.makeContext(runtime: .cli)))
+        #expect(OpenCodeGoUsageFetchStrategy.shouldWaitForZenBalance(
+            context: self.makeContext(runtime: .cli, requiresOptionalUsageCompleteness: true)))
     }
 }

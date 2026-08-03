@@ -175,7 +175,7 @@ struct OpenCodeGoLocalUsageFetchStrategy: ProviderFetchStrategy {
         let zenBalance = try await OpenCodeGoUsageFetcher.completedOptionalZenBalance(
             from: zenBalanceTask,
             timeout: OpenCodeGoUsageFetchStrategy.shouldWaitForZenBalance(context: context)
-                ? nil
+                ? .seconds(OpenCodeGoUsageFetcher.optionalZenBalanceTimeout)
                 : OpenCodeGoUsageFetcher.optionalZenBalanceJoinGrace)
         return (snapshot.withZenBalanceUSD(zenBalance), false)
     }
@@ -231,11 +231,12 @@ struct OpenCodeGoUsageFetchStrategy: ProviderFetchStrategy {
     let id: String = "opencodego.web"
     let kind: ProviderFetchKind = .web
 
-    /// One-shot CLI usage reads are foreground commands, so a Zen balance that is merely slower
-    /// than the subscription page is worth waiting for (bounded by the balance request timeout).
-    /// The menu-bar app keeps the short optional join grace so refreshes never stall behind it.
+    /// Usage-snapshot reads (`codexbar usage`, `codexbar serve`) are foreground commands, so a
+    /// Zen balance that is merely slower than the subscription page is worth waiting for, bounded
+    /// by the optional-balance timeout. Guard and diagnostic commands keep the short optional join
+    /// grace so a slow balance cannot consume their deadline.
     static func shouldWaitForZenBalance(context: ProviderFetchContext) -> Bool {
-        context.runtime == .cli
+        context.requiresOptionalUsageCompleteness
     }
 
     func isAvailable(_ context: ProviderFetchContext) async -> Bool {

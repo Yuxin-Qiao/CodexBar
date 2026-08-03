@@ -154,7 +154,7 @@ public struct OpenCodeGoUsageFetcher: Sendable {
             return try await self.fetchZenBalance(
                 workspaceID: workspaceID,
                 cookieHeader: requestCookieHeader,
-                timeout: waitForZenBalance ? min(timeout, self.optionalZenBalanceTimeout) : timeout,
+                timeout: timeout,
                 session: session)
         } : nil
         defer {
@@ -197,7 +197,9 @@ public struct OpenCodeGoUsageFetcher: Sendable {
         }
         let zenBalance = try await self.completedOptionalZenBalance(
             from: zenBalanceTask,
-            timeout: waitForZenBalance ? nil : Self.optionalZenBalanceJoinGrace)
+            timeout: waitForZenBalance
+                ? .seconds(self.optionalZenBalanceTimeout)
+                : Self.optionalZenBalanceJoinGrace)
         return snapshot.withZenBalanceUSD(zenBalance)
     }
 
