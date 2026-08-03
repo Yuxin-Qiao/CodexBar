@@ -342,12 +342,11 @@ extension UsageStore {
                 now: now)
             return projection.visibleRateLanes.compactMap { lane in
                 guard let window = projection.sourceRateWindow(for: lane) else { return nil }
-                let title = switch lane {
-                case .session:
-                    metadata?.sessionLabel ?? "Session"
-                case .weekly:
-                    metadata?.weeklyLabel ?? "Weekly"
-                }
+                let title = CodexConsumerProjection.rateTitle(
+                    lane: lane,
+                    windowMinutes: window.windowMinutes,
+                    sessionLabel: metadata?.sessionLabel ?? "Session",
+                    weeklyLabel: metadata?.weeklyLabel ?? "Weekly")
                 return WidgetSnapshot.WidgetUsageRowSnapshot(
                     id: lane.rawValue,
                     title: title,

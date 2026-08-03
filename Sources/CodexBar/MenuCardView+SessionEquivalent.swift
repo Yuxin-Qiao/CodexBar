@@ -22,27 +22,36 @@ extension UsageMenuCardView.Model {
         projection.visibleRateLanes.compactMap { lane in
             guard let window = projection.rateWindow(for: lane) else { return nil }
 
-            let title: String
+            let title = CodexConsumerProjection.rateTitle(
+                lane: lane,
+                windowMinutes: window.windowMinutes,
+                sessionLabel: input.metadata.sessionLabel,
+                weeklyLabel: input.metadata.weeklyLabel)
             let id: String
             let paceDetail: PaceDetail?
             switch lane {
             case .session:
-                title = L(input.metadata.sessionLabel)
                 id = "primary"
-                paceDetail = Self.sessionPaceDetail(
-                    provider: input.provider,
-                    window: window,
-                    now: input.now,
-                    showUsed: input.usageBarsShowUsed)
+                paceDetail = window.windowMinutes == CodexConsumerProjection.sessionWindowMinutes
+                    ? Self.sessionPaceDetail(
+                        provider: input.provider,
+                        window: window,
+                        now: input.now,
+                        showUsed: input.usageBarsShowUsed)
+                    : nil
             case .weekly:
-                title = L(input.metadata.weeklyLabel)
                 id = "secondary"
-                paceDetail = Self.weeklyPaceDetail(
-                    provider: input.provider,
-                    window: window,
-                    now: input.now,
-                    pace: Self.standardWeeklyPace(input: input, window: window),
-                    showUsed: input.usageBarsShowUsed)
+                paceDetail = window.windowMinutes == CodexConsumerProjection.weeklyWindowMinutes
+                    ? Self.weeklyPaceDetail(
+                        provider: input.provider,
+                        window: window,
+                        now: input.now,
+                        pace: Self.standardWeeklyPace(input: input, window: window),
+                        showUsed: input.usageBarsShowUsed)
+                    : nil
+            case .monthly:
+                id = "monthly"
+                paceDetail = nil
             }
 
             return Metric(
@@ -57,7 +66,7 @@ extension UsageMenuCardView.Model {
                 pacePercent: paceDetail?.pacePercent,
                 paceOnTop: paceDetail?.paceOnTop ?? true,
                 warningMarkerPercents: Self.warningMarkerPercents(
-                    thresholds: input.quotaWarningThresholds[lane.quotaWarningWindow],
+                    thresholds: lane.quotaWarningWindow.flatMap { input.quotaWarningThresholds[$0] },
                     showUsed: input.usageBarsShowUsed),
                 workdayMarkerPercents: lane == .weekly
                     ? workDayMarkerPercents(
