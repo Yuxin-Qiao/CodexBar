@@ -19,6 +19,7 @@ public struct CopilotUsageResponse: Sendable, Decodable {
     public struct QuotaSnapshot: Sendable, Decodable {
         public let entitlement: Double
         public let remaining: Double
+        public let creditsUsed: Double?
         public let percentRemaining: Double
         public let quotaId: String
         public let hasPercentRemaining: Bool
@@ -58,6 +59,7 @@ public struct CopilotUsageResponse: Sendable, Decodable {
         private enum CodingKeys: String, CodingKey {
             case entitlement
             case remaining
+            case creditsUsed = "credits_used"
             case percentRemaining = "percent_remaining"
             case quotaId = "quota_id"
             case unlimited
@@ -68,11 +70,13 @@ public struct CopilotUsageResponse: Sendable, Decodable {
             remaining: Double,
             percentRemaining: Double,
             quotaId: String,
+            creditsUsed: Double? = nil,
             hasPercentRemaining: Bool = true,
             unlimited: Bool = false)
         {
             self.entitlement = entitlement
             self.remaining = remaining
+            self.creditsUsed = creditsUsed
             self.percentRemaining = unlimited ? 100 : percentRemaining
             self.quotaId = quotaId
             self.hasPercentRemaining = unlimited || hasPercentRemaining
@@ -89,6 +93,7 @@ public struct CopilotUsageResponse: Sendable, Decodable {
             self.remaining = decodedRemaining ?? 0
             self.entitlementWasDecoded = decodedEntitlement != nil
             self.remainingWasDecoded = decodedRemaining != nil
+            self.creditsUsed = Self.decodeNumberIfPresent(container: container, key: .creditsUsed)
             let decodedUnlimited = try container.decodeIfPresent(Bool.self, forKey: .unlimited) ?? false
             let decodedPercent = Self.decodeNumberIfPresent(container: container, key: .percentRemaining)
             if decodedUnlimited {
