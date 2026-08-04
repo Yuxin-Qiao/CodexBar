@@ -840,6 +840,9 @@ struct CostUsageCacheTests {
             producerKey: "codex:cu:p1111111111111111")
         #expect(loaded.codexScanCatchUpPending == true)
         #expect(loaded.lastScanUnixMs == 0)
+        #expect(loaded.codexPreviousReport != nil)
+        #expect(loaded.codexPreviousReport?.data.contains { $0.date == "2026-06-05" } == true)
+        #expect(loaded.codexPreviousReport?.data.contains { $0.date == "2026-06-28" } == true)
     }
 
     @Test

@@ -296,7 +296,6 @@ enum CostUsageCacheIO {
         maxCacheBytes: Int) -> Bool
     {
         guard let sinceKey = cache.scanSinceKey, let untilKey = cache.scanUntilKey else { return false }
-        let protectedParentIDs = Set(cache.files.values.compactMap(\.forkedFromId))
         let candidates: [(key: String, usage: CostUsageFileUsage)] = cache.files.compactMap { key, usage in
             let inWindow = usage.touchesCodexScanWindow(sinceKey: sinceKey, untilKey: untilKey)
                 || Self.isRecentlyActive(usage, calendar: calendar, sinceKey: sinceKey, untilKey: untilKey)
@@ -304,13 +303,30 @@ enum CostUsageCacheIO {
             if usage.codexScanComplete == false { return nil }
             if usage.codexJSONLResumeState != nil { return nil }
             if usage.hasBufferedCodexForkRetryLines { return nil }
-            if let sessionId = usage.sessionId, protectedParentIDs.contains(sessionId) { return nil }
             return (key, usage)
         }
         guard !candidates.isEmpty else { return false }
+        // Protect parents referenced by entries that survive this trim; a child that is
+        // removed here must not keep its stale parent protected.
+        let candidateKeys = Set(candidates.map(\.key))
+        let protectedParentIDs = Set(
+            cache.files.compactMap { key, usage in
+                candidateKeys.contains(key) ? nil : usage.forkedFromId
+            })
+        let droppable = candidates.filter { candidate in
+            guard let sessionId = candidate.usage.sessionId else { return true }
+            return !protectedParentIDs.contains(sessionId)
+        }
+        guard !droppable.isEmpty else { return false }
+        // Preserve the complete report from the untrimmed cache so catch-up displays full
+        // totals instead of the reduced window after a restart.
+        let preTrimCache = cache
+        let previousReport = Self.previousReportForCatchUp(
+            cache: preTrimCache,
+            calendar: calendar)
 
         // Drop oldest usage first so recent sessions keep their fork-baseline detail.
-        let oldestFirst = candidates.sorted { lhs, rhs in
+        let oldestFirst = droppable.sorted { lhs, rhs in
             let lhsDay = lhs.usage.days.keys.min() ?? "9999"
             let rhsDay = rhs.usage.days.keys.min() ?? "9999"
             return lhsDay < rhsDay
@@ -351,8 +367,42 @@ enum CostUsageCacheIO {
             // mark the cache as needing catch-up so a cold restart re-scans them promptly.
             cache.codexScanCatchUpPending = true
             cache.lastScanUnixMs = 0
+            cache.codexPreviousReport = previousReport
         }
         return !droppedKeys.isEmpty || stripped
+    }
+
+    private static func previousReportForCatchUp(
+        cache: CostUsageCache,
+        calendar: Calendar) -> CostUsageCodexPreviousReport?
+    {
+        guard let sinceKey = cache.scanSinceKey,
+              let untilKey = cache.scanUntilKey,
+              let since = dayDate(sinceKey, calendar: calendar),
+              let until = dayDate(untilKey, calendar: calendar)
+        else { return nil }
+        let range = CostUsageScanner.CostUsageDayRange(
+            since: since,
+            until: until,
+            calendar: calendar)
+        let report = CostUsageScanner.buildCodexReportFromCache(cache: cache, range: range)
+        return CostUsageCodexPreviousReport(report: report, cache: cache)
+    }
+
+    private static func dayDate(_ key: String, calendar: Calendar) -> Date? {
+        let parts = key.split(separator: "-", omittingEmptySubsequences: true)
+        guard parts.count == 3,
+              let year = Int(parts[0]),
+              let month = Int(parts[1]),
+              let day = Int(parts[2])
+        else { return nil }
+        var components = DateComponents()
+        components.calendar = calendar
+        components.timeZone = calendar.timeZone
+        components.year = year
+        components.month = month
+        components.day = day
+        return calendar.date(from: components)
     }
 
     /// Removes discovery records for session files that were pruned from `files` so the
