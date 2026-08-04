@@ -151,11 +151,7 @@ enum CostUsageCacheIO {
                 previousArtifactBytes: Self.fileSize(at: url))
         }
 
-        var data = (try? JSONEncoder().encode(cache)) ?? Data()
-        if data.count > maxCacheBytes {
-            Self.stripCodexTokenDetailForBudget(&cache)
-            data = (try? JSONEncoder().encode(cache)) ?? Data()
-        }
+        let data = (try? JSONEncoder().encode(cache)) ?? Data()
         try? data.write(to: url, options: [.atomic])
     }
 
@@ -163,8 +159,10 @@ enum CostUsageCacheIO {
     /// The all-time accumulation lives in per-file entries whose usage days fall outside the
     /// current scan window; the current report never reads those entries, and dropping them
     /// (with the same day-aggregate subtraction the scanner uses) keeps the artifact from
-    /// growing without limit. Priority turn IDs outside the window are only consulted for
-    /// in-window rows, so they are trimmed to the window as well.
+    /// growing without limit. Entries that are still resuming or that in-window forks depend
+    /// on are preserved so bounded scans and fork baselines keep making progress. Priority
+    /// turn IDs outside the window are only consulted for in-window rows, so they are trimmed
+    /// to the window as well.
     private static func pruneCodexCacheForBudget(
         _ cache: inout CostUsageCache,
         maxCacheBytes: Int,
@@ -176,9 +174,18 @@ enum CostUsageCacheIO {
             || (previousArtifactBytes ?? 0) > Int64(maxCacheBytes)
         guard overBudget else { return }
 
+        let neededParentSessionIDs = Set(cache.files.values.compactMap(\.forkedFromId))
         let outOfWindowKeys = cache.files.keys.filter { key in
             guard let usage = cache.files[key] else { return false }
-            return !usage.touchesCodexScanWindow(sinceKey: sinceKey, untilKey: untilKey)
+            if usage.touchesCodexScanWindow(sinceKey: sinceKey, untilKey: untilKey) { return false }
+            if usage.codexScanComplete == false { return false }
+            if usage.codexJSONLResumeState != nil { return false }
+            if usage.codexScanFileId != nil { return false }
+            if usage.hasBufferedCodexForkRetryLines { return false }
+            if let sessionId = usage.sessionId, neededParentSessionIDs.contains(sessionId) {
+                return false
+            }
+            return true
         }
         for key in outOfWindowKeys {
             guard let old = cache.files.removeValue(forKey: key) else { continue }
@@ -199,44 +206,6 @@ enum CostUsageCacheIO {
             let trimmed = turnKeys.filter { inWindow($0.key) }
             cache.codexPriorityTurnKeys = trimmed.isEmpty ? nil : trimmed
         }
-    }
-
-    /// Last-resort trim for in-window corpora that still exceed the byte budget. Strips
-    /// fork-baseline token snapshots and divergence bookkeeping from files whose newest
-    /// usage day is outside the most recent week. These fields are optimizations with
-    /// on-disk re-read fallbacks; day aggregates, totals, rows, and cost data are kept,
-    /// so reports and pricing remain correct.
-    private static func stripCodexTokenDetailForBudget(_ cache: inout CostUsageCache) {
-        guard let untilKey = cache.scanUntilKey,
-              let cutoffKey = dayKey(untilKey, addingDays: -7)
-        else { return }
-        for (path, var usage) in cache.files {
-            let newestDay = usage.days.keys.max()
-            guard let newestDay, newestDay < cutoffKey else { continue }
-            usage.codexTokenSnapshots = nil
-            usage.codexTokenCheckpoints = nil
-            usage.codexTokenTimestampsMonotonic = nil
-            usage.codexTokenIndexAnchor = nil
-            usage.seenRawTotals = nil
-            usage.hasDivergentTotals = nil
-            usage.hasInterleavedTotals = nil
-            usage.lastRawTotalsBaseline = nil
-            usage.lastRawTotalsWatermark = nil
-            cache.files[path] = usage
-        }
-    }
-
-    private static func dayKey(_ key: String, addingDays days: Int) -> String? {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone.current
-        let formatter = DateFormatter()
-        formatter.calendar = calendar
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
-        guard let date = formatter.date(from: key),
-              let shifted = calendar.date(byAdding: .day, value: days, to: date)
-        else { return nil }
-        return formatter.string(from: shifted)
     }
 
     private static func fileSize(at url: URL) -> Int64? {

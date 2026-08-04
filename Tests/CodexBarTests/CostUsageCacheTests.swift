@@ -408,32 +408,37 @@ struct CostUsageCacheTests {
     }
 
     @Test
-    func `over budget save strips stale token snapshots but keeps recent ones`() throws {
+    func `save preserves out-of-window fork parents during budget pruning`() throws {
         let root = try self.makeTemporaryCacheRoot()
         defer { try? FileManager.default.removeItem(at: root) }
 
         var cache = CostUsageCache()
         cache.scanSinceKey = "2026-06-01"
-        cache.scanUntilKey = "2026-06-30"
-        let snapshot = CostUsageCodexTokenSnapshot(
-            timestamp: "2026-06-05T00:00:00Z",
-            last: nil,
-            total: CostUsageCodexTotals(input: 1, cached: 0, output: 0))
-        var old = CostUsageFileUsage(
+        cache.scanUntilKey = "2026-07-01"
+        var parent = CostUsageFileUsage(
             mtimeUnixMs: 1,
             size: 100,
-            days: ["2026-06-05": ["gpt-5.5": [1, 0, 0]]])
-        old.codexTokenSnapshots = [snapshot]
-        old.seenRawTotals = [CostUsageCodexTotals(input: 1, cached: 0, output: 0)]
-        var recent = CostUsageFileUsage(
+            days: ["2026-04-10": ["gpt-5.5": [1, 0, 0]]])
+        parent.sessionId = "parent-session"
+        var unrelated = CostUsageFileUsage(
             mtimeUnixMs: 1,
             size: 100,
-            days: ["2026-06-28": ["gpt-5.5": [1, 0, 0]]])
-        recent.codexTokenSnapshots = [snapshot]
-        cache.files = ["/sessions/old.jsonl": old, "/sessions/recent.jsonl": recent]
+            days: ["2026-04-11": ["gpt-5.5": [1, 0, 0]]])
+        unrelated.sessionId = "unrelated-session"
+        var child = CostUsageFileUsage(
+            mtimeUnixMs: 1,
+            size: 100,
+            days: ["2026-06-20": ["gpt-5.5": [1, 0, 0]]])
+        child.forkedFromId = "parent-session"
+        cache.files = [
+            "/sessions/parent.jsonl": parent,
+            "/sessions/unrelated.jsonl": unrelated,
+            "/sessions/child.jsonl": child,
+        ]
         cache.days = [
-            "2026-06-05": ["gpt-5.5": [1, 0, 0]],
-            "2026-06-28": ["gpt-5.5": [1, 0, 0]],
+            "2026-04-10": ["gpt-5.5": [1, 0, 0]],
+            "2026-04-11": ["gpt-5.5": [1, 0, 0]],
+            "2026-06-20": ["gpt-5.5": [1, 0, 0]],
         ]
 
         CostUsageCacheIO.save(
@@ -441,17 +446,66 @@ struct CostUsageCacheTests {
             cache: cache,
             cacheRoot: root,
             producerKey: "codex:cu:p1111111111111111",
-            maxCacheBytes: 64,
-            maxCacheEntries: 100)
+            maxCacheEntries: 2)
 
         let loaded = CostUsageCacheIO.load(
             provider: .codex,
             cacheRoot: root,
             producerKey: "codex:cu:p1111111111111111")
-        #expect(loaded.files["/sessions/old.jsonl"]?.codexTokenSnapshots == nil)
-        #expect(loaded.files["/sessions/old.jsonl"]?.seenRawTotals == nil)
-        #expect(loaded.files["/sessions/recent.jsonl"]?.codexTokenSnapshots == [snapshot])
-        #expect(loaded.days["2026-06-05"]?["gpt-5.5"] == [1, 0, 0])
+        #expect(loaded.files["/sessions/parent.jsonl"] != nil)
+        #expect(loaded.files["/sessions/unrelated.jsonl"] == nil)
+        #expect(loaded.files["/sessions/child.jsonl"] != nil)
+        #expect(loaded.days["2026-04-10"]?["gpt-5.5"] == [1, 0, 0])
+        #expect(loaded.days["2026-04-11"] == nil)
+    }
+
+    func `save preserves out-of-window entries that are still resuming`() throws {
+        let root = try self.makeTemporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        var cache = CostUsageCache()
+        cache.scanSinceKey = "2026-06-01"
+        cache.scanUntilKey = "2026-07-01"
+        var incomplete = CostUsageFileUsage(
+            mtimeUnixMs: 1,
+            size: 100,
+            days: ["2026-04-10": ["gpt-5.5": [1, 0, 0]]])
+        incomplete.codexScanComplete = false
+        var inProgress = CostUsageFileUsage(
+            mtimeUnixMs: 1,
+            size: 100,
+            days: ["2026-04-11": ["gpt-5.5": [1, 0, 0]]])
+        inProgress.codexScanFileId = "scan-id"
+        var settled = CostUsageFileUsage(
+            mtimeUnixMs: 1,
+            size: 100,
+            days: ["2026-04-12": ["gpt-5.5": [1, 0, 0]]])
+        cache.files = [
+            "/sessions/incomplete.jsonl": incomplete,
+            "/sessions/in-progress.jsonl": inProgress,
+            "/sessions/settled.jsonl": settled,
+        ]
+        cache.days = [
+            "2026-04-10": ["gpt-5.5": [1, 0, 0]],
+            "2026-04-11": ["gpt-5.5": [1, 0, 0]],
+            "2026-04-12": ["gpt-5.5": [1, 0, 0]],
+        ]
+
+        CostUsageCacheIO.save(
+            provider: .codex,
+            cache: cache,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111",
+            maxCacheEntries: 2)
+
+        let loaded = CostUsageCacheIO.load(
+            provider: .codex,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111")
+        #expect(loaded.files["/sessions/incomplete.jsonl"] != nil)
+        #expect(loaded.files["/sessions/in-progress.jsonl"] != nil)
+        #expect(loaded.files["/sessions/settled.jsonl"] == nil)
+        #expect(loaded.days["2026-04-12"] == nil)
     }
 
     private func makeTemporaryCacheRoot() throws -> URL {
