@@ -158,6 +158,9 @@ enum UsagePaceText {
         guard provider == .codex || provider == .claude || provider == .ollama || provider == .antigravity ||
             provider == .kimi || provider == .notion
         else { return nil }
+        if provider == .codex, window.windowMinutes != CodexConsumerProjection.sessionWindowMinutes {
+            return nil
+        }
         if provider == .ollama, window.windowMinutes == nil {
             return nil
         }
