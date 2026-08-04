@@ -964,6 +964,8 @@ struct CostUsageCacheTests {
         #expect(survivor.codexTokenSnapshots == nil)
         #expect(survivor.codexRows == nil)
         #expect(survivor.parsedBytes == 0)
+        #expect(survivor.codexScanComplete == false)
+        #expect(survivor.codexScanFileId == nil)
         #expect(survivor.days["2026-06-20"]?["gpt-5.5"] == [1, 0, 0])
         #expect(loaded.codexScanCatchUpPending == true)
     }

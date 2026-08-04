@@ -403,6 +403,8 @@ enum CostUsageCacheIO {
         usage.lastRawTotalsWatermark = nil
         usage.parsedBytes = 0
         usage.codexCostCacheComplete = nil
+        usage.codexScanComplete = false
+        usage.codexScanFileId = nil
         cache.files[key] = usage
     }
 
