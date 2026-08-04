@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import CodexBarCore
 
+// swiftlint:disable:next type_body_length
 struct CostUsageCacheTests {
     @Test
     func `legacy codex token cache decodes without reasoning while current rows round trip it`() throws {
@@ -788,6 +789,126 @@ struct CostUsageCacheTests {
         #expect(loaded.files["/sessions/recent.jsonl"] != nil)
         #expect(loaded.days["2026-06-05"] == nil)
         #expect(loaded.days["2026-06-28"]?["gpt-5.5"] == [1, 0, 0])
+    }
+
+    @Test
+    func `save marks trimmed caches as needing catch up`() throws {
+        let root = try self.makeTemporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        var cache = CostUsageCache()
+        cache.scanSinceKey = "2026-06-01"
+        cache.scanUntilKey = "2026-07-01"
+        cache.lastScanUnixMs = 123_456
+        let snapshots = (0..<300).map { index in
+            CostUsageCodexTokenSnapshot(
+                timestamp: "2026-06-0\(index % 9)T00:00:0\(index % 10)Z",
+                last: nil,
+                total: CostUsageCodexTotals(input: index, cached: 0, output: 0))
+        }
+        var older = CostUsageFileUsage(
+            mtimeUnixMs: 1,
+            size: 100,
+            days: ["2026-06-05": ["gpt-5.5": [1, 0, 0]]])
+        older.codexTokenSnapshots = snapshots
+        var recent = CostUsageFileUsage(
+            mtimeUnixMs: 1,
+            size: 100,
+            days: ["2026-06-28": ["gpt-5.5": [1, 0, 0]]])
+        recent.codexTokenSnapshots = snapshots
+        cache.files = [
+            "/sessions/older.jsonl": older,
+            "/sessions/recent.jsonl": recent,
+        ]
+        cache.days = [
+            "2026-06-05": ["gpt-5.5": [1, 0, 0]],
+            "2026-06-28": ["gpt-5.5": [1, 0, 0]],
+        ]
+
+        CostUsageCacheIO.save(
+            provider: .codex,
+            cache: cache,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111",
+            requestedScanWindow: (sinceKey: "2026-06-01", untilKey: "2026-07-01"),
+            maxCacheBytes: 30000,
+            maxCacheEntries: 100)
+
+        let loaded = CostUsageCacheIO.load(
+            provider: .codex,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111")
+        #expect(loaded.codexScanCatchUpPending == true)
+        #expect(loaded.lastScanUnixMs == 0)
+    }
+
+    @Test
+    func `save prunes discovery records with removed sessions`() throws {
+        let root = try self.makeTemporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        var cache = CostUsageCache()
+        cache.scanSinceKey = "2026-06-01"
+        cache.scanUntilKey = "2026-07-01"
+        var stale = CostUsageFileUsage(
+            mtimeUnixMs: 1,
+            size: 100,
+            days: ["2026-04-10": ["gpt-5.5": [1, 0, 0]]])
+        stale.sessionId = "stale-session"
+        var inWindow = CostUsageFileUsage(
+            mtimeUnixMs: 1,
+            size: 100,
+            days: ["2026-06-20": ["gpt-5.5": [1, 0, 0]]])
+        inWindow.sessionId = "live-session"
+        cache.files = [
+            "/sessions/stale.jsonl": stale,
+            "/sessions/in-window.jsonl": inWindow,
+        ]
+        cache.days = [
+            "2026-04-10": ["gpt-5.5": [1, 0, 0]],
+            "2026-06-20": ["gpt-5.5": [1, 0, 0]],
+        ]
+        cache.codexSessionDiscovery = CostUsageCodexSessionDiscovery(
+            roots: ["/sessions"],
+            generation: nil,
+            directoryStamps: [:],
+            directoryPaths: [],
+            nextDirectoryIndex: 0,
+            filePaths: ["/sessions/stale.jsonl", "/sessions/in-window.jsonl"],
+            nextFileIndex: 0,
+            fileStamps: [
+                "/sessions/stale.jsonl": .init(mtimeUnixMs: 1, size: 100, fileId: nil),
+                "/sessions/in-window.jsonl": .init(mtimeUnixMs: 1, size: 100, fileId: nil),
+            ],
+            headScan: nil,
+            filePathBySessionId: [
+                "stale-session": "/sessions/stale.jsonl",
+                "live-session": "/sessions/in-window.jsonl",
+            ],
+            missingSessionIds: ["stale-session"],
+            pendingSessionIds: [],
+            validationDirectoryIndex: 0,
+            isComplete: true)
+
+        CostUsageCacheIO.save(
+            provider: .codex,
+            cache: cache,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111",
+            requestedScanWindow: (sinceKey: "2026-06-01", untilKey: "2026-07-01"),
+            maxCacheEntries: 1)
+
+        let loaded = CostUsageCacheIO.load(
+            provider: .codex,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111")
+        let discovery = try #require(loaded.codexSessionDiscovery)
+        #expect(discovery.filePaths == ["/sessions/in-window.jsonl"])
+        #expect(discovery.fileStamps["/sessions/stale.jsonl"] == nil)
+        #expect(discovery.filePathBySessionId["stale-session"] == nil)
+        #expect(discovery.filePathBySessionId["live-session"] != nil)
+        #expect(discovery.missingSessionIds == [])
+        #expect(discovery.isComplete == false)
     }
 
     private func makeTemporaryCacheRoot() throws -> URL {

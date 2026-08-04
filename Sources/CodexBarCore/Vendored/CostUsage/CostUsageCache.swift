@@ -241,9 +241,18 @@ enum CostUsageCacheIO {
             guard let sessionId = cache.files[key]?.sessionId else { return true }
             return !survivingParentSessionIDs.contains(sessionId)
         }
+        var removedPaths: Set<String> = []
+        var removedSessionIDs: Set<String> = []
         for key in outOfWindowKeys {
             guard let old = cache.files.removeValue(forKey: key) else { continue }
+            removedPaths.insert(key)
+            if let sessionId = old.sessionId {
+                removedSessionIDs.insert(sessionId)
+            }
             CostUsageScanner.applyFileDays(cache: &cache, fileDays: old.days, sign: -1)
+        }
+        if !removedPaths.isEmpty {
+            Self.pruneDiscovery(&cache, removedPaths: removedPaths, removedSessionIDs: removedSessionIDs)
         }
         if !outOfWindowKeys.isEmpty, requestedScanWindow != nil {
             // Entries outside the requested window are gone; narrow persisted coverage so a
@@ -315,11 +324,48 @@ enum CostUsageCacheIO {
             droppedKeys.append(candidate.key)
             estimated -= Self.estimatedFileUsageBytes(candidate.usage)
         }
+        var removedPaths: Set<String> = []
+        var removedSessionIDs: Set<String> = []
         for key in droppedKeys {
             guard let old = cache.files.removeValue(forKey: key) else { continue }
+            removedPaths.insert(key)
+            if let sessionId = old.sessionId {
+                removedSessionIDs.insert(sessionId)
+            }
             CostUsageScanner.applyFileDays(cache: &cache, fileDays: old.days, sign: -1)
         }
+        if !removedPaths.isEmpty {
+            Self.pruneDiscovery(&cache, removedPaths: removedPaths, removedSessionIDs: removedSessionIDs)
+            // Dropped in-window entries would under-report until the next refresh; mark the
+            // cache as needing catch-up so a cold restart re-scans them promptly.
+            cache.codexScanCatchUpPending = true
+            cache.lastScanUnixMs = 0
+        }
         return !droppedKeys.isEmpty
+    }
+
+    /// Removes discovery records for session files that were pruned from `files` so the
+    /// persisted discovery state stays bounded with the artifact.
+    private static func pruneDiscovery(
+        _ cache: inout CostUsageCache,
+        removedPaths: Set<String>,
+        removedSessionIDs: Set<String>)
+    {
+        guard var discovery = cache.codexSessionDiscovery, !removedPaths.isEmpty else { return }
+        discovery.filePaths.removeAll { removedPaths.contains($0) }
+        discovery.fileStamps = discovery.fileStamps.filter { !removedPaths.contains($0.key) }
+        discovery.filePathBySessionId = discovery.filePathBySessionId.filter {
+            !removedSessionIDs.contains($0.key)
+        }
+        discovery.missingSessionIds.removeAll { removedSessionIDs.contains($0) }
+        discovery.pendingSessionIds.removeAll { removedSessionIDs.contains($0) }
+        if let head = discovery.headScan, removedPaths.contains(head.path) {
+            discovery.headScan = nil
+        }
+        // A compacted discovery is no longer complete; the scanner re-enqueues current files
+        // under its bounded budget instead of trusting stale coverage.
+        discovery.isComplete = false
+        cache.codexSessionDiscovery = discovery
     }
 
     /// Cheap upper-bound-ish estimate of the encoded JSON payload, used to decide whether to
@@ -340,6 +386,15 @@ enum CostUsageCacheIO {
             for (key, value) in turnKeys {
                 bytes += key.count + value.count + 48
             }
+        }
+        if let discovery = cache.codexSessionDiscovery {
+            bytes += discovery.filePaths.count * 110
+            bytes += discovery.fileStamps.count * 100
+            bytes += discovery.filePathBySessionId.count * 80
+            bytes += discovery.missingSessionIds.count * 48
+            bytes += discovery.pendingSessionIds.count * 48
+            bytes += discovery.directoryPaths.count * 90
+            bytes += discovery.directoryStamps.count * 70
         }
         return bytes
     }
