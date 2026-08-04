@@ -738,6 +738,58 @@ struct CostUsageCacheTests {
         #expect(loaded.days["2026-04-10"]?["gpt-5.5"] == [1, 0, 0])
     }
 
+    @Test
+    func `save drops oldest in-window entries when the window corpus exceeds the byte budget`() throws {
+        let root = try self.makeTemporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        var cache = CostUsageCache()
+        cache.scanSinceKey = "2026-06-01"
+        cache.scanUntilKey = "2026-07-01"
+        let snapshots = (0..<300).map { index in
+            CostUsageCodexTokenSnapshot(
+                timestamp: "2026-06-0\(index % 9)T00:00:0\(index % 10)Z",
+                last: nil,
+                total: CostUsageCodexTotals(input: index, cached: 0, output: 0))
+        }
+        var older = CostUsageFileUsage(
+            mtimeUnixMs: 1,
+            size: 100,
+            days: ["2026-06-05": ["gpt-5.5": [1, 0, 0]]])
+        older.codexTokenSnapshots = snapshots
+        var recent = CostUsageFileUsage(
+            mtimeUnixMs: 1,
+            size: 100,
+            days: ["2026-06-28": ["gpt-5.5": [1, 0, 0]]])
+        recent.codexTokenSnapshots = snapshots
+        cache.files = [
+            "/sessions/older.jsonl": older,
+            "/sessions/recent.jsonl": recent,
+        ]
+        cache.days = [
+            "2026-06-05": ["gpt-5.5": [1, 0, 0]],
+            "2026-06-28": ["gpt-5.5": [1, 0, 0]],
+        ]
+
+        CostUsageCacheIO.save(
+            provider: .codex,
+            cache: cache,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111",
+            requestedScanWindow: (sinceKey: "2026-06-01", untilKey: "2026-07-01"),
+            maxCacheBytes: 30000,
+            maxCacheEntries: 100)
+
+        let loaded = CostUsageCacheIO.load(
+            provider: .codex,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111")
+        #expect(loaded.files["/sessions/older.jsonl"] == nil)
+        #expect(loaded.files["/sessions/recent.jsonl"] != nil)
+        #expect(loaded.days["2026-06-05"] == nil)
+        #expect(loaded.days["2026-06-28"]?["gpt-5.5"] == [1, 0, 0])
+    }
+
     private func makeTemporaryCacheRoot() throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("codexbar-cost-cache-\(UUID().uuidString)", isDirectory: true)

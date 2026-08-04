@@ -147,36 +147,54 @@ enum CostUsageCacheIO {
         cache.producerKey = producerKey ?? self.currentProducerKey(provider: provider)
         cache.timeZoneIdentifier = calendar.timeZone.identifier
 
-        var pruned = false
         if provider == .codex {
-            pruned = Self.pruneCodexCacheForBudget(
+            Self.pruneCodexCacheForBudget(
                 &cache,
                 requestedScanWindow: requestedScanWindow,
+                calendar: calendar,
                 maxCacheBytes: maxCacheBytes,
                 maxCacheEntries: maxCacheEntries,
                 previousArtifactBytes: Self.fileSize(at: url))
+            // Estimate before materializing the document so a refresh that grew the cache
+            // stays bounded even when the previous artifact was within budget.
+            if Self.estimatedCodexCacheBytes(cache) > maxCacheBytes {
+                Self.pruneCodexCacheForBudget(
+                    &cache,
+                    requestedScanWindow: requestedScanWindow,
+                    calendar: calendar,
+                    maxCacheBytes: maxCacheBytes,
+                    maxCacheEntries: maxCacheEntries,
+                    previousArtifactBytes: nil,
+                    force: true)
+                Self.trimInWindowEntriesForBudget(
+                    &cache,
+                    calendar: calendar,
+                    maxCacheBytes: maxCacheBytes)
+            }
         }
 
         var data = (try? JSONEncoder().encode(cache)) ?? Data()
-        if !pruned, provider == .codex, data.count > maxCacheBytes {
-            // The candidate artifact crossed the byte budget during this refresh even though
-            // the previous artifact was within budget (e.g. per-file detail grew faster than
-            // the scan window). Prune out-of-window entries now so the oversized document is
-            // not written for the next refresh to decode.
-            pruned = Self.pruneCodexCacheForBudget(
+        if provider == .codex, data.count > maxCacheBytes {
+            // The estimate underestimated the payload; prune again so the artifact stays
+            // loadable and the next refresh never hits the load-refusal rebuild loop.
+            Self.pruneCodexCacheForBudget(
                 &cache,
                 requestedScanWindow: requestedScanWindow,
+                calendar: calendar,
                 maxCacheBytes: maxCacheBytes,
                 maxCacheEntries: maxCacheEntries,
                 previousArtifactBytes: nil,
                 force: true)
-            if pruned {
-                data = (try? JSONEncoder().encode(cache)) ?? Data()
-            }
+            Self.trimInWindowEntriesForBudget(
+                &cache,
+                calendar: calendar,
+                maxCacheBytes: maxCacheBytes)
+            data = (try? JSONEncoder().encode(cache)) ?? Data()
         }
         try? data.write(to: url, options: [.atomic])
     }
 
+    // swiftlint:disable function_parameter_count
     /// Bounds the Codex cache artifact when the corpus has outgrown the persistence budget.
     /// The all-time accumulation lives in per-file entries whose usage days fall outside the
     /// current scan window; the current report never reads those entries, and dropping them
@@ -188,6 +206,7 @@ enum CostUsageCacheIO {
     private static func pruneCodexCacheForBudget(
         _ cache: inout CostUsageCache,
         requestedScanWindow: (sinceKey: String, untilKey: String)?,
+        calendar: Calendar,
         maxCacheBytes: Int,
         maxCacheEntries: Int,
         previousArtifactBytes: Int64?,
@@ -208,7 +227,9 @@ enum CostUsageCacheIO {
             if usage.codexScanComplete == false { return false }
             if usage.codexJSONLResumeState != nil { return false }
             if usage.hasBufferedCodexForkRetryLines { return false }
-            if Self.isRecentlyActive(usage, sinceKey: sinceKey, untilKey: untilKey) { return false }
+            if Self.isRecentlyActive(usage, calendar: calendar, sinceKey: sinceKey, untilKey: untilKey) {
+                return false
+            }
             return true
         }
         // Protect parents referenced by entries that survive pruning. A stale child that is
@@ -251,19 +272,123 @@ enum CostUsageCacheIO {
         return !outOfWindowKeys.isEmpty || trimmedTurnIDs
     }
 
+    // swiftlint:enable function_parameter_count
+
+    /// Drops the oldest completed in-window entries until the estimated payload fits the
+    /// byte budget. This is the last line of defense for window-heavy corpora: dropping
+    /// entries (with the same day-aggregate subtraction the scanner uses) keeps the artifact
+    /// loadable, so the load cap never rejects what `save` can produce and refreshes cannot
+    /// fall into a permanent full-rebuild loop. Dropped in-window files are rediscovered and
+    /// rescanned by the bounded scanner on later refreshes.
+    private static func trimInWindowEntriesForBudget(
+        _ cache: inout CostUsageCache,
+        calendar: Calendar,
+        maxCacheBytes: Int) -> Bool
+    {
+        guard let sinceKey = cache.scanSinceKey, let untilKey = cache.scanUntilKey else { return false }
+        let protectedParentIDs = Set(cache.files.values.compactMap(\.forkedFromId))
+        let candidates: [(key: String, usage: CostUsageFileUsage)] = cache.files.compactMap { key, usage in
+            let inWindow = usage.touchesCodexScanWindow(sinceKey: sinceKey, untilKey: untilKey)
+                || Self.isRecentlyActive(usage, calendar: calendar, sinceKey: sinceKey, untilKey: untilKey)
+            guard inWindow else { return nil }
+            if usage.codexScanComplete == false { return nil }
+            if usage.codexJSONLResumeState != nil { return nil }
+            if usage.hasBufferedCodexForkRetryLines { return nil }
+            if let sessionId = usage.sessionId, protectedParentIDs.contains(sessionId) { return nil }
+            return (key, usage)
+        }
+        guard !candidates.isEmpty else { return false }
+
+        // Drop oldest usage first so recent sessions keep their fork-baseline detail.
+        let oldestFirst = candidates.sorted { lhs, rhs in
+            let lhsDay = lhs.usage.days.keys.min() ?? "9999"
+            let rhsDay = rhs.usage.days.keys.min() ?? "9999"
+            return lhsDay < rhsDay
+        }
+        var estimated = Self.estimatedCodexCacheBytes(cache)
+        let target = max(1, (maxCacheBytes * 3) / 4)
+        var droppedKeys: [String] = []
+        for (index, candidate) in oldestFirst.enumerated() where estimated > target {
+            // Always keep at least the newest entry so the artifact retains window data even
+            // when a single entry alone exceeds the target.
+            guard index < oldestFirst.count - 1 else { break }
+            droppedKeys.append(candidate.key)
+            estimated -= Self.estimatedFileUsageBytes(candidate.usage)
+        }
+        for key in droppedKeys {
+            guard let old = cache.files.removeValue(forKey: key) else { continue }
+            CostUsageScanner.applyFileDays(cache: &cache, fileDays: old.days, sign: -1)
+        }
+        return !droppedKeys.isEmpty
+    }
+
+    /// Cheap upper-bound-ish estimate of the encoded JSON payload, used to decide whether to
+    /// prune before materializing the document. Deliberately conservative per-entry overhead
+    /// so the estimate triggers at or before the real byte budget.
+    private static func estimatedCodexCacheBytes(_ cache: CostUsageCache) -> Int {
+        var bytes = 4096
+        bytes += cache.files.count * 160
+        for usage in cache.files.values {
+            bytes += Self.estimatedFileUsageBytes(usage)
+        }
+        if let idsByDay = cache.codexPriorityTurnIDsByDay {
+            for (day, ids) in idsByDay {
+                bytes += day.count + 32 + ids.count * 48
+            }
+        }
+        if let turnKeys = cache.codexPriorityTurnKeys {
+            for (key, value) in turnKeys {
+                bytes += key.count + value.count + 48
+            }
+        }
+        return bytes
+    }
+
+    private static func estimatedFileUsageBytes(_ usage: CostUsageFileUsage) -> Int {
+        var bytes = 240
+        for (day, models) in usage.days {
+            bytes += day.count + 32
+            for (model, packed) in models {
+                bytes += model.count + 40 + packed.count * 10
+            }
+        }
+        bytes += (usage.codexRows?.count ?? 0) * 140
+        bytes += (usage.codexTurnIDs?.count ?? 0) * 56
+        bytes += (usage.codexTokenSnapshots?.count ?? 0) * 96
+        bytes += (usage.codexTokenCheckpoints?.count ?? 0) * 84
+        bytes += (usage.seenRawTotals?.count ?? 0) * 72
+        for map in [
+            usage.codexCostNanos,
+            usage.codexPrioritySurchargeNanos,
+            usage.codexStandardCostNanos,
+            usage.codexPriorityCostNanos,
+        ].compactMap(\.self) {
+            for (day, values) in map {
+                bytes += day.count + 32 + values.count * 72
+            }
+        }
+        for map in [usage.codexStandardTokens, usage.codexPriorityTokens].compactMap(\.self) {
+            for (day, values) in map {
+                bytes += day.count + 32 + values.count * 40
+            }
+        }
+        return bytes
+    }
+
     /// A session file whose modification time falls inside the scan window is active even
     /// when it has produced no usage rows yet (e.g. a session started today); dropping it
     /// would make every refresh rediscover and fully parse it.
     private static func isRecentlyActive(
         _ usage: CostUsageFileUsage,
+        calendar: Calendar,
         sinceKey: String,
         untilKey: String) -> Bool
     {
         guard usage.mtimeUnixMs > 0 else { return false }
-        let calendar = CostUsageScanner.CostUsageDayRange.localGregorianCalendar(matching: .current)
+        let scanCalendar = CostUsageScanner.CostUsageDayRange.localGregorianCalendar(matching: calendar)
         let mtimeDayKey = CostUsageScanner.CostUsageDayRange.dayKey(
             from: Date(timeIntervalSince1970: TimeInterval(usage.mtimeUnixMs) / 1000),
-            calendar: calendar)
+            calendar: scanCalendar)
         return CostUsageScanner.CostUsageDayRange.isInRange(
             dayKey: mtimeDayKey,
             since: sinceKey,
