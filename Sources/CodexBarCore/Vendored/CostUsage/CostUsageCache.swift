@@ -5,7 +5,8 @@ enum CostUsageCacheIO {
     /// scanned session file plus per-file detail (rows, turn IDs, token snapshots) and is
     /// decoded and encoded as a single JSON document on every scan, so an unbounded corpus
     /// can otherwise grow it to multiple gigabytes. These bounds mirror the scan-side byte
-    /// budgets; in-window data is never dropped, so reports stay complete.
+    /// budgets. In-window entries are only dropped by the last-resort budget trim, which
+    /// marks the artifact for catch-up so reports recover on the next refresh.
     static let maxCacheFileBytes: Int = 256 * 1024 * 1024
     static let maxCacheFileEntries: Int = 25000
     /// Artifacts above this size are refused at load time and rebuilt by the bounded
@@ -334,14 +335,24 @@ enum CostUsageCacheIO {
             }
             CostUsageScanner.applyFileDays(cache: &cache, fileDays: old.days, sign: -1)
         }
+        // A sole in-window entry can still exceed the budget alone. Strip its rebuildable
+        // detail (keeping identity, day aggregates, totals, and cost data) and force a
+        // bounded full re-read, so the persisted artifact always fits the load cap.
+        var stripped = false
+        if estimated > target, let survivor = oldestFirst.last {
+            Self.stripFileUsageDetail(&cache, key: survivor.key)
+            stripped = true
+        }
         if !removedPaths.isEmpty {
             Self.pruneDiscovery(&cache, removedPaths: removedPaths, removedSessionIDs: removedSessionIDs)
-            // Dropped in-window entries would under-report until the next refresh; mark the
-            // cache as needing catch-up so a cold restart re-scans them promptly.
+        }
+        if !removedPaths.isEmpty || stripped {
+            // Dropped or stripped in-window entries would under-report until the next refresh;
+            // mark the cache as needing catch-up so a cold restart re-scans them promptly.
             cache.codexScanCatchUpPending = true
             cache.lastScanUnixMs = 0
         }
-        return !droppedKeys.isEmpty
+        return !droppedKeys.isEmpty || stripped
     }
 
     /// Removes discovery records for session files that were pruned from `files` so the
@@ -362,10 +373,37 @@ enum CostUsageCacheIO {
         if let head = discovery.headScan, removedPaths.contains(head.path) {
             discovery.headScan = nil
         }
+        // Cursors may point past the shortened arrays; reset them so the next discovery
+        // pass re-enqueues remaining files instead of finishing immediately.
+        discovery.nextFileIndex = 0
+        discovery.nextDirectoryIndex = 0
+        discovery.validationDirectoryIndex = 0
         // A compacted discovery is no longer complete; the scanner re-enqueues current files
         // under its bounded budget instead of trusting stale coverage.
         discovery.isComplete = false
         cache.codexSessionDiscovery = discovery
+    }
+
+    /// Strips rebuildable per-file detail from the sole oversized survivor so the artifact
+    /// stays within the byte budget. Day aggregates, totals, cost data, identity, and fork
+    /// metadata are kept; a zero `parsedBytes` forces a bounded full re-read on the next
+    /// refresh so any rebuilt index covers the whole file.
+    private static func stripFileUsageDetail(_ cache: inout CostUsageCache, key: String) {
+        guard var usage = cache.files[key] else { return }
+        usage.codexRows = nil
+        usage.codexTurnIDs = nil
+        usage.codexTokenSnapshots = nil
+        usage.codexTokenCheckpoints = nil
+        usage.codexTokenTimestampsMonotonic = nil
+        usage.codexTokenIndexAnchor = nil
+        usage.seenRawTotals = nil
+        usage.hasDivergentTotals = nil
+        usage.hasInterleavedTotals = nil
+        usage.lastRawTotalsBaseline = nil
+        usage.lastRawTotalsWatermark = nil
+        usage.parsedBytes = 0
+        usage.codexCostCacheComplete = nil
+        cache.files[key] = usage
     }
 
     /// Cheap upper-bound-ish estimate of the encoded JSON payload, used to decide whether to

@@ -909,6 +909,63 @@ struct CostUsageCacheTests {
         #expect(discovery.filePathBySessionId["live-session"] != nil)
         #expect(discovery.missingSessionIds == [])
         #expect(discovery.isComplete == false)
+        #expect(discovery.nextFileIndex == 0)
+        #expect(discovery.nextDirectoryIndex == 0)
+    }
+
+    @Test
+    func `save strips detail from a sole oversized in-window entry`() throws {
+        let root = try self.makeTemporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        var cache = CostUsageCache()
+        cache.scanSinceKey = "2026-06-01"
+        cache.scanUntilKey = "2026-07-01"
+        var huge = CostUsageFileUsage(
+            mtimeUnixMs: 1,
+            size: 1_000_000,
+            days: ["2026-06-20": ["gpt-5.5": [1, 0, 0]]])
+        huge.sessionId = "huge-session"
+        huge.parsedBytes = 1_000_000
+        huge.codexRows = [
+            CostUsageScanner.CodexUsageRow(
+                day: "2026-06-20",
+                model: "gpt-5.5",
+                turnID: "turn",
+                eventIndex: 1,
+                input: 10,
+                cached: 2,
+                output: 4,
+                reasoning: nil),
+        ]
+        huge.codexTokenSnapshots = (0..<1000).map { index in
+            CostUsageCodexTokenSnapshot(
+                timestamp: "2026-06-20T00:00:0\(index % 10)Z",
+                last: nil,
+                total: CostUsageCodexTotals(input: index, cached: 0, output: 0))
+        }
+        cache.files = ["/sessions/huge.jsonl": huge]
+        cache.days = ["2026-06-20": ["gpt-5.5": [1, 0, 0]]]
+
+        CostUsageCacheIO.save(
+            provider: .codex,
+            cache: cache,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111",
+            requestedScanWindow: (sinceKey: "2026-06-01", untilKey: "2026-07-01"),
+            maxCacheBytes: 30000,
+            maxCacheEntries: 100)
+
+        let loaded = CostUsageCacheIO.load(
+            provider: .codex,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111")
+        let survivor = try #require(loaded.files["/sessions/huge.jsonl"])
+        #expect(survivor.codexTokenSnapshots == nil)
+        #expect(survivor.codexRows == nil)
+        #expect(survivor.parsedBytes == 0)
+        #expect(survivor.days["2026-06-20"]?["gpt-5.5"] == [1, 0, 0])
+        #expect(loaded.codexScanCatchUpPending == true)
     }
 
     private func makeTemporaryCacheRoot() throws -> URL {
