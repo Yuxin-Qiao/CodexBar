@@ -1130,6 +1130,104 @@ struct CostUsageCacheTests {
         #expect(loaded.days["2026-06-20"]?["gpt-5.5"] == [1, 0, 0])
     }
 
+    @Test
+    func `save re-encodes after a forced prune removes out-of-window entries`() throws {
+        let root = try self.makeTemporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        var cache = CostUsageCache()
+        cache.scanSinceKey = "2026-06-01"
+        cache.scanUntilKey = "2026-07-01"
+        var stale = CostUsageFileUsage(
+            mtimeUnixMs: 1,
+            size: 1_000_000,
+            days: ["2026-04-10": ["gpt-5.5": [1, 0, 0]]])
+        stale.sessionId = "stale-session"
+        let longTimestamp = "2026-04-10T00:00:00.000000000Z-\(String(repeating: "x", count: 80))"
+        stale.codexTokenSnapshots = (0..<850).map { index in
+            CostUsageCodexTokenSnapshot(
+                timestamp: "\(longTimestamp)-\(index)",
+                last: nil,
+                total: CostUsageCodexTotals(input: index, cached: 0, output: 0))
+        }
+        var inWindow = CostUsageFileUsage(
+            mtimeUnixMs: 1,
+            size: 100,
+            days: ["2026-06-20": ["gpt-5.5": [1, 0, 0]]])
+        inWindow.sessionId = "live-session"
+        cache.files = [
+            "/sessions/stale.jsonl": stale,
+            "/sessions/in-window.jsonl": inWindow,
+        ]
+        cache.days = [
+            "2026-04-10": ["gpt-5.5": [1, 0, 0]],
+            "2026-06-20": ["gpt-5.5": [1, 0, 0]],
+        ]
+        let maxCacheBytes = 115_000
+
+        CostUsageCacheIO.save(
+            provider: .codex,
+            cache: cache,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111",
+            requestedScanWindow: (sinceKey: "2026-06-01", untilKey: "2026-07-01"),
+            maxCacheBytes: maxCacheBytes,
+            maxCacheEntries: 100)
+
+        let url = CostUsageCacheIO.cacheFileURL(provider: .codex, cacheRoot: root)
+        let artifactBytes = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?
+            .int64Value ?? 0
+        #expect(artifactBytes <= maxCacheBytes)
+        let loaded = CostUsageCacheIO.load(
+            provider: .codex,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111")
+        #expect(loaded.files["/sessions/stale.jsonl"] == nil)
+        #expect(loaded.files["/sessions/in-window.jsonl"] != nil)
+        #expect(loaded.days["2026-04-10"] == nil)
+    }
+
+    @Test
+    func `save clears the active lookback queue when it keeps the artifact over budget`() throws {
+        let root = try self.makeTemporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        var cache = CostUsageCache()
+        cache.scanSinceKey = "2026-06-01"
+        cache.scanUntilKey = "2026-07-01"
+        var inWindow = CostUsageFileUsage(
+            mtimeUnixMs: 1,
+            size: 100,
+            days: ["2026-06-20": ["gpt-5.5": [1, 0, 0]]])
+        inWindow.sessionId = "live-session"
+        cache.files = ["/sessions/in-window.jsonl": inWindow]
+        cache.days = ["2026-06-20": ["gpt-5.5": [1, 0, 0]]]
+        cache.codexActiveLookbackState = CostUsageCodexActiveLookbackState(
+            scanSinceKey: "2026-06-01",
+            rootPaths: ["/sessions"],
+            nextDayKeyByRoot: ["/sessions": "2026-06-02"],
+            completedRootPaths: [],
+            pendingFilePaths: (0..<3000).map { "/sessions/pending-\($0).jsonl" },
+            legacyRecursivePendingRootPaths: [])
+        let maxCacheBytes = 30000
+
+        CostUsageCacheIO.save(
+            provider: .codex,
+            cache: cache,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111",
+            requestedScanWindow: (sinceKey: "2026-06-01", untilKey: "2026-07-01"),
+            maxCacheBytes: maxCacheBytes,
+            maxCacheEntries: 100)
+
+        let loaded = CostUsageCacheIO.load(
+            provider: .codex,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111")
+        #expect(loaded.codexActiveLookbackState == nil)
+        #expect(loaded.files["/sessions/in-window.jsonl"] != nil)
+    }
+
     private func makeTemporaryCacheRoot() throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("codexbar-cost-cache-\(UUID().uuidString)", isDirectory: true)

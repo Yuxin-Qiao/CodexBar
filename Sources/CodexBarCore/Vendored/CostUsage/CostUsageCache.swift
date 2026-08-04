@@ -178,7 +178,7 @@ enum CostUsageCacheIO {
         if provider == .codex, data.count > maxCacheBytes {
             // The estimate underestimated the payload; prune again so the artifact stays
             // loadable and the next refresh never hits the load-refusal rebuild loop.
-            Self.pruneCodexCacheForBudget(
+            _ = Self.pruneCodexCacheForBudget(
                 &cache,
                 requestedScanWindow: requestedScanWindow,
                 calendar: calendar,
@@ -186,12 +186,12 @@ enum CostUsageCacheIO {
                 maxCacheEntries: maxCacheEntries,
                 previousArtifactBytes: nil,
                 force: true)
-            var stripped = true
-            while data.count > maxCacheBytes, stripped {
-                stripped = Self.stripAllInWindowDetailForBudget(&cache, calendar: calendar)
-                if stripped {
-                    data = (try? JSONEncoder().encode(cache)) ?? Data()
-                }
+            data = (try? JSONEncoder().encode(cache)) ?? Data()
+            while data.count > maxCacheBytes {
+                let strippedDetail = Self.stripAllInWindowDetailForBudget(&cache, calendar: calendar)
+                let clearedLookback = Self.clearActiveLookbackForBudget(&cache)
+                guard strippedDetail || clearedLookback else { break }
+                data = (try? JSONEncoder().encode(cache)) ?? Data()
             }
         }
         try? data.write(to: url, options: [.atomic])
@@ -535,7 +535,23 @@ enum CostUsageCacheIO {
             bytes += discovery.directoryPaths.count * 90
             bytes += discovery.directoryStamps.count * 70
         }
+        if let lookback = cache.codexActiveLookbackState {
+            bytes += lookback.pendingFilePaths.count * 110
+            bytes += lookback.legacyRecursivePendingRootPaths.count * 90
+            bytes += lookback.completedRootPaths.count * 90
+            bytes += lookback.rootPaths.count * 90
+            bytes += lookback.nextDayKeyByRoot.count * 60
+        }
         return bytes
+    }
+
+    /// Drops the persisted active-lookback queue when it alone keeps the artifact over
+    /// budget. The queue is rebuildable: the scanner re-discovers pending paths under its
+    /// bounded per-refresh budget on the next scan.
+    private static func clearActiveLookbackForBudget(_ cache: inout CostUsageCache) -> Bool {
+        guard cache.codexActiveLookbackState != nil else { return false }
+        cache.codexActiveLookbackState = nil
+        return true
     }
 
     private static func estimatedFileUsageBytes(_ usage: CostUsageFileUsage) -> Int {
