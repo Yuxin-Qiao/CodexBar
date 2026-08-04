@@ -259,6 +259,48 @@ struct OpenRouterUsageStatsTests {
     }
 
     @Test
+    func `fetch usage treats negative server remaining as exhausted quota`() async throws {
+        let registered = URLProtocol.registerClass(OpenRouterStubURLProtocol.self)
+        defer {
+            if registered {
+                URLProtocol.unregisterClass(OpenRouterStubURLProtocol.self)
+            }
+            OpenRouterStubURLProtocol.handler = nil
+        }
+
+        OpenRouterStubURLProtocol.handler = { request in
+            guard let url = request.url else { throw URLError(.badURL) }
+            switch url.path {
+            case "/api/v1/credits":
+                let body = #"{"data":{"total_credits":100,"total_usage":40}}"#
+                return Self.makeResponse(url: url, body: body, statusCode: 200)
+            case "/api/v1/key":
+                let body = #"""
+                {"data":{
+                  "limit":500,
+                  "limit_remaining":-5,
+                  "limit_reset":"monthly",
+                  "usage":433.286754736,
+                  "usage_monthly":45.457405021
+                }}
+                """#
+                return Self.makeResponse(url: url, body: body, statusCode: 200)
+            default:
+                return Self.makeResponse(url: url, body: "{}", statusCode: 404)
+            }
+        }
+
+        let usage = try await OpenRouterUsageFetcher.fetchUsage(
+            apiKey: "sk-or-v1-test",
+            environment: ["OPENROUTER_API_URL": "https://openrouter.test/api/v1"])
+
+        #expect(usage.keyLimitRemaining == -5)
+        #expect(usage.keyRemaining == 0)
+        #expect(usage.keyUsedPercent == 100)
+        #expect(usage.keyQuotaStatus == .available)
+    }
+
+    @Test
     func `fetch usage when key endpoint fails marks quota unavailable`() async throws {
         let registered = URLProtocol.registerClass(OpenRouterStubURLProtocol.self)
         defer {

@@ -148,7 +148,9 @@ public struct OpenRouterUsageSnapshot: Codable, Sendable {
         }
         guard keyLimit > 0 else { return false }
         if let keyLimitRemaining {
-            return keyLimitRemaining >= 0
+            // A finite negative value means the key is overspent: treat it as valid quota
+            // and clamp the rendered remaining amount to zero.
+            return keyLimitRemaining.isFinite
         }
         guard let keyUsage else { return false }
         return keyUsage >= 0
