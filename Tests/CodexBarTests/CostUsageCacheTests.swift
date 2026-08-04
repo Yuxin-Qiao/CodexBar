@@ -973,6 +973,63 @@ struct CostUsageCacheTests {
         #expect(loaded.codexScanCatchUpPending == true)
     }
 
+    @Test
+    func `save compacts a protected fork parent that alone exceeds the budget`() throws {
+        let root = try self.makeTemporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        var cache = CostUsageCache()
+        cache.scanSinceKey = "2026-06-01"
+        cache.scanUntilKey = "2026-07-01"
+        var parent = CostUsageFileUsage(
+            mtimeUnixMs: 1,
+            size: 1_000_000,
+            days: ["2026-06-10": ["gpt-5.5": [1, 0, 0]]])
+        parent.sessionId = "parent-session"
+        parent.parsedBytes = 1_000_000
+        parent.codexTokenSnapshots = (0..<1000).map { index in
+            CostUsageCodexTokenSnapshot(
+                timestamp: "2026-06-10T00:00:0\(index % 10)Z",
+                last: nil,
+                total: CostUsageCodexTotals(input: index, cached: 0, output: 0))
+        }
+        var child = CostUsageFileUsage(
+            mtimeUnixMs: 1,
+            size: 100,
+            days: ["2026-06-28": ["gpt-5.5": [1, 0, 0]]])
+        child.sessionId = "child-session"
+        child.forkedFromId = "parent-session"
+        child.codexScanComplete = false
+        cache.files = [
+            "/sessions/parent.jsonl": parent,
+            "/sessions/child.jsonl": child,
+        ]
+        cache.days = [
+            "2026-06-10": ["gpt-5.5": [1, 0, 0]],
+            "2026-06-28": ["gpt-5.5": [1, 0, 0]],
+        ]
+
+        CostUsageCacheIO.save(
+            provider: .codex,
+            cache: cache,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111",
+            requestedScanWindow: (sinceKey: "2026-06-01", untilKey: "2026-07-01"),
+            maxCacheBytes: 30000,
+            maxCacheEntries: 100)
+
+        let loaded = CostUsageCacheIO.load(
+            provider: .codex,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111")
+        let compacted = try #require(loaded.files["/sessions/parent.jsonl"])
+        #expect(compacted.codexTokenSnapshots == nil)
+        #expect(compacted.parsedBytes == 0)
+        #expect(compacted.codexScanComplete == false)
+        #expect(loaded.files["/sessions/child.jsonl"] != nil)
+        #expect(loaded.codexScanCatchUpPending == true)
+    }
+
     private func makeTemporaryCacheRoot() throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("codexbar-cost-cache-\(UUID().uuidString)", isDirectory: true)

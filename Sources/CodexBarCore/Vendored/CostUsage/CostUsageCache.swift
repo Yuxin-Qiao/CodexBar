@@ -313,11 +313,14 @@ enum CostUsageCacheIO {
             cache.files.compactMap { key, usage in
                 candidateKeys.contains(key) ? nil : usage.forkedFromId
             })
+        let protected = candidates.filter { candidate in
+            guard let sessionId = candidate.usage.sessionId else { return false }
+            return protectedParentIDs.contains(sessionId)
+        }
         let droppable = candidates.filter { candidate in
             guard let sessionId = candidate.usage.sessionId else { return true }
             return !protectedParentIDs.contains(sessionId)
         }
-        guard !droppable.isEmpty else { return false }
         // Preserve the complete report from the untrimmed cache so catch-up displays full
         // totals instead of the reduced window after a restart.
         let preTrimCache = cache
@@ -351,10 +354,20 @@ enum CostUsageCacheIO {
             }
             CostUsageScanner.applyFileDays(cache: &cache, fileDays: old.days, sign: -1)
         }
+        var stripped = false
+        // A protected parent referenced by an incomplete/buffered child cannot be dropped,
+        // but its rebuildable detail can still be compacted when it alone exceeds the budget.
+        let protectedBySize = protected.sorted { lhs, rhs in
+            Self.estimatedFileUsageBytes(lhs.usage) > Self.estimatedFileUsageBytes(rhs.usage)
+        }
+        for candidate in protectedBySize where estimated > target {
+            Self.stripFileUsageDetail(&cache, key: candidate.key)
+            stripped = true
+            estimated -= Self.estimatedFileUsageBytes(candidate.usage)
+        }
         // A sole in-window entry can still exceed the budget alone. Strip its rebuildable
         // detail (keeping identity, day aggregates, totals, and cost data) and force a
         // bounded full re-read, so the persisted artifact always fits the load cap.
-        var stripped = false
         if estimated > target, let survivor = oldestFirst.last {
             Self.stripFileUsageDetail(&cache, key: survivor.key)
             stripped = true
