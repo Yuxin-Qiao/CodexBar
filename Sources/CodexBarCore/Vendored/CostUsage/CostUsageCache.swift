@@ -144,8 +144,9 @@ enum CostUsageCacheIO {
         cache.producerKey = producerKey ?? self.currentProducerKey(provider: provider)
         cache.timeZoneIdentifier = calendar.timeZone.identifier
 
+        var pruned = false
         if provider == .codex {
-            Self.pruneCodexCacheForBudget(
+            pruned = Self.pruneCodexCacheForBudget(
                 &cache,
                 requestedScanWindow: requestedScanWindow,
                 maxCacheBytes: maxCacheBytes,
@@ -153,7 +154,23 @@ enum CostUsageCacheIO {
                 previousArtifactBytes: Self.fileSize(at: url))
         }
 
-        let data = (try? JSONEncoder().encode(cache)) ?? Data()
+        var data = (try? JSONEncoder().encode(cache)) ?? Data()
+        if !pruned, provider == .codex, data.count > maxCacheBytes {
+            // The candidate artifact crossed the byte budget during this refresh even though
+            // the previous artifact was within budget (e.g. per-file detail grew faster than
+            // the scan window). Prune out-of-window entries now so the oversized document is
+            // not written for the next refresh to decode.
+            pruned = Self.pruneCodexCacheForBudget(
+                &cache,
+                requestedScanWindow: requestedScanWindow,
+                maxCacheBytes: maxCacheBytes,
+                maxCacheEntries: maxCacheEntries,
+                previousArtifactBytes: nil,
+                force: true)
+            if pruned {
+                data = (try? JSONEncoder().encode(cache)) ?? Data()
+            }
+        }
         try? data.write(to: url, options: [.atomic])
     }
 
@@ -170,16 +187,17 @@ enum CostUsageCacheIO {
         requestedScanWindow: (sinceKey: String, untilKey: String)?,
         maxCacheBytes: Int,
         maxCacheEntries: Int,
-        previousArtifactBytes: Int64?)
+        previousArtifactBytes: Int64?,
+        force: Bool = false) -> Bool
     {
         // Prune against the active requested scan window (what the current report reads),
         // not the historically widened retained union persisted in the cache.
         let sinceKey = requestedScanWindow?.sinceKey ?? cache.scanSinceKey
         let untilKey = requestedScanWindow?.untilKey ?? cache.scanUntilKey
-        guard let sinceKey, let untilKey else { return }
-        let overBudget = cache.files.count > maxCacheEntries
+        guard let sinceKey, let untilKey else { return false }
+        let overBudget = force || cache.files.count > maxCacheEntries
             || (previousArtifactBytes ?? 0) > Int64(maxCacheBytes)
-        guard overBudget else { return }
+        guard overBudget else { return false }
 
         let neededParentSessionIDs = Set(cache.files.values.compactMap(\.forkedFromId))
         let outOfWindowKeys = cache.files.keys.filter { key in
@@ -210,14 +228,18 @@ enum CostUsageCacheIO {
                 since: sinceKey,
                 until: untilKey)
         }
+        var trimmedTurnIDs = false
         if let idsByDay = cache.codexPriorityTurnIDsByDay {
             let trimmed = idsByDay.filter { inWindow($0.key) }
             cache.codexPriorityTurnIDsByDay = trimmed.isEmpty ? nil : trimmed
+            trimmedTurnIDs = trimmed.count != idsByDay.count
         }
         if let turnKeys = cache.codexPriorityTurnKeys {
             let trimmed = turnKeys.filter { inWindow($0.key) }
             cache.codexPriorityTurnKeys = trimmed.isEmpty ? nil : trimmed
+            trimmedTurnIDs = trimmedTurnIDs || trimmed.count != turnKeys.count
         }
+        return !outOfWindowKeys.isEmpty || trimmedTurnIDs
     }
 
     private static func fileSize(at url: URL) -> Int64? {
