@@ -132,6 +132,7 @@ enum CostUsageCacheIO {
         cacheRoot: URL? = nil,
         producerKey: String? = nil,
         calendar: Calendar = .current,
+        requestedScanWindow: (sinceKey: String, untilKey: String)? = nil,
         maxCacheBytes: Int = CostUsageCacheIO.maxCacheFileBytes,
         maxCacheEntries: Int = CostUsageCacheIO.maxCacheFileEntries)
     {
@@ -146,6 +147,7 @@ enum CostUsageCacheIO {
         if provider == .codex {
             Self.pruneCodexCacheForBudget(
                 &cache,
+                requestedScanWindow: requestedScanWindow,
                 maxCacheBytes: maxCacheBytes,
                 maxCacheEntries: maxCacheEntries,
                 previousArtifactBytes: Self.fileSize(at: url))
@@ -165,11 +167,16 @@ enum CostUsageCacheIO {
     /// to the window as well.
     private static func pruneCodexCacheForBudget(
         _ cache: inout CostUsageCache,
+        requestedScanWindow: (sinceKey: String, untilKey: String)?,
         maxCacheBytes: Int,
         maxCacheEntries: Int,
         previousArtifactBytes: Int64?)
     {
-        guard let sinceKey = cache.scanSinceKey, let untilKey = cache.scanUntilKey else { return }
+        // Prune against the active requested scan window (what the current report reads),
+        // not the historically widened retained union persisted in the cache.
+        let sinceKey = requestedScanWindow?.sinceKey ?? cache.scanSinceKey
+        let untilKey = requestedScanWindow?.untilKey ?? cache.scanUntilKey
+        guard let sinceKey, let untilKey else { return }
         let overBudget = cache.files.count > maxCacheEntries
             || (previousArtifactBytes ?? 0) > Int64(maxCacheBytes)
         guard overBudget else { return }
@@ -180,7 +187,6 @@ enum CostUsageCacheIO {
             if usage.touchesCodexScanWindow(sinceKey: sinceKey, untilKey: untilKey) { return false }
             if usage.codexScanComplete == false { return false }
             if usage.codexJSONLResumeState != nil { return false }
-            if usage.codexScanFileId != nil { return false }
             if usage.hasBufferedCodexForkRetryLines { return false }
             if let sessionId = usage.sessionId, neededParentSessionIDs.contains(sessionId) {
                 return false
@@ -190,6 +196,12 @@ enum CostUsageCacheIO {
         for key in outOfWindowKeys {
             guard let old = cache.files.removeValue(forKey: key) else { continue }
             CostUsageScanner.applyFileDays(cache: &cache, fileDays: old.days, sign: -1)
+        }
+        if !outOfWindowKeys.isEmpty, requestedScanWindow != nil {
+            // Entries outside the requested window are gone; narrow persisted coverage so a
+            // later refresh does not treat them as in-window again.
+            cache.scanSinceKey = requestedScanWindow?.sinceKey ?? cache.scanSinceKey
+            cache.scanUntilKey = requestedScanWindow?.untilKey ?? cache.scanUntilKey
         }
 
         let inWindow: (String) -> Bool = { key in

@@ -459,6 +459,7 @@ struct CostUsageCacheTests {
         #expect(loaded.days["2026-04-11"] == nil)
     }
 
+    @Test
     func `save preserves out-of-window entries that are still resuming`() throws {
         let root = try self.makeTemporaryCacheRoot()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -471,23 +472,36 @@ struct CostUsageCacheTests {
             size: 100,
             days: ["2026-04-10": ["gpt-5.5": [1, 0, 0]]])
         incomplete.codexScanComplete = false
-        var inProgress = CostUsageFileUsage(
+        var bufferedForkRetry = CostUsageFileUsage(
             mtimeUnixMs: 1,
             size: 100,
             days: ["2026-04-11": ["gpt-5.5": [1, 0, 0]]])
-        inProgress.codexScanFileId = "scan-id"
+        bufferedForkRetry.codexBufferedSubagentLines = [
+            CostUsageScanner.CodexBufferedFastLine(
+                lineIndex: 0,
+                ordinal: nil,
+                line: .taskStarted(turnID: nil)),
+        ]
+        var completedWithScanID = CostUsageFileUsage(
+            mtimeUnixMs: 1,
+            size: 100,
+            days: ["2026-04-13": ["gpt-5.5": [1, 0, 0]]])
+        completedWithScanID.codexScanFileId = "scan-id"
+        completedWithScanID.codexScanComplete = true
         var settled = CostUsageFileUsage(
             mtimeUnixMs: 1,
             size: 100,
             days: ["2026-04-12": ["gpt-5.5": [1, 0, 0]]])
         cache.files = [
             "/sessions/incomplete.jsonl": incomplete,
-            "/sessions/in-progress.jsonl": inProgress,
+            "/sessions/buffered-fork-retry.jsonl": bufferedForkRetry,
+            "/sessions/completed-with-scan-id.jsonl": completedWithScanID,
             "/sessions/settled.jsonl": settled,
         ]
         cache.days = [
             "2026-04-10": ["gpt-5.5": [1, 0, 0]],
             "2026-04-11": ["gpt-5.5": [1, 0, 0]],
+            "2026-04-13": ["gpt-5.5": [1, 0, 0]],
             "2026-04-12": ["gpt-5.5": [1, 0, 0]],
         ]
 
@@ -496,16 +510,58 @@ struct CostUsageCacheTests {
             cache: cache,
             cacheRoot: root,
             producerKey: "codex:cu:p1111111111111111",
-            maxCacheEntries: 2)
+            maxCacheEntries: 3)
 
         let loaded = CostUsageCacheIO.load(
             provider: .codex,
             cacheRoot: root,
             producerKey: "codex:cu:p1111111111111111")
         #expect(loaded.files["/sessions/incomplete.jsonl"] != nil)
-        #expect(loaded.files["/sessions/in-progress.jsonl"] != nil)
+        #expect(loaded.files["/sessions/buffered-fork-retry.jsonl"] != nil)
+        #expect(loaded.files["/sessions/completed-with-scan-id.jsonl"] == nil)
         #expect(loaded.files["/sessions/settled.jsonl"] == nil)
         #expect(loaded.days["2026-04-12"] == nil)
+    }
+
+    @Test
+    func `save prunes against the requested window and narrows persisted coverage`() throws {
+        let root = try self.makeTemporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        var cache = CostUsageCache()
+        cache.scanSinceKey = "2026-01-01"
+        cache.scanUntilKey = "2026-07-01"
+        cache.days = [
+            "2026-02-10": ["gpt-5.5": [1, 0, 0]],
+            "2026-06-20": ["gpt-5.5": [2, 0, 0]],
+            "2026-06-28": ["gpt-5.5": [3, 0, 0]],
+        ]
+        for (index, day) in ["2026-02-10", "2026-06-20", "2026-06-28"].enumerated() {
+            cache.files["/sessions/\(day).jsonl"] = CostUsageFileUsage(
+                mtimeUnixMs: Int64(index),
+                size: 100,
+                days: [day: ["gpt-5.5": [index + 1, 0, 0]]])
+        }
+
+        CostUsageCacheIO.save(
+            provider: .codex,
+            cache: cache,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111",
+            requestedScanWindow: (sinceKey: "2026-06-01", untilKey: "2026-07-01"),
+            maxCacheEntries: 2)
+
+        let loaded = CostUsageCacheIO.load(
+            provider: .codex,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111")
+        #expect(Array(loaded.files.keys).sorted() == [
+            "/sessions/2026-06-20.jsonl",
+            "/sessions/2026-06-28.jsonl",
+        ])
+        #expect(loaded.days["2026-02-10"] == nil)
+        #expect(loaded.scanSinceKey == "2026-06-01")
+        #expect(loaded.scanUntilKey == "2026-07-01")
     }
 
     private func makeTemporaryCacheRoot() throws -> URL {
