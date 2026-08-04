@@ -47,13 +47,15 @@ struct CopilotUsageFetcherTests {
                       "entitlement": 0,
                       "remaining": 0,
                       "percent_remaining": 100,
-                      "quota_id": "premium_interactions"
+                      "quota_id": "premium_interactions",
+                      "credits_used": 31
                     },
                     "chat": {
                       "entitlement": 0,
                       "remaining": 0,
                       "percent_remaining": 100,
-                      "quota_id": "chat"
+                      "quota_id": "chat",
+                      "credits_used": 0
                     }
                   }
                 }
