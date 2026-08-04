@@ -168,7 +168,7 @@ enum CostUsageCacheIO {
                     maxCacheEntries: maxCacheEntries,
                     previousArtifactBytes: nil,
                     force: true)
-                Self.trimInWindowEntriesForBudget(
+                _ = Self.trimInWindowEntriesForBudget(
                     &cache,
                     calendar: calendar,
                     maxCacheBytes: maxCacheBytes,
@@ -189,13 +189,15 @@ enum CostUsageCacheIO {
                 previousArtifactBytes: nil,
                 force: true)
             data = (try? JSONEncoder().encode(cache)) ?? Data()
-            while data.count > maxCacheBytes {
+            var iterations = 0
+            while data.count > maxCacheBytes, iterations < 4 {
+                iterations += 1
                 let strippedDetail = Self.stripAllInWindowDetailForBudget(
                     &cache,
                     calendar: calendar,
                     reportWindow: reportWindow)
                 let clearedLookback = Self.clearActiveLookbackForBudget(&cache)
-                let prunedOrphans = Self.pruneOrphanedDiscovery(&cache)
+                let prunedOrphans = Self.pruneOrphanedDiscovery(&cache, maxCacheBytes: maxCacheBytes)
                 guard strippedDetail || clearedLookback || prunedOrphans else { break }
                 data = (try? JSONEncoder().encode(cache)) ?? Data()
             }
@@ -451,7 +453,14 @@ enum CostUsageCacheIO {
             until: until,
             calendar: calendar)
         let report = CostUsageScanner.buildCodexReportFromCache(cache: cache, range: range)
-        return CostUsageCodexPreviousReport(report: report, cache: cache)
+        guard var previous = CostUsageCodexPreviousReport(report: report, cache: cache) else {
+            return nil
+        }
+        // Persist the bounds that match the report data (the user report window), not the
+        // scan-padded cache bounds, so matching never serves narrower data than requested.
+        previous.scanSinceKey = reportWindow?.sinceKey ?? cache.scanSinceKey
+        previous.scanUntilKey = reportWindow?.untilKey ?? cache.scanUntilKey
+        return previous
     }
 
     /// Last-resort enforcement for payloads the heuristic estimate underestimated: strips
@@ -592,20 +601,55 @@ enum CostUsageCacheIO {
         return bytes
     }
 
-    /// Drops the persisted active-lookback queue when it alone keeps the artifact over
-    /// budget. The queue is rebuildable: the scanner re-discovers pending paths under its
-    /// bounded per-refresh budget on the next scan.
+    /// Compacts the persisted active-lookback state when it keeps the artifact over budget.
+    /// Pending paths are moved into the discovery queue (so no queued scan work is lost)
+    /// and the lookback structure is reduced to its empty shell.
     private static func clearActiveLookbackForBudget(_ cache: inout CostUsageCache) -> Bool {
-        guard cache.codexActiveLookbackState != nil else { return false }
-        cache.codexActiveLookbackState = nil
+        guard var lookback = cache.codexActiveLookbackState,
+              !lookback.pendingFilePaths.isEmpty || !lookback.legacyRecursivePendingRootPaths.isEmpty
+        else { return false }
+        let pendingPaths = lookback.pendingFilePaths
+        if !pendingPaths.isEmpty {
+            var discovery = cache.codexSessionDiscovery
+            if discovery == nil {
+                discovery = CostUsageCodexSessionDiscovery(
+                    roots: lookback.rootPaths,
+                    generation: nil,
+                    directoryStamps: [:],
+                    directoryPaths: [],
+                    nextDirectoryIndex: 0,
+                    filePaths: [],
+                    nextFileIndex: 0,
+                    fileStamps: [:],
+                    headScan: nil,
+                    filePathBySessionId: [:],
+                    missingSessionIds: [],
+                    pendingSessionIds: [],
+                    validationDirectoryIndex: 0,
+                    isComplete: false)
+            }
+            var seen = Set(discovery?.filePaths ?? [])
+            for path in pendingPaths where !seen.contains(path) {
+                discovery?.filePaths.append(path)
+                seen.insert(path)
+            }
+            cache.codexSessionDiscovery = discovery
+        }
+        lookback.pendingFilePaths = []
+        lookback.legacyRecursivePendingRootPaths = []
+        cache.codexActiveLookbackState = lookback
         return true
     }
 
     /// Removes session-id mappings that point to paths neither in the pending discovery
-    /// queue nor in the parsed `files` set. Such orphaned mappings come from sessions that
-    /// were deleted or pruned in an earlier pass and can dominate the artifact without
-    /// contributing anything; the pending queue itself is left untouched.
-    private static func pruneOrphanedDiscovery(_ cache: inout CostUsageCache) -> Bool {
+    /// queue nor in the parsed `files` set, and compacts missing/pending session IDs to the
+    /// byte budget. Orphaned mappings come from sessions that were deleted or pruned in an
+    /// earlier pass and can dominate the artifact without contributing anything; the pending
+    /// path queue itself is left untouched.
+    private static func pruneOrphanedDiscovery(
+        _ cache: inout CostUsageCache,
+        maxCacheBytes: Int) -> Bool
+    {
         guard var discovery = cache.codexSessionDiscovery else { return false }
         let knownPaths = Set(cache.files.keys)
         let queuedPaths = Set(discovery.filePaths)
@@ -613,8 +657,23 @@ enum CostUsageCacheIO {
         discovery.filePathBySessionId = discovery.filePathBySessionId.filter { _, path in
             queuedPaths.contains(path) || knownPaths.contains(path)
         }
-        let after = discovery.filePathBySessionId.count
-        guard after != before else { return false }
+        let mappingsChanged = discovery.filePathBySessionId.count != before
+
+        // Compress missing/pending session-ID lists to what the remaining byte budget can
+        // hold. They are rediscoverable bookkeeping, not parsed data.
+        let idBytes = 48
+        let baseEstimate = Self.estimatedCodexCacheBytes(cache)
+            - (discovery.missingSessionIds.count + discovery.pendingSessionIds.count) * idBytes
+        let keepCount = max(0, (maxCacheBytes - baseEstimate) / idBytes)
+        let missingChanged = discovery.missingSessionIds.count > keepCount
+        if missingChanged {
+            discovery.missingSessionIds = Array(discovery.missingSessionIds.prefix(keepCount))
+        }
+        let pendingChanged = discovery.pendingSessionIds.count > keepCount
+        if pendingChanged {
+            discovery.pendingSessionIds = Array(discovery.pendingSessionIds.prefix(keepCount))
+        }
+        guard mappingsChanged || missingChanged || pendingChanged else { return false }
         cache.codexSessionDiscovery = discovery
         return true
     }

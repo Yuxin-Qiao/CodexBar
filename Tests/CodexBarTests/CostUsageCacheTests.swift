@@ -848,6 +848,8 @@ struct CostUsageCacheTests {
         #expect(loaded.codexPreviousReport?.data.contains { $0.date == "2026-06-28" } == true)
         #expect(loaded.codexPreviousReport?.data.contains { $0.date == "2026-05-31" } == false)
         #expect(loaded.codexPreviousReport?.data.contains { $0.date == "2026-07-02" } == false)
+        #expect(loaded.codexPreviousReport?.scanSinceKey == "2026-06-01")
+        #expect(loaded.codexPreviousReport?.scanUntilKey == "2026-07-01")
     }
 
     @Test
@@ -1228,7 +1230,9 @@ struct CostUsageCacheTests {
             provider: .codex,
             cacheRoot: root,
             producerKey: "codex:cu:p1111111111111111")
-        #expect(loaded.codexActiveLookbackState == nil)
+        let lookback = try #require(loaded.codexActiveLookbackState)
+        #expect(lookback.pendingFilePaths.isEmpty)
+        #expect(loaded.codexSessionDiscovery?.filePaths.contains("/sessions/pending-0.jsonl") == true)
         #expect(loaded.files["/sessions/in-window.jsonl"] != nil)
     }
 

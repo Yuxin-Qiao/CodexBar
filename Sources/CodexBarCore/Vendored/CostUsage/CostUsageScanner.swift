@@ -4449,8 +4449,8 @@ enum CostUsageScanner {
         guard cache.codexScanCatchUpPending == true,
               let previous = cache.codexPreviousReport,
               previous.matches(
-                  scanSinceKey: range.scanSinceKey,
-                  scanUntilKey: range.scanUntilKey,
+                  scanSinceKey: range.sinceKey,
+                  scanUntilKey: range.untilKey,
                   timeZoneIdentifier: range.calendar.timeZone.identifier,
                   roots: rootsFingerprint)
         else { return nil }
