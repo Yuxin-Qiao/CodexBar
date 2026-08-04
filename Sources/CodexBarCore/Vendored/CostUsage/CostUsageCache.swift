@@ -1,6 +1,17 @@
 import Foundation
 
 enum CostUsageCacheIO {
+    /// Persistence budgets for the Codex cost cache. The artifact holds one entry per
+    /// scanned session file plus per-file detail (rows, turn IDs, token snapshots) and is
+    /// decoded and encoded as a single JSON document on every scan, so an unbounded corpus
+    /// can otherwise grow it to multiple gigabytes. These bounds mirror the scan-side byte
+    /// budgets; in-window data is never dropped, so reports stay complete.
+    static let maxCacheFileBytes: Int = 256 * 1024 * 1024
+    static let maxCacheFileEntries: Int = 25000
+    /// Artifacts above this size are refused at load time and rebuilt by the bounded
+    /// scanner instead of being decoded in one shot.
+    static let maxCacheLoadBytes: Int = 1024 * 1024 * 1024
+
     /// Producer keys from older parser hashes whose caches are still valid under the current
     /// delta semantics. Cleared for #2037: interleave containment changed how cumulative
     /// totals are counted, so every earlier cache must be rebuilt.
@@ -36,7 +47,8 @@ enum CostUsageCacheIO {
         provider: UsageProvider,
         cacheRoot: URL? = nil,
         producerKey: String? = nil,
-        calendar: Calendar? = nil) -> CostUsageCache
+        calendar: Calendar? = nil,
+        maxCacheBytes: Int = CostUsageCacheIO.maxCacheLoadBytes) -> CostUsageCache
     {
         let url = self.cacheFileURL(provider: provider, cacheRoot: cacheRoot)
         let expectedProducerKey = producerKey ?? self.currentProducerKey(provider: provider)
@@ -46,7 +58,8 @@ enum CostUsageCacheIO {
         if let decoded = self.loadCache(
             at: url,
             expectedProducerKey: expectedProducerKey,
-            compatibleProducerKeys: compatibleProducerKeys)
+            compatibleProducerKeys: compatibleProducerKeys,
+            maxBytes: maxCacheBytes)
         {
             if let calendar, decoded.timeZoneIdentifier != calendar.timeZone.identifier {
                 return CostUsageCache()
@@ -59,10 +72,11 @@ enum CostUsageCacheIO {
     static func loadCodexForMigration(
         cacheRoot: URL? = nil,
         producerKey: String? = nil,
-        calendar: Calendar? = nil) -> CostUsageCodexCacheLoadResult
+        calendar: Calendar? = nil,
+        maxCacheBytes: Int = CostUsageCacheIO.maxCacheLoadBytes) -> CostUsageCodexCacheLoadResult
     {
         let url = self.cacheFileURL(provider: .codex, cacheRoot: cacheRoot)
-        guard let decoded = self.decodeCache(at: url) else {
+        guard let decoded = self.decodeCache(at: url, maxBytes: maxCacheBytes) else {
             return CostUsageCodexCacheLoadResult(cache: CostUsageCache(), incompatibleCache: nil)
         }
         if let calendar, decoded.timeZoneIdentifier != calendar.timeZone.identifier {
@@ -89,9 +103,10 @@ enum CostUsageCacheIO {
     private static func loadCache(
         at url: URL,
         expectedProducerKey: String?,
-        compatibleProducerKeys: Set<String>) -> CostUsageCache?
+        compatibleProducerKeys: Set<String>,
+        maxBytes: Int) -> CostUsageCache?
     {
-        guard let decoded = self.decodeCache(at: url) else { return nil }
+        guard let decoded = self.decodeCache(at: url, maxBytes: maxBytes) else { return nil }
         if let expectedProducerKey {
             guard decoded.producerKey == expectedProducerKey
                 || decoded.producerKey.map(compatibleProducerKeys.contains) == true
@@ -100,7 +115,10 @@ enum CostUsageCacheIO {
         return decoded
     }
 
-    private static func decodeCache(at url: URL) -> CostUsageCache? {
+    private static func decodeCache(at url: URL, maxBytes: Int) -> CostUsageCache? {
+        let fileSize = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?
+            .int64Value ?? 0
+        guard fileSize <= maxBytes else { return nil }
         guard let data = try? Data(contentsOf: url) else { return nil }
         guard let decoded = try? JSONDecoder().decode(CostUsageCache.self, from: data)
         else { return nil }
@@ -113,7 +131,9 @@ enum CostUsageCacheIO {
         cache: CostUsageCache,
         cacheRoot: URL? = nil,
         producerKey: String? = nil,
-        calendar: Calendar = .current)
+        calendar: Calendar = .current,
+        maxCacheBytes: Int = CostUsageCacheIO.maxCacheFileBytes,
+        maxCacheEntries: Int = CostUsageCacheIO.maxCacheFileEntries)
     {
         let url = self.cacheFileURL(provider: provider, cacheRoot: cacheRoot)
         let dir = url.deletingLastPathComponent()
@@ -123,8 +143,104 @@ enum CostUsageCacheIO {
         cache.producerKey = producerKey ?? self.currentProducerKey(provider: provider)
         cache.timeZoneIdentifier = calendar.timeZone.identifier
 
-        let data = (try? JSONEncoder().encode(cache)) ?? Data()
+        if provider == .codex {
+            Self.pruneCodexCacheForBudget(
+                &cache,
+                maxCacheBytes: maxCacheBytes,
+                maxCacheEntries: maxCacheEntries,
+                previousArtifactBytes: Self.fileSize(at: url))
+        }
+
+        var data = (try? JSONEncoder().encode(cache)) ?? Data()
+        if data.count > maxCacheBytes {
+            Self.stripCodexTokenDetailForBudget(&cache)
+            data = (try? JSONEncoder().encode(cache)) ?? Data()
+        }
         try? data.write(to: url, options: [.atomic])
+    }
+
+    /// Bounds the Codex cache artifact when the corpus has outgrown the persistence budget.
+    /// The all-time accumulation lives in per-file entries whose usage days fall outside the
+    /// current scan window; the current report never reads those entries, and dropping them
+    /// (with the same day-aggregate subtraction the scanner uses) keeps the artifact from
+    /// growing without limit. Priority turn IDs outside the window are only consulted for
+    /// in-window rows, so they are trimmed to the window as well.
+    private static func pruneCodexCacheForBudget(
+        _ cache: inout CostUsageCache,
+        maxCacheBytes: Int,
+        maxCacheEntries: Int,
+        previousArtifactBytes: Int64?)
+    {
+        guard let sinceKey = cache.scanSinceKey, let untilKey = cache.scanUntilKey else { return }
+        let overBudget = cache.files.count > maxCacheEntries
+            || (previousArtifactBytes ?? 0) > Int64(maxCacheBytes)
+        guard overBudget else { return }
+
+        let outOfWindowKeys = cache.files.keys.filter { key in
+            guard let usage = cache.files[key] else { return false }
+            return !usage.touchesCodexScanWindow(sinceKey: sinceKey, untilKey: untilKey)
+        }
+        for key in outOfWindowKeys {
+            guard let old = cache.files.removeValue(forKey: key) else { continue }
+            CostUsageScanner.applyFileDays(cache: &cache, fileDays: old.days, sign: -1)
+        }
+
+        let inWindow: (String) -> Bool = { key in
+            CostUsageScanner.CostUsageDayRange.isInRange(
+                dayKey: key,
+                since: sinceKey,
+                until: untilKey)
+        }
+        if let idsByDay = cache.codexPriorityTurnIDsByDay {
+            let trimmed = idsByDay.filter { inWindow($0.key) }
+            cache.codexPriorityTurnIDsByDay = trimmed.isEmpty ? nil : trimmed
+        }
+        if let turnKeys = cache.codexPriorityTurnKeys {
+            let trimmed = turnKeys.filter { inWindow($0.key) }
+            cache.codexPriorityTurnKeys = trimmed.isEmpty ? nil : trimmed
+        }
+    }
+
+    /// Last-resort trim for in-window corpora that still exceed the byte budget. Strips
+    /// fork-baseline token snapshots and divergence bookkeeping from files whose newest
+    /// usage day is outside the most recent week. These fields are optimizations with
+    /// on-disk re-read fallbacks; day aggregates, totals, rows, and cost data are kept,
+    /// so reports and pricing remain correct.
+    private static func stripCodexTokenDetailForBudget(_ cache: inout CostUsageCache) {
+        guard let untilKey = cache.scanUntilKey,
+              let cutoffKey = dayKey(untilKey, addingDays: -7)
+        else { return }
+        for (path, var usage) in cache.files {
+            let newestDay = usage.days.keys.max()
+            guard let newestDay, newestDay < cutoffKey else { continue }
+            usage.codexTokenSnapshots = nil
+            usage.codexTokenCheckpoints = nil
+            usage.codexTokenTimestampsMonotonic = nil
+            usage.codexTokenIndexAnchor = nil
+            usage.seenRawTotals = nil
+            usage.hasDivergentTotals = nil
+            usage.hasInterleavedTotals = nil
+            usage.lastRawTotalsBaseline = nil
+            usage.lastRawTotalsWatermark = nil
+            cache.files[path] = usage
+        }
+    }
+
+    private static func dayKey(_ key: String, addingDays days: Int) -> String? {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone.current
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        guard let date = formatter.date(from: key),
+              let shifted = calendar.date(byAdding: .day, value: days, to: date)
+        else { return nil }
+        return formatter.string(from: shifted)
+    }
+
+    private static func fileSize(at url: URL) -> Int64? {
+        (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.int64Value
     }
 
     static func currentProducerKey(

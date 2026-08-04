@@ -254,6 +254,206 @@ struct CostUsageCacheTests {
         #expect(CostUsageCacheIO.currentProducerKey(provider: .codex) == "codex:cu:p\(hash)")
     }
 
+    @Test
+    func `save prunes out-of-window files when over the entry budget`() throws {
+        let root = try self.makeTemporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        var cache = CostUsageCache()
+        cache.scanSinceKey = "2026-06-01"
+        cache.scanUntilKey = "2026-07-01"
+        cache.days = [
+            "2026-06-10": ["gpt-5.5": [10, 0, 0]],
+            "2026-06-20": ["gpt-5.5": [20, 0, 0]],
+            "2026-04-10": ["gpt-5.5": [99, 0, 0]],
+        ]
+        cache.files = [
+            "/sessions/2026-06-10.jsonl": CostUsageFileUsage(
+                mtimeUnixMs: 1,
+                size: 100,
+                days: ["2026-06-10": ["gpt-5.5": [10, 0, 0]]]),
+            "/sessions/2026-06-20.jsonl": CostUsageFileUsage(
+                mtimeUnixMs: 1,
+                size: 100,
+                days: ["2026-06-20": ["gpt-5.5": [20, 0, 0]]]),
+            "/sessions/2026-04-10.jsonl": CostUsageFileUsage(
+                mtimeUnixMs: 1,
+                size: 100,
+                days: ["2026-04-10": ["gpt-5.5": [99, 0, 0]]]),
+        ]
+
+        CostUsageCacheIO.save(
+            provider: .codex,
+            cache: cache,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111",
+            maxCacheEntries: 2)
+
+        let loaded = CostUsageCacheIO.load(
+            provider: .codex,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111")
+        #expect(loaded.files.keys.sorted() == [
+            "/sessions/2026-06-10.jsonl",
+            "/sessions/2026-06-20.jsonl",
+        ])
+        #expect(loaded.days["2026-04-10"] == nil)
+        #expect(loaded.days["2026-06-10"]?["gpt-5.5"] == [10, 0, 0])
+        #expect(loaded.days["2026-06-20"]?["gpt-5.5"] == [20, 0, 0])
+    }
+
+    @Test
+    func `save prunes out-of-window files when the previous artifact exceeds the byte budget`() throws {
+        let root = try self.makeTemporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let url = CostUsageCacheIO.cacheFileURL(provider: .codex, cacheRoot: root)
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true)
+        try Data(repeating: 0x20, count: 4096).write(to: url)
+
+        var cache = CostUsageCache()
+        cache.scanSinceKey = "2026-06-01"
+        cache.scanUntilKey = "2026-07-01"
+        cache.days = [
+            "2026-06-10": ["gpt-5.5": [1, 0, 0]],
+            "2026-04-10": ["gpt-5.5": [9, 0, 0]],
+        ]
+        cache.files = [
+            "/sessions/2026-06-10.jsonl": CostUsageFileUsage(
+                mtimeUnixMs: 1,
+                size: 100,
+                days: ["2026-06-10": ["gpt-5.5": [1, 0, 0]]]),
+            "/sessions/2026-04-10.jsonl": CostUsageFileUsage(
+                mtimeUnixMs: 1,
+                size: 100,
+                days: ["2026-04-10": ["gpt-5.5": [9, 0, 0]]]),
+        ]
+
+        CostUsageCacheIO.save(
+            provider: .codex,
+            cache: cache,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111",
+            maxCacheBytes: 1024,
+            maxCacheEntries: 100)
+
+        let loaded = CostUsageCacheIO.load(
+            provider: .codex,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111")
+        #expect(Array(loaded.files.keys) == ["/sessions/2026-06-10.jsonl"])
+        #expect(loaded.days["2026-04-10"] == nil)
+        #expect(loaded.days["2026-06-10"]?["gpt-5.5"] == [1, 0, 0])
+    }
+
+    @Test
+    func `save never drops in-window files even when over the entry budget`() throws {
+        let root = try self.makeTemporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        var cache = CostUsageCache()
+        cache.scanSinceKey = "2026-06-01"
+        cache.scanUntilKey = "2026-07-01"
+        cache.days = [
+            "2026-06-10": ["gpt-5.5": [1, 0, 0]],
+            "2026-06-20": ["gpt-5.5": [2, 0, 0]],
+            "2026-06-28": ["gpt-5.5": [3, 0, 0]],
+        ]
+        for (index, day) in ["2026-06-10", "2026-06-20", "2026-06-28"].enumerated() {
+            cache.files["/sessions/\(day).jsonl"] = CostUsageFileUsage(
+                mtimeUnixMs: Int64(index),
+                size: 100,
+                days: [day: ["gpt-5.5": [index + 1, 0, 0]]])
+        }
+
+        CostUsageCacheIO.save(
+            provider: .codex,
+            cache: cache,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111",
+            maxCacheEntries: 2)
+
+        let loaded = CostUsageCacheIO.load(
+            provider: .codex,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111")
+        #expect(loaded.files.count == 3)
+        #expect(loaded.days.count == 3)
+    }
+
+    @Test
+    func `load refuses oversized cache artifacts`() throws {
+        let root = try self.makeTemporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let url = CostUsageCacheIO.cacheFileURL(provider: .codex, cacheRoot: root)
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true)
+        var payload = Data(
+            #"{"version":1,"producerKey":"codex:cu:p1111111111111111","files":{},"days":{}}"#.utf8)
+        payload.append(Data(repeating: 0x20, count: 2048))
+        try payload.write(to: url)
+
+        let loaded = CostUsageCacheIO.load(
+            provider: .codex,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111",
+            maxCacheBytes: 1024)
+
+        #expect(loaded.files.isEmpty)
+        #expect(loaded.days.isEmpty)
+    }
+
+    @Test
+    func `over budget save strips stale token snapshots but keeps recent ones`() throws {
+        let root = try self.makeTemporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        var cache = CostUsageCache()
+        cache.scanSinceKey = "2026-06-01"
+        cache.scanUntilKey = "2026-06-30"
+        let snapshot = CostUsageCodexTokenSnapshot(
+            timestamp: "2026-06-05T00:00:00Z",
+            last: nil,
+            total: CostUsageCodexTotals(input: 1, cached: 0, output: 0))
+        var old = CostUsageFileUsage(
+            mtimeUnixMs: 1,
+            size: 100,
+            days: ["2026-06-05": ["gpt-5.5": [1, 0, 0]]])
+        old.codexTokenSnapshots = [snapshot]
+        old.seenRawTotals = [CostUsageCodexTotals(input: 1, cached: 0, output: 0)]
+        var recent = CostUsageFileUsage(
+            mtimeUnixMs: 1,
+            size: 100,
+            days: ["2026-06-28": ["gpt-5.5": [1, 0, 0]]])
+        recent.codexTokenSnapshots = [snapshot]
+        cache.files = ["/sessions/old.jsonl": old, "/sessions/recent.jsonl": recent]
+        cache.days = [
+            "2026-06-05": ["gpt-5.5": [1, 0, 0]],
+            "2026-06-28": ["gpt-5.5": [1, 0, 0]],
+        ]
+
+        CostUsageCacheIO.save(
+            provider: .codex,
+            cache: cache,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111",
+            maxCacheBytes: 64,
+            maxCacheEntries: 100)
+
+        let loaded = CostUsageCacheIO.load(
+            provider: .codex,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111")
+        #expect(loaded.files["/sessions/old.jsonl"]?.codexTokenSnapshots == nil)
+        #expect(loaded.files["/sessions/old.jsonl"]?.seenRawTotals == nil)
+        #expect(loaded.files["/sessions/recent.jsonl"]?.codexTokenSnapshots == [snapshot])
+        #expect(loaded.days["2026-06-05"]?["gpt-5.5"] == [1, 0, 0])
+    }
+
     private func makeTemporaryCacheRoot() throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("codexbar-cost-cache-\(UUID().uuidString)", isDirectory: true)
