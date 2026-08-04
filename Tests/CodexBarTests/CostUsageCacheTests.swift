@@ -1031,6 +1031,59 @@ struct CostUsageCacheTests {
     }
 
     @Test
+    func `save does not protect lineage only fork parents`() throws {
+        let root = try self.makeTemporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        var cache = CostUsageCache()
+        cache.scanSinceKey = "2026-06-01"
+        cache.scanUntilKey = "2026-07-01"
+        var parent = CostUsageFileUsage(
+            mtimeUnixMs: 1,
+            size: 1_000_000,
+            days: ["2026-06-10": ["gpt-5.5": [1, 0, 0]]])
+        parent.sessionId = "parent-session"
+        parent.codexTokenSnapshots = (0..<1000).map { index in
+            CostUsageCodexTokenSnapshot(
+                timestamp: "2026-06-10T00:00:0\(index % 10)Z",
+                last: nil,
+                total: CostUsageCodexTotals(input: index, cached: 0, output: 0))
+        }
+        var lineageChild = CostUsageFileUsage(
+            mtimeUnixMs: 1,
+            size: 100,
+            days: ["2026-06-28": ["gpt-5.5": [1, 0, 0]]])
+        lineageChild.sessionId = "lineage-child"
+        lineageChild.forkedFromId = "parent-session"
+        lineageChild.forkBaselineDependencyKey = CostUsageScanner.codexForkDependencyNotRequiredKey
+        cache.files = [
+            "/sessions/parent.jsonl": parent,
+            "/sessions/lineage-child.jsonl": lineageChild,
+        ]
+        cache.days = [
+            "2026-06-10": ["gpt-5.5": [1, 0, 0]],
+            "2026-06-28": ["gpt-5.5": [1, 0, 0]],
+        ]
+
+        CostUsageCacheIO.save(
+            provider: .codex,
+            cache: cache,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111",
+            requestedScanWindow: (sinceKey: "2026-06-01", untilKey: "2026-07-01"),
+            maxCacheBytes: 30000,
+            maxCacheEntries: 100)
+
+        let loaded = CostUsageCacheIO.load(
+            provider: .codex,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111")
+        #expect(loaded.files["/sessions/parent.jsonl"] == nil)
+        #expect(loaded.files["/sessions/lineage-child.jsonl"] != nil)
+        #expect(loaded.days["2026-06-10"] == nil)
+    }
+
+    @Test
     func `save enforces the byte cap when the estimate underestimates the payload`() throws {
         let root = try self.makeTemporaryCacheRoot()
         defer { try? FileManager.default.removeItem(at: root) }

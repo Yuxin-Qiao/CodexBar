@@ -149,7 +149,7 @@ enum CostUsageCacheIO {
         cache.timeZoneIdentifier = calendar.timeZone.identifier
 
         if provider == .codex {
-            Self.pruneCodexCacheForBudget(
+            _ = Self.pruneCodexCacheForBudget(
                 &cache,
                 requestedScanWindow: requestedScanWindow,
                 calendar: calendar,
@@ -309,19 +309,24 @@ enum CostUsageCacheIO {
         }
         guard !candidates.isEmpty else { return false }
         // Protect parents referenced by entries that survive this trim; a child that is
-        // removed here must not keep its stale parent protected.
+        // removed here must not keep its stale parent protected. Lineage-only children do
+        // not resolve inherited parent totals, so their parents need no protection either.
         let candidateKeys = Set(candidates.map(\.key))
-        let protectedParentIDs = Set(
-            cache.files.compactMap { key, usage in
-                candidateKeys.contains(key) ? nil : usage.forkedFromId
-            })
+        let survivingParentIDs: [String] = cache.files.compactMap { key, usage in
+            if candidateKeys.contains(key) { return nil }
+            if usage.forkBaselineDependencyKey == CostUsageScanner.codexForkDependencyNotRequiredKey {
+                return nil
+            }
+            return usage.forkedFromId
+        }
+        let protectedParentIDsExcludingLineageOnly = Set(survivingParentIDs)
         let protected = candidates.filter { candidate in
             guard let sessionId = candidate.usage.sessionId else { return false }
-            return protectedParentIDs.contains(sessionId)
+            return protectedParentIDsExcludingLineageOnly.contains(sessionId)
         }
         let droppable = candidates.filter { candidate in
             guard let sessionId = candidate.usage.sessionId else { return true }
-            return !protectedParentIDs.contains(sessionId)
+            return !protectedParentIDsExcludingLineageOnly.contains(sessionId)
         }
         // Preserve the complete report from the untrimmed cache so catch-up displays full
         // totals instead of the reduced window after a restart.
