@@ -195,7 +195,8 @@ enum CostUsageCacheIO {
                     calendar: calendar,
                     reportWindow: reportWindow)
                 let clearedLookback = Self.clearActiveLookbackForBudget(&cache)
-                guard strippedDetail || clearedLookback else { break }
+                let prunedOrphans = Self.pruneOrphanedDiscovery(&cache)
+                guard strippedDetail || clearedLookback || prunedOrphans else { break }
                 data = (try? JSONEncoder().encode(cache)) ?? Data()
             }
         }
@@ -597,6 +598,24 @@ enum CostUsageCacheIO {
     private static func clearActiveLookbackForBudget(_ cache: inout CostUsageCache) -> Bool {
         guard cache.codexActiveLookbackState != nil else { return false }
         cache.codexActiveLookbackState = nil
+        return true
+    }
+
+    /// Removes session-id mappings that point to paths neither in the pending discovery
+    /// queue nor in the parsed `files` set. Such orphaned mappings come from sessions that
+    /// were deleted or pruned in an earlier pass and can dominate the artifact without
+    /// contributing anything; the pending queue itself is left untouched.
+    private static func pruneOrphanedDiscovery(_ cache: inout CostUsageCache) -> Bool {
+        guard var discovery = cache.codexSessionDiscovery else { return false }
+        let knownPaths = Set(cache.files.keys)
+        let queuedPaths = Set(discovery.filePaths)
+        let before = discovery.filePathBySessionId.count
+        discovery.filePathBySessionId = discovery.filePathBySessionId.filter { _, path in
+            queuedPaths.contains(path) || knownPaths.contains(path)
+        }
+        let after = discovery.filePathBySessionId.count
+        guard after != before else { return false }
+        cache.codexSessionDiscovery = discovery
         return true
     }
 

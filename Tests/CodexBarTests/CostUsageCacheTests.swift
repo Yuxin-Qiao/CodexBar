@@ -1288,6 +1288,62 @@ struct CostUsageCacheTests {
         #expect(loaded.codexScanCatchUpPending == true)
     }
 
+    @Test
+    func `save prunes orphaned discovery mappings when they keep the artifact over budget`() throws {
+        let root = try self.makeTemporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        var cache = CostUsageCache()
+        cache.scanSinceKey = "2026-06-01"
+        cache.scanUntilKey = "2026-07-01"
+        var inWindow = CostUsageFileUsage(
+            mtimeUnixMs: 1,
+            size: 100,
+            days: ["2026-06-20": ["gpt-5.5": [1, 0, 0]]])
+        inWindow.sessionId = "live-session"
+        cache.files = ["/sessions/in-window.jsonl": inWindow]
+        cache.days = ["2026-06-20": ["gpt-5.5": [1, 0, 0]]]
+        cache.codexSessionDiscovery = CostUsageCodexSessionDiscovery(
+            roots: ["/sessions"],
+            generation: nil,
+            directoryStamps: [:],
+            directoryPaths: [],
+            nextDirectoryIndex: 0,
+            filePaths: ["/sessions/in-window.jsonl"],
+            nextFileIndex: 0,
+            fileStamps: ["/sessions/in-window.jsonl": .init(mtimeUnixMs: 1, size: 100, fileId: nil)],
+            headScan: nil,
+            filePathBySessionId: Dictionary(
+                uniqueKeysWithValues: (0..<3000).map { index in
+                    ("orphan-\(index)", "/sessions/deleted-\(index).jsonl")
+                }),
+            missingSessionIds: [],
+            pendingSessionIds: [],
+            validationDirectoryIndex: 0,
+            isComplete: true)
+        let maxCacheBytes = 30000
+
+        CostUsageCacheIO.save(
+            provider: .codex,
+            cache: cache,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111",
+            requestedScanWindow: (sinceKey: "2026-06-01", untilKey: "2026-07-01"),
+            maxCacheBytes: maxCacheBytes,
+            maxCacheEntries: 100)
+
+        let url = CostUsageCacheIO.cacheFileURL(provider: .codex, cacheRoot: root)
+        let artifactBytes = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?
+            .int64Value ?? 0
+        #expect(artifactBytes <= maxCacheBytes)
+        let loaded = CostUsageCacheIO.load(
+            provider: .codex,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111")
+        #expect(loaded.codexSessionDiscovery?.filePathBySessionId.isEmpty == true)
+        #expect(loaded.files["/sessions/in-window.jsonl"] != nil)
+    }
+
     private func makeTemporaryCacheRoot() throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("codexbar-cost-cache-\(UUID().uuidString)", isDirectory: true)
