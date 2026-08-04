@@ -364,6 +364,11 @@ enum CostUsageCacheIO {
             droppedKeys.append(candidate.key)
             estimated -= Self.estimatedFileUsageBytes(candidate.usage)
         }
+        // A dropped parent may still be required by the newest survivor we keep. Never delete
+        // it; compact it instead so the retained child can resolve its fork baseline later.
+        var stripped = Self.compactParentsRequiredBySurvivors(
+            &cache,
+            droppedKeys: &droppedKeys)
         var removedPaths: Set<String> = []
         var removedSessionIDs: Set<String> = []
         for key in droppedKeys {
@@ -374,7 +379,6 @@ enum CostUsageCacheIO {
             }
             CostUsageScanner.applyFileDays(cache: &cache, fileDays: old.days, sign: -1)
         }
-        var stripped = false
         // A protected parent referenced by an incomplete/buffered child cannot be dropped,
         // but its rebuildable detail can still be compacted when it alone exceeds the budget.
         let protectedBySize = protected.sorted { lhs, rhs in
@@ -403,6 +407,30 @@ enum CostUsageCacheIO {
             cache.codexPreviousReport = previousReport
         }
         return !droppedKeys.isEmpty || stripped
+    }
+
+    /// Compacts (instead of dropping) parents that the entries kept by this trim still
+    /// reference, so retained fork children can resolve their baselines on later catch-up.
+    private static func compactParentsRequiredBySurvivors(
+        _ cache: inout CostUsageCache,
+        droppedKeys: inout [String]) -> Bool
+    {
+        let droppedSet = Set(droppedKeys)
+        let survivorsAfterDrop = cache.files.keys.filter { !droppedSet.contains($0) }
+        let neededBySurvivors: Set<String> = Set(survivorsAfterDrop.compactMap { key in
+            guard let usage = cache.files[key] else { return nil }
+            if usage.forkBaselineDependencyKey == CostUsageScanner.codexForkDependencyNotRequiredKey {
+                return nil
+            }
+            return usage.forkedFromId
+        })
+        var compactedAny = false
+        for key in droppedKeys where cache.files[key]?.sessionId.map(neededBySurvivors.contains) == true {
+            Self.stripFileUsageDetail(&cache, key: key)
+            droppedKeys.removeAll { $0 == key }
+            compactedAny = true
+        }
+        return compactedAny
     }
 
     private static func previousReportForCatchUp(
