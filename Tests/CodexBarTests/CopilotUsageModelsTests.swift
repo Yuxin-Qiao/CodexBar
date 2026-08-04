@@ -566,6 +566,33 @@ struct CopilotUsageModelsTests {
     }
 
     @Test
+    func `keeps credit counter when zero entitlement direct snapshot falls back to monthly quota`() throws {
+        let response = try Self.decodeFixture(
+            """
+            {
+              "copilot_plan": "business",
+              "token_based_billing": true,
+              "monthly_quotas": { "completions": 300 },
+              "limited_user_quotas": { "completions": 75 },
+              "quota_snapshots": {
+                "premium_interactions": {
+                  "entitlement": 0,
+                  "remaining": 0,
+                  "percent_remaining": 100,
+                  "quota_id": "premium_interactions",
+                  "credits_used": 31
+                }
+              }
+            }
+            """)
+
+        let premium = try #require(response.quotaSnapshots.premiumInteractions)
+        #expect(premium.creditsUsed == 31)
+        #expect(premium.quotaId == "completions")
+        #expect(premium.usedPercent == 75)
+    }
+
+    @Test
     func `keeps credit counter when unlimited direct snapshot falls back to monthly quota`() throws {
         let response = try Self.decodeFixture(
             """

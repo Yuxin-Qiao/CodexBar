@@ -402,7 +402,18 @@ public struct CopilotUsageResponse: Sendable, Decodable {
             // percentage window; keep the counter on the selected fallback.
             return fallback.withCreditsUsed(direct?.creditsUsed)
         }
-        return self.usableQuotaSnapshot(from: direct) ?? self.usableQuotaSnapshot(from: fallback)
+        if let directWindow = self.usableQuotaSnapshot(from: direct) {
+            return directWindow
+        }
+        guard let fallback = self.usableQuotaSnapshot(from: fallback) else {
+            return nil
+        }
+        // A zero-entitlement placeholder can still carry a real absolute
+        // counter; keep it on the selected fallback instead of dropping it.
+        if direct?.carriesCreditsCounter == true {
+            return fallback.withCreditsUsed(direct?.creditsUsed)
+        }
+        return fallback
     }
 }
 

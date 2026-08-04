@@ -75,6 +75,44 @@ struct CopilotUsageFetcherTests {
     }
 
     @Test
+    func `fetch retains token billed credits counter across zero entitlement fallback`() async throws {
+        let transport = ProviderHTTPTransportStub { request in
+            #expect(request.value(forHTTPHeaderField: "Authorization") == "token test-token-placeholder")
+            let response = try HTTPURLResponse(
+                url: #require(request.url),
+                statusCode: 200,
+                httpVersion: "HTTP/1.1",
+                headerFields: ["Content-Type": "application/json"])!
+            let data = Data(
+                """
+                {
+                  "copilot_plan": "business",
+                  "token_based_billing": true,
+                  "quota_reset_date": "2026-09-01",
+                  "monthly_quotas": { "completions": 300 },
+                  "limited_user_quotas": { "completions": 75 },
+                  "quota_snapshots": {
+                    "premium_interactions": {
+                      "entitlement": 0,
+                      "remaining": 0,
+                      "percent_remaining": 100,
+                      "quota_id": "premium_interactions",
+                      "credits_used": 31
+                    }
+                  }
+                }
+                """.utf8)
+            return (data, response)
+        }
+        let fetcher = CopilotUsageFetcher(token: "test-token-placeholder", transport: transport)
+
+        let snapshot = try await fetcher.fetch()
+
+        #expect(snapshot.primary?.usedPercent == 75)
+        #expect(snapshot.copilotCredits?.creditsUsed == 31)
+    }
+
+    @Test
     func `fetch retains token billed credits counter across monthly quota fallback`() async throws {
         let transport = ProviderHTTPTransportStub { request in
             #expect(request.value(forHTTPHeaderField: "Authorization") == "token test-token-placeholder")
