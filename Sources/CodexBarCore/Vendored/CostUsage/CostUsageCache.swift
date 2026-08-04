@@ -51,6 +51,9 @@ enum CostUsageCacheIO {
         maxCacheBytes: Int = CostUsageCacheIO.maxCacheLoadBytes) -> CostUsageCache
     {
         let url = self.cacheFileURL(provider: provider, cacheRoot: cacheRoot)
+        // Only Codex has bounded persistence pruning on save; other providers would be
+        // rejected, rebuilt, and written oversized again on every refresh.
+        let effectiveMaxBytes = provider == .codex ? maxCacheBytes : Int.max
         let expectedProducerKey = producerKey ?? self.currentProducerKey(provider: provider)
         let compatibleProducerKeys = producerKey == nil && provider == .codex
             ? self.compatibleCodexProducerKeys
@@ -59,7 +62,7 @@ enum CostUsageCacheIO {
             at: url,
             expectedProducerKey: expectedProducerKey,
             compatibleProducerKeys: compatibleProducerKeys,
-            maxBytes: maxCacheBytes)
+            maxBytes: effectiveMaxBytes)
         {
             if let calendar, decoded.timeZoneIdentifier != calendar.timeZone.identifier {
                 return CostUsageCache()
@@ -199,17 +202,23 @@ enum CostUsageCacheIO {
             || (previousArtifactBytes ?? 0) > Int64(maxCacheBytes)
         guard overBudget else { return false }
 
-        let neededParentSessionIDs = Set(cache.files.values.compactMap(\.forkedFromId))
-        let outOfWindowKeys = cache.files.keys.filter { key in
+        let outOfWindowCandidates = cache.files.keys.filter { key in
             guard let usage = cache.files[key] else { return false }
             if usage.touchesCodexScanWindow(sinceKey: sinceKey, untilKey: untilKey) { return false }
             if usage.codexScanComplete == false { return false }
             if usage.codexJSONLResumeState != nil { return false }
             if usage.hasBufferedCodexForkRetryLines { return false }
-            if let sessionId = usage.sessionId, neededParentSessionIDs.contains(sessionId) {
-                return false
-            }
+            if Self.isRecentlyActive(usage, sinceKey: sinceKey, untilKey: untilKey) { return false }
             return true
+        }
+        // Protect parents referenced by entries that survive pruning. A stale child that is
+        // removed in this pass must not keep its stale parent alive.
+        let survivingKeys = Set(cache.files.keys).subtracting(outOfWindowCandidates)
+        let survivingParentSessionIDs = Set(
+            survivingKeys.compactMap { cache.files[$0]?.forkedFromId })
+        let outOfWindowKeys = outOfWindowCandidates.filter { key in
+            guard let sessionId = cache.files[key]?.sessionId else { return true }
+            return !survivingParentSessionIDs.contains(sessionId)
         }
         for key in outOfWindowKeys {
             guard let old = cache.files.removeValue(forKey: key) else { continue }
@@ -240,6 +249,25 @@ enum CostUsageCacheIO {
             trimmedTurnIDs = trimmedTurnIDs || trimmed.count != turnKeys.count
         }
         return !outOfWindowKeys.isEmpty || trimmedTurnIDs
+    }
+
+    /// A session file whose modification time falls inside the scan window is active even
+    /// when it has produced no usage rows yet (e.g. a session started today); dropping it
+    /// would make every refresh rediscover and fully parse it.
+    private static func isRecentlyActive(
+        _ usage: CostUsageFileUsage,
+        sinceKey: String,
+        untilKey: String) -> Bool
+    {
+        guard usage.mtimeUnixMs > 0 else { return false }
+        let calendar = CostUsageScanner.CostUsageDayRange.localGregorianCalendar(matching: .current)
+        let mtimeDayKey = CostUsageScanner.CostUsageDayRange.dayKey(
+            from: Date(timeIntervalSince1970: TimeInterval(usage.mtimeUnixMs) / 1000),
+            calendar: calendar)
+        return CostUsageScanner.CostUsageDayRange.isInRange(
+            dayKey: mtimeDayKey,
+            since: sinceKey,
+            until: untilKey)
     }
 
     private static func fileSize(at url: URL) -> Int64? {

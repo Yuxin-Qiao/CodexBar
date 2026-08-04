@@ -616,6 +616,128 @@ struct CostUsageCacheTests {
         #expect(loaded.days["2026-06-20"]?["gpt-5.5"] == [1, 0, 0])
     }
 
+    @Test
+    func `load cap applies only to codex`() throws {
+        let root = try self.makeTemporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let url = CostUsageCacheIO.cacheFileURL(provider: .claude, cacheRoot: root)
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true)
+        var payload = Data(
+            #"{"version":1,"lastScanUnixMs":999,"files":{},"days":{}}"#.utf8)
+        payload.append(Data(repeating: 0x20, count: 2048))
+        try payload.write(to: url)
+
+        // The load cap guards Codex's bounded-rebuild path only; Claude/Vertex caches are
+        // not pruned on save, so rejecting them would cause a rebuild loop.
+        let loaded = CostUsageCacheIO.load(
+            provider: .claude,
+            cacheRoot: root,
+            maxCacheBytes: 1024)
+
+        #expect(loaded.lastScanUnixMs == 999)
+    }
+
+    @Test
+    func `save drops stale parents referenced only by stale children`() throws {
+        let root = try self.makeTemporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        var cache = CostUsageCache()
+        cache.scanSinceKey = "2026-06-01"
+        cache.scanUntilKey = "2026-07-01"
+        var parent = CostUsageFileUsage(
+            mtimeUnixMs: 1,
+            size: 100,
+            days: ["2026-04-10": ["gpt-5.5": [1, 0, 0]]])
+        parent.sessionId = "parent-session"
+        var staleChild = CostUsageFileUsage(
+            mtimeUnixMs: 1,
+            size: 100,
+            days: ["2026-04-11": ["gpt-5.5": [1, 0, 0]]])
+        staleChild.sessionId = "child-session"
+        staleChild.forkedFromId = "parent-session"
+        cache.files = [
+            "/sessions/parent.jsonl": parent,
+            "/sessions/stale-child.jsonl": staleChild,
+        ]
+        cache.days = [
+            "2026-04-10": ["gpt-5.5": [1, 0, 0]],
+            "2026-04-11": ["gpt-5.5": [1, 0, 0]],
+        ]
+
+        CostUsageCacheIO.save(
+            provider: .codex,
+            cache: cache,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111",
+            maxCacheEntries: 1)
+
+        let loaded = CostUsageCacheIO.load(
+            provider: .codex,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111")
+        #expect(loaded.files.isEmpty)
+        #expect(loaded.days.isEmpty)
+    }
+
+    @Test
+    func `save retains recently active zero-day session entries`() throws {
+        let root = try self.makeTemporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone.current
+        var components = DateComponents()
+        components.calendar = calendar
+        components.timeZone = calendar.timeZone
+        components.year = 2026
+        components.month = 6
+        components.day = 25
+        components.hour = 12
+        let activeMtime = Int64(
+            (calendar.date(from: components) ?? Date()).timeIntervalSince1970 * 1000)
+
+        var cache = CostUsageCache()
+        cache.scanSinceKey = "2026-06-01"
+        cache.scanUntilKey = "2026-07-01"
+        var activeZeroDay = CostUsageFileUsage(
+            mtimeUnixMs: activeMtime,
+            size: 100,
+            days: ["2026-04-10": ["gpt-5.5": [1, 0, 0]]])
+        activeZeroDay.sessionId = "active-session"
+        var inactive = CostUsageFileUsage(
+            mtimeUnixMs: 1,
+            size: 100,
+            days: ["2026-04-11": ["gpt-5.5": [1, 0, 0]]])
+        inactive.sessionId = "inactive-session"
+        cache.files = [
+            "/sessions/active-zero-day.jsonl": activeZeroDay,
+            "/sessions/inactive.jsonl": inactive,
+        ]
+        cache.days = [
+            "2026-04-10": ["gpt-5.5": [1, 0, 0]],
+            "2026-04-11": ["gpt-5.5": [1, 0, 0]],
+        ]
+
+        CostUsageCacheIO.save(
+            provider: .codex,
+            cache: cache,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111",
+            maxCacheEntries: 1)
+
+        let loaded = CostUsageCacheIO.load(
+            provider: .codex,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111")
+        #expect(loaded.files["/sessions/active-zero-day.jsonl"] != nil)
+        #expect(loaded.files["/sessions/inactive.jsonl"] == nil)
+        #expect(loaded.days["2026-04-10"]?["gpt-5.5"] == [1, 0, 0])
+    }
+
     private func makeTemporaryCacheRoot() throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("codexbar-cost-cache-\(UUID().uuidString)", isDirectory: true)
