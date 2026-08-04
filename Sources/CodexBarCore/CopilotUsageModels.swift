@@ -56,6 +56,13 @@ public struct CopilotUsageResponse: Sendable, Decodable {
                 .remaining == 0
         }
 
+        /// Whether the snapshot carries a real absolute credit counter, even when
+        /// it lacks a usable percentage window. Such snapshots stay accessible in
+        /// the decoded response without ever becoming a fake percentage bar.
+        public var carriesCreditsCounter: Bool {
+            self.creditsUsed != nil
+        }
+
         private enum CodingKeys: String, CodingKey {
             case entitlement
             case remaining
@@ -190,10 +197,10 @@ public struct CopilotUsageResponse: Sendable, Decodable {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             var premium = try container.decodeIfPresent(QuotaSnapshot.self, forKey: .premiumInteractions)
             var chat = try container.decodeIfPresent(QuotaSnapshot.self, forKey: .chat)
-            if premium?.isPlaceholder == true {
+            if premium?.isPlaceholder == true, premium?.carriesCreditsCounter != true {
                 premium = nil
             }
-            if chat?.isPlaceholder == true {
+            if chat?.isPlaceholder == true, chat?.carriesCreditsCounter != true {
                 chat = nil
             }
 
@@ -209,7 +216,7 @@ public struct CopilotUsageResponse: Sendable, Decodable {
                         guard let decoded = try dynamic.decodeIfPresent(QuotaSnapshot.self, forKey: key) else {
                             continue
                         }
-                        guard !decoded.isPlaceholder else { continue }
+                        guard !decoded.isPlaceholder || decoded.carriesCreditsCounter else { continue }
                         value = decoded
                     } catch {
                         continue
@@ -356,5 +363,18 @@ public struct CopilotUsageResponse: Sendable, Decodable {
             return fallback
         }
         return self.usableQuotaSnapshot(from: direct) ?? self.usableQuotaSnapshot(from: fallback)
+    }
+}
+
+/// Token-billed Copilot seats report consumption as an absolute credit counter
+/// rather than a percentage window. Carried separately from rate windows so the
+/// value stays accessible without inventing a fake quota denominator.
+public struct CopilotCreditsSnapshot: Sendable, Codable, Equatable {
+    public let creditsUsed: Double
+    public let quotaResetDate: Date?
+
+    public init(creditsUsed: Double, quotaResetDate: Date? = nil) {
+        self.creditsUsed = creditsUsed
+        self.quotaResetDate = quotaResetDate
     }
 }

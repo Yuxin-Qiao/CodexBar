@@ -42,6 +42,7 @@ struct CopilotUsageFetcherTests {
                 {
                   "copilot_plan": "business",
                   "token_based_billing": true,
+                  "quota_reset_date": "2026-09-01",
                   "quota_snapshots": {
                     "premium_interactions": {
                       "entitlement": 0,
@@ -68,6 +69,8 @@ struct CopilotUsageFetcherTests {
 
         #expect(snapshot.primary == nil)
         #expect(snapshot.secondary == nil)
+        #expect(snapshot.copilotCredits?.creditsUsed == 31)
+        #expect(snapshot.copilotCredits?.quotaResetDate != nil)
         #expect(snapshot.identity?.loginMethod == "Business")
     }
 

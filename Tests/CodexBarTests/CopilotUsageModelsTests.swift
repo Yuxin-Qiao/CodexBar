@@ -566,6 +566,32 @@ struct CopilotUsageModelsTests {
     }
 
     @Test
+    func `keeps credit counter accessible without unlimited marker`() throws {
+        // A zero-entitlement snapshot without `unlimited` is still a placeholder
+        // for percentage windows, but its absolute counter must not be lost.
+        let response = try Self.decodeFixture(
+            """
+            {
+              "copilot_plan": "business",
+              "token_based_billing": true,
+              "quota_snapshots": {
+                "premium_interactions": {
+                  "entitlement": 0,
+                  "remaining": 0,
+                  "percent_remaining": 100,
+                  "quota_id": "premium_interactions",
+                  "credits_used": 31
+                }
+              }
+            }
+            """)
+
+        let premium = try #require(response.quotaSnapshots.premiumInteractions)
+        #expect(premium.creditsUsed == 31)
+        #expect(premium.isPlaceholder)
+    }
+
+    @Test
     func `flags zero entitlement snapshot as placeholder`() {
         let snapshot = CopilotUsageResponse.QuotaSnapshot(
             entitlement: 0,
