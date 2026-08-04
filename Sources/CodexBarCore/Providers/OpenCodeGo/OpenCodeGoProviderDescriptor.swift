@@ -160,6 +160,7 @@ struct OpenCodeGoLocalUsageFetchStrategy: ProviderFetchStrategy {
         }
         let workspaceOverride = context.settings?.opencodego?.workspaceID
             ?? context.env["CODEXBAR_OPENCODEGO_WORKSPACE_ID"]
+        let zenBalanceStart = ContinuousClock.now
         let zenBalanceTask = Task<Double?, Error> {
             do {
                 return try await OpenCodeGoUsageFetcher.fetchOptionalZenBalance(
@@ -174,9 +175,9 @@ struct OpenCodeGoLocalUsageFetchStrategy: ProviderFetchStrategy {
         }
         let zenBalance = try await OpenCodeGoUsageFetcher.completedOptionalZenBalance(
             from: zenBalanceTask,
-            timeout: OpenCodeGoUsageFetchStrategy.shouldWaitForZenBalance(context: context)
-                ? .seconds(OpenCodeGoUsageFetcher.optionalZenBalanceTimeout)
-                : OpenCodeGoUsageFetcher.optionalZenBalanceJoinGrace)
+            timeout: OpenCodeGoUsageFetcher.optionalZenBalanceJoinTimeout(
+                since: zenBalanceStart,
+                waitForZenBalance: OpenCodeGoUsageFetchStrategy.shouldWaitForZenBalance(context: context)))
         return (snapshot.withZenBalanceUSD(zenBalance), false)
     }
 

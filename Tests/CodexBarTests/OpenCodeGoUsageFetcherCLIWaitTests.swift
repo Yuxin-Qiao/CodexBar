@@ -125,6 +125,43 @@ struct OpenCodeGoUsageFetcherCLIWaitTests {
         #expect(rootTimeout == 60)
     }
 
+    @Test
+    func `cli wait policy bounds optional balance wait from task start`() async throws {
+        defer {
+            OpenCodeGoCLIWaitStubURLProtocol.handler = nil
+            OpenCodeGoCLIWaitStubURLProtocol.hangPaths = []
+            OpenCodeGoCLIWaitStubURLProtocol.delayedPaths = [:]
+        }
+
+        OpenCodeGoCLIWaitStubURLProtocol.hangPaths = ["/workspace/wrk_TEST123"]
+        OpenCodeGoCLIWaitStubURLProtocol.delayedPaths = ["/workspace/wrk_TEST123/go": 2]
+        OpenCodeGoCLIWaitStubURLProtocol.handler = { request in
+            guard let url = request.url else { throw URLError(.badURL) }
+            return Self.makeResponse(
+                url: url,
+                body: Self.goUsagePageHTML(
+                    workspaceID: "wrk_TEST123",
+                    rolling: UsageWindow(percent: 17, resetInSec: 600),
+                    weekly: UsageWindow(percent: 75, resetInSec: 7200),
+                    monthly: nil),
+                statusCode: 200,
+                contentType: "text/html")
+        }
+
+        let start = ContinuousClock.now
+        let snapshot = try await OpenCodeGoUsageFetcher.fetchUsage(
+            cookieHeader: "auth=test",
+            timeout: 60,
+            workspaceIDOverride: "wrk_TEST123",
+            waitForZenBalance: true,
+            session: self.makeSession())
+        let elapsed = start.duration(to: ContinuousClock.now)
+
+        #expect(snapshot.rollingUsagePercent == 17)
+        #expect(snapshot.zenBalanceUSD == nil)
+        #expect(elapsed < .seconds(6))
+    }
+
     private static func goUsagePageHTML(
         workspaceID: String,
         rolling: UsageWindow,
@@ -173,11 +210,23 @@ struct OpenCodeGoUsageFetcherCLIWaitTests {
     }
 }
 
-private final class OpenCodeGoCLIWaitStubURLProtocol: URLProtocol {
+private final class OpenCodeGoCLIWaitStubURLProtocol: URLProtocol, @unchecked Sendable {
     private static let handlerBox = LockIsolated<((URLRequest) throws -> (HTTPURLResponse, Data))?>(nil)
     static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))? {
         get { Self.handlerBox.value }
         set { Self.handlerBox.setValue(newValue) }
+    }
+
+    private static let hangPathsBox = LockIsolated<Set<String>>([])
+    static var hangPaths: Set<String> {
+        get { hangPathsBox.value }
+        set { hangPathsBox.setValue(newValue) }
+    }
+
+    private static let delayedPathsBox = LockIsolated<[String: TimeInterval]>([:])
+    static var delayedPaths: [String: TimeInterval] {
+        get { delayedPathsBox.value }
+        set { delayedPathsBox.setValue(newValue) }
     }
 
     override static func canInit(with request: URLRequest) -> Bool {
@@ -189,18 +238,37 @@ private final class OpenCodeGoCLIWaitStubURLProtocol: URLProtocol {
     }
 
     override func startLoading() {
-        guard let handler = Self.handler else {
-            self.client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
+        guard let url = self.request.url else {
+            self.client?.urlProtocol(self, didFailWithError: URLError(.badURL))
             return
         }
-        do {
-            let (response, data) = try handler(self.request)
-            self.client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-            self.client?.urlProtocol(self, didLoad: data)
-            self.client?.urlProtocolDidFinishLoading(self)
-        } catch {
-            self.client?.urlProtocol(self, didFailWithError: error)
+        if Self.hangPaths.contains(url.path) {
+            return
         }
+        let delay = Self.delayedPaths[url.path] ?? 0
+        let deliver: () -> Void = { [weak self] in
+            guard let self else { return }
+            do {
+                let (response, data) = try Self.response(for: self.request)
+                self.client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+                self.client?.urlProtocol(self, didLoad: data)
+                self.client?.urlProtocolDidFinishLoading(self)
+            } catch {
+                self.client?.urlProtocol(self, didFailWithError: error)
+            }
+        }
+        if delay > 0 {
+            DispatchQueue.global().asyncAfter(deadline: .now() + delay, execute: deliver)
+        } else {
+            deliver()
+        }
+    }
+
+    private static func response(for request: URLRequest) throws -> (HTTPURLResponse, Data) {
+        guard let handler = Self.handler else {
+            throw URLError(.badServerResponse)
+        }
+        return try handler(request)
     }
 
     override func stopLoading() {}

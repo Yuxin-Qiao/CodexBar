@@ -149,6 +149,7 @@ public struct OpenCodeGoUsageFetcher: Sendable {
                 timeout: timeout,
                 session: session)
         }
+        let zenBalanceStart = ContinuousClock.now
         let zenBalanceTask = includeZenBalance ? Task {
             try await Task.sleep(for: self.optionalZenBalanceStartDelay)
             return try await self.fetchZenBalance(
@@ -197,9 +198,9 @@ public struct OpenCodeGoUsageFetcher: Sendable {
         }
         let zenBalance = try await self.completedOptionalZenBalance(
             from: zenBalanceTask,
-            timeout: waitForZenBalance
-                ? .seconds(self.optionalZenBalanceTimeout)
-                : Self.optionalZenBalanceJoinGrace)
+            timeout: self.optionalZenBalanceJoinTimeout(
+                since: zenBalanceStart,
+                waitForZenBalance: waitForZenBalance))
         return snapshot.withZenBalanceUSD(zenBalance)
     }
 
