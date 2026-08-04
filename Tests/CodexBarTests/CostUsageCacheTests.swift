@@ -823,6 +823,8 @@ struct CostUsageCacheTests {
         cache.days = [
             "2026-06-05": ["gpt-5.5": [1, 0, 0]],
             "2026-06-28": ["gpt-5.5": [1, 0, 0]],
+            "2026-05-31": ["gpt-5.5": [1, 0, 0]],
+            "2026-07-02": ["gpt-5.5": [1, 0, 0]],
         ]
 
         CostUsageCacheIO.save(
@@ -831,6 +833,7 @@ struct CostUsageCacheTests {
             cacheRoot: root,
             producerKey: "codex:cu:p1111111111111111",
             requestedScanWindow: (sinceKey: "2026-06-01", untilKey: "2026-07-01"),
+            reportWindow: (sinceKey: "2026-06-01", untilKey: "2026-07-01"),
             maxCacheBytes: 30000,
             maxCacheEntries: 100)
 
@@ -843,6 +846,8 @@ struct CostUsageCacheTests {
         #expect(loaded.codexPreviousReport != nil)
         #expect(loaded.codexPreviousReport?.data.contains { $0.date == "2026-06-05" } == true)
         #expect(loaded.codexPreviousReport?.data.contains { $0.date == "2026-06-28" } == true)
+        #expect(loaded.codexPreviousReport?.data.contains { $0.date == "2026-05-31" } == false)
+        #expect(loaded.codexPreviousReport?.data.contains { $0.date == "2026-07-02" } == false)
     }
 
     @Test
@@ -1041,11 +1046,11 @@ struct CostUsageCacheTests {
         var parent = CostUsageFileUsage(
             mtimeUnixMs: 1,
             size: 1_000_000,
-            days: ["2026-06-10": ["gpt-5.5": [1, 0, 0]]])
+            days: ["2026-04-10": ["gpt-5.5": [1, 0, 0]]])
         parent.sessionId = "parent-session"
         parent.codexTokenSnapshots = (0..<1000).map { index in
             CostUsageCodexTokenSnapshot(
-                timestamp: "2026-06-10T00:00:0\(index % 10)Z",
+                timestamp: "2026-04-10T00:00:0\(index % 10)Z",
                 last: nil,
                 total: CostUsageCodexTotals(input: index, cached: 0, output: 0))
         }
@@ -1061,7 +1066,7 @@ struct CostUsageCacheTests {
             "/sessions/lineage-child.jsonl": lineageChild,
         ]
         cache.days = [
-            "2026-06-10": ["gpt-5.5": [1, 0, 0]],
+            "2026-04-10": ["gpt-5.5": [1, 0, 0]],
             "2026-06-28": ["gpt-5.5": [1, 0, 0]],
         ]
 
@@ -1071,8 +1076,7 @@ struct CostUsageCacheTests {
             cacheRoot: root,
             producerKey: "codex:cu:p1111111111111111",
             requestedScanWindow: (sinceKey: "2026-06-01", untilKey: "2026-07-01"),
-            maxCacheBytes: 30000,
-            maxCacheEntries: 100)
+            maxCacheEntries: 1)
 
         let loaded = CostUsageCacheIO.load(
             provider: .codex,
@@ -1080,7 +1084,7 @@ struct CostUsageCacheTests {
             producerKey: "codex:cu:p1111111111111111")
         #expect(loaded.files["/sessions/parent.jsonl"] == nil)
         #expect(loaded.files["/sessions/lineage-child.jsonl"] != nil)
-        #expect(loaded.days["2026-06-10"] == nil)
+        #expect(loaded.days["2026-04-10"] == nil)
     }
 
     @Test

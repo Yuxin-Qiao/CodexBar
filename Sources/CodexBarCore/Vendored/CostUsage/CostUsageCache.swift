@@ -137,6 +137,7 @@ enum CostUsageCacheIO {
         producerKey: String? = nil,
         calendar: Calendar = .current,
         requestedScanWindow: (sinceKey: String, untilKey: String)? = nil,
+        reportWindow: (sinceKey: String, untilKey: String)? = nil,
         maxCacheBytes: Int = CostUsageCacheIO.maxCacheFileBytes,
         maxCacheEntries: Int = CostUsageCacheIO.maxCacheFileEntries)
     {
@@ -170,7 +171,8 @@ enum CostUsageCacheIO {
                 Self.trimInWindowEntriesForBudget(
                     &cache,
                     calendar: calendar,
-                    maxCacheBytes: maxCacheBytes)
+                    maxCacheBytes: maxCacheBytes,
+                    reportWindow: reportWindow)
             }
         }
 
@@ -188,7 +190,10 @@ enum CostUsageCacheIO {
                 force: true)
             data = (try? JSONEncoder().encode(cache)) ?? Data()
             while data.count > maxCacheBytes {
-                let strippedDetail = Self.stripAllInWindowDetailForBudget(&cache, calendar: calendar)
+                let strippedDetail = Self.stripAllInWindowDetailForBudget(
+                    &cache,
+                    calendar: calendar,
+                    reportWindow: reportWindow)
                 let clearedLookback = Self.clearActiveLookbackForBudget(&cache)
                 guard strippedDetail || clearedLookback else { break }
                 data = (try? JSONEncoder().encode(cache)) ?? Data()
@@ -238,8 +243,14 @@ enum CostUsageCacheIO {
         // Protect parents referenced by entries that survive pruning. A stale child that is
         // removed in this pass must not keep its stale parent alive.
         let survivingKeys = Set(cache.files.keys).subtracting(outOfWindowCandidates)
-        let survivingParentSessionIDs = Set(
-            survivingKeys.compactMap { cache.files[$0]?.forkedFromId })
+        let survivingParentIDs: [String] = survivingKeys.compactMap { key in
+            guard let usage = cache.files[key] else { return nil }
+            if usage.forkBaselineDependencyKey == CostUsageScanner.codexForkDependencyNotRequiredKey {
+                return nil
+            }
+            return usage.forkedFromId
+        }
+        let survivingParentSessionIDs = Set(survivingParentIDs)
         let outOfWindowKeys = outOfWindowCandidates.filter { key in
             guard let sessionId = cache.files[key]?.sessionId else { return true }
             return !survivingParentSessionIDs.contains(sessionId)
@@ -295,7 +306,8 @@ enum CostUsageCacheIO {
     private static func trimInWindowEntriesForBudget(
         _ cache: inout CostUsageCache,
         calendar: Calendar,
-        maxCacheBytes: Int) -> Bool
+        maxCacheBytes: Int,
+        reportWindow: (sinceKey: String, untilKey: String)?) -> Bool
     {
         guard let sinceKey = cache.scanSinceKey, let untilKey = cache.scanUntilKey else { return false }
         let candidates: [(key: String, usage: CostUsageFileUsage)] = cache.files.compactMap { key, usage in
@@ -333,7 +345,8 @@ enum CostUsageCacheIO {
         let preTrimCache = cache
         let previousReport = Self.previousReportForCatchUp(
             cache: preTrimCache,
-            calendar: calendar)
+            calendar: calendar,
+            reportWindow: reportWindow)
 
         // Drop oldest usage first so recent sessions keep their fork-baseline detail.
         let oldestFirst = droppable.sorted { lhs, rhs in
@@ -394,10 +407,13 @@ enum CostUsageCacheIO {
 
     private static func previousReportForCatchUp(
         cache: CostUsageCache,
-        calendar: Calendar) -> CostUsageCodexPreviousReport?
+        calendar: Calendar,
+        reportWindow: (sinceKey: String, untilKey: String)?) -> CostUsageCodexPreviousReport?
     {
-        guard let sinceKey = cache.scanSinceKey,
-              let untilKey = cache.scanUntilKey,
+        // Preserve the user-facing report window, not the scan bounds (which the scanner
+        // pads by one day on each side).
+        guard let sinceKey = reportWindow?.sinceKey ?? cache.scanSinceKey,
+              let untilKey = reportWindow?.untilKey ?? cache.scanUntilKey,
               let since = dayDate(sinceKey, calendar: calendar),
               let until = dayDate(untilKey, calendar: calendar)
         else { return nil }
@@ -415,7 +431,8 @@ enum CostUsageCacheIO {
     /// catch-up, so the persisted size always fits the load cap.
     private static func stripAllInWindowDetailForBudget(
         _ cache: inout CostUsageCache,
-        calendar: Calendar) -> Bool
+        calendar: Calendar,
+        reportWindow: (sinceKey: String, untilKey: String)?) -> Bool
     {
         guard let sinceKey = cache.scanSinceKey, let untilKey = cache.scanUntilKey else { return false }
         let preStripCache = cache
@@ -433,7 +450,8 @@ enum CostUsageCacheIO {
             cache.lastScanUnixMs = 0
             cache.codexPreviousReport = Self.previousReportForCatchUp(
                 cache: preStripCache,
-                calendar: calendar)
+                calendar: calendar,
+                reportWindow: reportWindow)
         }
         return strippedAny
     }
