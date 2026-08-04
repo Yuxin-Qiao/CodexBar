@@ -186,11 +186,13 @@ enum CostUsageCacheIO {
                 maxCacheEntries: maxCacheEntries,
                 previousArtifactBytes: nil,
                 force: true)
-            Self.trimInWindowEntriesForBudget(
-                &cache,
-                calendar: calendar,
-                maxCacheBytes: maxCacheBytes)
-            data = (try? JSONEncoder().encode(cache)) ?? Data()
+            var stripped = true
+            while data.count > maxCacheBytes, stripped {
+                stripped = Self.stripAllInWindowDetailForBudget(&cache, calendar: calendar)
+                if stripped {
+                    data = (try? JSONEncoder().encode(cache)) ?? Data()
+                }
+            }
         }
         try? data.write(to: url, options: [.atomic])
     }
@@ -400,6 +402,35 @@ enum CostUsageCacheIO {
             calendar: calendar)
         let report = CostUsageScanner.buildCodexReportFromCache(cache: cache, range: range)
         return CostUsageCodexPreviousReport(report: report, cache: cache)
+    }
+
+    /// Last-resort enforcement for payloads the heuristic estimate underestimated: strips
+    /// rebuildable detail from every completed in-window entry (keeping identity, day
+    /// aggregates, totals, cost data, and fork metadata) and marks the artifact for
+    /// catch-up, so the persisted size always fits the load cap.
+    private static func stripAllInWindowDetailForBudget(
+        _ cache: inout CostUsageCache,
+        calendar: Calendar) -> Bool
+    {
+        guard let sinceKey = cache.scanSinceKey, let untilKey = cache.scanUntilKey else { return false }
+        let preStripCache = cache
+        var strippedAny = false
+        for key in cache.files.keys {
+            guard let usage = cache.files[key] else { continue }
+            let inWindow = usage.touchesCodexScanWindow(sinceKey: sinceKey, untilKey: untilKey)
+                || Self.isRecentlyActive(usage, calendar: calendar, sinceKey: sinceKey, untilKey: untilKey)
+            guard inWindow, usage.codexScanComplete != false else { continue }
+            Self.stripFileUsageDetail(&cache, key: key)
+            strippedAny = true
+        }
+        if strippedAny {
+            cache.codexScanCatchUpPending = true
+            cache.lastScanUnixMs = 0
+            cache.codexPreviousReport = Self.previousReportForCatchUp(
+                cache: preStripCache,
+                calendar: calendar)
+        }
+        return strippedAny
     }
 
     private static func dayDate(_ key: String, calendar: Calendar) -> Date? {
