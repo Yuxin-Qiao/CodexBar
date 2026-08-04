@@ -125,6 +125,43 @@ public struct CopilotUsageResponse: Sendable, Decodable {
             self.unlimited = decodedUnlimited
         }
 
+        private init(
+            entitlement: Double,
+            remaining: Double,
+            creditsUsed: Double?,
+            percentRemaining: Double,
+            quotaId: String,
+            hasPercentRemaining: Bool,
+            unlimited: Bool,
+            entitlementWasDecoded: Bool,
+            remainingWasDecoded: Bool)
+        {
+            self.entitlement = entitlement
+            self.remaining = remaining
+            self.creditsUsed = creditsUsed
+            self.percentRemaining = percentRemaining
+            self.quotaId = quotaId
+            self.hasPercentRemaining = hasPercentRemaining
+            self.unlimited = unlimited
+            self.entitlementWasDecoded = entitlementWasDecoded
+            self.remainingWasDecoded = remainingWasDecoded
+        }
+
+        /// Returns a copy carrying `creditsUsed`, preserving the decoded-flag
+        /// semantics that placeholder classification depends on.
+        fileprivate func withCreditsUsed(_ creditsUsed: Double?) -> QuotaSnapshot {
+            QuotaSnapshot(
+                entitlement: self.entitlement,
+                remaining: self.remaining,
+                creditsUsed: creditsUsed,
+                percentRemaining: self.percentRemaining,
+                quotaId: self.quotaId,
+                hasPercentRemaining: self.hasPercentRemaining,
+                unlimited: self.unlimited,
+                entitlementWasDecoded: self.entitlementWasDecoded,
+                remainingWasDecoded: self.remainingWasDecoded)
+        }
+
         private static func decodeNumberIfPresent(
             container: KeyedDecodingContainer<CodingKeys>,
             key: CodingKeys) -> Double?
@@ -360,7 +397,10 @@ public struct CopilotUsageResponse: Sendable, Decodable {
         fallback: QuotaSnapshot?) -> QuotaSnapshot?
     {
         if direct?.unlimited == true, let fallback = usableQuotaSnapshot(from: fallback) {
-            return fallback
+            // The direct snapshot's absolute credit counter is real consumption
+            // even though its unlimited marker makes it ineligible for a
+            // percentage window; keep the counter on the selected fallback.
+            return fallback.withCreditsUsed(direct?.creditsUsed)
         }
         return self.usableQuotaSnapshot(from: direct) ?? self.usableQuotaSnapshot(from: fallback)
     }
