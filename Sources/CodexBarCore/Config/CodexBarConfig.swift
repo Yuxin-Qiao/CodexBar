@@ -40,7 +40,9 @@ public struct CodexBarConfig: Codable, Sendable {
             let providerDecoder = try providersContainer.superDecoder()
             let providerContainer = try providerDecoder.container(keyedBy: ProviderCodingKeys.self)
             let rawID = try providerContainer.decode(String.self, forKey: .id)
-            guard let instanceID = ProviderInstanceID(rawValue: rawID), instanceID.firstPartyProvider != nil else {
+            guard let instanceID = ProviderInstanceID(rawValue: rawID),
+                  Self.isKnownProviderInstance(instanceID)
+            else {
                 Self.log.warning("Ignoring unknown provider in config", metadata: ["provider": rawID])
                 continue
             }
@@ -48,6 +50,16 @@ public struct CodexBarConfig: Codable, Sendable {
         }
         self.providers = providers
         self.hooks = try container.decodeIfPresent(HooksConfig.self, forKey: .hooks)
+    }
+
+    /// User plugins exist only where JavaScriptCore does; other platforms drop their config entries.
+    private static func isKnownProviderInstance(_ instanceID: ProviderInstanceID) -> Bool {
+        if instanceID.firstPartyProvider != nil { return true }
+        #if canImport(JavaScriptCore)
+        return UserProviderPluginRegistry.plugin(for: instanceID) != nil
+        #else
+        return false
+        #endif
     }
 
     public static func makeDefault(
@@ -194,6 +206,9 @@ public struct ProviderConfig: Codable, Sendable, Identifiable {
     public var deepseekProfileScope: String?
     /// Region that owns `apiKey`. Region-routed providers use this to keep credentials host-scoped.
     public var apiKeyRegion: String?
+    /// Arbitrary user-plugin values stay scoped to the provider instance. Secure values are redacted from config dumps.
+    public var pluginSettings: [String: String]?
+    public var pluginSecrets: [String: String]?
 
     public init(
         id: ProviderInstanceID,
@@ -221,7 +236,9 @@ public struct ProviderConfig: Codable, Sendable, Identifiable {
         awsAuthMode: String? = nil,
         deepseekProfileID: String? = nil,
         deepseekProfileScope: String? = nil,
-        apiKeyRegion: String? = nil)
+        apiKeyRegion: String? = nil,
+        pluginSettings: [String: String]? = nil,
+        pluginSecrets: [String: String]? = nil)
     {
         self.id = id
         self.enabled = enabled
@@ -249,6 +266,8 @@ public struct ProviderConfig: Codable, Sendable, Identifiable {
         self.deepseekProfileID = deepseekProfileID
         self.deepseekProfileScope = deepseekProfileScope
         self.apiKeyRegion = apiKeyRegion
+        self.pluginSettings = pluginSettings
+        self.pluginSecrets = pluginSecrets
     }
 
     public var sanitizedAPIKey: String? {
@@ -309,6 +328,9 @@ public struct ProviderConfig: Codable, Sendable, Identifiable {
         }
         if copy.cookieHeader != nil {
             copy.cookieHeader = "[REDACTED]"
+        }
+        if copy.pluginSecrets != nil {
+            copy.pluginSecrets = copy.pluginSecrets?.mapValues { _ in "[REDACTED]" }
         }
         if let tokenAccounts = copy.tokenAccounts {
             copy.tokenAccounts = tokenAccounts.sanitizedForDump()

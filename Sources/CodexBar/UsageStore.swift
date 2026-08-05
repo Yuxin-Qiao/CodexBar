@@ -310,6 +310,7 @@ final class UsageStore {
     @ObservationIgnored private let registry: ProviderRegistry
     @ObservationIgnored let settings: SettingsStore
     @ObservationIgnored let environmentBase: [String: String]
+    @ObservationIgnored let pluginApprovalStore = ProviderPluginApprovalStore()
     @ObservationIgnored let sessionQuotaNotifier: any SessionQuotaNotifying
     @ObservationIgnored let sessionQuotaLogger = CodexBarLog.logger(LogCategories.sessionQuota)
     @ObservationIgnored let openAIWebLogger = CodexBarLog.logger(LogCategories.openAIWeb)
@@ -560,9 +561,7 @@ final class UsageStore {
         // Use cached enablement to avoid repeated UserDefaults lookups in animation ticks.
         let enabled = self.settings.enabledProvidersOrdered(metadataByProvider: self.providerMetadata)
         let now = Date()
-        return enabled.filter { instanceID in
-            instanceID.firstPartyProvider.map { self.isProviderAvailable($0, now: now) } ?? false
-        }
+        return enabled.filter { self.isEnabledProviderInstance($0, now: now) }
     }
 
     /// Enabled providers without availability filtering. Used for display (switcher, merge-icons).
@@ -653,7 +652,7 @@ final class UsageStore {
         self.isProviderAvailable(provider, now: Date())
     }
 
-    private func isProviderAvailable(_ provider: UsageProvider, now: Date) -> Bool {
+    func isProviderAvailable(_ provider: UsageProvider, now: Date) -> Bool {
         guard provider != .codex else { return true }
 
         let configRevision = self.settings.configRevision
@@ -745,7 +744,10 @@ final class UsageStore {
 
             await withTaskGroup(of: Void.self) { group in
                 for instanceID in refreshProviders {
-                    guard let provider = instanceID.firstPartyProvider else { continue }
+                    guard let provider = instanceID.firstPartyProvider else {
+                        group.addTask { await self.refreshUserPlugin(instanceID) }
+                        continue
+                    }
                     group.addTask {
                         await self.refreshProvider(
                             provider,

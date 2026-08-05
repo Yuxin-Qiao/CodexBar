@@ -47,7 +47,7 @@ extension SettingsStore {
         watcher.start()
     }
 
-    private func updateConfig(
+    func updateConfig(
         reason: String,
         affectsBackgroundWork: Bool,
         mutate: (inout CodexBarConfig) -> Void)

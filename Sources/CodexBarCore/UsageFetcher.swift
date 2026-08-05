@@ -171,6 +171,7 @@ public struct UsageSnapshot: Codable, Sendable {
     public let poeUsage: PoeUsageHistorySnapshot?
     public let xaiUsage: XAIUsageSnapshot?
     public let cursorRequests: CursorRequestUsage?
+    public let copilotCredits: CopilotCreditsSnapshot?
     /// Live-only marker for optional Command Code subscription lookup failure.
     public let commandCodeSubscriptionEnrichmentUnavailable: Bool
     /// Live-only marker that Command Code returned a recognized subscription plan.
@@ -247,6 +248,7 @@ public struct UsageSnapshot: Codable, Sendable {
         poeUsage: PoeUsageHistorySnapshot? = nil,
         xaiUsage: XAIUsageSnapshot? = nil,
         cursorRequests: CursorRequestUsage? = nil,
+        copilotCredits: CopilotCreditsSnapshot? = nil,
         commandCodeSubscriptionEnrichmentUnavailable: Bool = false,
         commandCodeHasSubscriptionPlan: Bool = false,
         commandCodeMonthlyGrantDepleted: Bool = false,
@@ -289,6 +291,7 @@ public struct UsageSnapshot: Codable, Sendable {
         self.poeUsage = poeUsage
         self.xaiUsage = xaiUsage
         self.cursorRequests = cursorRequests
+        self.copilotCredits = copilotCredits
         self.commandCodeSubscriptionEnrichmentUnavailable = commandCodeSubscriptionEnrichmentUnavailable
         self.commandCodeHasSubscriptionPlan = commandCodeHasSubscriptionPlan
         self.commandCodeMonthlyGrantDepleted = commandCodeMonthlyGrantDepleted
@@ -364,6 +367,7 @@ public struct UsageSnapshot: Codable, Sendable {
         self.poeUsage = try container.decodeIfPresent(PoeUsageHistorySnapshot.self, forKey: .poeUsage)
         self.xaiUsage = try container.decodeIfPresent(XAIUsageSnapshot.self, forKey: .xaiUsage)
         self.cursorRequests = nil // Not persisted, fetched fresh each time
+        self.copilotCredits = nil // Not persisted, fetched fresh each time
         self.commandCodeSubscriptionEnrichmentUnavailable = false // Live-only fetch state
         self.commandCodeHasSubscriptionPlan = false // Live-only fetch state
         self.commandCodeMonthlyGrantDepleted = false // Live-only fetch state
@@ -603,6 +607,7 @@ public struct UsageSnapshot: Codable, Sendable {
             poeUsage: self.poeUsage,
             xaiUsage: self.xaiUsage,
             cursorRequests: self.cursorRequests,
+            copilotCredits: self.copilotCredits,
             commandCodeSubscriptionEnrichmentUnavailable: self.commandCodeSubscriptionEnrichmentUnavailable,
             commandCodeHasSubscriptionPlan: self.commandCodeHasSubscriptionPlan,
             commandCodeMonthlyGrantDepleted: self.commandCodeMonthlyGrantDepleted,

@@ -619,7 +619,9 @@ extension StatusItemController {
 
     private func addMenuCards(to menu: NSMenu, context: MenuCardContext, captureMenu: NSMenu? = nil) -> Bool {
         let fleetProjection = self.fleetAccountProjection(for: context.currentProvider)
-        if self.addFleetFallback(fleetProjection, to: menu, context: context) { return false }
+        if self.addFleetFallback(fleetProjection, to: menu, context: context) {
+            return false
+        }
 
         if let codexAccountDisplay = context.codexAccountDisplay, codexAccountDisplay.showAll {
             if !self.addCompactCodexAccountMenuIfPlanned(
@@ -779,6 +781,7 @@ extension StatusItemController {
                 menu.addItem(.separator())
             }
         }
+        self.addUserPluginMenuCards(to: menu, width: context.menuWidth)
     }
 
     func addActionableSections(

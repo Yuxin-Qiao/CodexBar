@@ -284,6 +284,9 @@ final class SettingsStore {
         antigravityOAuthCredentialsStore: AntigravityOAuthCredentialsStore = AntigravityOAuthCredentialsStore(),
         performInitialProviderDetection: Bool = !SettingsStore.isRunningTests)
     {
+        if !Self.isRunningTests {
+            _ = UserProviderPluginRegistry.refresh()
+        }
         // Capture this before app-group/config migrations can create prior-installation state.
         let hadExistingConfig = (try? configStore.load()) != nil
         let hadPreviousInstallationState = hadExistingConfig || Self.hadPreviousAppLaunch(userDefaults: userDefaults)
@@ -882,6 +885,20 @@ extension SettingsStore {
             self.providerConfigFingerprints[instanceID] = fingerprint
             enablement[instanceID] = isEnabled
         }
+        for plugin in UserProviderPluginRegistry.all {
+            let instanceID = plugin.manifest.id
+            let providerConfig = config.providerConfig(for: instanceID) ?? ProviderConfig(id: instanceID)
+            let isEnabled = providerConfig.enabled ?? true
+            if let previous = self.providerEnablement[instanceID], previous != isEnabled {
+                self.providerEnablementRevisions[instanceID, default: 0] &+= 1
+            }
+            let fingerprint = Self.providerConfigFingerprint(providerConfig)
+            if let previous = self.providerConfigFingerprints[instanceID], previous != fingerprint {
+                self.providerConfigRevisions[instanceID, default: 0] &+= 1
+            }
+            self.providerConfigFingerprints[instanceID] = fingerprint
+            enablement[instanceID] = isEnabled
+        }
         self.providerEnablement = enablement
     }
 
@@ -945,6 +962,33 @@ extension SettingsStore {
         }
     }
 
+    func isPluginEnabled(_ instanceID: ProviderInstanceID) -> Bool {
+        self.providerEnablement[instanceID] ?? false
+    }
+
+    func setPluginEnabled(_ instanceID: ProviderInstanceID, enabled: Bool) {
+        self.updatePluginConfig(instanceID: instanceID) { $0.enabled = enabled }
+        if !enabled, self.selectedMenuProvider == instanceID {
+            self.selectedMenuProvider = nil
+        }
+    }
+
+    func pluginConfig(_ instanceID: ProviderInstanceID) -> ProviderConfig? {
+        self.configSnapshot.providerConfig(for: instanceID)
+    }
+
+    func updatePluginConfig(instanceID: ProviderInstanceID, mutate: (inout ProviderConfig) -> Void) {
+        self.updateConfig(reason: "plugin-\(instanceID.rawValue)", affectsBackgroundWork: true) { config in
+            if let index = config.providers.firstIndex(where: { $0.id == instanceID }) {
+                mutate(&config.providers[index])
+            } else {
+                var entry = ProviderConfig(id: instanceID, enabled: true)
+                mutate(&entry)
+                config.providers.append(entry)
+            }
+        }
+    }
+
     func rerunProviderDetection() {
         self.runInitialProviderDetectionIfNeeded(force: true)
     }
@@ -956,7 +1000,9 @@ extension SettingsStore {
         var ordered: [ProviderInstanceID] = []
 
         for rawValue in raw {
-            guard let instanceID = ProviderInstanceID(rawValue: rawValue), instanceID.firstPartyProvider != nil else {
+            guard let instanceID = ProviderInstanceID(rawValue: rawValue),
+                  instanceID.firstPartyProvider != nil || UserProviderPluginRegistry.plugin(for: instanceID) != nil
+            else {
                 continue
             }
             guard !seen.contains(instanceID) else { continue }
@@ -982,6 +1028,11 @@ extension SettingsStore {
 
         for provider in UsageProvider.allCases where !seen.contains(provider.instanceID) {
             ordered.append(provider.instanceID)
+        }
+
+        for plugin in UserProviderPluginRegistry.all where !seen.contains(plugin.manifest.id) {
+            ordered.append(plugin.manifest.id)
+            seen.insert(plugin.manifest.id)
         }
 
         return ordered

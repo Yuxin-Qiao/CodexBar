@@ -98,6 +98,12 @@ extension UsageStore {
                 self.clearProviderState(provider)
             }
         }
+        let dynamicIDs = Set(self.snapshots.keys).union(self.errors.keys).filter { $0.firstPartyProvider == nil }
+        for instanceID in dynamicIDs where !enabledProviders.contains(instanceID) {
+            self.snapshots.removeValue(forKey: instanceID)
+            self.errors.removeValue(forKey: instanceID)
+            self.lastSourceLabels.removeValue(forKey: instanceID)
+        }
     }
 
     func clearUnavailableProviderState(
