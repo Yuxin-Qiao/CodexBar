@@ -46,23 +46,46 @@ extension UsageStore {
         _ snapshots: [UsageSnapshot],
         now: Date = Date()) -> UsageSnapshot?
     {
-        let primary = self.codexPreferredResetBackfillWindow(
+        var primary = self.codexPreferredResetBackfillWindow(
             snapshots.enumerated().compactMap { index, snapshot in
                 CodexConsumerProjection.sourceRateWindow(for: .session, snapshot: snapshot)
                     .map { (window: $0, updatedAt: snapshot.updatedAt, priority: index) }
             },
             now: now)
-        let secondary = self.codexPreferredResetBackfillWindow(
+        var secondary = self.codexPreferredResetBackfillWindow(
             snapshots.enumerated().compactMap { index, snapshot in
                 CodexConsumerProjection.sourceRateWindow(for: .weekly, snapshot: snapshot)
                     .map { (window: $0, updatedAt: snapshot.updatedAt, priority: index) }
             },
             now: now)
+        let monthly = self.codexPreferredResetBackfillWindow(
+            snapshots.enumerated().compactMap { index, snapshot in
+                Self.monthlyRateWindow(in: snapshot)
+                    .map { (window: $0, updatedAt: snapshot.updatedAt, priority: index) }
+            },
+            now: now)
+        if let monthly, let monthlyReset = monthly.resetsAt {
+            if primary == nil {
+                primary = monthly
+            } else if secondary == nil {
+                secondary = monthly
+            } else if let primaryReset = primary?.resetsAt, monthlyReset > primaryReset {
+                primary = monthly
+            } else if let secondaryReset = secondary?.resetsAt, monthlyReset > secondaryReset {
+                secondary = monthly
+            }
+        }
         guard primary != nil || secondary != nil else { return nil }
         return UsageSnapshot(
             primary: primary,
             secondary: secondary,
             updatedAt: snapshots.map(\.updatedAt).max() ?? now)
+    }
+
+    private nonisolated static func monthlyRateWindow(in snapshot: UsageSnapshot) -> RateWindow? {
+        [snapshot.primary, snapshot.secondary, snapshot.tertiary]
+            .compactMap(\.self)
+            .first { $0.windowMinutes == CodexConsumerProjection.monthlyWindowMinutes }
     }
 
     private nonisolated static func codexPreferredResetBackfillWindow(
