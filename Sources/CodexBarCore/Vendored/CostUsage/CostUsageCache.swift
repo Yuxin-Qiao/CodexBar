@@ -10,8 +10,13 @@ enum CostUsageCacheIO {
     static let maxCacheFileBytes: Int = 256 * 1024 * 1024
     static let maxCacheFileEntries: Int = 25000
     /// Artifacts above this size are refused at load time and rebuilt by the bounded
-    /// scanner instead of being decoded in one shot.
-    static let maxCacheLoadBytes: Int = 1024 * 1024 * 1024
+    /// scanner instead of being decoded in one shot. `JSONDecoder` materializes the whole
+    /// object graph at roughly an order of magnitude over the artifact size (#2637 traced
+    /// multi-GiB `MALLOC_LARGE` spikes to exactly this decode), so the cap stays close to
+    /// the save budget: `save` never persists a Codex artifact above the budget, which
+    /// means anything bigger is a legacy or foreign artifact that is cheaper to rebuild
+    /// bounded than to decode in one shot.
+    static let maxCacheLoadBytes: Int = 320 * 1024 * 1024
 
     /// Producer keys from older parser hashes whose caches are still valid under the current
     /// delta semantics. Cleared for #2037: interleave containment changed how cumulative
@@ -139,7 +144,8 @@ enum CostUsageCacheIO {
         requestedScanWindow: (sinceKey: String, untilKey: String)? = nil,
         reportWindow: (sinceKey: String, untilKey: String)? = nil,
         maxCacheBytes: Int = CostUsageCacheIO.maxCacheFileBytes,
-        maxCacheEntries: Int = CostUsageCacheIO.maxCacheFileEntries)
+        maxCacheEntries: Int = CostUsageCacheIO.maxCacheFileEntries,
+        maxCacheLoadBytes: Int = CostUsageCacheIO.maxCacheLoadBytes)
     {
         let url = self.cacheFileURL(provider: provider, cacheRoot: cacheRoot)
         let dir = url.deletingLastPathComponent()
@@ -201,6 +207,14 @@ enum CostUsageCacheIO {
                 guard strippedDetail || clearedLookback || prunedOrphans else { break }
                 data = (try? JSONEncoder().encode(cache)) ?? Data()
             }
+        }
+        if provider == .codex, data.count > maxCacheLoadBytes {
+            // Enforcement could not shrink the payload below what `load` accepts (e.g. the
+            // bulk lives in unstrippable resume/buffered state). Persisting it would make
+            // every launch decode a multi-GiB document just to refuse it; drop the artifact
+            // instead so the bounded scanner rebuilds from scratch.
+            try? FileManager.default.removeItem(at: url)
+            return
         }
         try? data.write(to: url, options: [.atomic])
     }

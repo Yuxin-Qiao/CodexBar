@@ -1348,6 +1348,59 @@ struct CostUsageCacheTests {
         #expect(loaded.files["/sessions/in-window.jsonl"] != nil)
     }
 
+    @Test
+    func `codex load cap keeps headroom over the save budget`() {
+        // `save` bounds the artifact to `maxCacheFileBytes`; the load cap must stay above it
+        // (with slack for enforcement overshoot) or every persisted artifact near the budget
+        // would be refused and rebuilt on the next launch.
+        #expect(CostUsageCacheIO.maxCacheLoadBytes > CostUsageCacheIO.maxCacheFileBytes)
+    }
+
+    @Test
+    func `save removes the artifact when enforcement cannot fit the load cap`() throws {
+        let root = try self.makeTemporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let url = CostUsageCacheIO.cacheFileURL(provider: .codex, cacheRoot: root)
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true)
+        try Data(repeating: 0x20, count: 128).write(to: url)
+
+        var cache = CostUsageCache()
+        cache.scanSinceKey = "2026-06-01"
+        cache.scanUntilKey = "2026-07-01"
+        // An in-window entry that is still resuming keeps its buffered fork-retry lines:
+        // pruning, trimming, and detail stripping all skip it, so the payload cannot shrink.
+        var resuming = CostUsageFileUsage(
+            mtimeUnixMs: 1,
+            size: 100,
+            days: ["2026-06-20": ["gpt-5.5": [1, 0, 0]]])
+        resuming.codexScanComplete = false
+        resuming.codexBufferedSubagentLines = (0..<200).map { index in
+            CostUsageScanner.CodexBufferedFastLine(
+                lineIndex: index,
+                ordinal: nil,
+                line: .taskStarted(turnID: "turn-\(index)-\(String(repeating: "x", count: 600))"))
+        }
+        cache.files = ["/sessions/resuming.jsonl": resuming]
+        cache.days = ["2026-06-20": ["gpt-5.5": [1, 0, 0]]]
+
+        CostUsageCacheIO.save(
+            provider: .codex,
+            cache: cache,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111",
+            requestedScanWindow: (sinceKey: "2026-06-01", untilKey: "2026-07-01"),
+            maxCacheBytes: 1024,
+            maxCacheEntries: 100,
+            maxCacheLoadBytes: 50000)
+
+        // Persisting an artifact the loader refuses would decode-and-discard it on every
+        // launch; the stale artifact must be gone so the bounded scanner rebuilds instead.
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+    }
+
     private func makeTemporaryCacheRoot() throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("codexbar-cost-cache-\(UUID().uuidString)", isDirectory: true)
