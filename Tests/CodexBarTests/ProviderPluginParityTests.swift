@@ -183,6 +183,46 @@ struct ProviderPluginParityTests {
         Self.expectCoreParity(swift, script)
     }
 
+    @Test
+    func `OpenRouter reset window fallback without cumulative usage has Swift and JS parity`() async throws {
+        let creditsBody = #"{"data":{"total_credits":100,"total_usage":40}}"#
+        let keyBody = #"""
+        {"data":{
+          "limit":500,
+          "limit_reset":"monthly",
+          "usage_monthly":45.457405021
+        }}
+        """#
+        let transport = ProviderHTTPTransportHandler { request in
+            #expect(request.httpMethod == "GET")
+            #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer fixture-key")
+            #expect(request.value(forHTTPHeaderField: "Accept") == "application/json")
+            let response = try #require(HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]))
+            let body = request.url?.path.hasSuffix("/key") == true ? keyBody : creditsBody
+            return (Data(body.utf8), response)
+        }
+        let now = Date()
+
+        let swift = try await OpenRouterUsageFetcher.fetchUsage(
+            apiKey: "fixture-key",
+            environment: ["OPENROUTER_API_URL": "https://openrouter.test/api/v1"],
+            transport: transport).toUsageSnapshot()
+        let runtime = try ProviderPluginRuntime(bundledPlugin: "openrouter", transport: transport)
+        let script = try await runtime.fetchUsage(
+            secrets: ["OPENROUTER_API_KEY": "fixture-key"],
+            now: now)
+
+        // Without cumulative usage, the reset-window fallback still renders the meter
+        // in both implementations.
+        #expect(swift.primary?.usedPercent == 9.0914810042)
+        #expect(script.primary?.usedPercent == 9.0914810042)
+        Self.expectCoreParity(swift, script)
+    }
+
     private static func transport(body: String) -> ProviderHTTPTransportHandler {
         ProviderHTTPTransportHandler { request in
             #expect(request.httpMethod == "GET")

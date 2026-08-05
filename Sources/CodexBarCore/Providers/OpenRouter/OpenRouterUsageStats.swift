@@ -152,8 +152,10 @@ public struct OpenRouterUsageSnapshot: Codable, Sendable {
             // and clamp the rendered remaining amount to zero.
             return keyLimitRemaining.isFinite
         }
-        guard let keyUsage else { return false }
-        return keyUsage >= 0
+        // Validate the selected fallback value (reset-window usage when declared,
+        // otherwise cumulative usage) so the meter renders whenever a quota source exists.
+        guard let fallbackUsage = self.quotaFallbackUsage else { return false }
+        return fallbackUsage >= 0
     }
 
     public var keyQuotaStatus: OpenRouterKeyQuotaStatus {
