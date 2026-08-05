@@ -362,10 +362,12 @@ enum CostUsageCacheIO {
         // Preserve the complete report from the untrimmed cache so catch-up displays full
         // totals instead of the reduced window after a restart.
         let preTrimCache = cache
-        let previousReport = Self.previousReportForCatchUp(
-            cache: preTrimCache,
-            calendar: calendar,
-            reportWindow: reportWindow)
+        let previousReport = cache.codexPreviousReport == nil
+            ? Self.previousReportForCatchUp(
+                cache: preTrimCache,
+                calendar: calendar,
+                reportWindow: reportWindow)
+            : nil
 
         // Drop oldest usage first so recent sessions keep their fork-baseline detail.
         let oldestFirst = droppable.sorted { lhs, rhs in
@@ -423,7 +425,9 @@ enum CostUsageCacheIO {
             // mark the cache as needing catch-up so a cold restart re-scans them promptly.
             cache.codexScanCatchUpPending = true
             cache.lastScanUnixMs = 0
-            cache.codexPreviousReport = previousReport
+            if cache.codexPreviousReport == nil {
+                cache.codexPreviousReport = previousReport
+            }
         }
         return !droppedKeys.isEmpty || stripped
     }
@@ -502,10 +506,12 @@ enum CostUsageCacheIO {
         if strippedAny {
             cache.codexScanCatchUpPending = true
             cache.lastScanUnixMs = 0
-            cache.codexPreviousReport = Self.previousReportForCatchUp(
-                cache: preStripCache,
-                calendar: calendar,
-                reportWindow: reportWindow)
+            if cache.codexPreviousReport == nil {
+                cache.codexPreviousReport = Self.previousReportForCatchUp(
+                    cache: preStripCache,
+                    calendar: calendar,
+                    reportWindow: reportWindow)
+            }
         }
         return strippedAny
     }

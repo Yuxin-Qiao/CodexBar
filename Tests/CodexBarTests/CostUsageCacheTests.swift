@@ -1425,6 +1425,72 @@ struct CostUsageCacheTests {
     }
 
     @Test
+    func `save preserves an existing complete report across repeated trims`() throws {
+        let root = try self.makeTemporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        var cache = CostUsageCache()
+        cache.scanSinceKey = "2026-06-01"
+        cache.scanUntilKey = "2026-07-01"
+        var older = CostUsageFileUsage(
+            mtimeUnixMs: 1,
+            size: 1_000_000,
+            days: ["2026-06-05": ["gpt-5.5": [1, 0, 0]]])
+        older.sessionId = "older-session"
+        older.codexTokenSnapshots = (0..<1000).map { index in
+            CostUsageCodexTokenSnapshot(
+                timestamp: "2026-06-05T00:00:0\(index % 10)Z",
+                last: nil,
+                total: CostUsageCodexTotals(input: index, cached: 0, output: 0))
+        }
+        var recent = CostUsageFileUsage(
+            mtimeUnixMs: 1,
+            size: 100,
+            days: ["2026-06-28": ["gpt-5.5": [1, 0, 0]]])
+        recent.sessionId = "recent-session"
+        cache.files = [
+            "/sessions/older.jsonl": older,
+            "/sessions/recent.jsonl": recent,
+        ]
+        cache.days = [
+            "2026-06-05": ["gpt-5.5": [1, 0, 0]],
+            "2026-06-28": ["gpt-5.5": [1, 0, 0]],
+        ]
+        // Simulate an already pending catch-up pass with a complete previous report.
+        cache.codexScanCatchUpPending = true
+        cache.codexPreviousReport = CostUsageCodexPreviousReport(
+            report: CostUsageDailyReport(data: [
+                CostUsageDailyReport.Entry(
+                    date: "2026-06-05",
+                    inputTokens: 1,
+                    outputTokens: 0,
+                    totalTokens: 1,
+                    costUSD: nil,
+                    modelsUsed: nil,
+                    modelBreakdowns: nil),
+            ], summary: nil),
+            cache: cache)
+
+        CostUsageCacheIO.save(
+            provider: .codex,
+            cache: cache,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111",
+            requestedScanWindow: (sinceKey: "2026-06-01", untilKey: "2026-07-01"),
+            maxCacheBytes: 30000,
+            maxCacheEntries: 100)
+
+        let loaded = CostUsageCacheIO.load(
+            provider: .codex,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111")
+        let preserved = try #require(loaded.codexPreviousReport)
+        #expect(preserved.data.count == 1)
+        #expect(preserved.data.first?.date == "2026-06-05")
+        #expect(preserved.data.contains { $0.date == "2026-06-28" } == false)
+    }
+
+    @Test
     func `codex load cap keeps headroom over the save budget`() {
         // `save` bounds the artifact to `maxCacheFileBytes`; the load cap must stay above it
         // (with slack for enforcement overshoot) or every persisted artifact near the budget
