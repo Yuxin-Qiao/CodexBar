@@ -32,23 +32,21 @@ extension UsageMenuCardView.Model {
             switch lane {
             case .session:
                 id = "primary"
-                paceDetail = window.windowMinutes == CodexConsumerProjection.sessionWindowMinutes
-                    ? Self.sessionPaceDetail(
-                        provider: input.provider,
-                        window: window,
-                        now: input.now,
-                        showUsed: input.usageBarsShowUsed)
-                    : nil
+                // UsagePaceText.sessionPace suppresses weekly/monthly durations centrally;
+                // unknown durations in the session lane keep their existing pace.
+                paceDetail = Self.sessionPaceDetail(
+                    provider: input.provider,
+                    window: window,
+                    now: input.now,
+                    showUsed: input.usageBarsShowUsed)
             case .weekly:
                 id = "secondary"
-                paceDetail = window.windowMinutes == CodexConsumerProjection.weeklyWindowMinutes
-                    ? Self.weeklyPaceDetail(
-                        provider: input.provider,
-                        window: window,
-                        now: input.now,
-                        pace: Self.standardWeeklyPace(input: input, window: window),
-                        showUsed: input.usageBarsShowUsed)
-                    : nil
+                paceDetail = Self.weeklyPaceDetail(
+                    provider: input.provider,
+                    window: window,
+                    now: input.now,
+                    pace: Self.standardWeeklyPace(input: input, window: window),
+                    showUsed: input.usageBarsShowUsed)
             case .monthly:
                 id = "monthly"
                 paceDetail = nil
