@@ -1214,7 +1214,7 @@ struct CostUsageCacheTests {
             nextDayKeyByRoot: ["/sessions": "2026-06-02"],
             completedRootPaths: [],
             pendingFilePaths: (0..<3000).map { "/sessions/pending-\($0).jsonl" },
-            legacyRecursivePendingRootPaths: [])
+            legacyRecursivePendingRootPaths: ["/sessions/archive"])
         let maxCacheBytes = 30000
 
         CostUsageCacheIO.save(
@@ -1232,7 +1232,9 @@ struct CostUsageCacheTests {
             producerKey: "codex:cu:p1111111111111111")
         let lookback = try #require(loaded.codexActiveLookbackState)
         #expect(lookback.pendingFilePaths.isEmpty)
+        #expect(lookback.legacyRecursivePendingRootPaths.isEmpty)
         #expect(loaded.codexSessionDiscovery?.filePaths.contains("/sessions/pending-0.jsonl") == true)
+        #expect(loaded.codexSessionDiscovery?.directoryPaths.contains("/sessions/archive") == true)
         #expect(loaded.files["/sessions/in-window.jsonl"] != nil)
     }
 
@@ -1346,6 +1348,57 @@ struct CostUsageCacheTests {
             producerKey: "codex:cu:p1111111111111111")
         #expect(loaded.codexSessionDiscovery?.filePathBySessionId.isEmpty == true)
         #expect(loaded.files["/sessions/in-window.jsonl"] != nil)
+    }
+
+    @Test
+    func `save shares discovery id capacity across missing and pending lists`() throws {
+        let root = try self.makeTemporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        var cache = CostUsageCache()
+        cache.scanSinceKey = "2026-06-01"
+        cache.scanUntilKey = "2026-07-01"
+        var inWindow = CostUsageFileUsage(
+            mtimeUnixMs: 1,
+            size: 100,
+            days: ["2026-06-20": ["gpt-5.5": [1, 0, 0]]])
+        inWindow.sessionId = "live-session"
+        cache.files = ["/sessions/in-window.jsonl": inWindow]
+        cache.days = ["2026-06-20": ["gpt-5.5": [1, 0, 0]]]
+        cache.codexSessionDiscovery = CostUsageCodexSessionDiscovery(
+            roots: ["/sessions"],
+            generation: nil,
+            directoryStamps: [:],
+            directoryPaths: [],
+            nextDirectoryIndex: 0,
+            filePaths: ["/sessions/in-window.jsonl"],
+            nextFileIndex: 0,
+            fileStamps: ["/sessions/in-window.jsonl": .init(mtimeUnixMs: 1, size: 100, fileId: nil)],
+            headScan: nil,
+            filePathBySessionId: ["live-session": "/sessions/in-window.jsonl"],
+            missingSessionIds: (0..<2000).map { "missing-\($0)" },
+            pendingSessionIds: (0..<2000).map { "pending-\($0)" },
+            validationDirectoryIndex: 0,
+            isComplete: true)
+        let maxCacheBytes = 30000
+
+        CostUsageCacheIO.save(
+            provider: .codex,
+            cache: cache,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111",
+            requestedScanWindow: (sinceKey: "2026-06-01", untilKey: "2026-07-01"),
+            maxCacheBytes: maxCacheBytes,
+            maxCacheEntries: 100)
+
+        let loaded = CostUsageCacheIO.load(
+            provider: .codex,
+            cacheRoot: root,
+            producerKey: "codex:cu:p1111111111111111")
+        let discovery = try #require(loaded.codexSessionDiscovery)
+        let combined = discovery.missingSessionIds.count + discovery.pendingSessionIds.count
+        #expect(combined <= maxCacheBytes / 48)
+        #expect(combined < 2000)
     }
 
     @Test

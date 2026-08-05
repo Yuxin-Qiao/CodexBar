@@ -623,6 +623,7 @@ enum CostUsageCacheIO {
               !lookback.pendingFilePaths.isEmpty || !lookback.legacyRecursivePendingRootPaths.isEmpty
         else { return false }
         let pendingPaths = lookback.pendingFilePaths
+        let legacyRoots = lookback.legacyRecursivePendingRootPaths
         if !pendingPaths.isEmpty {
             var discovery = cache.codexSessionDiscovery
             if discovery == nil {
@@ -647,6 +648,33 @@ enum CostUsageCacheIO {
                 discovery?.filePaths.append(path)
                 seen.insert(path)
             }
+            cache.codexSessionDiscovery = discovery
+        }
+        if !legacyRoots.isEmpty {
+            var discovery = cache.codexSessionDiscovery
+            if discovery == nil {
+                discovery = CostUsageCodexSessionDiscovery(
+                    roots: lookback.rootPaths,
+                    generation: nil,
+                    directoryStamps: [:],
+                    directoryPaths: [],
+                    nextDirectoryIndex: 0,
+                    filePaths: [],
+                    nextFileIndex: 0,
+                    fileStamps: [:],
+                    headScan: nil,
+                    filePathBySessionId: [:],
+                    missingSessionIds: [],
+                    pendingSessionIds: [],
+                    validationDirectoryIndex: 0,
+                    isComplete: false)
+            }
+            var seen = Set(discovery?.directoryPaths ?? [])
+            for root in legacyRoots where !seen.contains(root) {
+                discovery?.directoryPaths.append(root)
+                seen.insert(root)
+            }
+            discovery?.nextDirectoryIndex = 0
             cache.codexSessionDiscovery = discovery
         }
         lookback.pendingFilePaths = []
@@ -674,18 +702,21 @@ enum CostUsageCacheIO {
         let mappingsChanged = discovery.filePathBySessionId.count != before
 
         // Compress missing/pending session-ID lists to what the remaining byte budget can
-        // hold. They are rediscoverable bookkeeping, not parsed data.
+        // hold, sharing one capacity across both lists. They are rediscoverable bookkeeping,
+        // not parsed data.
         let idBytes = 48
         let baseEstimate = Self.estimatedCodexCacheBytes(cache)
             - (discovery.missingSessionIds.count + discovery.pendingSessionIds.count) * idBytes
         let keepCount = max(0, (maxCacheBytes - baseEstimate) / idBytes)
-        let missingChanged = discovery.missingSessionIds.count > keepCount
+        let keepMissing = min(discovery.missingSessionIds.count, keepCount)
+        let keepPending = min(discovery.pendingSessionIds.count, max(0, keepCount - keepMissing))
+        let missingChanged = discovery.missingSessionIds.count > keepMissing
         if missingChanged {
-            discovery.missingSessionIds = Array(discovery.missingSessionIds.prefix(keepCount))
+            discovery.missingSessionIds = Array(discovery.missingSessionIds.prefix(keepMissing))
         }
-        let pendingChanged = discovery.pendingSessionIds.count > keepCount
+        let pendingChanged = discovery.pendingSessionIds.count > keepPending
         if pendingChanged {
-            discovery.pendingSessionIds = Array(discovery.pendingSessionIds.prefix(keepCount))
+            discovery.pendingSessionIds = Array(discovery.pendingSessionIds.prefix(keepPending))
         }
         guard mappingsChanged || missingChanged || pendingChanged else { return false }
         cache.codexSessionDiscovery = discovery
