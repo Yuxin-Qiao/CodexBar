@@ -1255,9 +1255,9 @@ struct CostUsageCacheTests {
             producerKey: "codex:cu:p1111111111111111")
         let lookback = try #require(loaded.codexActiveLookbackState)
         #expect(lookback.pendingFilePaths.isEmpty)
-        #expect(lookback.legacyRecursivePendingRootPaths.isEmpty)
+        #expect(lookback.legacyRecursivePendingRootPaths == ["/sessions/archive"])
         #expect(loaded.codexSessionDiscovery?.filePaths.contains("/sessions/pending-0.jsonl") == true)
-        #expect(loaded.codexSessionDiscovery?.directoryPaths.contains("/sessions/archive") == true)
+        #expect(loaded.codexSessionDiscovery?.directoryPaths.isEmpty == true)
         #expect(loaded.files["/sessions/in-window.jsonl"] != nil)
     }
 

@@ -618,14 +618,15 @@ enum CostUsageCacheIO {
     }
 
     /// Compacts the persisted active-lookback state when it keeps the artifact over budget.
-    /// Pending paths are moved into the discovery queue (so no queued scan work is lost)
-    /// and the lookback structure is reduced to its empty shell.
+    /// Pending file paths are moved into the discovery queue (so no queued scan work is
+    /// lost). Legacy recursive roots are left untouched: the discovery directory queue is
+    /// only consumed by fork-parent lookup, not by the ordinary refresh file list, so
+    /// migrating them there would silently skip recently modified archived sessions.
     private static func clearActiveLookbackForBudget(_ cache: inout CostUsageCache) -> Bool {
         guard var lookback = cache.codexActiveLookbackState,
-              !lookback.pendingFilePaths.isEmpty || !lookback.legacyRecursivePendingRootPaths.isEmpty
+              !lookback.pendingFilePaths.isEmpty
         else { return false }
         let pendingPaths = lookback.pendingFilePaths
-        let legacyRoots = lookback.legacyRecursivePendingRootPaths
         if !pendingPaths.isEmpty {
             var discovery = cache.codexSessionDiscovery
             if discovery == nil {
@@ -652,35 +653,7 @@ enum CostUsageCacheIO {
             }
             cache.codexSessionDiscovery = discovery
         }
-        if !legacyRoots.isEmpty {
-            var discovery = cache.codexSessionDiscovery
-            if discovery == nil {
-                discovery = CostUsageCodexSessionDiscovery(
-                    roots: lookback.rootPaths,
-                    generation: nil,
-                    directoryStamps: [:],
-                    directoryPaths: [],
-                    nextDirectoryIndex: 0,
-                    filePaths: [],
-                    nextFileIndex: 0,
-                    fileStamps: [:],
-                    headScan: nil,
-                    filePathBySessionId: [:],
-                    missingSessionIds: [],
-                    pendingSessionIds: [],
-                    validationDirectoryIndex: 0,
-                    isComplete: false)
-            }
-            var seen = Set(discovery?.directoryPaths ?? [])
-            for root in legacyRoots where !seen.contains(root) {
-                discovery?.directoryPaths.append(root)
-                seen.insert(root)
-            }
-            discovery?.nextDirectoryIndex = 0
-            cache.codexSessionDiscovery = discovery
-        }
         lookback.pendingFilePaths = []
-        lookback.legacyRecursivePendingRootPaths = []
         cache.codexActiveLookbackState = lookback
         return true
     }
