@@ -56,7 +56,9 @@ defineProvider({
     function keyUsedForQuota() {
       const limitRemaining = finite(keyData.limit_remaining, "key.limit_remaining", true);
       if (limitRemaining !== null) {
-        return keyLimit - Math.max(0, limitRemaining);
+        // Clamp to [0, keyLimit] like Swift so remaining above the configured
+        // limit renders 0% used instead of suppressing the meter.
+        return keyLimit - Math.min(keyLimit, Math.max(0, limitRemaining));
       }
       const windowUsage = resetWindowUsage(keyData.limit_reset);
       if (windowUsage !== null) return windowUsage;

@@ -142,6 +142,47 @@ struct ProviderPluginParityTests {
         Self.expectCoreParity(swift, script)
     }
 
+    @Test
+    func `OpenRouter remaining above limit fixture has Swift and JS snapshot parity`() async throws {
+        let creditsBody = #"{"data":{"total_credits":100,"total_usage":40}}"#
+        let keyBody = #"""
+        {"data":{
+          "limit":500,
+          "limit_remaining":512.25,
+          "limit_reset":"monthly",
+          "usage":0,
+          "usage_daily":0,
+          "usage_weekly":0,
+          "usage_monthly":0
+        }}
+        """#
+        let transport = ProviderHTTPTransportHandler { request in
+            let response = try #require(HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]))
+            let body = request.url?.path.hasSuffix("/key") == true ? keyBody : creditsBody
+            return (Data(body.utf8), response)
+        }
+        let now = Date()
+
+        let swift = try await OpenRouterUsageFetcher.fetchUsage(
+            apiKey: "fixture-key",
+            environment: ["OPENROUTER_API_URL": "https://openrouter.test/api/v1"],
+            transport: transport).toUsageSnapshot()
+        let runtime = try ProviderPluginRuntime(bundledPlugin: "openrouter", transport: transport)
+        let script = try await runtime.fetchUsage(
+            secrets: ["OPENROUTER_API_KEY": "fixture-key"],
+            now: now)
+
+        // Server remaining above the configured limit clamps to a full quota (0% used)
+        // in both implementations instead of suppressing the meter.
+        #expect(swift.primary?.usedPercent == 0)
+        #expect(script.primary?.usedPercent == 0)
+        Self.expectCoreParity(swift, script)
+    }
+
     private static func transport(body: String) -> ProviderHTTPTransportHandler {
         ProviderHTTPTransportHandler { request in
             #expect(request.httpMethod == "GET")
