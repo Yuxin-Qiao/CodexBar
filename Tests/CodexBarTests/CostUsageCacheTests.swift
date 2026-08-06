@@ -237,6 +237,8 @@ struct CostUsageCacheTests {
         // catch-up report calendar normalization did not change stored totals or cache
         // layout, so upgrading must not force a rebuild.
         for (index, producerKey) in [
+            "codex:cu:paa27d287348e79b5",
+            "codex:cu:p6c0f1fa950e63467",
             "codex:cu:p37aedd661c4272a8",
             "codex:cu:p1cd29792d9ca2b11",
         ].enumerated() {
