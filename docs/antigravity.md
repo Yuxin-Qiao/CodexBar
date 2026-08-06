@@ -34,7 +34,7 @@ CodexBar relies on the `agy` CLI HTTPS source or the Google OAuth fallback. With
 `agy`, the OAuth fallback can only prove model availability, so the menu shows an all-100%
 placeholder instead of real quota numbers. A freshly spawned `agy` needs a few seconds for macOS
 keyring authentication before its quota endpoints answer, so the first refresh after a cold start
-can briefly fail; later refreshes reuse the warmed session.
+can take a few extra seconds while CodexBar waits for readiness; later refreshes reuse the warmed session.
 
 The local and CLI paths both prefer Antigravity's internal `RetrieveUserQuotaSummary` quota payload and may fall back to
 `GetUserStatus`, then `GetCommandModelConfigs`; CodexBar never scrapes the desktop UI or the `agy` TUI.
