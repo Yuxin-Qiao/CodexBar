@@ -229,6 +229,32 @@ struct CostUsageCacheTests {
     }
 
     @Test
+    func `current codex cache accepts the calendar normalization predecessor`() throws {
+        let root = try self.makeTemporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        // A cache persisted by the immediately preceding build (bounded-cost-cache hash)
+        // stays loadable: the catch-up report calendar normalization did not change stored
+        // totals or cache layout, so upgrading must not force a rebuild.
+        var cache = CostUsageCache()
+        cache.lastScanUnixMs = 456
+        cache.days = ["2026-07-02": ["gpt-5.5": [1, 2, 3]]]
+        CostUsageCacheIO.save(
+            provider: .codex,
+            cache: cache,
+            cacheRoot: root,
+            producerKey: "codex:cu:p37aedd661c4272a8")
+
+        let loaded = CostUsageCacheIO.load(provider: .codex, cacheRoot: root)
+        let migration = CostUsageCacheIO.loadCodexForMigration(cacheRoot: root)
+
+        #expect(loaded.lastScanUnixMs == 456)
+        #expect(loaded.days["2026-07-02"]?["gpt-5.5"] == [1, 2, 3])
+        #expect(migration.cache.lastScanUnixMs == 456)
+        #expect(migration.incompatibleCache == nil)
+    }
+
+    @Test
     func `non codex cache does not require producer key`() throws {
         let root = try self.makeTemporaryCacheRoot()
         defer { try? FileManager.default.removeItem(at: root) }

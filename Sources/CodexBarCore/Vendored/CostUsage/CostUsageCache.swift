@@ -20,9 +20,11 @@ enum CostUsageCacheIO {
     static let maxCacheLoadBytes: Int = 320 * 1024 * 1024
 
     /// Producer keys from older parser hashes whose caches are still valid under the current
-    /// delta semantics. #2037 invalidated earlier keys; append-safe fork resume does not change
-    /// stored totals or cache layout, so its immediate predecessor remains reusable.
+    /// delta semantics. #2037 invalidated earlier keys; append-safe fork resume and the
+    /// catch-up report calendar normalization do not change stored totals or cache layout,
+    /// so the immediate predecessors remain reusable.
     private static let compatibleCodexProducerKeys: Set<String> = [
+        "codex:cu:p37aedd661c4272a8",
         "codex:cu:p843ca061c36bbea1",
     ]
 
