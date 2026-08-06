@@ -13,9 +13,10 @@ enum CostUsageCacheIO {
     /// scanner instead of being decoded in one shot. `JSONDecoder` materializes the whole
     /// object graph at roughly an order of magnitude over the artifact size (#2637 traced
     /// multi-GiB `MALLOC_LARGE` spikes to exactly this decode), so the cap stays close to
-    /// the save budget: `save` never persists a Codex artifact above the budget, which
-    /// means anything bigger is a legacy or foreign artifact that is cheaper to rebuild
-    /// bounded than to decode in one shot.
+    /// the save budget: `save` bounds artifacts to `maxCacheFileBytes`, and when protected
+    /// entries (resuming sessions, fork parents) cannot be trimmed further it may overshoot
+    /// only up to this load cap. Anything above the cap is a legacy or foreign artifact
+    /// that is cheaper to rebuild bounded than to decode in one shot.
     static let maxCacheLoadBytes: Int = 320 * 1024 * 1024
 
     /// Producer keys from older parser hashes whose caches are still valid under the current
@@ -211,6 +212,10 @@ enum CostUsageCacheIO {
                 guard strippedDetail || clearedLookback || prunedOrphans else { break }
                 data = (try? JSONEncoder().encode(cache)) ?? Data()
             }
+            // The loop can stall with the payload still above the save budget when every
+            // remaining byte belongs to protected entries. That overshoot is bounded by
+            // `maxCacheLoadBytes` below; the artifact stays loadable, so the next refresh
+            // keeps trimming instead of entering a full-rebuild loop.
         }
         if provider == .codex, data.count > maxCacheLoadBytes {
             // Enforcement could not shrink the payload below what `load` accepts (e.g. the
@@ -467,8 +472,8 @@ enum CostUsageCacheIO {
         // pads by one day on each side).
         guard let sinceKey = reportWindow?.sinceKey ?? cache.scanSinceKey,
               let untilKey = reportWindow?.untilKey ?? cache.scanUntilKey,
-              let since = dayDate(sinceKey, calendar: calendar),
-              let until = dayDate(untilKey, calendar: calendar)
+              let since = CostUsageScanner.parseDayKey(sinceKey, calendar: calendar),
+              let until = CostUsageScanner.parseDayKey(untilKey, calendar: calendar)
         else { return nil }
         let range = CostUsageScanner.CostUsageDayRange(
             since: since,
@@ -516,22 +521,6 @@ enum CostUsageCacheIO {
             }
         }
         return strippedAny
-    }
-
-    private static func dayDate(_ key: String, calendar: Calendar) -> Date? {
-        let parts = key.split(separator: "-", omittingEmptySubsequences: true)
-        guard parts.count == 3,
-              let year = Int(parts[0]),
-              let month = Int(parts[1]),
-              let day = Int(parts[2])
-        else { return nil }
-        var components = DateComponents()
-        components.calendar = calendar
-        components.timeZone = calendar.timeZone
-        components.year = year
-        components.month = month
-        components.day = day
-        return calendar.date(from: components)
     }
 
     /// Removes discovery records for session files that were pruned from `files` so the
