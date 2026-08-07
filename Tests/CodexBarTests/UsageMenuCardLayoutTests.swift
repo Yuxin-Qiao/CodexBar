@@ -147,7 +147,7 @@ struct UsageMenuCardLayoutTests {
     }
 
     @Test
-    func `metric detail remains one row as pace content grows`() {
+    func `metric detail wraps to a second row instead of truncating as pace content grows`() {
         let width: CGFloat = 296
         func card(
             detailRightText: String,
@@ -178,7 +178,10 @@ struct UsageMenuCardLayoutTests {
                 accessibilityLabel: "Est. 2 session quotas left · 6 windows until reset")))
             .sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude)).height
 
-        #expect(abs(shortHeight - longHeight) < Self.heightTolerance)
+        // The meta line may wrap to two lines so tail content stays readable
+        // instead of truncating; the card grows by roughly one text line.
+        #expect(longHeight - shortHeight > Self.heightTolerance)
+        #expect(longHeight - shortHeight < 20)
     }
 
     private static func model(

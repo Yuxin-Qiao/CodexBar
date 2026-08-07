@@ -27,6 +27,9 @@
 
 ### Fixed
 
+### Fixed
+- Menu: let compact metric detail and reset rows wrap to a second line instead of truncating, so non-English locales keep the full pace and reset information (refs #2182).
+
 ## 0.48.0 — 2026-08-06
 
 ### Added
