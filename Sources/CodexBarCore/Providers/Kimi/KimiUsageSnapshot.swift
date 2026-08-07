@@ -143,7 +143,17 @@ extension KimiUsageSnapshot {
             return NamedRateWindow(id: "kimi-code-7d", title: "Code 7-day", window: window)
         }
 
-        let extraRateWindows = [monthlyWindow, subscriptionCodeWeeklyWindow].compactMap(\.self)
+        // The membership 7-day Code ratio and the FEATURE_CODING weekly detail report the same
+        // underlying quota through two endpoints. When they agree, the extra row only duplicates
+        // the primary lane, so keep it just for the cases where it genuinely diverges.
+        let showsDistinctCodeWeeklyWindow = subscriptionCodeWeeklyWindow.map { codeWeekly in
+            !Self.isEquivalentToWeeklyWindow(codeWeekly.window, weeklyWindow: weeklyWindow)
+        } ?? false
+
+        let extraRateWindows = [
+            monthlyWindow,
+            showsDistinctCodeWeeklyWindow ? subscriptionCodeWeeklyWindow : nil,
+        ].compactMap(\.self)
 
         let identity = ProviderIdentitySnapshot(
             providerID: .kimi,
@@ -159,5 +169,18 @@ extension KimiUsageSnapshot {
             providerCost: nil,
             updatedAt: self.updatedAt,
             identity: identity)
+    }
+
+    private static func isEquivalentToWeeklyWindow(_ window: RateWindow, weeklyWindow: RateWindow?) -> Bool {
+        guard let weeklyWindow else { return false }
+        guard abs(window.usedPercent - weeklyWindow.usedPercent) <= 1 else { return false }
+        switch (window.resetsAt, weeklyWindow.resetsAt) {
+        case let (codeReset?, weeklyReset?):
+            return abs(codeReset.timeIntervalSince(weeklyReset)) <= 5 * 60
+        case (nil, nil):
+            return true
+        case (nil, .some), (.some, nil):
+            return false
+        }
     }
 }

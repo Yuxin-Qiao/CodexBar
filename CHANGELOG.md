@@ -2,6 +2,9 @@
 
 ## 0.48.1 — Unreleased
 
+### Fixed
+- Kimi: hide the Code 7-day window when it reports the same percentage and reset time as the primary weekly quota, so the menu no longer shows one allowance twice.
+
 ## 0.48.0 — 2026-08-06
 
 ### Added

@@ -1171,6 +1171,55 @@ struct KimiUsageSnapshotConversionTests {
     }
 
     @Test
+    func `hides code weekly window when it matches the primary weekly lane`() {
+        // Live Kimi responses report the same 7-day Code quota from both GetUsages (FEATURE_CODING
+        // detail) and GetSubscriptionStats (ratelimitCode7d); showing both rows duplicates one lane.
+        let now = Date()
+        let weeklyDetail = KimiUsageDetail(
+            limit: "100",
+            used: "29",
+            remaining: "71",
+            resetTime: "2026-08-13T17:02:44Z")
+        let subscriptionCodeWeeklyLimit = KimiSubscriptionRateLimit(
+            ratio: 0.2935,
+            enabled: true,
+            resetTime: "2026-08-13T17:02:43Z")
+
+        let snapshot = KimiUsageSnapshot(
+            weekly: weeklyDetail,
+            rateLimit: nil,
+            subscriptionBalance: nil,
+            subscriptionCodeWeeklyLimit: subscriptionCodeWeeklyLimit,
+            updatedAt: now)
+
+        #expect(snapshot.toUsageSnapshot().extraRateWindows == nil)
+    }
+
+    @Test
+    func `keeps code weekly window when the weekly detail is unreliable`() throws {
+        let now = Date()
+        let weeklyDetail = KimiUsageDetail(
+            limit: "not-a-number",
+            used: nil,
+            remaining: nil,
+            resetTime: nil)
+        let subscriptionCodeWeeklyLimit = KimiSubscriptionRateLimit(
+            ratio: 0.2935,
+            enabled: true,
+            resetTime: "2026-08-13T17:02:43Z")
+
+        let snapshot = KimiUsageSnapshot(
+            weekly: weeklyDetail,
+            rateLimit: nil,
+            subscriptionBalance: nil,
+            subscriptionCodeWeeklyLimit: subscriptionCodeWeeklyLimit,
+            updatedAt: now)
+        let windows = try #require(snapshot.toUsageSnapshot().extraRateWindows)
+
+        #expect(windows.map(\.id) == ["kimi-code-7d"])
+    }
+
+    @Test
     func `omits disabled and nonfinite subscription quota ratios`() {
         let weeklyDetail = KimiUsageDetail(
             limit: "2048",
