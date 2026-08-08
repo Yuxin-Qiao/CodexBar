@@ -162,6 +162,7 @@ struct CostUsageStoreScaleProofTests {
         let writeStarted = ContinuousClock.now
         #expect(await store.replaceBufferedLines(path: path, kind: .deferredReplay, lines: [line]))
         let writeElapsed = ContinuousClock.now - writeStarted
+        let persistedBytes = await store.fileSizeBytes()
 
         let readStarted = ContinuousClock.now
         let fetched = await store.fetchBufferedLines(path: path, kind: .deferredReplay)
@@ -169,9 +170,13 @@ struct CostUsageStoreScaleProofTests {
         #expect(fetched == [line])
 
         print("[scale-proof] 100 MiB blob write: \(Self.milliseconds(writeElapsed)) ms, ")
+        print("[scale-proof] db file after 100 MiB blob: \(persistedBytes / 1_048_576) MiB")
         print("[scale-proof] 100 MiB blob read: \(Self.milliseconds(readElapsed)) ms")
         #expect(Self.milliseconds(writeElapsed) < 5000)
         #expect(Self.milliseconds(readElapsed) < 5000)
+        // Keep the persisted representation bounded so a second whole-artifact copy cannot
+        // hide behind a successful round trip.
+        #expect(persistedBytes < 256 * 1_048_576)
     }
 }
 
