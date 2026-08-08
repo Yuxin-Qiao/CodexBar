@@ -827,6 +827,7 @@ struct KimiUsageResponseParsingTests {
         #expect(response.subscriptionBalance?.feature == "FEATURE_OMNI")
         #expect(response.subscriptionBalance?.type == "SUBSCRIPTION")
         #expect(response.subscriptionBalance?.amountUsedRatio == 1)
+        #expect(response.subscriptionBalance?.kimiCodeUsedRatio == 0.2854)
         #expect(response.subscriptionBalance?.expireTime == "2026-07-23T00:00:00Z")
         #expect(response.ratelimitCode7d?.ratio == 0.0946)
         #expect(response.ratelimitCode7d?.enabled == true)
@@ -1096,6 +1097,7 @@ struct KimiUsageSnapshotConversionTests {
             feature: "FEATURE_OMNI",
             type: "SUBSCRIPTION",
             amountUsedRatio: 1,
+            kimiCodeUsedRatio: nil,
             expireTime: "2026-07-23T00:00:00Z")
 
         let snapshot = KimiUsageSnapshot(
@@ -1107,7 +1109,7 @@ struct KimiUsageSnapshotConversionTests {
 
         let monthly = try #require(usageSnapshot.extraRateWindows?.first)
         #expect(monthly.id == "kimi-monthly")
-        #expect(monthly.title == "Monthly")
+        #expect(monthly.title == "Total usage")
         #expect(monthly.window.usedPercent == 100)
         #expect(monthly.window.windowMinutes == ProviderPaceCapability.monthlyWindowSentinelMinutes)
         #expect(monthly.window.resetsAt == Self.date("2026-07-23T00:00:00Z"))
@@ -1127,6 +1129,7 @@ struct KimiUsageSnapshotConversionTests {
             feature: "FEATURE_OMNI",
             type: "SUBSCRIPTION",
             amountUsedRatio: 0.7716,
+            kimiCodeUsedRatio: nil,
             expireTime: "2026-07-23T00:00:00Z")
 
         let snapshot = KimiUsageSnapshot(
@@ -1270,6 +1273,7 @@ struct KimiUsageSnapshotConversionTests {
                     feature: "FEATURE_OMNI",
                     type: "SUBSCRIPTION",
                     amountUsedRatio: .nan,
+                    kimiCodeUsedRatio: nil,
                     expireTime: nil),
                 subscriptionCodeWeeklyLimit: limit,
                 updatedAt: Date())

@@ -119,8 +119,9 @@ extension KimiUsageSnapshot {
         }
 
         let monthlyWindow = self.subscriptionBalance.flatMap { balance -> NamedRateWindow? in
-            // Monthly = shared subscription pool (`amountUsedRatio`), not the Code-only `kimiCodeUsedRatio`:
-            // the pool is shared across features, so amountUsedRatio is the real "subscription remaining".
+            // Total usage = shared subscription pool (`amountUsedRatio`), not the Code-only
+            // `kimiCodeUsedRatio`: the pool is shared across features, so amountUsedRatio is the
+            // real "subscription remaining". Matches the official "Total usage" lane.
             guard balance.feature == nil || balance.feature == "FEATURE_OMNI" else { return nil }
             guard balance.type == nil || balance.type == "SUBSCRIPTION" else { return nil }
             guard let ratio = balance.amountUsedRatio, ratio.isFinite else { return nil }
@@ -129,7 +130,7 @@ extension KimiUsageSnapshot {
                 windowMinutes: ProviderPaceCapability.monthlyWindowSentinelMinutes,
                 resetsAt: Self.parseDate(balance.expireTime),
                 resetDescription: nil)
-            return NamedRateWindow(id: "kimi-monthly", title: "Monthly", window: window)
+            return NamedRateWindow(id: "kimi-monthly", title: "Total usage", window: window)
         }
 
         let subscriptionCodeWeeklyWindow = self.subscriptionCodeWeeklyLimit.flatMap { limit -> NamedRateWindow? in
