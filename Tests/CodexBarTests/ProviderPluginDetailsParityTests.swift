@@ -59,7 +59,7 @@ struct ProviderPluginDetailsParityTests {
             }
         }
         let now = Date(timeIntervalSince1970: 1_785_686_400)
-        let script = try await ProviderPluginRuntime(bundledPlugin: "openrouter", transport: transport)
+        let script = try await Self.openRouterRuntime(transport: transport)
             .fetchUsage(secrets: ["OPENROUTER_API_KEY": "fixture-key"], now: now)
 
         #expect(script.primary?.usedPercent == 25)
@@ -86,6 +86,33 @@ struct ProviderPluginDetailsParityTests {
                     ("Today", 1), ("This week", 2), ("This month", 4),
                 ])),
         ])
+    }
+
+    @Test
+    func `OpenRouter optional key timeout is an observable degradation`() async throws {
+        let transport = ProviderHTTPTransportHandler { request in
+            let isKeyRequest = request.url?.path == "/api/v1/key"
+            if isKeyRequest {
+                try await Task.sleep(for: .milliseconds(1500))
+            }
+            let response = try #require(HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]))
+            let body = isKeyRequest ? Self.openRouterKey : Self.openRouterCredits
+            return (Data(body.utf8), response)
+        }
+
+        let script = try await ProviderPluginRuntime(bundledPlugin: "openrouter", transport: transport)
+            .fetchUsage(secrets: ["OPENROUTER_API_KEY": "fixture-key"])
+
+        #expect(script.primary == nil)
+        #expect(script.details.count == 2)
+        #expect(script.details[0].rows.map(\.label) == ["Remaining", "Used", "Total added"])
+        let degradation = try #require(script.detailRow(label: "API key budget"))
+        #expect(degradation.value == "Unavailable right now")
+        #expect(degradation.secondaryValue == "Request timed out")
     }
 
     @Test
@@ -141,7 +168,7 @@ struct ProviderPluginDetailsParityTests {
             request.url?.path.hasSuffix("/key") == true ? Self.openRouterKey : Self.openRouterCredits
         }
 
-        _ = try await ProviderPluginRuntime(bundledPlugin: "openrouter", transport: transport).fetchUsage(
+        _ = try await Self.openRouterRuntime(transport: transport).fetchUsage(
             settings: settings,
             secrets: [OpenRouterSettingsReader.envKey: "fixture-key"])
 
@@ -153,6 +180,7 @@ struct ProviderPluginDetailsParityTests {
         #expect(recorded[1].url?.absoluteString == (overridden
                 ? "https://router.example.test/gateway/v1/key"
                 : "https://openrouter.ai/api/v1/key"))
+        #expect(recorded[1].timeoutInterval == 15)
         #expect(recorded[0].value(forHTTPHeaderField: "X-Title") == (overridden ? "CodexBar QA" : "CodexBar"))
         #expect(recorded[0].value(forHTTPHeaderField: "HTTP-Referer") ==
             (overridden ? "https://codexbar.example" : nil))
@@ -386,6 +414,9 @@ struct ProviderPluginDetailsParityTests {
         ProviderHTTPTransportHandler { request in
             #expect(request.httpMethod == "GET")
             #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer fixture-key")
+            if request.url?.path == "/api/v1/key" {
+                try await Task.sleep(for: .milliseconds(950))
+            }
             let response = try #require(HTTPURLResponse(
                 url: request.url!,
                 statusCode: 200,
@@ -393,6 +424,15 @@ struct ProviderPluginDetailsParityTests {
                 headerFields: ["Content-Type": "application/json"]))
             return try (Data(body(request).utf8), response)
         }
+    }
+
+    private static func openRouterRuntime(
+        transport: any ProviderHTTPTransport) throws -> ProviderPluginRuntime
+    {
+        try ProviderPluginRuntime(
+            bundledPlugin: "openrouter",
+            transport: transport,
+            contextOptions: ProviderPluginContextOptions(optionalRequestTimeoutSeconds: 15))
     }
 
     private static func recordingTransport(

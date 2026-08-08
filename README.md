@@ -117,6 +117,7 @@ See [CLI configuration](docs/cli-configuration.md) for the full flow.
 - [Abacus AI](docs/abacus.md) — Browser cookie auth for ChatLLM/RouteLLM compute credit tracking.
 - [Mistral](docs/mistral.md) — Browser cookies for API spend, credit balance, and monthly-plan usage.
 - [DeepSeek](docs/deepseek.md) — API key for credit balance tracking (paid vs. granted breakdown).
+- [Fireworks](docs/fireworks.md) — API key + account slug for 30-day spend from the billing summary API.
 - [DeepInfra](docs/deepinfra.md) — API key for prepaid balance, current-month spend, and spending-limit tracking.
 - [Moonshot / Kimi API](docs/moonshot.md) — API key for Moonshot/Kimi API account balance tracking.
 - [Venice](docs/venice.md) — API key for DIEM or USD balance tracking.
@@ -250,6 +251,7 @@ CLI install:
 - [noctalia-codex-usage](https://github.com/rayoplateado/noctalia-codex-usage) — Noctalia/Quickshell plugin that shows Codex 5-hour and weekly usage limits, built on top of the bundled Linux CLI.
 - [KodexBar](https://github.com/tylxr59/KodexBar) — KDE Plasma widget that shows CodexBar usage in the Plasma panel, built on top of the bundled Linux CLI.
 - [codexbar-plasmoid](https://github.com/psimaker/codexbar-plasmoid) — KDE Plasma 6 widget for CodexBar's meter icon, provider switcher, quota windows, pace, credits, local cost, and status, powered by the bundled Linux CLI.
+- [CodexBar Plasma](https://github.com/Lucenx9/codexbar-plasma) — KDE Plasma 6 widget with multi-provider views, account selection, cost history, notifications, configurable providers, and installable `.plasmoid` releases, powered by the bundled Linux CLI.
 - [CodexBar Meter](https://github.com/noctalia-dev/community-plugins/tree/main/codexbar-meter) — Noctalia v5 bar widget and panel showing every enabled provider's quota windows, credits, and pace, installable from Noctalia's plugin store, built on the bundled Linux CLI.
 
 ## Status bar & terminal integration
