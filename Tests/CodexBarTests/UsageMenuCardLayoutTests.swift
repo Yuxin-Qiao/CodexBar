@@ -184,6 +184,35 @@ struct UsageMenuCardLayoutTests {
         #expect(longHeight - shortHeight < 20)
     }
 
+    @Test
+    func `metric reset wraps to a bounded second line at standard width`() {
+        let width: CGFloat = 296
+        func card(resetText: String) -> UsageMenuCardView {
+            UsageMenuCardView(model: Self.model(metrics: [
+                UsageMenuCardView.Model.Metric(
+                    id: "weekly",
+                    title: "Weekly",
+                    percent: 69,
+                    percentStyle: .left,
+                    resetText: resetText,
+                    detailText: nil,
+                    detailLeftText: nil,
+                    detailRightText: nil,
+                    pacePercent: nil,
+                    paceOnTop: true),
+            ]), width: width)
+        }
+
+        let shortHeight = NSHostingController(rootView: card(resetText: "Resets in 2h"))
+            .sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude)).height
+        let longHeight = NSHostingController(rootView: card(
+            resetText: "Resets Wednesday, August 14 at 11:59 PM"))
+            .sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude)).height
+
+        #expect(longHeight - shortHeight > Self.heightTolerance)
+        #expect(longHeight - shortHeight < 20)
+    }
+
     private static func model(
         metrics: [UsageMenuCardView.Model.Metric] = [],
         usageNotes: [String] = [],

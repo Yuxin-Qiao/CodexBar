@@ -62,6 +62,8 @@ struct MenuCardHeightFingerprintTests {
     func `height fingerprint invalidates when wrapping text grows from short to long`() {
         let shortReset = Self.model(statusText: nil, resetText: "Resets in 2h")
             .heightFingerprint(section: "card")
+        let widerTitle = Self.model(percent: 100, statusText: nil, resetText: "Resets in 2h")
+            .heightFingerprint(section: "card")
         let longReset = Self.model(
             statusText: nil,
             resetText: "Resets tomorrow at 6:00 AM after a very long localized description")
@@ -73,6 +75,7 @@ struct MenuCardHeightFingerprintTests {
             detailLeftText: "Estimated 2 session quotas left with a generously long localized pace explanation")
             .heightFingerprint(section: "card")
 
+        #expect(shortReset != widerTitle)
         #expect(shortReset != longReset)
         #expect(shortMeta != longMeta)
     }
