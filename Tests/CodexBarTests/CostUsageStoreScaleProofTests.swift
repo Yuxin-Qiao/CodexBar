@@ -14,8 +14,14 @@ struct CostUsageStoreScaleProofTests {
         defer { fixture.remove() }
         let store = CostUsageStore(cacheRoot: fixture.root)
         let calendar = Calendar(identifier: .gregorian)
-        guard let windowSince = Self.dayString(daysAgo: Self.windowDays - 1, calendar: calendar),
-              let windowUntil = Self.dayString(daysAgo: 0, calendar: calendar)
+        // Freeze the reference date so a run spanning midnight cannot push age-zero data
+        // past the window bounds and make the zero-prune assertion flaky.
+        let reference = Date()
+        guard let windowSince = Self.dayString(
+            daysAgo: Self.windowDays - 1,
+            calendar: calendar,
+            reference: reference),
+            let windowUntil = Self.dayString(daysAgo: 0, calendar: calendar, reference: reference)
         else {
             Issue.record("failed to build window bounds")
             return
@@ -24,7 +30,7 @@ struct CostUsageStoreScaleProofTests {
         let bulkStarted = ContinuousClock.now
         for fileIndex in 0..<1500 {
             let age = fileIndex % Self.windowDays
-            guard let day = Self.dayString(daysAgo: age, calendar: calendar) else {
+            guard let day = Self.dayString(daysAgo: age, calendar: calendar, reference: reference) else {
                 Issue.record("failed to build day string")
                 return
             }
@@ -85,8 +91,10 @@ struct CostUsageStoreScaleProofTests {
         defer { fixture.remove() }
         let store = CostUsageStore(cacheRoot: fixture.root)
         let calendar = Calendar(identifier: .gregorian)
-        guard let sinceDay = Self.dayString(daysAgo: 7, calendar: calendar),
-              let untilDay = Self.dayString(daysAgo: 0, calendar: calendar)
+        // Same frozen reference as the incident-shaped test: deterministic day keys.
+        let reference = Date()
+        guard let sinceDay = Self.dayString(daysAgo: 7, calendar: calendar, reference: reference),
+              let untilDay = Self.dayString(daysAgo: 0, calendar: calendar, reference: reference)
         else {
             Issue.record("failed to build window bounds")
             return
@@ -94,7 +102,7 @@ struct CostUsageStoreScaleProofTests {
 
         for fileIndex in 0..<500 {
             let age = fileIndex % 30
-            guard let day = Self.dayString(daysAgo: age, calendar: calendar) else {
+            guard let day = Self.dayString(daysAgo: age, calendar: calendar, reference: reference) else {
                 Issue.record("failed to build day string")
                 return
             }
@@ -116,11 +124,10 @@ struct CostUsageStoreScaleProofTests {
         let afterBytes = await store.fileSizeBytes()
         let snapshot = await store.readSnapshot()
 
-        // Ages 0...7 survive: ceil(500 * 8 / 30) files, and every snapshot lands inside the
-        // window because snapshot days track their file's coverage day.
+        // Ages 0...7 survive: 16 full 30-day cycles contribute 128 files and the remaining
+        // 20 indices contribute 8 more, so the retained corpus is deterministically 136.
         let survivors = snapshot.files.count
-        #expect(survivors > 0)
-        #expect(survivors < 500)
+        #expect(survivors == 136)
         #expect(snapshot.files.allSatisfy { file in
             guard let coverage = file.coverageUntilDay else { return false }
             return coverage >= sinceDay && coverage <= untilDay
@@ -171,8 +178,12 @@ struct CostUsageStoreScaleProofTests {
 // MARK: - Helpers
 
 extension CostUsageStoreScaleProofTests {
-    private static func dayString(daysAgo: Int, calendar: Calendar) -> String? {
-        guard let date = calendar.date(byAdding: .day, value: -daysAgo, to: Date()) else { return nil }
+    private static func dayString(
+        daysAgo: Int,
+        calendar: Calendar,
+        reference: Date) -> String?
+    {
+        guard let date = calendar.date(byAdding: .day, value: -daysAgo, to: reference) else { return nil }
         return self.dayString(for: date, calendar: calendar)
     }
 
