@@ -10,7 +10,11 @@ import CSQLite3
 
 extension CostUsageStore {
     @discardableResult
-    func retainDayWindow(sinceDay: String, untilDay: String) -> CostUsageStoreRetentionResult {
+    func retainDayWindow(
+        sinceDay: String,
+        untilDay: String,
+        calendar: Calendar = .current) -> CostUsageStoreRetentionResult
+    {
         guard sinceDay <= untilDay else {
             return CostUsageStoreRetentionResult(
                 deletedFiles: 0,
@@ -24,7 +28,7 @@ extension CostUsageStore {
             deletedFileDayAggregates: 0,
             deletedDayAggregates: 0)
         return self.withDatabase(default: fallback) { database in
-            try Self.prune(database, sinceDay: sinceDay, untilDay: untilDay)
+            try Self.prune(database, sinceDay: sinceDay, untilDay: untilDay, calendar: calendar)
         }
     }
 
@@ -42,7 +46,8 @@ extension CostUsageStore {
     private static func prune(
         _ database: OpaquePointer,
         sinceDay: String,
-        untilDay: String) throws -> CostUsageStoreRetentionResult
+        untilDay: String,
+        calendar: Calendar) throws -> CostUsageStoreRetentionResult
     {
         try self.inTransaction(database) {
             let beforeFiles = try self.scalarInt(database, "SELECT COUNT(*) FROM files")
@@ -53,7 +58,8 @@ extension CostUsageStore {
             let candidates = try self.retentionCandidates(
                 database,
                 sinceDay: sinceDay,
-                untilDay: untilDay)
+                untilDay: untilDay,
+                calendar: calendar)
             let deleteFile = try self.prepare(database, "DELETE FROM files WHERE path = ?")
             defer { sqlite3_finalize(deleteFile) }
             for candidate in candidates {
@@ -108,9 +114,15 @@ extension CostUsageStore {
     private static func retentionCandidates(
         _ database: OpaquePointer,
         sinceDay: String,
-        untilDay: String) throws -> [RetentionCandidate]
+        untilDay: String,
+        calendar: Calendar) throws -> [RetentionCandidate]
     {
-        let statement = try self.prepare(database, """
+        // Mirror the JSON path's isRecentlyActive exemption: a file modified inside the
+        // window is rediscovered and scanned on every refresh, so pruning its row only
+        // forces a full re-parse on the next pass without shrinking live coverage.
+        let activeSinceMs = CostUsageScanner.parseDayKey(sinceDay, calendar: calendar)
+            .map { Int64($0.timeIntervalSince1970 * 1000) }
+        var sql = """
         SELECT f.path, f.session_id
         FROM files f
         WHERE f.scan_complete = 1
@@ -124,11 +136,18 @@ extension CostUsageStore {
                   WHERE l.forked_from_id = f.session_id AND l.file_id != f.id
               )
           )
-        ORDER BY f.updated_at_ms, f.path
-        """)
+        """
+        if activeSinceMs != nil {
+            sql += "\n          AND f.mtime_ms < ?"
+        }
+        sql += "\n        ORDER BY f.updated_at_ms, f.path"
+        let statement = try self.prepare(database, sql)
         defer { sqlite3_finalize(statement) }
         self.bind(sinceDay, to: statement, at: 1)
         self.bind(untilDay, to: statement, at: 2)
+        if let activeSinceMs {
+            self.bind(activeSinceMs, to: statement, at: 3)
+        }
         var values: [RetentionCandidate] = []
         var result = sqlite3_step(statement)
         while result == SQLITE_ROW {
@@ -192,7 +211,7 @@ extension CostUsageStore {
             if initialRows > Int64(rowLimit) || initialBytes > byteLimit,
                let sinceDay, let untilDay, sinceDay <= untilDay
             {
-                _ = try Self.prune(database, sinceDay: sinceDay, untilDay: untilDay)
+                _ = try Self.prune(database, sinceDay: sinceDay, untilDay: untilDay, calendar: calendar)
             }
 
             var catchUpRequired = false

@@ -555,6 +555,52 @@ extension CostUsageStoreTests {
     }
 
     @Test
+    func `retention keeps recently modified file with stale coverage`() async throws {
+        let fixture = try StoreFixture()
+        defer { fixture.remove() }
+        let store = CostUsageStore(cacheRoot: fixture.root)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try #require(TimeZone(identifier: "UTC"))
+        var file = Self.file(path: "/rollouts/stale-but-active.jsonl", day: "2026-07-01")
+        let recentMtime = try #require(calendar.date(from: DateComponents(
+            year: 2026,
+            month: 8,
+            day: 2,
+            hour: 12)))
+        file.mtimeUnixMs = Int64(recentMtime.timeIntervalSince1970 * 1000)
+        #expect(await store.upsertFile(file))
+
+        _ = await store.retainDayWindow(
+            sinceDay: "2026-08-01",
+            untilDay: "2026-08-03",
+            calendar: calendar)
+        #expect(await store.fetchFile(path: file.path) != nil)
+    }
+
+    @Test
+    func `retention prunes stale file modified before the window`() async throws {
+        let fixture = try StoreFixture()
+        defer { fixture.remove() }
+        let store = CostUsageStore(cacheRoot: fixture.root)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try #require(TimeZone(identifier: "UTC"))
+        var file = Self.file(path: "/rollouts/stale-and-idle.jsonl", day: "2026-07-01")
+        let oldMtime = try #require(calendar.date(from: DateComponents(
+            year: 2026,
+            month: 7,
+            day: 1,
+            hour: 12)))
+        file.mtimeUnixMs = Int64(oldMtime.timeIntervalSince1970 * 1000)
+        #expect(await store.upsertFile(file))
+
+        _ = await store.retainDayWindow(
+            sinceDay: "2026-08-01",
+            untilDay: "2026-08-03",
+            calendar: calendar)
+        #expect(await store.fetchFile(path: file.path) == nil)
+    }
+
+    @Test
     func `retention prunes discovery references for removed files`() async throws {
         let fixture = try StoreFixture()
         defer { fixture.remove() }
