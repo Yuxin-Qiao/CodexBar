@@ -118,10 +118,14 @@ extension CostUsageStore {
         calendar: Calendar) throws -> [RetentionCandidate]
     {
         // Mirror the JSON path's isRecentlyActive exemption: a file modified inside the
-        // window is rediscovered and scanned on every refresh, so pruning its row only
-        // forces a full re-parse on the next pass without shrinking live coverage.
-        let activeSinceMs = CostUsageScanner.parseDayKey(sinceDay, calendar: calendar)
-            .map { Int64($0.timeIntervalSince1970 * 1000) }
+        // retained window is rediscovered and scanned on every refresh, so pruning its
+        // row only forces a full re-parse on the next pass without shrinking live coverage.
+        // The bounds are inclusive calendar days: 00:00 of sinceDay through 24:00 of
+        // untilDay, so morning-of-start and after-end mtimes stay outside the exemption.
+        let activeMtimeWindow = Self.activeMtimeWindow(
+            sinceDay: sinceDay,
+            untilDay: untilDay,
+            calendar: calendar)
         var sql = """
         SELECT f.path, f.session_id
         FROM files f
@@ -137,16 +141,17 @@ extension CostUsageStore {
               )
           )
         """
-        if activeSinceMs != nil {
-            sql += "\n          AND f.mtime_ms < ?"
+        if activeMtimeWindow != nil {
+            sql += "\n          AND (f.mtime_ms < ? OR f.mtime_ms >= ?)"
         }
         sql += "\n        ORDER BY f.updated_at_ms, f.path"
         let statement = try self.prepare(database, sql)
         defer { sqlite3_finalize(statement) }
         self.bind(sinceDay, to: statement, at: 1)
         self.bind(untilDay, to: statement, at: 2)
-        if let activeSinceMs {
-            self.bind(activeSinceMs, to: statement, at: 3)
+        if let activeMtimeWindow {
+            self.bind(activeMtimeWindow.startMs, to: statement, at: 3)
+            self.bind(activeMtimeWindow.endExclusiveMs, to: statement, at: 4)
         }
         var values: [RetentionCandidate] = []
         var result = sqlite3_step(statement)
@@ -157,6 +162,36 @@ extension CostUsageStore {
         }
         guard result == SQLITE_DONE else { throw StoreError.sqlite(result) }
         return values
+    }
+
+    private static func activeMtimeWindow(
+        sinceDay: String,
+        untilDay: String,
+        calendar: Calendar) -> (startMs: Int64, endExclusiveMs: Int64)?
+    {
+        let calendar = CostUsageScanner.CostUsageDayRange.localGregorianCalendar(matching: calendar)
+        guard let sinceStart = Self.dayStart(sinceDay, calendar: calendar),
+              let untilStart = Self.dayStart(untilDay, calendar: calendar),
+              let untilEnd = calendar.date(byAdding: .day, value: 1, to: untilStart)
+        else { return nil }
+        return (
+            startMs: Int64(sinceStart.timeIntervalSince1970 * 1000),
+            endExclusiveMs: Int64(untilEnd.timeIntervalSince1970 * 1000))
+    }
+
+    private static func dayStart(_ key: String, calendar: Calendar) -> Date? {
+        let parts = key.split(separator: "-")
+        guard parts.count == 3,
+              let year = Int(parts[0]),
+              let month = Int(parts[1]),
+              let day = Int(parts[2])
+        else { return nil }
+        return calendar.date(from: DateComponents(
+            calendar: calendar,
+            timeZone: calendar.timeZone,
+            year: year,
+            month: month,
+            day: day))
     }
 
     private static func pruneDiscovery(
