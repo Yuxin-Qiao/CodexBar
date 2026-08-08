@@ -172,15 +172,11 @@ extension KimiUsageSnapshot {
     }
 
     private static func isEquivalentToWeeklyWindow(_ window: RateWindow, weeklyWindow: RateWindow?) -> Bool {
-        guard let weeklyWindow else { return false }
+        // Suppress only on positive evidence: unreliable weekly counters deliberately withhold
+        // windowMinutes, and two lanes without reset timestamps cannot be proven to be the same quota.
+        guard let weeklyWindow, weeklyWindow.windowMinutes != nil else { return false }
         guard abs(window.usedPercent - weeklyWindow.usedPercent) <= 1 else { return false }
-        switch (window.resetsAt, weeklyWindow.resetsAt) {
-        case let (codeReset?, weeklyReset?):
-            return abs(codeReset.timeIntervalSince(weeklyReset)) <= 5 * 60
-        case (nil, nil):
-            return true
-        case (nil, .some), (.some, nil):
-            return false
-        }
+        guard let codeReset = window.resetsAt, let weeklyReset = weeklyWindow.resetsAt else { return false }
+        return abs(codeReset.timeIntervalSince(weeklyReset)) <= 5 * 60
     }
 }
