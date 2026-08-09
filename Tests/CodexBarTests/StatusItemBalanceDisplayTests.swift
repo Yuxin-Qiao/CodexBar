@@ -217,7 +217,9 @@ struct StatusItemBalanceDisplayTests {
     }
 
     @Test(arguments: [MenuBarLayoutToken.resetCountdown, .resetAbsolute])
-    func `custom DeepSeek menu bar layouts use compact balance`(token: MenuBarLayoutToken) {
+    func `custom DeepSeek menu bar layouts use compact balance in status item and preview`(
+        token: MenuBarLayoutToken)
+    {
         let settings = self.makeSettings(
             suiteName: "StatusItemBalanceDisplayTests-deepseek-custom-layout",
             provider: .deepseek)
@@ -237,24 +239,99 @@ struct StatusItemBalanceDisplayTests {
         store._setSnapshotForTesting(snapshot, provider: .deepseek)
         store._setErrorForTesting(nil, provider: .deepseek)
 
-        let data = controller.menuBarLayoutRenderData(
+        let statusItemData = controller.menuBarLayoutRenderData(
             provider: .deepseek,
             snapshot: snapshot,
             warningFlash: false)
-        let rendered = MenuBarLayoutRenderer().render(
+        let previewData = MenuBarLayoutPreview(
             layout: layout,
-            data: data,
-            icon: nil,
-            options: MenuBarLayoutRenderOptions(
-                size: .regular,
-                highContrast: false,
-                showUsed: true,
-                appearanceName: "aqua",
-                isDebugApp: false,
-                now: Date()))
+            provider: .deepseek,
+            settings: settings,
+            store: store)
+            .liveData(provider: .deepseek, snapshot: snapshot)
 
-        #expect(data.automatic?.resetDescription == "¥2.23")
-        #expect(rendered.attributedTitle.string == "¥2.23")
+        for data in [statusItemData, previewData] {
+            let rendered = MenuBarLayoutRenderer().render(
+                layout: layout,
+                data: data,
+                icon: nil,
+                options: MenuBarLayoutRenderOptions(
+                    size: .regular,
+                    highContrast: false,
+                    showUsed: true,
+                    appearanceName: "aqua",
+                    isDebugApp: false,
+                    now: Date()))
+
+            #expect(data.automatic?.resetDescription == "¥2.23")
+            #expect(rendered.attributedTitle.string == "¥2.23")
+        }
+    }
+
+    @Test
+    func `custom non DeepSeek menu bar layouts keep automatic reset detail in status item and preview`() {
+        let settings = self.makeSettings(
+            suiteName: "StatusItemBalanceDisplayTests-cursor-custom-layout",
+            provider: .cursor)
+        let layout = MenuBarLayout(lines: [[.resetCountdown]])
+        settings.setMenuBarLayout(layout, for: nil)
+        let (store, controller) = self.makeStoreAndController(settings: settings)
+        defer { controller.releaseStatusItemsForTesting() }
+        let detail = "Monthly allocation detail"
+        let snapshot = UsageSnapshot(
+            primary: RateWindow(
+                usedPercent: 27,
+                windowMinutes: 30 * 24 * 60,
+                resetsAt: nil,
+                resetDescription: detail),
+            secondary: nil,
+            updatedAt: Date())
+
+        store._setSnapshotForTesting(snapshot, provider: .cursor)
+        store._setErrorForTesting(nil, provider: .cursor)
+
+        let statusItemData = controller.menuBarLayoutRenderData(
+            provider: .cursor,
+            snapshot: snapshot,
+            warningFlash: false)
+        let previewData = MenuBarLayoutPreview(
+            layout: layout,
+            provider: .cursor,
+            settings: settings,
+            store: store)
+            .liveData(provider: .cursor, snapshot: snapshot)
+
+        #expect(statusItemData.automatic?.resetDescription == detail)
+        #expect(previewData.automatic?.resetDescription == detail)
+    }
+
+    @Test(arguments: [false, true])
+    func `DeepSeek layout normalization preserves automatic window metadata`(isPlaceholder: Bool) throws {
+        let resetsAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let window = RateWindow(
+            usedPercent: 37.5,
+            windowMinutes: 1440,
+            resetsAt: resetsAt,
+            resetDescription: "¥2.23 (Paid: ¥2.23 / Granted: ¥0.00)",
+            nextRegenPercent: 6.25,
+            isSyntheticPlaceholder: isPlaceholder)
+        let snapshot = UsageSnapshot(primary: window, secondary: nil, updatedAt: Date())
+
+        let normalized = try #require(MenuBarLayoutAutomaticWindowDisplayNormalizer.normalized(
+            provider: .deepseek,
+            snapshot: snapshot,
+            window: window))
+
+        #expect(normalized.usedPercent == window.usedPercent)
+        #expect(normalized.windowMinutes == window.windowMinutes)
+        #expect(normalized.resetsAt == window.resetsAt)
+        #expect(normalized.resetDescription == "¥2.23")
+        #expect(normalized.nextRegenPercent == window.nextRegenPercent)
+        #expect(normalized.isSyntheticPlaceholder == window.isSyntheticPlaceholder)
+        #expect(MenuBarLayoutAutomaticWindowDisplayNormalizer.normalized(
+            provider: .cursor,
+            snapshot: snapshot,
+            window: window) == window)
     }
 
     @Test

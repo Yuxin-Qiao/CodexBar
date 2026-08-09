@@ -149,29 +149,10 @@ extension StatusItemController {
         return (
             semanticWindows.session,
             semanticWindows.weekly,
-            Self.compactDeepSeekMenuBarWindow(provider: provider, snapshot: snapshot, window: automatic))
-    }
-
-    /// Provider-specific by design: DeepSeek's balance reset text must stay compact in custom menu-bar layouts.
-    private static func compactDeepSeekMenuBarWindow(
-        provider: UsageProvider,
-        snapshot: UsageSnapshot?,
-        window: RateWindow?)
-        -> RateWindow?
-    {
-        guard provider == .deepseek,
-              let window,
-              let balance = deepSeekBalanceDisplayText(snapshot: snapshot)
-        else {
-            return window
-        }
-        return RateWindow(
-            usedPercent: window.usedPercent,
-            windowMinutes: window.windowMinutes,
-            resetsAt: window.resetsAt,
-            resetDescription: balance,
-            nextRegenPercent: window.nextRegenPercent,
-            isSyntheticPlaceholder: window.isSyntheticPlaceholder)
+            MenuBarLayoutAutomaticWindowDisplayNormalizer.normalized(
+                provider: provider,
+                snapshot: snapshot,
+                window: automatic))
     }
 
     private func setButtonLayoutContent(
