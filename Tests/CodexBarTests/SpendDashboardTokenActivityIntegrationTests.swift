@@ -89,7 +89,9 @@ struct SpendDashboardTokenActivityIntegrationTests {
             calendar: options.calendar)
         let beforeCoverage = try #require(Self.day(now, offset: -3, calendar: options.calendar))
 
+        #expect(emptyResult.failedSourceIDs.isEmpty)
         #expect(emptyResult.inputs.first?.tokenActivityCache?.daily.isEmpty == true)
+        #expect(emptyModel.tokenActivity.count == SpendDashboardModel.tokenActivityDayCount)
         #expect(Self.tokens(on: beforeCoverage, in: emptyModel, calendar: options.calendar) == nil)
         #expect(emptyModel.tokenActivity.suffix(3).allSatisfy { $0.totalTokens == 0 })
 
@@ -110,7 +112,10 @@ struct SpendDashboardTokenActivityIntegrationTests {
             now: now,
             calendar: options.calendar)
 
+        #expect(!unavailableResult.inputs.isEmpty)
+        #expect(unavailableResult.failedSourceIDs.isEmpty)
         #expect(unavailableResult.inputs.first?.tokenActivityCache == nil)
+        #expect(unavailableModel.tokenActivity.count == SpendDashboardModel.tokenActivityDayCount)
         #expect(unavailableModel.tokenActivity.allSatisfy { $0.totalTokens == nil })
     }
 
@@ -139,11 +144,11 @@ struct SpendDashboardTokenActivityIntegrationTests {
             },
             codexActivityLoader: { context in
                 #expect(context.historyDays == SpendDashboardSource.activityDays)
-                return await CostUsageFetcher.loadCachedCodexTokenActivity(
+                let fetcher = CostUsageFetcher(scannerOptions: scannerOptions)
+                return await fetcher.loadCachedCodexTokenActivity(
                     now: context.now,
                     codexHomePath: context.account.homePath,
-                    maximumDays: context.historyDays,
-                    scannerOptions: scannerOptions)
+                    maximumDays: context.historyDays)
             })
     }
 
