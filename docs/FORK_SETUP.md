@@ -264,7 +264,19 @@ git push origin upstream-pr/fix-cursor-bonus
 # Go to: https://github.com/steipete/CodexBar
 # Click "New Pull Request"
 # Select: base: steipete:main <- compare: topoffunnel:upstream-pr/fix-cursor-bonus
+
+# 7. Link the originating issue in the PR body (see below)
 ```
+
+### Linking Issues
+
+Every fix PR should reference its originating issue (if there is one) in the PR body:
+
+- `Closes #N` — the PR fully resolves the issue (GitHub will close it on merge)
+- `Refs #N` — the PR only relates to the issue (partial fix, tracking, or precedent)
+
+Verify the cross-reference renders on the PR page before requesting review, so
+contributors can see which issue each fix belongs to.
 
 ---
 
