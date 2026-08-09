@@ -216,6 +216,47 @@ struct StatusItemBalanceDisplayTests {
         #expect(displayText == "$9.32")
     }
 
+    @Test(arguments: [MenuBarLayoutToken.resetCountdown, .resetAbsolute])
+    func `custom DeepSeek menu bar layouts use compact balance`(token: MenuBarLayoutToken) {
+        let settings = self.makeSettings(
+            suiteName: "StatusItemBalanceDisplayTests-deepseek-custom-layout",
+            provider: .deepseek)
+        let layout = MenuBarLayout(lines: [[token]])
+        settings.setMenuBarLayout(layout, for: nil)
+        let (store, controller) = self.makeStoreAndController(settings: settings)
+        defer { controller.releaseStatusItemsForTesting() }
+        let snapshot = UsageSnapshot(
+            primary: RateWindow(
+                usedPercent: 0,
+                windowMinutes: nil,
+                resetsAt: nil,
+                resetDescription: "¥2.23 (Paid: ¥2.23 / Granted: ¥0.00)"),
+            secondary: nil,
+            updatedAt: Date())
+
+        store._setSnapshotForTesting(snapshot, provider: .deepseek)
+        store._setErrorForTesting(nil, provider: .deepseek)
+
+        let data = controller.menuBarLayoutRenderData(
+            provider: .deepseek,
+            snapshot: snapshot,
+            warningFlash: false)
+        let rendered = MenuBarLayoutRenderer().render(
+            layout: layout,
+            data: data,
+            icon: nil,
+            options: MenuBarLayoutRenderOptions(
+                size: .regular,
+                highContrast: false,
+                showUsed: true,
+                appearanceName: "aqua",
+                isDebugApp: false,
+                now: Date()))
+
+        #expect(data.automatic?.resetDescription == "¥2.23")
+        #expect(rendered.attributedTitle.string == "¥2.23")
+    }
+
     @Test
     func `menu bar display text uses DeepInfra available balance`() {
         let settings = self.makeSettings(

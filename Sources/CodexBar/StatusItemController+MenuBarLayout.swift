@@ -146,7 +146,32 @@ extension StatusItemController {
             supportsAverage: self.settings.menuBarMetricSupportsAverage(for: provider),
             antigravityPrioritizeExhaustedQuotas: self.settings.antigravityPrioritizeExhaustedQuotas,
             now: now)
-        return (semanticWindows.session, semanticWindows.weekly, automatic)
+        return (
+            semanticWindows.session,
+            semanticWindows.weekly,
+            Self.compactDeepSeekMenuBarWindow(provider: provider, snapshot: snapshot, window: automatic))
+    }
+
+    /// Provider-specific by design: DeepSeek's balance reset text must stay compact in custom menu-bar layouts.
+    private static func compactDeepSeekMenuBarWindow(
+        provider: UsageProvider,
+        snapshot: UsageSnapshot?,
+        window: RateWindow?)
+        -> RateWindow?
+    {
+        guard provider == .deepseek,
+              let window,
+              let balance = deepSeekBalanceDisplayText(snapshot: snapshot)
+        else {
+            return window
+        }
+        return RateWindow(
+            usedPercent: window.usedPercent,
+            windowMinutes: window.windowMinutes,
+            resetsAt: window.resetsAt,
+            resetDescription: balance,
+            nextRegenPercent: window.nextRegenPercent,
+            isSyntheticPlaceholder: window.isSyntheticPlaceholder)
     }
 
     private func setButtonLayoutContent(
