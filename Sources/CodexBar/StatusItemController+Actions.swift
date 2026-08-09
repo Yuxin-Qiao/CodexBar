@@ -79,9 +79,9 @@ extension StatusItemController: StatusItemMenuPersistentActionDelegate {
             let refreshStartedAt = Date()
             await self.store.refreshProvider(provider)
             guard !Task.isCancelled, !self.hasPreparedForAppShutdown else { return }
-            // Provider-scoped Codex refreshes continue with optional credits and OpenAI Web enrichment below.
-            // Publish the core quota snapshot to the already-open card before those slower best-effort stages
-            // run, matching the foreground/background split used by the all-provider refresh path.
+            // Provider-specific by design: Codex publishes the core quota snapshot to the already-open card
+            // before its optional credits and OpenAI Web enrichment stages below, matching the all-provider
+            // foreground/background split used by the full refresh path.
             if provider == .codex {
                 self.menuCardRefreshMonitor.endManualRefresh(for: provider)
             }
