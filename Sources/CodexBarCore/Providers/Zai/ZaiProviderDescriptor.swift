@@ -112,7 +112,8 @@ public enum ZaiProviderDescriptor {
                     return .resolved(ProviderUsagePresentation.mostConstrained(
                         context.snapshot.primary,
                         context.snapshot.secondary))
-                }),
+                },
+                primaryBindingQuotaLanes: [.secondary]),
             fetchPlan: self.fetchPlan(),
             cli: ProviderCLIConfig(
                 name: "zai",

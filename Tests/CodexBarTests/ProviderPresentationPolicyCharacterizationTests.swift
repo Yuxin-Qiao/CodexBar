@@ -131,6 +131,24 @@ struct ProviderPresentationPolicyCharacterizationTests {
     }
 
     @Test
+    func `binding quota lanes are pinned for every provider`() {
+        let weekly: Set<UsageProvider> = [
+            .alibaba, .alibabatokenplan, .chutes, .claude, .clinepass, .commandcode,
+            .doubao, .qwencloud, .stepfun, .zai, .zenmux,
+        ]
+        let monthly: Set<UsageProvider> = [.alibaba, .clinepass, .doubao]
+
+        for provider in UsageProvider.allCases {
+            var expected: Set<ProviderUsageLane> = []
+            if weekly.contains(provider) { expected.insert(.secondary) }
+            if monthly.contains(provider) { expected.insert(.tertiary) }
+            let actual = ProviderDescriptorRegistry.descriptor(for: provider)
+                .presentation.primaryBindingQuotaLanes
+            #expect(actual == expected, "Unexpected binding quota lanes for \(provider.rawValue)")
+        }
+    }
+
+    @Test
     @MainActor
     func `decorated icon style membership is pinned`() throws {
         let decoratedStyles: Set<IconStyle> = [.codex, .claude, .gemini, .antigravity, .factory, .warp]

@@ -196,6 +196,7 @@ public enum ClaudeProviderDescriptor {
                     return series
                 },
                 secondaryGloballyCapsPrimary: true,
+                primaryBindingQuotaLanes: [.secondary],
                 menuCard: ProviderMenuCardPresentation(
                     costVisibilityResolver: { context in
                         context.showOptionalUsage || context.snapshot?.loginMethod(for: .claude) == "Admin API"
