@@ -533,7 +533,6 @@ private struct MetricRow: View {
                         .font(.body)
                         .fontWeight(.medium)
                         .lineLimit(1)
-                        .layoutPriority(1)
                     Spacer(minLength: 8)
                     if let resetText = presentation.resetText {
                         Text(resetText)
@@ -541,6 +540,7 @@ private struct MetricRow: View {
                             .foregroundStyle(MenuHighlightStyle.secondary(self.isHighlighted))
                             .lineLimit(2)
                             .multilineTextAlignment(.trailing)
+                            .layoutPriority(1)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
