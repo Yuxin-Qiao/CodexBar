@@ -33,7 +33,7 @@ struct SpendDashboardTokenActivityIntegrationTests {
                 now: now,
                 historyCoverageIsEstablished: true,
                 daily: [Self.entry(day: "2026-04-08", tokens: 999, cost: 4)]),
-            options: options)
+            cacheRoot: env.cacheRoot)
 
         let input = try #require(result.inputs.first)
         #expect(result.failedSourceIDs.isEmpty)
@@ -81,7 +81,7 @@ struct SpendDashboardTokenActivityIntegrationTests {
             account: account,
             now: now,
             snapshot: unknownSnapshot,
-            options: options)
+            cacheRoot: env.cacheRoot)
         let emptyModel = SpendDashboardModel.build(
             inputs: emptyResult.inputs,
             requestedDays: 30,
@@ -105,7 +105,7 @@ struct SpendDashboardTokenActivityIntegrationTests {
             account: account,
             now: now,
             snapshot: unknownSnapshot,
-            options: options)
+            cacheRoot: env.cacheRoot)
         let unavailableModel = SpendDashboardModel.build(
             inputs: unavailableResult.inputs,
             requestedDays: 30,
@@ -123,7 +123,7 @@ struct SpendDashboardTokenActivityIntegrationTests {
         account: CodexSpendScanRequest,
         now: Date,
         snapshot: CostUsageTokenSnapshot,
-        options: CostUsageScanner.Options) async -> SpendDashboardLoadResult
+        cacheRoot: URL) async -> SpendDashboardLoadResult
     {
         let request = SpendDashboardLoadRequest(
             configuration: SpendDashboardConfiguration(
@@ -135,20 +135,13 @@ struct SpendDashboardTokenActivityIntegrationTests {
             codexRequests: [account],
             now: now,
             force: false)
-        let scannerOptions = options
         return await SpendDashboardSource.load(
             request,
+            cacheRootResolver: { _ in cacheRoot },
             codexSnapshotLoader: { context in
                 #expect(context.historyDays == SpendDashboardSource.scanDays)
+                #expect(context.cacheRoot == cacheRoot)
                 return snapshot
-            },
-            codexActivityLoader: { context in
-                #expect(context.historyDays == SpendDashboardSource.activityDays)
-                let fetcher = CostUsageFetcher(scannerOptions: scannerOptions)
-                return await fetcher.loadCachedCodexTokenActivity(
-                    now: context.now,
-                    codexHomePath: context.account.homePath,
-                    maximumDays: context.historyDays)
             })
     }
 
