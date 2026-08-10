@@ -113,8 +113,7 @@ public enum ZaiProviderDescriptor {
                         context.snapshot.primary,
                         context.snapshot.secondary))
                 },
-                menuCard: ProviderMenuCardPresentation(
-                    bindingWindowCapsPrimary: true)),
+                primaryBindingQuotaLanes: [.secondary]),
             fetchPlan: self.fetchPlan(),
             cli: ProviderCLIConfig(
                 name: "zai",

@@ -102,6 +102,23 @@ struct MenuCardBindingQuotaTests {
     }
 
     @Test
+    func `reset exactly at evaluation time stops capping`() throws {
+        let snapshot = UsageSnapshot(
+            primary: self.primary(resetsAt: self.now.addingTimeInterval(2 * 3600)),
+            secondary: self.primary(
+                usedPercent: 120,
+                minutes: 7 * 24 * 60,
+                resetsAt: self.now),
+            tertiary: nil,
+            updatedAt: self.now,
+            identity: nil)
+
+        let model = try self.model(provider: .claude, snapshot: snapshot)
+        let session = try #require(model.metrics.first { $0.id == "primary" })
+        #expect(session.percentLabel == "60% left")
+    }
+
+    @Test
     func `model-scoped tertiary does not cap the session row`() throws {
         let snapshot = UsageSnapshot(
             primary: self.primary(resetsAt: self.now.addingTimeInterval(2 * 3600)),
@@ -161,6 +178,96 @@ struct MenuCardBindingQuotaTests {
         let session = try #require(model.metrics.first { $0.id == "primary" })
         #expect(session.percentLabel == "0% left")
         #expect(session.resetText == "Resets in 3d")
+    }
+
+    @Test
+    func `multiple exhausted lanes use the final unblock reset`() throws {
+        let snapshot = UsageSnapshot(
+            primary: self.primary(resetsAt: self.now.addingTimeInterval(2 * 3600)),
+            secondary: self.primary(
+                usedPercent: 100,
+                minutes: 7 * 24 * 60,
+                resetsAt: self.now.addingTimeInterval(5 * 24 * 3600)),
+            tertiary: self.primary(
+                usedPercent: 100,
+                minutes: 30 * 24 * 60,
+                resetsAt: self.now.addingTimeInterval(2 * 24 * 3600)),
+            updatedAt: self.now,
+            identity: nil)
+
+        let model = try self.model(provider: .doubao, snapshot: snapshot)
+        let session = try #require(model.metrics.first { $0.id == "primary" })
+        #expect(session.percentLabel == "0% left")
+        #expect(session.resetText == "Resets in 5d")
+    }
+
+    @Test
+    func `unknown exhausted reset suppresses an earlier known promise`() throws {
+        let snapshot = UsageSnapshot(
+            primary: self.primary(resetsAt: self.now.addingTimeInterval(2 * 3600)),
+            secondary: self.primary(
+                usedPercent: 100,
+                minutes: 7 * 24 * 60,
+                resetsAt: self.now.addingTimeInterval(5 * 24 * 3600)),
+            tertiary: self.primary(
+                usedPercent: 100,
+                minutes: 30 * 24 * 60,
+                resetsAt: nil,
+                resetDescription: "monthly reset pending"),
+            updatedAt: self.now,
+            identity: nil)
+
+        let model = try self.model(provider: .doubao, snapshot: snapshot)
+        let session = try #require(model.metrics.first { $0.id == "primary" })
+        #expect(session.percentLabel == "0% left")
+        #expect(session.resetText == nil)
+    }
+
+    @Test
+    func `binding projection preserves primary provider detail`() throws {
+        let snapshot = UsageSnapshot(
+            primary: self.primary(
+                resetsAt: self.now.addingTimeInterval(2 * 3600),
+                resetDescription: "40 / 100 flows"),
+            secondary: self.primary(
+                usedPercent: 100,
+                minutes: 7 * 24 * 60,
+                resetsAt: self.now.addingTimeInterval(3 * 24 * 3600),
+                resetDescription: "1000 / 1000 used"),
+            tertiary: nil,
+            updatedAt: self.now,
+            identity: nil)
+
+        let model = try self.model(provider: .zenmux, snapshot: snapshot)
+        let session = try #require(model.metrics.first { $0.id == "primary" })
+        #expect(session.percentLabel == "0% left")
+        #expect(session.resetText == "Resets in 3d")
+        #expect(session.detailLeftText == "40 / 100 flows")
+    }
+
+    @Test
+    func `command code purchased credits keep the monthly grant nonbinding`() throws {
+        let plan = try #require(CommandCodePlanCatalog.plan(forID: "individual-go"))
+        let snapshot = CommandCodeUsageSnapshot(
+            monthlyCreditsRemaining: 0,
+            purchasedCredits: 5,
+            premiumMonthlyCredits: 0,
+            opensourceMonthlyCredits: 0,
+            fiveHourWindow: self.primary(resetsAt: self.now.addingTimeInterval(2 * 3600)),
+            weeklyWindow: self.primary(
+                usedPercent: 30,
+                minutes: 7 * 24 * 60,
+                resetsAt: self.now.addingTimeInterval(4 * 24 * 3600)),
+            plan: plan,
+            billingPeriodEnd: self.now.addingTimeInterval(10 * 24 * 3600),
+            subscriptionStatus: "active",
+            updatedAt: self.now)
+            .toUsageSnapshot()
+
+        let model = try self.model(provider: .commandcode, snapshot: snapshot)
+        let session = try #require(model.metrics.first { $0.id == "primary" })
+        #expect(session.percentLabel == "60% left")
+        #expect(session.resetText == "Resets in 2h")
     }
 
     @Test

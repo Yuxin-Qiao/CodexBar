@@ -1233,11 +1233,13 @@ extension UsageMenuCardView.Model {
                 projection: codexProjection,
                 percentStyle: percentStyle))
         } else if let primary = snapshot.primary {
-            let displayedPrimary = Self.bindingProjectedPrimary(input: input, primary: primary, snapshot: snapshot)
-                ?? primary
             metrics.append(Self.primaryMetric(
                 input: input,
-                primary: displayedPrimary,
+                primary: primary,
+                bindingProjection: Self.bindingQuotaProjection(
+                    input: input,
+                    primary: primary,
+                    snapshot: snapshot),
                 percentStyle: percentStyle,
                 title: labels.primary))
         }
@@ -1319,6 +1321,7 @@ extension UsageMenuCardView.Model {
     private static func primaryMetric(
         input: Input,
         primary: RateWindow,
+        bindingProjection: RateWindowBindingQuotaProjection? = nil,
         percentStyle: PercentStyle,
         title: String? = nil) -> Metric
     {
@@ -1331,13 +1334,26 @@ extension UsageMenuCardView.Model {
             primary: primary)
         Self.applyPrimaryBalancePresentation(&presentation, input: input, primary: primary)
         Self.applyPrimaryResetPresentation(&presentation, input: input, primary: primary)
-        Self.applyPrimaryPacePresentation(&presentation, input: input, primary: primary)
+        if bindingProjection == nil {
+            Self.applyPrimaryPacePresentation(&presentation, input: input, primary: primary)
+        }
         Self.applyPrimaryFinalOverrides(&presentation, input: input, primary: primary)
+        if let bindingProjection {
+            let resetWindow = RateWindow(
+                usedPercent: bindingProjection.usedPercent,
+                windowMinutes: primary.windowMinutes,
+                resetsAt: bindingProjection.resetsAt,
+                resetDescription: bindingProjection.resetDescription)
+            presentation.resetText = Self.resetText(
+                for: resetWindow,
+                style: input.resetTimeDisplayStyle,
+                now: input.now)
+        }
+        let displayedUsedPercent = bindingProjection?.usedPercent ?? primary.usedPercent
         return Metric(
             id: "primary",
             title: title ?? L(input.metadata.sessionLabel),
-            percent: Self.clamped(
-                input.usageBarsShowUsed ? primary.usedPercent : primary.remainingPercent),
+            percent: Self.clamped(input.usageBarsShowUsed ? displayedUsedPercent : 100 - displayedUsedPercent),
             percentStyle: percentStyle,
             statusText: presentation.statusText,
             resetText: presentation.resetText,

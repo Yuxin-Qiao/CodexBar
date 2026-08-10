@@ -196,12 +196,12 @@ public enum ClaudeProviderDescriptor {
                     return series
                 },
                 secondaryGloballyCapsPrimary: true,
+                primaryBindingQuotaLanes: [.secondary],
                 menuCard: ProviderMenuCardPresentation(
                     costVisibilityResolver: { context in
                         context.showOptionalUsage || context.snapshot?.loginMethod(for: .claude) == "Admin API"
                     },
-                    supportsInlineTokenCostDashboard: true,
-                    bindingWindowCapsPrimary: true)),
+                    supportsInlineTokenCostDashboard: true)),
             fetchPlan: ProviderFetchPlan(
                 sourceModes: [.auto, .api, .web, .cli, .oauth],
                 pipeline: ProviderFetchPipeline(resolveStrategies: self.resolveStrategies)),

@@ -2,27 +2,26 @@ import CodexBarCore
 import SwiftUI
 
 extension UsageMenuCardView.Model {
-    /// Resolves the primary row through the provider's binding-quota policy: when the total
-    /// (weekly/monthly) lane is exhausted, the session row projects to 0% remaining with the
-    /// binding lane's reset time. Returns the raw primary when no policy or binding lane applies.
-    static func bindingProjectedPrimary(
+    /// Resolves the displayed primary percentage/reset through the provider's binding quotas.
+    /// Primary-owned detail text remains sourced from the raw primary window.
+    static func bindingQuotaProjection(
         input: Input,
         primary: RateWindow,
-        snapshot: UsageSnapshot) -> RateWindow?
+        snapshot: UsageSnapshot) -> RateWindowBindingQuotaProjection?
     {
-        let policy = ProviderDescriptorRegistry.descriptor(for: input.provider).presentation.menuCard
-        guard policy.bindingWindowCapsPrimary else { return nil }
-        var bindingLanes: [RateWindow] = []
-        if let secondary = snapshot.secondary {
-            bindingLanes.append(secondary)
+        let lanes = ProviderDescriptorRegistry.descriptor(for: input.provider)
+            .presentation.primaryBindingQuotaLanes
+        let bindingWindows = lanes.compactMap { lane -> RateWindow? in
+            switch lane {
+            case .primary: nil
+            case .secondary: snapshot.secondary
+            case .tertiary: snapshot.tertiary
+            }
         }
-        if policy.bindingTertiaryCapsPrimary, let tertiary = snapshot.tertiary {
-            bindingLanes.append(tertiary)
-        }
-        guard !bindingLanes.isEmpty else { return nil }
-        return RateWindow.bindingProjectedPrimary(
+        guard !bindingWindows.isEmpty else { return nil }
+        return RateWindow.bindingQuotaProjection(
             primary: primary,
-            bindingLanes: bindingLanes,
+            bindingLanes: bindingWindows,
             now: input.now)
     }
 

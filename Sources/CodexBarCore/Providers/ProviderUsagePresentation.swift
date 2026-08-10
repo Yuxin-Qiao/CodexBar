@@ -286,13 +286,6 @@ public struct ProviderMenuCardPresentation: Sendable {
     public let usesSyntheticRollingRegen: Bool
     public let usesRawPrimaryResetDescription: Bool
     public let resetWindowUsesWeeklyPace: Bool
-    /// When the secondary (weekly) quota lane is exhausted, it is the binding cap: the primary
-    /// (session) row must not claim remaining quota the account cannot use until the longer
-    /// window resets. Mirrors Codex's weekly-caps-session projection for opted-in providers.
-    public let bindingWindowCapsPrimary: Bool
-    /// Include the tertiary (monthly) lane when resolving the binding cap. Off by default because
-    /// some tertiaries are model-scoped windows (e.g. Claude) rather than nested plan quotas.
-    public let bindingTertiaryCapsPrimary: Bool
 
     public init(
         usageNotesResolver: @escaping UsageNotesResolver = { _ in .unhandled },
@@ -312,9 +305,7 @@ public struct ProviderMenuCardPresentation: Sendable {
         usesAbacusPace: Bool = false,
         usesSyntheticRollingRegen: Bool = false,
         usesRawPrimaryResetDescription: Bool = false,
-        resetWindowUsesWeeklyPace: Bool = false,
-        bindingWindowCapsPrimary: Bool = false,
-        bindingTertiaryCapsPrimary: Bool = false)
+        resetWindowUsesWeeklyPace: Bool = false)
     {
         self.usageNotesResolver = usageNotesResolver
         self.creditsVisibility = creditsVisibility
@@ -334,8 +325,6 @@ public struct ProviderMenuCardPresentation: Sendable {
         self.usesSyntheticRollingRegen = usesSyntheticRollingRegen
         self.usesRawPrimaryResetDescription = usesRawPrimaryResetDescription
         self.resetWindowUsesWeeklyPace = resetWindowUsesWeeklyPace
-        self.bindingWindowCapsPrimary = bindingWindowCapsPrimary
-        self.bindingTertiaryCapsPrimary = bindingTertiaryCapsPrimary
     }
 
     public func usageNotes(context: ProviderUsageNotesContext) -> ProviderUsageNotesResolution {
@@ -435,6 +424,9 @@ public struct ProviderUsagePresentation: Sendable {
     public let requestedMenuBarLaneOrders: [ProviderMenuBarMetric: [ProviderUsageLane]]
     public let automaticSelectionPrioritizesExhaustedWindow: Bool
     public let secondaryGloballyCapsPrimary: Bool
+    /// Longer quota lanes that must have room before the primary session lane is usable.
+    /// Kept separate from widget policy until those surfaces adopt the same multi-lane projection.
+    public let primaryBindingQuotaLanes: Set<ProviderUsageLane>
     public let menuCard: ProviderMenuCardPresentation
     public let menu: ProviderMenuDescriptorPresentation
     public let planRow: ProviderPlanRowPresentation
@@ -462,6 +454,7 @@ public struct ProviderUsagePresentation: Sendable {
         planUtilizationSeriesNormalizer: @escaping PlanUtilizationSeriesNormalizer = { series, _ in series },
         widgetRowLimitResolver: @escaping WidgetRowLimitResolver = { _, _ in nil },
         secondaryGloballyCapsPrimary: Bool = false,
+        primaryBindingQuotaLanes: Set<ProviderUsageLane> = [],
         menuCard: ProviderMenuCardPresentation = ProviderMenuCardPresentation(),
         menu: ProviderMenuDescriptorPresentation = ProviderMenuDescriptorPresentation(),
         planRow: ProviderPlanRowPresentation = ProviderPlanRowPresentation(),
@@ -486,6 +479,7 @@ public struct ProviderUsagePresentation: Sendable {
         self.planUtilizationSeriesNormalizer = planUtilizationSeriesNormalizer
         self.widgetRowLimitResolver = widgetRowLimitResolver
         self.secondaryGloballyCapsPrimary = secondaryGloballyCapsPrimary
+        self.primaryBindingQuotaLanes = primaryBindingQuotaLanes
         self.menuCard = menuCard
         self.menu = menu
         self.planRow = planRow
