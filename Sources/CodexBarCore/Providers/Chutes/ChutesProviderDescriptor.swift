@@ -46,7 +46,8 @@ public enum ChutesProviderDescriptor {
             presentation: ProviderUsagePresentation(
                 menuCard: ProviderMenuCardPresentation(
                     showsPrimaryBalanceDescription: true,
-                    hidesPrimaryResetWithoutDate: true),
+                    hidesPrimaryResetWithoutDate: true,
+                    bindingWindowCapsPrimary: true),
                 menu: ProviderMenuDescriptorPresentation(
                     primaryDescriptionIsDetail: { _ in true },
                     secondaryDescriptionMode: .detailWhenResetDatePresent)),

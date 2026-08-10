@@ -200,7 +200,8 @@ public enum ClaudeProviderDescriptor {
                     costVisibilityResolver: { context in
                         context.showOptionalUsage || context.snapshot?.loginMethod(for: .claude) == "Admin API"
                     },
-                    supportsInlineTokenCostDashboard: true)),
+                    supportsInlineTokenCostDashboard: true,
+                    bindingWindowCapsPrimary: true)),
             fetchPlan: ProviderFetchPlan(
                 sourceModes: [.auto, .api, .web, .cli, .oauth],
                 pipeline: ProviderFetchPipeline(resolveStrategies: self.resolveStrategies)),

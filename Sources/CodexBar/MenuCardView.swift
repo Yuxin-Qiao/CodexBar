@@ -1233,9 +1233,11 @@ extension UsageMenuCardView.Model {
                 projection: codexProjection,
                 percentStyle: percentStyle))
         } else if let primary = snapshot.primary {
+            let displayedPrimary = Self.bindingProjectedPrimary(input: input, primary: primary, snapshot: snapshot)
+                ?? primary
             metrics.append(Self.primaryMetric(
                 input: input,
-                primary: primary,
+                primary: displayedPrimary,
                 percentStyle: percentStyle,
                 title: labels.primary))
         }

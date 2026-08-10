@@ -112,7 +112,9 @@ public enum ZaiProviderDescriptor {
                     return .resolved(ProviderUsagePresentation.mostConstrained(
                         context.snapshot.primary,
                         context.snapshot.secondary))
-                }),
+                },
+                menuCard: ProviderMenuCardPresentation(
+                    bindingWindowCapsPrimary: true)),
             fetchPlan: self.fetchPlan(),
             cli: ProviderCLIConfig(
                 name: "zai",

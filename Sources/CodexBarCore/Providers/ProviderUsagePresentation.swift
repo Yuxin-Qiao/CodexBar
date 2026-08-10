@@ -286,6 +286,13 @@ public struct ProviderMenuCardPresentation: Sendable {
     public let usesSyntheticRollingRegen: Bool
     public let usesRawPrimaryResetDescription: Bool
     public let resetWindowUsesWeeklyPace: Bool
+    /// When the secondary (weekly) quota lane is exhausted, it is the binding cap: the primary
+    /// (session) row must not claim remaining quota the account cannot use until the longer
+    /// window resets. Mirrors Codex's weekly-caps-session projection for opted-in providers.
+    public let bindingWindowCapsPrimary: Bool
+    /// Include the tertiary (monthly) lane when resolving the binding cap. Off by default because
+    /// some tertiaries are model-scoped windows (e.g. Claude) rather than nested plan quotas.
+    public let bindingTertiaryCapsPrimary: Bool
 
     public init(
         usageNotesResolver: @escaping UsageNotesResolver = { _ in .unhandled },
@@ -305,7 +312,9 @@ public struct ProviderMenuCardPresentation: Sendable {
         usesAbacusPace: Bool = false,
         usesSyntheticRollingRegen: Bool = false,
         usesRawPrimaryResetDescription: Bool = false,
-        resetWindowUsesWeeklyPace: Bool = false)
+        resetWindowUsesWeeklyPace: Bool = false,
+        bindingWindowCapsPrimary: Bool = false,
+        bindingTertiaryCapsPrimary: Bool = false)
     {
         self.usageNotesResolver = usageNotesResolver
         self.creditsVisibility = creditsVisibility
@@ -325,6 +334,8 @@ public struct ProviderMenuCardPresentation: Sendable {
         self.usesSyntheticRollingRegen = usesSyntheticRollingRegen
         self.usesRawPrimaryResetDescription = usesRawPrimaryResetDescription
         self.resetWindowUsesWeeklyPace = resetWindowUsesWeeklyPace
+        self.bindingWindowCapsPrimary = bindingWindowCapsPrimary
+        self.bindingTertiaryCapsPrimary = bindingTertiaryCapsPrimary
     }
 
     public func usageNotes(context: ProviderUsageNotesContext) -> ProviderUsageNotesResolution {

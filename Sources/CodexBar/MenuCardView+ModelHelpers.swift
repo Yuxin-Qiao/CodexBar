@@ -2,6 +2,30 @@ import CodexBarCore
 import SwiftUI
 
 extension UsageMenuCardView.Model {
+    /// Resolves the primary row through the provider's binding-quota policy: when the total
+    /// (weekly/monthly) lane is exhausted, the session row projects to 0% remaining with the
+    /// binding lane's reset time. Returns the raw primary when no policy or binding lane applies.
+    static func bindingProjectedPrimary(
+        input: Input,
+        primary: RateWindow,
+        snapshot: UsageSnapshot) -> RateWindow?
+    {
+        let policy = ProviderDescriptorRegistry.descriptor(for: input.provider).presentation.menuCard
+        guard policy.bindingWindowCapsPrimary else { return nil }
+        var bindingLanes: [RateWindow] = []
+        if let secondary = snapshot.secondary {
+            bindingLanes.append(secondary)
+        }
+        if policy.bindingTertiaryCapsPrimary, let tertiary = snapshot.tertiary {
+            bindingLanes.append(tertiary)
+        }
+        guard !bindingLanes.isEmpty else { return nil }
+        return RateWindow.bindingProjectedPrimary(
+            primary: primary,
+            bindingLanes: bindingLanes,
+            now: input.now)
+    }
+
     struct PaceDetail {
         let leftLabel: String
         let rightLabel: String?

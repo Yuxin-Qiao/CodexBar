@@ -96,7 +96,8 @@ public enum AlibabaTokenPlanProviderDescriptor {
                 noDataMessage: { "Alibaba Token Plan cost summary is not supported." }),
             pace: .calendarMonthResetWindow,
             presentation: ProviderUsagePresentation(menuCard: ProviderMenuCardPresentation(
-                showsPrimaryBalanceDescription: true)),
+                showsPrimaryBalanceDescription: true,
+                bindingWindowCapsPrimary: true)),
             fetchPlan: ProviderFetchPlan(
                 sourceModes: [.auto, .web],
                 pipeline: ProviderFetchPipeline(resolveStrategies: self.resolveStrategies)),

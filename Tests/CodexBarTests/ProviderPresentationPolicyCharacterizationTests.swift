@@ -131,6 +131,25 @@ struct ProviderPresentationPolicyCharacterizationTests {
     }
 
     @Test
+    func `binding quota caps primary is pinned for every provider`() {
+        let weekly: Set<UsageProvider> = [
+            .alibaba, .alibabatokenplan, .chutes, .claude, .clinepass, .commandcode,
+            .doubao, .qwencloud, .stepfun, .zai, .zenmux,
+        ]
+        let monthly: Set<UsageProvider> = [.alibaba, .clinepass, .commandcode, .doubao]
+
+        for provider in UsageProvider.allCases {
+            let policy = ProviderDescriptorRegistry.descriptor(for: provider).presentation.menuCard
+            #expect(
+                policy.bindingWindowCapsPrimary == weekly.contains(provider),
+                "Unexpected binding window cap for \(provider.rawValue)")
+            #expect(
+                policy.bindingTertiaryCapsPrimary == monthly.contains(provider),
+                "Unexpected binding tertiary cap for \(provider.rawValue)")
+        }
+    }
+
+    @Test
     @MainActor
     func `decorated icon style membership is pinned`() throws {
         let decoratedStyles: Set<IconStyle> = [.codex, .claude, .gemini, .antigravity, .factory, .warp]

@@ -42,7 +42,8 @@ public enum ZenMuxProviderDescriptor {
                 costPresenter: { _ in ProviderCostPresentation(menuCardStyle: .payAsYouGoBalance) },
                 menuCard: ProviderMenuCardPresentation(
                     primaryDescriptionPlacement: .detailLeft,
-                    hidesPrimaryResetWithoutDate: true)),
+                    hidesPrimaryResetWithoutDate: true,
+                    bindingWindowCapsPrimary: true)),
             fetchPlan: ProviderFetchPlan(
                 sourceModes: [.auto, .api],
                 pipeline: ProviderFetchPipeline(resolveStrategies: { _ in [ZenMuxAPIFetchStrategy()] })),

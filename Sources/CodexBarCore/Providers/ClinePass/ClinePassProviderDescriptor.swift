@@ -42,6 +42,9 @@ public enum ClinePassProviderDescriptor {
             tokenCost: ProviderTokenCostConfig(
                 supportsTokenCost: false,
                 noDataMessage: { "ClinePass cost history is not available via the usage-limits API." }),
+            presentation: ProviderUsagePresentation(menuCard: ProviderMenuCardPresentation(
+                bindingWindowCapsPrimary: true,
+                bindingTertiaryCapsPrimary: true)),
             fetchPlan: self.fetchPlan(),
             cli: ProviderCLIConfig(
                 name: "clinepass",
