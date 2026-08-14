@@ -83,6 +83,11 @@ public enum CodexOAuthCredentialsStore {
         }
 
         let data = try Data(contentsOf: url)
+        return try self.parseOAuthTokens(data: data)
+    }
+
+    /// Parses the OAuth token container even when a legacy API key is also present.
+    public static func parseOAuthTokens(data: Data) throws -> CodexOAuthCredentials {
         guard let credentials = try self.tokenCredentials(data: data) else {
             throw CodexOAuthCredentialsError.missingTokens
         }

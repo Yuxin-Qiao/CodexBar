@@ -97,12 +97,7 @@ public struct FileManagedCodexAccountStore: ManagedCodexAccountStoring, @uncheck
         else {
             return nil
         }
-        let payload = credentials.idToken.flatMap(UsageFetcher.parseJWT)
-        let authDict = payload?["https://api.openai.com/auth"] as? [String: Any]
-        let providerAccountID = credentials.accountId
-            ?? (authDict?["chatgpt_account_id"] as? String)
-            ?? (payload?["chatgpt_account_id"] as? String)
-        return ManagedCodexAccount.normalizeProviderAccountID(providerAccountID)
+        return ManagedCodexAccount.normalizeProviderAccountID(credentials.resolvedAccountId)
     }
 
     public static func defaultURL() -> URL {

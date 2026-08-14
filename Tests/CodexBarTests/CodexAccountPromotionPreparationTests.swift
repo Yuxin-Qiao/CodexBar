@@ -43,6 +43,40 @@ struct CodexAccountPromotionPreparationTests {
     }
 
     @Test
+    func `builder resolves organization only JWT identity for live auth`() async throws {
+        let container = try CodexAccountPromotionTestContainer(
+            suiteName: "CodexAccountPromotionPreparationTests-organization-only",
+            workspaceIdentities: [
+                "org-alpha": CodexOpenAIWorkspaceIdentity(
+                    workspaceAccountID: "org-alpha",
+                    workspaceLabel: "Organization"),
+            ])
+        defer { container.tearDown() }
+
+        let target = try container.createManagedAccount(
+            persistedEmail: "beta@example.com",
+            authAccountID: "acct-beta")
+        try container.persistAccounts([target])
+        _ = try container.writeLiveOAuthAuthFile(
+            email: "alpha@example.com",
+            organizationIDs: ["org-alpha"])
+
+        let builder = PreparedPromotionContextBuilder(
+            store: container.fileStore,
+            workspaceResolver: container.workspaceResolver,
+            snapshotLoader: SettingsStoreCodexAccountReconciliationSnapshotLoader(settingsStore: container.settings),
+            authMaterialReader: DefaultCodexAuthMaterialReader(),
+            baseEnvironment: container.baseEnvironment,
+            fileManager: .default)
+
+        let context = try await builder.build(targetID: target.id)
+
+        #expect(context.live.authIdentity?.identity == .providerAccount(id: "org-alpha"))
+        #expect(context.live.authIdentity?.workspaceLabel == "Organization")
+        #expect(context.live.authIdentity?.workspaceAccountID == "org-alpha")
+    }
+
+    @Test
     func `builder preserves target missing auth as degraded home state`() async throws {
         let container = try CodexAccountPromotionTestContainer(
             suiteName: "CodexAccountPromotionPreparationTests-target-missing-auth")

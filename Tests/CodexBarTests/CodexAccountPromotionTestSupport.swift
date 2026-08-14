@@ -184,14 +184,16 @@ final class CodexAccountPromotionTestContainer {
         email: String,
         plan: String = "Pro",
         accountID: String? = nil,
-        apiKey: String? = nil) throws -> Data
+        apiKey: String? = nil,
+        organizationIDs: [String] = []) throws -> Data
     {
         try self.writeOAuthAuthFile(
             homeURL: self.liveHomeURL,
             email: email,
             plan: plan,
             accountID: accountID,
-            apiKey: apiKey)
+            apiKey: apiKey,
+            organizationIDs: organizationIDs)
     }
 
     @discardableResult
@@ -303,14 +305,19 @@ final class CodexAccountPromotionTestContainer {
         email: String,
         plan: String,
         accountID: String?,
-        apiKey: String? = nil) throws -> Data
+        apiKey: String? = nil,
+        organizationIDs: [String] = []) throws -> Data
     {
         try FileManager.default.createDirectory(at: homeURL, withIntermediateDirectories: true)
 
         var tokens: [String: Any] = [
             "accessToken": "access-\(email)",
             "refreshToken": "refresh-\(email)",
-            "idToken": Self.fakeJWT(email: email, plan: plan, accountID: accountID),
+            "idToken": Self.fakeJWT(
+                email: email,
+                plan: plan,
+                accountID: accountID,
+                organizationIDs: organizationIDs),
         ]
         if let accountID {
             tokens["accountId"] = accountID
@@ -329,7 +336,12 @@ final class CodexAccountPromotionTestContainer {
         return data
     }
 
-    private static func fakeJWT(email: String, plan: String, accountID: String?) -> String {
+    private static func fakeJWT(
+        email: String,
+        plan: String,
+        accountID: String?,
+        organizationIDs: [String] = []) -> String
+    {
         let header = (try? JSONSerialization.data(withJSONObject: ["alg": "none"])) ?? Data()
         var authClaims: [String: Any] = [
             "chatgpt_plan_type": plan,
@@ -337,11 +349,15 @@ final class CodexAccountPromotionTestContainer {
         if let accountID {
             authClaims["chatgpt_account_id"] = accountID
         }
-        let payload = (try? JSONSerialization.data(withJSONObject: [
+        var payloadValues: [String: Any] = [
             "email": email,
             "chatgpt_plan_type": plan,
             "https://api.openai.com/auth": authClaims,
-        ])) ?? Data()
+        ]
+        if !organizationIDs.isEmpty {
+            payloadValues["organizations"] = organizationIDs.map { ["id": $0] }
+        }
+        let payload = (try? JSONSerialization.data(withJSONObject: payloadValues)) ?? Data()
 
         func base64URL(_ data: Data) -> String {
             data.base64EncodedString()

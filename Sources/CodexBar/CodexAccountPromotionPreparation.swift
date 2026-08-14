@@ -172,8 +172,11 @@ struct PreparedPromotionContextBuilder {
     }
 
     private func inspectAuthMaterial(homeURL: URL, rawData: Data) async -> PreparedAuthMaterial? {
-        guard let credentials = try? CodexOAuthCredentialsStore.parse(data: rawData),
-              let runtimeAccount = try? Self.runtimeAccount(from: rawData)
+        guard let credentials = try? CodexOAuthCredentialsStore.parse(data: rawData) else {
+            return nil
+        }
+        let identityCredentials = (try? CodexOAuthCredentialsStore.parseOAuthTokens(data: rawData)) ?? credentials
+        guard let runtimeAccount = try? Self.runtimeAccount(from: rawData, credentials: identityCredentials)
         else {
             return nil
         }
@@ -246,7 +249,10 @@ struct PreparedPromotionContextBuilder {
         }
     }
 
-    private static func runtimeAccount(from rawData: Data) throws -> CodexAuthBackedAccount {
+    private static func runtimeAccount(
+        from rawData: Data,
+        credentials: CodexOAuthCredentials) throws -> CodexAuthBackedAccount
+    {
         guard let json = try JSONSerialization.jsonObject(with: rawData) as? [String: Any] else {
             throw CodexOAuthCredentialsError.decodeFailed("Invalid JSON")
         }
@@ -263,12 +269,7 @@ struct PreparedPromotionContextBuilder {
             (payload?["email"] as? String) ?? (profileDict?["email"] as? String))
         let plan = Self.normalizedField(
             (authDict?["chatgpt_plan_type"] as? String) ?? (payload?["chatgpt_plan_type"] as? String))
-        let accountID = ManagedCodexAccount.normalizeProviderAccountID(
-            tokens.flatMap {
-                Self.nonEmptyString(in: $0, snakeCaseKey: "account_id", camelCaseKey: "accountId")
-            }
-                ?? (authDict?["chatgpt_account_id"] as? String)
-                ?? (payload?["chatgpt_account_id"] as? String))
+        let accountID = ManagedCodexAccount.normalizeProviderAccountID(credentials.resolvedAccountId)
         let identity = Self.normalizedIdentity(
             CodexIdentityResolver.resolve(accountId: accountID, email: email),
             email: email)

@@ -276,6 +276,46 @@ func `FileManagedCodexAccountStore hydrates provider account I D from id token w
 }
 
 @Test
+func `FileManagedCodexAccountStore hydrates provider account I D from JWT organization`() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let fileURL = root.appendingPathComponent("managed.json", isDirectory: false)
+    let home = root.appendingPathComponent("organization-only-home", isDirectory: true)
+    try writeOrganizationOnlyCodexAuthFile(
+        homeURL: home,
+        email: "user@example.com",
+        organizationID: "org-jwt-only")
+
+    let accountID = UUID()
+    let json = """
+    {
+      "accounts" : [
+        {
+          "createdAt" : 10,
+          "email" : "user@example.com",
+          "id" : "\(accountID.uuidString)",
+          "lastAuthenticatedAt" : null,
+          "managedHomePath" : "\(home.path)",
+          "updatedAt" : 20
+        }
+      ],
+      "version" : 1
+    }
+    """
+
+    try json.write(to: fileURL, atomically: true, encoding: .utf8)
+
+    let store = FileManagedCodexAccountStore(fileURL: fileURL)
+    let loaded = try store.loadAccounts()
+
+    #expect(loaded.version == FileManagedCodexAccountStore.currentVersion)
+    #expect(loaded.accounts.count == 1)
+    #expect(loaded.accounts.first?.providerAccountID == "org-jwt-only")
+    #expect(loaded.account(email: "user@example.com", providerAccountID: "org-jwt-only")?.id == accountID)
+}
+
+@Test
 func `FileManagedCodexAccountStore drops duplicate IDs on load`() throws {
     let tempDir = FileManager.default.temporaryDirectory
     let fileURL = tempDir.appendingPathComponent("codexbar-managed-codex-accounts-duplicate-id-test.json")
@@ -519,6 +559,38 @@ private func writeCodexAuthFile(
     }
     let data = try JSONSerialization.data(withJSONObject: ["tokens": tokens], options: [.sortedKeys])
     try data.write(to: homeURL.appendingPathComponent("auth.json"))
+}
+
+private func writeOrganizationOnlyCodexAuthFile(
+    homeURL: URL,
+    email: String,
+    organizationID: String) throws
+{
+    try FileManager.default.createDirectory(at: homeURL, withIntermediateDirectories: true)
+    let tokens: [String: Any] = [
+        "accessToken": "access-token",
+        "refreshToken": "refresh-token",
+        "idToken": organizationOnlyJWT(email: email, organizationID: organizationID),
+    ]
+    let data = try JSONSerialization.data(withJSONObject: ["tokens": tokens], options: [.sortedKeys])
+    try data.write(to: homeURL.appendingPathComponent("auth.json"))
+}
+
+private func organizationOnlyJWT(email: String, organizationID: String) -> String {
+    let header = (try? JSONSerialization.data(withJSONObject: ["alg": "none"])) ?? Data()
+    let payload = (try? JSONSerialization.data(withJSONObject: [
+        "email": email,
+        "organizations": [["id": organizationID]],
+    ])) ?? Data()
+
+    func base64URL(_ data: Data) -> String {
+        data.base64EncodedString()
+            .replacingOccurrences(of: "=", with: "")
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+    }
+
+    return "\(base64URL(header)).\(base64URL(payload))."
 }
 
 private func fakeJWT(email: String, accountId: String) -> String {
