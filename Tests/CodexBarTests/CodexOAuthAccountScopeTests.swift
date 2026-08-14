@@ -108,6 +108,33 @@ struct CodexOAuthAccountScopeTests {
         #expect(await transport.requests().count == 3)
     }
 
+    @Test
+    func `workspace lookup uses the resolved organization account`() async throws {
+        let credentials = Self.credentials()
+        let transport = ProviderHTTPTransportStub { request in
+            let header = request.value(forHTTPHeaderField: "ChatGPT-Account-Id")
+            #expect(header == "org-from-request")
+            guard let url = request.url,
+                  let response = HTTPURLResponse(
+                      url: url,
+                      statusCode: 200,
+                      httpVersion: nil,
+                      headerFields: nil)
+            else {
+                throw URLError(.badURL)
+            }
+            return (Data(#"{"items":[{"id":"org-from-request","name":"Workspace"}]}"#.utf8), response)
+        }
+
+        let identity = try await CodexOpenAIWorkspaceResolver.resolve(
+            credentials: credentials,
+            session: transport)
+
+        #expect(identity?.workspaceAccountID == "org-from-request")
+        #expect(identity?.workspaceLabel == "Workspace")
+        #expect(await transport.requests().count == 1)
+    }
+
     private static func credentials() -> CodexOAuthCredentials {
         let data = Data(#"{"organizations":[{"id":"org-from-request"}]}"#.utf8)
         let encoded = data.base64EncodedString()

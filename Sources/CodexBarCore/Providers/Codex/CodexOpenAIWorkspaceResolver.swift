@@ -44,7 +44,7 @@ public enum CodexOpenAIWorkspaceResolver {
         credentials: CodexOAuthCredentials,
         session transport: any ProviderHTTPTransport) async throws -> CodexOpenAIWorkspaceIdentity?
     {
-        guard let workspaceAccountID = normalizeWorkspaceAccountID(credentials.accountId) else {
+        guard let workspaceAccountID = normalizeWorkspaceAccountID(credentials.resolvedAccountId) else {
             return nil
         }
 
@@ -76,7 +76,7 @@ public enum CodexOpenAIWorkspaceResolver {
         request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("codex-cli", forHTTPHeaderField: "User-Agent")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        if let workspaceAccountID = normalizeWorkspaceAccountID(credentials.accountId) {
+        if let workspaceAccountID = normalizeWorkspaceAccountID(credentials.resolvedAccountId) {
             request.setValue(workspaceAccountID, forHTTPHeaderField: "ChatGPT-Account-Id")
         }
 
