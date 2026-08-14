@@ -9,6 +9,7 @@ public struct CodexProviderSettings: Sendable {
     public let profileAccountTargetUnavailable: Bool
     public let openAIWebCacheScope: CookieHeaderCache.Scope?
     public let dashboardAuthorityKnownOwners: [CodexDashboardKnownOwnerCandidate]
+    public let allowExternalOAuthSources: Bool
 
     public init(
         usageDataSource: CodexUsageDataSource,
@@ -18,7 +19,8 @@ public struct CodexProviderSettings: Sendable {
         managedAccountTargetUnavailable: Bool = false,
         profileAccountTargetUnavailable: Bool = false,
         openAIWebCacheScope: CookieHeaderCache.Scope? = nil,
-        dashboardAuthorityKnownOwners: [CodexDashboardKnownOwnerCandidate] = [])
+        dashboardAuthorityKnownOwners: [CodexDashboardKnownOwnerCandidate] = [],
+        allowExternalOAuthSources: Bool = false)
     {
         self.usageDataSource = usageDataSource
         self.cookieSource = cookieSource
@@ -28,6 +30,7 @@ public struct CodexProviderSettings: Sendable {
         self.profileAccountTargetUnavailable = profileAccountTargetUnavailable
         self.openAIWebCacheScope = openAIWebCacheScope
         self.dashboardAuthorityKnownOwners = dashboardAuthorityKnownOwners
+        self.allowExternalOAuthSources = allowExternalOAuthSources
     }
 }
 

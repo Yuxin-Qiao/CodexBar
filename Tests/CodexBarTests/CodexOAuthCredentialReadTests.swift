@@ -263,7 +263,8 @@ struct CodexOAuthCredentialReadTests {
 
         let credentials = try CodexOAuthCredentialsStore._loadForUsageForTesting(
             env: ["XDG_DATA_HOME": dataHome.path],
-            homeDirectory: home)
+            homeDirectory: home,
+            allowExternalSources: true)
 
         #expect(credentials.source == .codexHome)
         #expect(credentials.accessToken == "native-access")
@@ -304,7 +305,8 @@ struct CodexOAuthCredentialReadTests {
 
         let credentials = try CodexOAuthCredentialsStore._loadForUsageForTesting(
             env: ["XDG_DATA_HOME": dataHome.path],
-            homeDirectory: home)
+            homeDirectory: home,
+            allowExternalSources: true)
 
         #expect(credentials.source == .legacyCodexHome)
         #expect(credentials.accessToken == "legacy-access")
@@ -335,10 +337,40 @@ struct CodexOAuthCredentialReadTests {
 
         let credentials = try CodexOAuthCredentialsStore._loadForUsageForTesting(
             env: ["XDG_DATA_HOME": dataHome.path],
-            homeDirectory: home)
+            homeDirectory: home,
+            allowExternalSources: true)
 
         #expect(credentials.source == .openCode)
         #expect(credentials.accessToken == "fallback-access")
+    }
+
+    @Test
+    func `external OAuth fallback is disabled without explicit consent`() throws {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("codex-oauth-consent-home-\(UUID().uuidString)", isDirectory: true)
+        let dataHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent("codex-oauth-consent-data-\(UUID().uuidString)", isDirectory: true)
+        defer {
+            try? FileManager.default.removeItem(at: home)
+            try? FileManager.default.removeItem(at: dataHome)
+        }
+        let openCodeDirectory = dataHome.appendingPathComponent("opencode", isDirectory: true)
+        try FileManager.default.createDirectory(at: openCodeDirectory, withIntermediateDirectories: true)
+        let payload: [String: Any] = [
+            "openai": ["type": "oauth", "access": "must-not-be-read"],
+        ]
+        try JSONSerialization.data(withJSONObject: payload)
+            .write(to: openCodeDirectory.appendingPathComponent("auth.json"))
+
+        let error = #expect(throws: CodexOAuthCredentialsError.self) {
+            try CodexOAuthCredentialsStore._loadForUsageForTesting(
+                env: ["XDG_DATA_HOME": dataHome.path],
+                homeDirectory: home)
+        }
+        guard case .notFound = error else {
+            Issue.record("External OAuth files require explicit consent before they are read")
+            return
+        }
     }
 
     @Test

@@ -317,11 +317,15 @@ struct CodexOAuthFetchStrategy: ProviderFetchStrategy {
     let kind: ProviderFetchKind = .oauth
 
     func isAvailable(_ context: ProviderFetchContext) async -> Bool {
-        (try? CodexOAuthCredentialsStore.loadForUsage(env: context.env)) != nil
+        (try? CodexOAuthCredentialsStore.loadForUsage(
+            env: context.env,
+            allowExternalSources: context.settings?.codex?.allowExternalOAuthSources == true)) != nil
     }
 
     func fetch(_ context: ProviderFetchContext) async throws -> ProviderFetchResult {
-        let credentials = try CodexOAuthCredentialsStore.loadForUsage(env: context.env)
+        let credentials = try CodexOAuthCredentialsStore.loadForUsage(
+            env: context.env,
+            allowExternalSources: context.settings?.codex?.allowExternalOAuthSources == true)
         return try await Self.fetch(context: context, credentials: credentials)
     }
 

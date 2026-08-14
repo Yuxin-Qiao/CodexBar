@@ -115,23 +115,26 @@ public enum CodexOAuthCredentialsStore {
 
     /// Resolve a credential for a usage probe without changing any source file.
     ///
-    /// The ambient Codex home wins. Only an unconfigured ambient home may fall back to
-    /// the legacy XDG Codex path or OpenCode's `openai` OAuth entry; an explicit `CODEX_HOME`
-    /// remains an isolated scope for managed accounts.
-    public static func loadForUsage(env: [String: String] = ProcessInfo.processInfo
-        .environment) throws -> CodexOAuthCredentials
+    /// The ambient Codex home wins. External sources are opt-in because reading another
+    /// application's OAuth file is a provider-auth and privacy boundary.
+    public static func loadForUsage(
+        env: [String: String] = ProcessInfo.processInfo.environment,
+        allowExternalSources: Bool = false) throws -> CodexOAuthCredentials
     {
-        try self.loadForUsage(env: env, homeDirectory: nil)
+        try self.loadForUsage(env: env, homeDirectory: nil, allowExternalSources: allowExternalSources)
     }
 
     private static func loadForUsage(
         env: [String: String],
-        homeDirectory: URL?) throws -> CodexOAuthCredentials
+        homeDirectory: URL?,
+        allowExternalSources: Bool) throws -> CodexOAuthCredentials
     {
         do {
             return try self.loadNative(env: env, homeDirectory: homeDirectory)
         } catch let nativeError as CodexOAuthCredentialsError {
-            guard self.shouldTryExternalFallback(nativeError, env: env) else { throw nativeError }
+            guard allowExternalSources,
+                  self.shouldTryExternalFallback(nativeError, env: env)
+            else { throw nativeError }
             if let legacy = try? self.loadLegacyCodexCredentials(homeDirectory: homeDirectory) {
                 return legacy
             }
@@ -399,9 +402,13 @@ extension CodexOAuthCredentialsStore {
 
     static func _loadForUsageForTesting(
         env: [String: String],
-        homeDirectory: URL) throws -> CodexOAuthCredentials
+        homeDirectory: URL,
+        allowExternalSources: Bool = false) throws -> CodexOAuthCredentials
     {
-        try self.loadForUsage(env: env, homeDirectory: homeDirectory)
+        try self.loadForUsage(
+            env: env,
+            homeDirectory: homeDirectory,
+            allowExternalSources: allowExternalSources)
     }
 
     static func _parseOpenCodeForTesting(data: Data) throws -> CodexOAuthCredentials {
