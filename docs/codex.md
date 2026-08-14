@@ -43,6 +43,16 @@ Usage source picker:
 - Preferences → Providers → Codex → Show Codex Spark usage hides only the Spark rows in menus and the provider
   preview. It does not change fetching, history, notifications, widgets, credits, or other extra limits.
 
+### Optional external OAuth sources (off by default)
+- **External Codex OAuth sources** is a provider setting that must be enabled explicitly before CodexBar reads
+  another application's OAuth file. It is off by default because this is a cross-application credential boundary.
+- Without an explicit `$CODEX_HOME`, native Codex auth wins first, followed by legacy `~/.config/codex/auth.json`,
+  then OpenCode's `~/.local/share/opencode/auth.json` (or the equivalent `XDG_DATA_HOME` path).
+- An explicit `$CODEX_HOME` remains isolated; it never borrows credentials from those external locations.
+- External fallbacks accept OAuth token structures only; API-key entries are ignored. External credentials are
+  read-only: CodexBar never refreshes or writes them back. In Automatic mode an expired external credential lets
+  the existing CLI fallback run; explicit OAuth mode reports the read-only error instead.
+
 ### Advanced profile-home accounts
 - Managed Codex accounts remain the default multi-account path.
 - Advanced users can add existing Codex homes to `~/.codexbar/config.json` with

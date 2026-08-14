@@ -738,6 +738,7 @@ struct CodexOAuthTests {
         #expect(strategy.shouldFallback(on: CodexOAuthCredentialsError.notFound, context: context))
         #expect(strategy.shouldFallback(on: CodexOAuthCredentialsError.unreadable, context: context))
         #expect(strategy.shouldFallback(on: CodexOAuthCredentialsError.missingTokens, context: context))
+        #expect(strategy.shouldFallback(on: CodexOAuthCredentialsError.readOnlySource, context: context))
         #expect(strategy.shouldFallback(on: CodexTokenRefresher.RefreshError.expired, context: context))
         #expect(strategy.shouldFallback(on: CodexTokenRefresher.RefreshError.revoked, context: context))
         #expect(strategy.shouldFallback(on: CodexTokenRefresher.RefreshError.reused, context: context))
@@ -786,6 +787,7 @@ struct CodexOAuthTests {
         let context = self.makeContext(sourceMode: .oauth)
 
         #expect(!strategy.shouldFallback(on: CodexOAuthFetchError.unauthorized, context: context))
+        #expect(!strategy.shouldFallback(on: CodexOAuthCredentialsError.readOnlySource, context: context))
         #expect(!strategy.shouldFallback(on: CodexTokenRefresher.RefreshError.expired, context: context))
     }
 

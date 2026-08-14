@@ -407,9 +407,9 @@ struct CodexOAuthFetchStrategy: ProviderFetchStrategy {
         }
         if let credentialsError = error as? CodexOAuthCredentialsError {
             switch credentialsError {
-            case .notFound, .unreadable, .missingTokens:
+            case .notFound, .unreadable, .missingTokens, .readOnlySource:
                 return true
-            case .decodeFailed, .readOnlySource:
+            case .decodeFailed:
                 return false
             }
         }
