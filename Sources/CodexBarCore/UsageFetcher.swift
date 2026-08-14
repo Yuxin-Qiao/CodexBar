@@ -1245,10 +1245,7 @@ public struct UsageFetcher: Sendable {
         let plan = Self.normalizedCodexAccountField(
             (authDict?["chatgpt_plan_type"] as? String) ?? (payload?["chatgpt_plan_type"] as? String))
         let accountId = Self.normalizedCodexAccountField(
-            credentials.accountId
-                ?? (authDict?["chatgpt_account_id"] as? String)
-                ?? (payload?["chatgpt_account_id"] as? String)
-                ?? Self.firstOrganizationID(from: payload))
+            credentials.resolvedAccountId)
         let identity = CodexIdentityResolver.resolve(accountId: accountId, email: email)
 
         return CodexAuthBackedAccount(identity: identity, email: email, plan: plan)
@@ -1459,31 +1456,8 @@ public struct UsageFetcher: Sendable {
         return value
     }
 
-    private static func firstOrganizationID(from payload: [String: Any]?) -> String? {
-        guard let organizations = payload?["organizations"] as? [[String: Any]] else { return nil }
-        return organizations.lazy
-            .compactMap { organization -> String? in
-                guard let id = organization["id"] as? String else { return nil }
-                let normalized = id.trimmingCharacters(in: .whitespacesAndNewlines)
-                return normalized.isEmpty ? nil : normalized
-            }
-            .first
-    }
-
     public static func parseJWT(_ token: String) -> [String: Any]? {
-        let parts = token.split(separator: ".")
-        guard parts.count >= 2 else { return nil }
-        let payloadPart = parts[1]
-
-        var padded = String(payloadPart)
-            .replacingOccurrences(of: "-", with: "+")
-            .replacingOccurrences(of: "_", with: "/")
-        while padded.count % 4 != 0 {
-            padded.append("=")
-        }
-        guard let data = Data(base64Encoded: padded) else { return nil }
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
-        return json
+        CodexOAuthAccountIdentityResolver.payload(from: token)
     }
 }
 

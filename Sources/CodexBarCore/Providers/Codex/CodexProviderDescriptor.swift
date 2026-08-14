@@ -330,7 +330,7 @@ struct CodexOAuthFetchStrategy: ProviderFetchStrategy {
 
         let usage = try await CodexOAuthUsageFetcher.fetchUsage(
             accessToken: credentials.accessToken,
-            accountId: credentials.accountId,
+            accountId: credentials.resolvedAccountId,
             env: context.env)
         let resetCredits = try await Self.fetchResetCreditsIfRequested(
             context: context,
@@ -514,7 +514,7 @@ struct CodexOAuthFetchStrategy: ProviderFetchStrategy {
     {
         guard context.includeCredits,
               CodexSpendControlsMonthlyUsageGate.shouldFetch(response: usage),
-              let accountId = self.firstNonEmptyAccountId(credentials.accountId, usage.accountId)
+              let accountId = self.firstNonEmptyAccountId(credentials.resolvedAccountId, usage.accountId)
         else { return result }
 
         do {
@@ -580,7 +580,7 @@ struct CodexOAuthFetchStrategy: ProviderFetchStrategy {
             fetcher: { credentials in
                 try await CodexOAuthUsageFetcher.fetchRateLimitResetCredits(
                     accessToken: credentials.accessToken,
-                    accountId: credentials.accountId,
+                    accountId: credentials.resolvedAccountId,
                     env: context.env)
             })
     }
