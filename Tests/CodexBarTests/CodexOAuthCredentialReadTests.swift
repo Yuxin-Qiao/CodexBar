@@ -197,6 +197,64 @@ struct CodexOAuthCredentialReadTests {
     }
 
     @Test
+    func `consented external OAuth fetch uses the token without mutating its source`() async throws {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("codex-oauth-fetch-home-\(UUID().uuidString)", isDirectory: true)
+        let dataHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent("codex-oauth-fetch-data-\(UUID().uuidString)", isDirectory: true)
+        defer {
+            try? FileManager.default.removeItem(at: home)
+            try? FileManager.default.removeItem(at: dataHome)
+        }
+        let openCodeDirectory = dataHome.appendingPathComponent("opencode", isDirectory: true)
+        try FileManager.default.createDirectory(at: openCodeDirectory, withIntermediateDirectories: true)
+        let authData = Data(#"""
+        {"openai":{"type":"oauth","access":"external-access","refresh":"external-refresh","expires":4102444800000}}
+        """#.utf8)
+        let authURL = openCodeDirectory.appendingPathComponent("auth.json")
+        try authData.write(to: authURL)
+
+        let credentials = try CodexOAuthCredentialsStore._loadForUsageForTesting(
+            env: ["XDG_DATA_HOME": dataHome.path],
+            homeDirectory: home,
+            allowExternalSources: true)
+        let settings = ProviderSettingsSnapshot.make(codex: CodexProviderSettings(
+            usageDataSource: .oauth,
+            cookieSource: .off,
+            manualCookieHeader: nil,
+            allowExternalOAuthSources: true))
+        let transport = ProviderHTTPTransportStub { request in
+            #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer external-access")
+            guard let url = request.url,
+                  let response = HTTPURLResponse(
+                      url: url,
+                      statusCode: 200,
+                      httpVersion: nil,
+                      headerFields: nil)
+            else {
+                throw URLError(.badURL)
+            }
+            let body = #"""
+            {"rate_limit":{"primary_window":{"used_percent":12,"reset_at":1786161204,
+            "limit_window_seconds":18000},"secondary_window":null}}
+            """#
+            return (Data(body.utf8), response)
+        }
+
+        let result = try await CodexAuthenticatedHTTPTransport.$overrideForTesting
+            .withValue(transport) {
+                try await CodexOAuthFetchStrategy._fetchForTesting(
+                    context: Self.context(
+                        env: ["XDG_DATA_HOME": dataHome.path],
+                        settings: settings),
+                    credentials: credentials)
+            }
+
+        #expect(result.usage.primary?.usedPercent == 12)
+        #expect(try Data(contentsOf: authURL) == authData)
+    }
+
+    @Test
     func `open code api credentials are not accepted as oauth`() throws {
         let payload: [String: Any] = [
             "openai": [
@@ -214,7 +272,10 @@ struct CodexOAuthCredentialReadTests {
         }
     }
 
-    private static func context() -> ProviderFetchContext {
+    private static func context(
+        env: [String: String] = [:],
+        settings: ProviderSettingsSnapshot? = nil) -> ProviderFetchContext
+    {
         let browserDetection = BrowserDetection(cacheTTL: 0)
         return ProviderFetchContext(
             runtime: .app,
@@ -223,9 +284,9 @@ struct CodexOAuthCredentialReadTests {
             webTimeout: 60,
             webDebugDumpHTML: false,
             verbose: false,
-            env: [:],
-            settings: nil,
-            fetcher: UsageFetcher(environment: [:]),
+            env: env,
+            settings: settings,
+            fetcher: UsageFetcher(environment: env),
             claudeFetcher: ClaudeUsageFetcher(browserDetection: browserDetection),
             browserDetection: browserDetection)
     }
