@@ -1247,7 +1247,8 @@ public struct UsageFetcher: Sendable {
         let accountId = Self.normalizedCodexAccountField(
             credentials.accountId
                 ?? (authDict?["chatgpt_account_id"] as? String)
-                ?? (payload?["chatgpt_account_id"] as? String))
+                ?? (payload?["chatgpt_account_id"] as? String)
+                ?? Self.firstOrganizationID(from: payload))
         let identity = CodexIdentityResolver.resolve(accountId: accountId, email: email)
 
         return CodexAuthBackedAccount(identity: identity, email: email, plan: plan)
@@ -1456,6 +1457,17 @@ public struct UsageFetcher: Sendable {
             return nil
         }
         return value
+    }
+
+    private static func firstOrganizationID(from payload: [String: Any]?) -> String? {
+        guard let organizations = payload?["organizations"] as? [[String: Any]] else { return nil }
+        return organizations.lazy
+            .compactMap { organization -> String? in
+                guard let id = organization["id"] as? String else { return nil }
+                let normalized = id.trimmingCharacters(in: .whitespacesAndNewlines)
+                return normalized.isEmpty ? nil : normalized
+            }
+            .first
     }
 
     public static func parseJWT(_ token: String) -> [String: Any]? {
