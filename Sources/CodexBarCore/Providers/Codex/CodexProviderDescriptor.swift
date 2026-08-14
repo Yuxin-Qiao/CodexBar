@@ -317,15 +317,17 @@ struct CodexOAuthFetchStrategy: ProviderFetchStrategy {
     let kind: ProviderFetchKind = .oauth
 
     func isAvailable(_ context: ProviderFetchContext) async -> Bool {
-        (try? CodexOAuthCredentialsStore.load(env: context.env)) != nil
+        (try? CodexOAuthCredentialsStore.loadForUsage(env: context.env)) != nil
     }
 
     func fetch(_ context: ProviderFetchContext) async throws -> ProviderFetchResult {
-        var credentials = try CodexOAuthCredentialsStore.load(env: context.env)
+        var credentials = try CodexOAuthCredentialsStore.loadForUsage(env: context.env)
 
         if credentials.needsRefresh, !credentials.refreshToken.isEmpty {
             credentials = try await CodexTokenRefresher.refresh(credentials)
-            try CodexOAuthCredentialsStore.save(credentials, env: context.env)
+            if credentials.source.canPersistRefresh {
+                try CodexOAuthCredentialsStore.save(credentials, env: context.env)
+            }
         }
 
         let usage = try await CodexOAuthUsageFetcher.fetchUsage(
@@ -371,9 +373,9 @@ struct CodexOAuthFetchStrategy: ProviderFetchStrategy {
         }
         if let credentialsError = error as? CodexOAuthCredentialsError {
             switch credentialsError {
-            case .notFound, .missingTokens:
+            case .notFound, .unreadable, .missingTokens:
                 return true
-            case .decodeFailed:
+            case .decodeFailed, .readOnlySource:
                 return false
             }
         }

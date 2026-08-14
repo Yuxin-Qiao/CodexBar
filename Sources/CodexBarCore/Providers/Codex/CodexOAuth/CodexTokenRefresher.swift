@@ -77,7 +77,8 @@ public enum CodexTokenRefresher {
                 refreshToken: newRefreshToken,
                 idToken: newIdToken,
                 accountId: credentials.accountId,
-                lastRefresh: Date())
+                lastRefresh: Date(),
+                source: credentials.source)
         } catch let error as RefreshError {
             throw error
         } catch {
