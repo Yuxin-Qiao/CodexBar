@@ -102,11 +102,7 @@ public enum CodexOAuthCredentialsStore {
     public static func loadOAuthTokens(env: [String: String] = ProcessInfo.processInfo
         .environment) throws -> CodexOAuthCredentials
     {
-        let json = try self.decodeObject(data: self.readAuthData(env: env))
-        guard let credentials = self.tokenCredentials(in: json, source: .codexHome) else {
-            throw CodexOAuthCredentialsError.missingTokens
-        }
-        return credentials
+        try self.parseOAuthTokens(data: self.readAuthData(env: env), source: .codexHome)
     }
 
     public static func parse(data: Data) throws -> CodexOAuthCredentials {
@@ -314,7 +310,20 @@ public enum CodexOAuthCredentialsStore {
             .appendingPathComponent(".config", isDirectory: true)
             .appendingPathComponent("codex", isDirectory: true)
             .appendingPathComponent("auth.json")
-        return try self.parse(data: self.readAuthData(at: url), source: .legacyCodexHome)
+        return try self.parseOAuthTokens(
+            data: self.readAuthData(at: url),
+            source: .legacyCodexHome)
+    }
+
+    private static func parseOAuthTokens(
+        data: Data,
+        source: CodexOAuthCredentialSource) throws -> CodexOAuthCredentials
+    {
+        let json = try self.decodeObject(data: data)
+        guard let credentials = self.tokenCredentials(in: json, source: source) else {
+            throw CodexOAuthCredentialsError.missingTokens
+        }
+        return credentials
     }
 
     private static func loadOpenCodeCredentials(

@@ -374,6 +374,30 @@ struct CodexOAuthCredentialReadTests {
     }
 
     @Test
+    func `legacy API keys are rejected by the external OAuth fallback`() throws {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("codex-oauth-legacy-api-key-home-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let legacyDirectory = home
+            .appendingPathComponent(".config", isDirectory: true)
+            .appendingPathComponent("codex", isDirectory: true)
+        try FileManager.default.createDirectory(at: legacyDirectory, withIntermediateDirectories: true)
+        let legacy = #"{"OPENAI_API_KEY":"legacy-api-key"}"#
+        try Data(legacy.utf8).write(to: legacyDirectory.appendingPathComponent("auth.json"))
+
+        let error = #expect(throws: CodexOAuthCredentialsError.self) {
+            try CodexOAuthCredentialsStore._loadForUsageForTesting(
+                env: [:],
+                homeDirectory: home,
+                allowExternalSources: true)
+        }
+        guard case .notFound = error else {
+            Issue.record("External legacy API keys must not be treated as OAuth credentials")
+            return
+        }
+    }
+
+    @Test
     func `usage credential loading falls back to isolated open code data`() throws {
         let home = FileManager.default.temporaryDirectory
             .appendingPathComponent("codex-oauth-fallback-home-\(UUID().uuidString)", isDirectory: true)
