@@ -39,6 +39,25 @@ struct CodexResetCreditOutcomeTests {
     }
 
     @Test
+    func `supplemental inventory uses the resolved organization account`() async throws {
+        let recorder = ResetCreditRequestRecorder()
+        let now = Date()
+        let credentials = try Self.credentials(
+            lastRefresh: now,
+            idToken: Self.jwtPayload(["organizations": [["id": "org-from-jwt"]]]),
+            accountId: " \n")
+
+        _ = try await UsageStore._fetchCodexResetCreditsForTesting(
+            credentials: credentials,
+            request: { accessToken, accountID, environment in
+                await recorder.record(accessToken: accessToken, accountID: accountID, environment: environment)
+                return Self.resetSnapshot(id: "resolved", now: now)
+            })
+
+        #expect(await recorder.lastAccountID() == "org-from-jwt")
+    }
+
+    @Test
     func `embedded OAuth inventory prevents a duplicate supplemental GET`() async throws {
         let now = Date(timeIntervalSince1970: 1_781_726_400)
         let embedded = Self.resetSnapshot(id: "embedded", now: now)
@@ -211,13 +230,26 @@ struct CodexResetCreditOutcomeTests {
             updatedAt: now)
     }
 
-    private static func credentials(lastRefresh: Date?) -> CodexOAuthCredentials {
+    private static func credentials(
+        lastRefresh: Date?,
+        idToken: String? = nil,
+        accountId: String? = "account-123") -> CodexOAuthCredentials
+    {
         CodexOAuthCredentials(
             accessToken: "access",
             refreshToken: "refresh",
-            idToken: nil,
-            accountId: "account-123",
+            idToken: idToken,
+            accountId: accountId,
             lastRefresh: lastRefresh)
+    }
+
+    private static func jwtPayload(_ payload: [String: Any]) throws -> String {
+        let data = try JSONSerialization.data(withJSONObject: payload)
+        let encoded = data.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        return ["header", encoded, "signature"].joined(separator: ".")
     }
 
     private static func usage(from outcome: ProviderFetchOutcome) throws -> UsageSnapshot {

@@ -93,7 +93,7 @@ extension UsageStore {
         // Supplemental inventory is strictly read-only. The main OAuth usage strategy owns token refreshes;
         // CLI/web winners with stale credentials simply skip this best-effort GET.
         guard !credentials.needsRefresh else { return nil }
-        return try await request(credentials.accessToken, credentials.accountId, env)
+        return try await request(credentials.accessToken, credentials.resolvedAccountId, env)
     }
 
     nonisolated static func _fetchCodexResetCreditsForTesting(
