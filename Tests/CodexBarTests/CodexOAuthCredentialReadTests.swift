@@ -80,7 +80,7 @@ struct CodexOAuthCredentialReadTests {
     }
 
     @Test
-    func `expired open code oauth credentials request a refresh`() throws {
+    func `expired open code oauth credentials are marked for refresh`() throws {
         let payload: [String: Any] = [
             "openai": [
                 "type": "oauth",
@@ -94,6 +94,106 @@ struct CodexOAuthCredentialReadTests {
 
         #expect(credentials.source == .openCode)
         #expect(credentials.needsRefresh)
+    }
+
+    @Test
+    func `expired read-only oauth credentials never invoke refresh`() async throws {
+        let credentials = CodexOAuthCredentials(
+            accessToken: "expired-access",
+            refreshToken: "external-refresh",
+            idToken: nil,
+            accountId: nil,
+            lastRefresh: nil,
+            expiresAt: Date().addingTimeInterval(-1),
+            source: .openCode)
+        let recorder = RefreshInvocationRecorder()
+
+        let error = await #expect(throws: CodexOAuthCredentialsError.self) {
+            try await CodexOAuthFetchStrategy._prepareCredentialsForTesting(credentials) { _ in
+                await recorder.record()
+                return credentials
+            }
+        }
+        guard case .readOnlySource = error else {
+            Issue.record("Expired external credentials must fail before refresh")
+            return
+        }
+        #expect(await recorder.count() == 0)
+    }
+
+    @Test
+    func `expired read-only oauth credentials without a refresh token are rejected`() async throws {
+        let credentials = CodexOAuthCredentials(
+            accessToken: "expired-access",
+            refreshToken: "",
+            idToken: nil,
+            accountId: nil,
+            lastRefresh: nil,
+            expiresAt: Date().addingTimeInterval(-1),
+            source: .legacyCodexHome)
+
+        let error = await #expect(throws: CodexOAuthCredentialsError.self) {
+            try await CodexOAuthFetchStrategy._prepareCredentialsForTesting(credentials) { _ in
+                Issue.record("An expired read-only credential must not reach a refresh closure")
+                return credentials
+            }
+        }
+        guard case .readOnlySource = error else {
+            Issue.record("Expired external credentials without a refresh token must fail closed")
+            return
+        }
+    }
+
+    @Test
+    func `expired read-only oauth credentials fail before the fetch sends a request`() async throws {
+        let credentials = CodexOAuthCredentials(
+            accessToken: "expired-access",
+            refreshToken: "external-refresh",
+            idToken: nil,
+            accountId: nil,
+            lastRefresh: nil,
+            expiresAt: Date().addingTimeInterval(-1),
+            source: .openCode)
+        let requests = RefreshInvocationRecorder()
+        let transport = ProviderHTTPTransportStub { _ in
+            await requests.record()
+            throw URLError(.badServerResponse)
+        }
+
+        let error = await #expect(throws: CodexOAuthCredentialsError.self) {
+            try await CodexAuthenticatedHTTPTransport.$overrideForTesting.withValue(transport) {
+                try await CodexOAuthFetchStrategy._fetchForTesting(
+                    context: Self.context(),
+                    credentials: credentials)
+            }
+        }
+        guard case .readOnlySource = error else {
+            Issue.record("The fetch path must reject expired external credentials before transport")
+            return
+        }
+        #expect(await requests.count() == 0)
+    }
+
+    @Test
+    func `valid read-only oauth credentials pass through without refresh`() async throws {
+        let credentials = CodexOAuthCredentials(
+            accessToken: "valid-access",
+            refreshToken: "external-refresh",
+            idToken: nil,
+            accountId: nil,
+            lastRefresh: Date(),
+            expiresAt: Date().addingTimeInterval(3600),
+            source: .openCode)
+        let recorder = RefreshInvocationRecorder()
+
+        let resolved = try await CodexOAuthFetchStrategy._prepareCredentialsForTesting(credentials) { _ in
+            await recorder.record()
+            return credentials
+        }
+
+        #expect(resolved.accessToken == "valid-access")
+        #expect(resolved.source == .openCode)
+        #expect(await recorder.count() == 0)
     }
 
     @Test
@@ -112,6 +212,22 @@ struct CodexOAuthCredentialReadTests {
             Issue.record("OpenCode API-key entries must not be treated as OAuth credentials")
             return
         }
+    }
+
+    private static func context() -> ProviderFetchContext {
+        let browserDetection = BrowserDetection(cacheTTL: 0)
+        return ProviderFetchContext(
+            runtime: .app,
+            sourceMode: .oauth,
+            includeCredits: false,
+            webTimeout: 60,
+            webDebugDumpHTML: false,
+            verbose: false,
+            env: [:],
+            settings: nil,
+            fetcher: UsageFetcher(environment: [:]),
+            claudeFetcher: ClaudeUsageFetcher(browserDetection: browserDetection),
+            browserDetection: browserDetection)
     }
 
     @Test
@@ -252,5 +368,17 @@ struct CodexOAuthCredentialReadTests {
             Issue.record("An explicit CODEX_HOME must not borrow an OpenCode credential")
             return
         }
+    }
+}
+
+private actor RefreshInvocationRecorder {
+    private var invocations = 0
+
+    func record() {
+        self.invocations += 1
+    }
+
+    func count() -> Int {
+        self.invocations
     }
 }

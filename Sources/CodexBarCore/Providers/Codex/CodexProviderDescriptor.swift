@@ -321,11 +321,22 @@ struct CodexOAuthFetchStrategy: ProviderFetchStrategy {
     }
 
     func fetch(_ context: ProviderFetchContext) async throws -> ProviderFetchResult {
-        var credentials = try CodexOAuthCredentialsStore.loadForUsage(env: context.env)
+        let credentials = try CodexOAuthCredentialsStore.loadForUsage(env: context.env)
+        return try await Self.fetch(context: context, credentials: credentials)
+    }
 
-        if credentials.needsRefresh, !credentials.refreshToken.isEmpty {
-            credentials = try await CodexTokenRefresher.refresh(credentials)
-            if credentials.source.canPersistRefresh {
+    private static func fetch(
+        context: ProviderFetchContext,
+        credentials initialCredentials: CodexOAuthCredentials) async throws -> ProviderFetchResult
+    {
+        var credentials = initialCredentials
+
+        let shouldPersistRefresh = credentials.needsRefresh && !credentials.refreshToken.isEmpty
+        if credentials.needsRefresh {
+            credentials = try await Self.prepareCredentialsForUsage(credentials) { credentials in
+                try await CodexTokenRefresher.refresh(credentials)
+            }
+            if shouldPersistRefresh {
                 try CodexOAuthCredentialsStore.save(credentials, env: context.env)
             }
         }
@@ -350,6 +361,25 @@ struct CodexOAuthFetchStrategy: ProviderFetchStrategy {
             credentials: credentials,
             context: context)
         return try await Self.replacingWithCLIMonthlyLimitIfAvailable(spendControlsResult, context: context)
+    }
+
+    private static func prepareCredentialsForUsage(
+        _ credentials: CodexOAuthCredentials,
+        refresher: @escaping @Sendable (CodexOAuthCredentials) async throws -> CodexOAuthCredentials)
+        async throws -> CodexOAuthCredentials
+    {
+        guard credentials.needsRefresh else {
+            return credentials
+        }
+        // External sources are intentionally read-only. Refreshing them can rotate or consume the
+        // source application's refresh token even when CodexBar cannot persist the replacement.
+        guard credentials.source.canPersistRefresh else {
+            throw CodexOAuthCredentialsError.readOnlySource
+        }
+        guard !credentials.refreshToken.isEmpty else {
+            return credentials
+        }
+        return try await refresher(credentials)
     }
 
     private static func shouldFetchResetCredits(_ context: ProviderFetchContext) -> Bool {
@@ -640,6 +670,21 @@ struct CodexOAuthFetchStrategy: ProviderFetchStrategy {
 
 #if DEBUG
 extension CodexOAuthFetchStrategy {
+    static func _fetchForTesting(
+        context: ProviderFetchContext,
+        credentials: CodexOAuthCredentials) async throws -> ProviderFetchResult
+    {
+        try await self.fetch(context: context, credentials: credentials)
+    }
+
+    static func _prepareCredentialsForTesting(
+        _ credentials: CodexOAuthCredentials,
+        refresher: @escaping @Sendable (CodexOAuthCredentials) async throws -> CodexOAuthCredentials)
+        async throws -> CodexOAuthCredentials
+    {
+        try await self.prepareCredentialsForUsage(credentials, refresher: refresher)
+    }
+
     static func _applySpendControlsMonthlyLimitForTesting(
         _ result: ProviderFetchResult,
         usage: CodexUsageResponse,
