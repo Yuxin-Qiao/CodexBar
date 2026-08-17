@@ -67,6 +67,84 @@ struct CostUsageFetcherUnknownModelPricingTests {
     }
 
     @Test
+    func `fetcher reprices a bare Claude first-party model after an on demand catalog refresh`() async throws {
+        let environment = try CostUsageTestEnvironment()
+        defer { environment.cleanup() }
+        let day = try environment.makeLocalNoon(year: 2026, month: 4, day: 12)
+        let staleCatalog = try JSONDecoder().decode(ModelsDevCatalog.self, from: Data("""
+        {
+          "openai": {
+            "id": "openai",
+            "models": { "gpt-old": { "id": "gpt-old", "cost": { "input": 1, "output": 4 } } }
+          },
+          "anthropic": {
+            "id": "anthropic",
+            "models": { "claude-old": { "id": "claude-old", "cost": { "input": 3, "output": 15 } } }
+          }
+        }
+        """.utf8))
+        ModelsDevCache.save(
+            catalog: staleCatalog,
+            fetchedAt: day.addingTimeInterval(-901),
+            cacheRoot: environment.cacheRoot)
+        let assistant: [String: Any] = [
+            "type": "assistant",
+            "timestamp": environment.isoString(for: day),
+            "message": [
+                "model": "deepseek-v4-flash",
+                "usage": [
+                    "input_tokens": 100,
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 0,
+                    "output_tokens": 5,
+                ],
+            ],
+        ]
+        _ = try environment.writeClaudeProjectFile(
+            relativePath: "project-a/bare-deepseek.jsonl",
+            contents: environment.jsonl([assistant]))
+        var options = CostUsageScanner.Options(
+            codexSessionsRoot: environment.codexSessionsRoot,
+            claudeProjectsRoots: [environment.claudeProjectsRoot],
+            cacheRoot: environment.cacheRoot)
+        options.refreshMinIntervalSeconds = 0
+        let refreshedCatalog = Data("""
+        {
+          "openai": {
+            "id": "openai",
+            "models": { "gpt-new": { "id": "gpt-new", "cost": { "input": 2, "output": 8 } } }
+          },
+          "anthropic": {
+            "id": "anthropic",
+            "models": { "claude-new": { "id": "claude-new", "cost": { "input": 3, "output": 15 } } }
+          },
+          "deepseek": {
+            "id": "deepseek",
+            "models": {
+              "deepseek-v4-flash": {
+                "id": "deepseek-v4-flash",
+                "cost": { "input": 0.14, "output": 0.28 }
+              }
+            }
+          }
+        }
+        """.utf8)
+
+        let snapshot = try await CostUsageFetcher.loadTokenSnapshot(
+            provider: .claude,
+            now: day,
+            refreshPricingInBackground: false,
+            scannerOptions: options,
+            modelsDevClient: ModelsDevClient(transport: CostUsageFetcherModelsDevTransport(
+                data: refreshedCatalog)))
+
+        let breakdown = try #require(snapshot.daily
+            .flatMap { $0.modelBreakdowns ?? [] }
+            .first { $0.modelName == "deepseek-v4-flash" })
+        #expect(abs((breakdown.costUSD ?? 0) - 0.0000154) < 0.0000001)
+    }
+
+    @Test
     func `pricing retry preserves disabled pi session merging`() async throws {
         let fixture = try UnknownModelPricingFixture()
         defer { fixture.environment.cleanup() }

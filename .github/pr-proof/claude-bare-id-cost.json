@@ -1,0 +1,53 @@
+{
+  "command": "CodexBarCLI cost --provider claude --days 365 --format json",
+  "headNote": "local Claude JSONL scan on this machine, no prompts or account identifiers",
+  "provider": "claude",
+  "historyDays": 365,
+  "source": "local",
+  "totalCostUSD": 38.591566252600096,
+  "totalTokens": 380057051,
+  "models": [
+    {
+      "date": "2026-07-12",
+      "modelName": "MiniMax-M3",
+      "totalTokens": 326175382,
+      "costUSD": 38.04487968000009
+    },
+    {
+      "date": "2026-07-18",
+      "modelName": "kimi-for-coding",
+      "totalTokens": 209202,
+      "costUSD": null
+    },
+    {
+      "date": "2026-07-29",
+      "modelName": "deepseek-v4-pro",
+      "totalTokens": 53369127,
+      "costUSD": 0.532106239
+    },
+    {
+      "date": "2026-07-31",
+      "modelName": "deepseek-v4-flash",
+      "totalTokens": 85196,
+      "costUSD": 0.0063973952
+    },
+    {
+      "date": "2026-08-03",
+      "modelName": "claude-opus-4-8",
+      "totalTokens": null,
+      "costUSD": 0
+    },
+    {
+      "date": "2026-08-04",
+      "modelName": "deepseek-v4-flash",
+      "totalTokens": 47109,
+      "costUSD": 0.0034435688000000004
+    },
+    {
+      "date": "2026-08-07",
+      "modelName": "deepseek-v4-flash",
+      "totalTokens": 171035,
+      "costUSD": 0.0047393696
+    }
+  ]
+}

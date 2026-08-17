@@ -1092,6 +1092,78 @@ extension PiSessionCostScannerTests {
     }
 
     @Test
+    func `pi scanner reprices unchanged claude files when deepseek first-party rates change`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2026, month: 7, day: 10)
+        let model = "deepseek-v4-flash"
+        func assistant(at timestamp: Date) -> [String: Any] {
+            [
+                "type": "message",
+                "timestamp": env.isoString(for: timestamp),
+                "message": [
+                    "role": "assistant",
+                    "provider": "anthropic",
+                    "model": model,
+                    "timestamp": Int(timestamp.timeIntervalSince1970 * 1000),
+                    "usage": [
+                        "input": 100,
+                        "output": 5,
+                        "totalTokens": 105,
+                    ],
+                ],
+            ]
+        }
+        _ = try env.writePiSessionFile(
+            relativePath: "2026-07-10T10-00-00-000Z_deepseek-catalog-change.jsonl",
+            contents: env.jsonl([
+                assistant(at: day.addingTimeInterval(-1)),
+                assistant(at: day),
+            ]))
+
+        let firstCatalog = try Self.deepseekModelsDevCatalog(inputCostPerMillion: 0.14, outputCostPerMillion: 0.28)
+        #expect(ModelsDevCache.save(catalog: firstCatalog, fetchedAt: day, cacheRoot: env.cacheRoot))
+        let options = PiSessionCostScanner.Options(
+            piSessionsRoot: env.piSessionsRoot,
+            cacheRoot: env.cacheRoot,
+            refreshMinIntervalSeconds: 3600)
+        let firstReport = PiSessionCostScanner.loadDailyReport(
+            provider: .claude,
+            since: day,
+            until: day,
+            now: day,
+            options: options)
+        let firstCache = PiSessionCostCacheIO.load(cacheRoot: env.cacheRoot)
+        let firstPricingKey = try #require(firstCache.pricingKey)
+        #expect(firstReport.data.first?.totalTokens == 210)
+        #expect(abs((firstReport.data.first?.costUSD ?? 0) - 0.0000308) < 0.0000001)
+
+        let secondCatalog = try Self.deepseekModelsDevCatalog(inputCostPerMillion: 0.28, outputCostPerMillion: 0.56)
+        #expect(ModelsDevCache.save(
+            catalog: secondCatalog,
+            fetchedAt: day.addingTimeInterval(1),
+            cacheRoot: env.cacheRoot))
+        #expect(PiSessionCostScanner.loadCachedDailyReport(
+            provider: .claude,
+            since: day,
+            until: day,
+            now: day.addingTimeInterval(1),
+            cacheRoot: env.cacheRoot) == nil)
+
+        let secondReport = PiSessionCostScanner.loadDailyReport(
+            provider: .claude,
+            since: day,
+            until: day,
+            now: day.addingTimeInterval(2),
+            options: options)
+        let secondCache = PiSessionCostCacheIO.load(cacheRoot: env.cacheRoot)
+        #expect(secondCache.pricingKey != firstPricingKey)
+        #expect(secondReport.data.first?.totalTokens == 210)
+        #expect(abs((secondReport.data.first?.costUSD ?? 0) - 0.0000616) < 0.0000001)
+    }
+
+    @Test
     func `pi pricing key ignores catalog fetch time when rates are unchanged`() throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }
@@ -1314,6 +1386,29 @@ extension PiSessionCostScannerTests {
                   "output": 30,
                   "cache_read": 0.5,
                   "cache_write": 6.25
+                }
+              }
+            }
+          }
+        }
+        """
+        return try self.modelsDevCatalog(json)
+    }
+
+    private static func deepseekModelsDevCatalog(
+        inputCostPerMillion: Double,
+        outputCostPerMillion: Double) throws -> ModelsDevCatalog
+    {
+        let json = """
+        {
+          "deepseek": {
+            "id": "deepseek",
+            "models": {
+              "deepseek-v4-flash": {
+                "id": "deepseek-v4-flash",
+                "cost": {
+                  "input": \(inputCostPerMillion),
+                  "output": \(outputCostPerMillion)
                 }
               }
             }

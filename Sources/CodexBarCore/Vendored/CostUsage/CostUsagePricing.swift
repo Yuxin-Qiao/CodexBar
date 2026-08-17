@@ -853,6 +853,10 @@ enum CostUsagePricing {
 extension CostUsagePricing {
     /// Bare Claude-routed IDs may match first-party models.dev vendors. Prefixed routes stay on
     /// that route and never fall through to another vendor's official price.
+    ///
+    /// Policy: a Claude transcript that records only an unqualified model ID is estimated at that
+    /// vendor's first-party models.dev rate. This is an estimate of published list price, not a
+    /// claim about which bill the session actually hit.
     /// Provider-specific by design: first-party vendor fallback for bare Claude model IDs.
     static let claudeFirstPartyModelsDevProviderIDs: [String] = [
         Self.claudeModelsDevProviderID,
