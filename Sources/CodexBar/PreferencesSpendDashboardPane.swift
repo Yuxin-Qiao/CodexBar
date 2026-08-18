@@ -579,6 +579,9 @@ struct SpendDashboardCurrencySection: View {
                 SpendProjectPanel(group: self.group)
             }
             SpendDailyChart(group: self.group)
+            if !self.group.hourlyPoints.isEmpty {
+                SpendHourlyChart(group: self.group)
+            }
         }
     }
 }
@@ -860,6 +863,97 @@ private struct SpendDailyChart: View {
         let day = point.day.formatted(
             .dateTime.month(.abbreviated).day().locale(codexBarLocalizedLocale()))
         return "\(point.providerName), \(day)"
+    }
+
+    private func providerColor(_ provider: UsageProvider) -> Color {
+        let color = ProviderAccentPalette.color(for: provider)
+        return Color(red: color.red, green: color.green, blue: color.blue)
+    }
+}
+
+struct SpendHourlyChartPresentation: Equatable {
+    enum Content: Equatable {
+        case chart
+        case unavailable
+    }
+
+    struct Series: Equatable {
+        let name: String
+        let provider: UsageProvider
+    }
+
+    let content: Content
+    let series: [Series]
+    let hourCount: Int
+
+    init(hourlyPoints: [SpendDashboardModel.HourlyPoint]) {
+        self.content = hourlyPoints.isEmpty ? .unavailable : .chart
+        self.hourCount = Set(hourlyPoints.map(\.hour)).count
+        var seenNames: Set<String> = []
+        self.series = hourlyPoints.compactMap { point in
+            guard seenNames.insert(point.providerName).inserted else { return nil }
+            return Series(name: point.providerName, provider: point.provider)
+        }
+    }
+
+    var accessibilityValue: String {
+        L("%d hours of usage data across %d services", self.hourCount, self.series.count)
+    }
+}
+
+private struct SpendHourlyChart: View {
+    let group: SpendDashboardModel.CurrencyGroup
+
+    var body: some View {
+        let presentation = SpendHourlyChartPresentation(hourlyPoints: self.group.hourlyPoints)
+        SpendDashboardPanel {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(L("Hourly estimated spend")).font(.headline)
+                if presentation.content == .unavailable {
+                    ContentUnavailableView(L("Spend unavailable"), systemImage: "chart.bar.xaxis")
+                        .frame(maxWidth: .infinity, minHeight: 170)
+                } else {
+                    Chart(self.group.hourlyPoints) { point in
+                        BarMark(
+                            x: .value(L("Hour"), point.hour, unit: .hour),
+                            yStart: .value(L("Estimated spend"), point.stackStart),
+                            yEnd: .value(L("Estimated spend"), point.stackEnd),
+                            width: .ratio(0.72))
+                            .foregroundStyle(by: .value(L("Provider"), point.providerName))
+                            .accessibilityLabel(Text(self.pointAccessibilityLabel(point)))
+                            .accessibilityValue(Text(UsageFormatter.currencyString(
+                                point.cost,
+                                currencyCode: self.group.currencyCode)))
+                    }
+                    .chartXScale(domain: self.group.hourlyChartDomain ?? self.group.chartDomain)
+                    .chartForegroundStyleScale(
+                        domain: presentation.series.map(\.name),
+                        range: presentation.series.map { self.providerColor($0.provider) })
+                    .chartLegend(position: .bottom, alignment: .leading, spacing: 8)
+                    .chartYAxis {
+                        AxisMarks(position: .leading) { value in
+                            AxisGridLine()
+                            AxisValueLabel {
+                                if let amount = value.as(Double.self) {
+                                    Text(UsageFormatter.compactCurrencyString(
+                                        amount,
+                                        currencyCode: self.group.currencyCode))
+                                }
+                            }
+                        }
+                    }
+                    .frame(height: 170)
+                    .accessibilityLabel(L("Hourly estimated spend"))
+                    .accessibilityValue(presentation.accessibilityValue)
+                }
+            }
+        }
+    }
+
+    private func pointAccessibilityLabel(_ point: SpendDashboardModel.HourlyPoint) -> String {
+        let hour = point.hour.formatted(
+            .dateTime.hour().minute().locale(codexBarLocalizedLocale()))
+        return "\(point.providerName), \(hour)"
     }
 
     private func providerColor(_ provider: UsageProvider) -> Color {
