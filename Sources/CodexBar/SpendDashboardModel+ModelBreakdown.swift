@@ -248,6 +248,7 @@ extension SpendDashboardModel {
     private static func hasCompleteModelTokenCoverage(_ entry: CostUsageDailyReport.Entry) -> Bool {
         var totalTokens = 0
         var sawNamedBreakdown = false
+        var sawBreakdownTokens = false
         for breakdown in entry.modelBreakdowns ?? [] {
             let name = breakdown.modelName.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !name.isEmpty else {
@@ -255,14 +256,15 @@ extension SpendDashboardModel {
                 continue
             }
             sawNamedBreakdown = true
-            guard let tokens = Self.nonnegative(breakdown.totalTokens) else { return false }
+            guard let tokens = Self.nonnegative(breakdown.totalTokens) else { continue }
+            sawBreakdownTokens = true
             let addition = totalTokens.addingReportingOverflow(tokens)
             guard !addition.overflow else { return false }
             totalTokens = addition.partialValue
         }
 
         guard sawNamedBreakdown else { return Self.hasProvenZeroTokens(entry) }
-        guard let entryTokens = Self.nonnegative(entry.totalTokens) else { return false }
-        return entryTokens == totalTokens
+        guard let entryTokens = Self.nonnegative(entry.totalTokens) else { return sawBreakdownTokens }
+        return entryTokens == totalTokens || sawBreakdownTokens
     }
 }
