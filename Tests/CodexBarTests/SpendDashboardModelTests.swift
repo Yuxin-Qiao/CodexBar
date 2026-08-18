@@ -1270,6 +1270,7 @@ extension SpendDashboardModelTests {
             selectedDay: calendar.startOfDay(for: now))
         #expect(selected.groups[0].hourlyPoints.count == 2)
         #expect(selected.groups[0].hourlyChartDomain?.lowerBound == calendar.startOfDay(for: now))
+        #expect(combined.groups[0].timeZone == calendar.timeZone)
     }
 }
 

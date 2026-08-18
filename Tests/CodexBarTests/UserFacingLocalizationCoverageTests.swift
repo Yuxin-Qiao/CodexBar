@@ -173,4 +173,58 @@ struct UserFacingLocalizationCoverageTests {
         #expect(SpendDailyChartPresentation(dailyPoints: [], aggregateTotal: nil).content == .unavailable)
         #expect(SpendDailyChartPresentation(dailyPoints: [], aggregateTotal: 0).content == .chart)
     }
+
+    @Test
+    func `hourly chart labels include the date across multiple days`() throws {
+        let shanghai = try #require(TimeZone(identifier: "Asia/Shanghai"))
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = shanghai
+        let first = try #require(calendar.date(from: DateComponents(year: 2026, month: 8, day: 16, hour: 10)))
+        let second = try #require(calendar.date(from: DateComponents(year: 2026, month: 8, day: 17, hour: 10)))
+        let points = [
+            SpendDashboardModel.HourlyPoint(
+                sourceID: SpendDashboardModel.openCodexSourceID,
+                provider: .codex,
+                providerName: "OpenCodex",
+                hour: first,
+                cost: 1.2,
+                stackStart: 0,
+                stackEnd: 1.2),
+            SpendDashboardModel.HourlyPoint(
+                sourceID: SpendDashboardModel.openCodexSourceID,
+                provider: .codex,
+                providerName: "OpenCodex",
+                hour: second,
+                cost: 0.8,
+                stackStart: 0,
+                stackEnd: 0.8),
+        ]
+
+        let losAngeles = try #require(TimeZone(identifier: "America/Los_Angeles"))
+        let multiDay = SpendHourlyChartPresentation(hourlyPoints: points, calendar: calendar)
+        #expect(multiDay.content == .chart)
+        #expect(multiDay.includeDateInPointLabels)
+        CodexBarLocalizationOverride.$appLanguage.withValue("en") {
+            #expect(multiDay.accessibilityValue == "2 hours of usage data across 1 services")
+            let shanghaiLabel = spendDashboardHourlyPointAccessibilityLabel(
+                providerName: "OpenCodex",
+                hour: first,
+                timeZone: shanghai,
+                includeDate: true)
+            #expect(shanghaiLabel.hasPrefix("OpenCodex, "))
+            #expect(shanghaiLabel.contains("16"))
+            #expect(shanghaiLabel.contains("10"))
+
+            let sameClockDifferentZone = spendDashboardHourlyPointAccessibilityLabel(
+                providerName: "OpenCodex",
+                hour: first,
+                timeZone: losAngeles,
+                includeDate: false)
+            #expect(sameClockDifferentZone != shanghaiLabel)
+            #expect(sameClockDifferentZone.contains("7"))
+        }
+
+        let sameDay = SpendHourlyChartPresentation(hourlyPoints: [points[0]], calendar: calendar)
+        #expect(!sameDay.includeDateInPointLabels)
+    }
 }

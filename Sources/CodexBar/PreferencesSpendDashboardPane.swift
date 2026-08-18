@@ -71,6 +71,24 @@ func spendDashboardProvenanceText(_ provenance: CostProvenance) -> String {
     }
 }
 
+func spendDashboardHourlyPointAccessibilityLabel(
+    providerName: String,
+    hour: Date,
+    timeZone: TimeZone,
+    includeDate: Bool,
+    locale: Locale = codexBarLocalizedLocale()) -> String
+{
+    var timeStyle = Date.FormatStyle().hour().minute().locale(locale)
+    timeStyle.timeZone = timeZone
+    let time = hour.formatted(timeStyle)
+    guard includeDate else {
+        return "\(providerName), \(time)"
+    }
+    var dayStyle = Date.FormatStyle().month(.abbreviated).day().locale(locale)
+    dayStyle.timeZone = timeZone
+    return "\(providerName), \(hour.formatted(dayStyle)), \(time)"
+}
+
 func codexCostCatchUpProgressText(_ activity: CodexCostCatchUpActivity) -> String {
     if activity.totalBytes > 0 {
         let processed = ByteCountFormatter.string(
@@ -885,10 +903,12 @@ struct SpendHourlyChartPresentation: Equatable {
     let content: Content
     let series: [Series]
     let hourCount: Int
+    let includeDateInPointLabels: Bool
 
-    init(hourlyPoints: [SpendDashboardModel.HourlyPoint]) {
+    init(hourlyPoints: [SpendDashboardModel.HourlyPoint], calendar: Calendar) {
         self.content = hourlyPoints.isEmpty ? .unavailable : .chart
         self.hourCount = Set(hourlyPoints.map(\.hour)).count
+        self.includeDateInPointLabels = Set(hourlyPoints.map { calendar.startOfDay(for: $0.hour) }).count > 1
         var seenNames: Set<String> = []
         self.series = hourlyPoints.compactMap { point in
             guard seenNames.insert(point.providerName).inserted else { return nil }
@@ -905,7 +925,10 @@ private struct SpendHourlyChart: View {
     let group: SpendDashboardModel.CurrencyGroup
 
     var body: some View {
-        let presentation = SpendHourlyChartPresentation(hourlyPoints: self.group.hourlyPoints)
+        let calendar = Self.chartCalendar(timeZone: self.group.timeZone)
+        let presentation = SpendHourlyChartPresentation(
+            hourlyPoints: self.group.hourlyPoints,
+            calendar: calendar)
         SpendDashboardPanel {
             VStack(alignment: .leading, spacing: 12) {
                 Text(L("Hourly estimated spend")).font(.headline)
@@ -920,11 +943,15 @@ private struct SpendHourlyChart: View {
                             yEnd: .value(L("Estimated spend"), point.stackEnd),
                             width: .ratio(0.72))
                             .foregroundStyle(by: .value(L("Provider"), point.providerName))
-                            .accessibilityLabel(Text(self.pointAccessibilityLabel(point)))
+                            .accessibilityLabel(Text(self.pointAccessibilityLabel(
+                                point,
+                                includeDate: presentation.includeDateInPointLabels)))
                             .accessibilityValue(Text(UsageFormatter.currencyString(
                                 point.cost,
                                 currencyCode: self.group.currencyCode)))
                     }
+                    .environment(\.timeZone, self.group.timeZone)
+                    .environment(\.calendar, calendar)
                     .chartXScale(domain: self.group.hourlyChartDomain ?? self.group.chartDomain)
                     .chartForegroundStyleScale(
                         domain: presentation.series.map(\.name),
@@ -950,15 +977,26 @@ private struct SpendHourlyChart: View {
         }
     }
 
-    private func pointAccessibilityLabel(_ point: SpendDashboardModel.HourlyPoint) -> String {
-        let hour = point.hour.formatted(
-            .dateTime.hour().minute().locale(codexBarLocalizedLocale()))
-        return "\(point.providerName), \(hour)"
+    private func pointAccessibilityLabel(
+        _ point: SpendDashboardModel.HourlyPoint,
+        includeDate: Bool) -> String
+    {
+        spendDashboardHourlyPointAccessibilityLabel(
+            providerName: point.providerName,
+            hour: point.hour,
+            timeZone: self.group.timeZone,
+            includeDate: includeDate)
     }
 
     private func providerColor(_ provider: UsageProvider) -> Color {
         let color = ProviderAccentPalette.color(for: provider)
         return Color(red: color.red, green: color.green, blue: color.blue)
+    }
+
+    private static func chartCalendar(timeZone: TimeZone) -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        return calendar
     }
 }
 

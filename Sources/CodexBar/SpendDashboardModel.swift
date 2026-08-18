@@ -184,6 +184,7 @@ struct SpendDashboardModel: Equatable, Sendable {
         let selectedDay: Date?
         let hourlyPoints: [HourlyPoint]
         let hourlyChartDomain: ClosedRange<Date>?
+        let timeZone: TimeZone
 
         var id: String {
             self.currencyCode
@@ -208,7 +209,8 @@ struct SpendDashboardModel: Equatable, Sendable {
             overflowModelCount: Int = 0,
             selectedDay: Date? = nil,
             hourlyPoints: [HourlyPoint] = [],
-            hourlyChartDomain: ClosedRange<Date>? = nil)
+            hourlyChartDomain: ClosedRange<Date>? = nil,
+            timeZone: TimeZone = .current)
         {
             self.currencyCode = currencyCode
             self.providers = providers
@@ -230,6 +232,7 @@ struct SpendDashboardModel: Equatable, Sendable {
             self.selectedDay = selectedDay
             self.hourlyPoints = hourlyPoints
             self.hourlyChartDomain = hourlyChartDomain
+            self.timeZone = timeZone
         }
 
         static let modelRowDisplayLimit = 8
@@ -502,7 +505,8 @@ struct SpendDashboardModel: Equatable, Sendable {
             hourlyChartDomain: Self.hourlyChartDomain(
                 points: hourlyPoints,
                 selectedDay: selectedDay,
-                calendar: calendar))
+                calendar: calendar),
+            timeZone: calendar.timeZone)
     }
 
     private static func summaries(_ summaries: [InputSummary], matching selectedDay: Date?) -> [InputSummary] {
