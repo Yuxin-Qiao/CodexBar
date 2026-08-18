@@ -1502,11 +1502,11 @@ extension CostUsagePricingTests {
     // MARK: - Historical pricing (date-aware, issue #2671)
 
     @Test
-    func `GPT-5_6 Terra and Luna use pre-cutoff rates before 2026-07-30`() throws {
+    func `GPT-5_6 Terra and Luna use explicit July 2026 boundary dates`() throws {
         let root = try Self.cacheRoot()
-        // One second before the cutoff: 2026-07-29T23:59:59Z.
-        let beforeCutoff = CostUsagePricing.codexGPT56PricingCutoff.addingTimeInterval(-1)
-        let afterCutoff = CostUsagePricing.codexGPT56PricingCutoff.addingTimeInterval(1)
+        // Assert against absolute dates, not the shared cutoff constant.
+        let beforeCutoff = Date(timeIntervalSince1970: 1_785_369_599) // 2026-07-29T23:59:59Z
+        let afterCutoff = Date(timeIntervalSince1970: 1_785_369_601) // 2026-07-30T00:00:01Z
 
         let terraOld = CostUsagePricing.codexCostUSD(
             model: "gpt-5.6-terra",
@@ -1553,10 +1553,10 @@ extension CostUsagePricingTests {
     }
 
     @Test
-    func `GPT-5_6 Sol pricing is unchanged across the 2026-07-30 cutoff`() throws {
+    func `GPT-5_6 Sol pricing is unchanged across explicit July 2026 boundary dates`() throws {
         let root = try Self.cacheRoot()
-        let beforeCutoff = CostUsagePricing.codexGPT56PricingCutoff.addingTimeInterval(-1)
-        let afterCutoff = CostUsagePricing.codexGPT56PricingCutoff.addingTimeInterval(1)
+        let beforeCutoff = Date(timeIntervalSince1970: 1_785_369_599)
+        let afterCutoff = Date(timeIntervalSince1970: 1_785_369_601)
 
         let solOld = CostUsagePricing.codexCostUSD(
             model: "gpt-5.6-sol",
@@ -1591,7 +1591,7 @@ extension CostUsagePricingTests {
             inputTokens: 100,
             cachedInputTokens: 10,
             outputTokens: 5,
-            pricingDate: CostUsagePricing.codexGPT56PricingCutoff.addingTimeInterval(1),
+            pricingDate: Date(timeIntervalSince1970: 1_785_369_601),
             modelsDevCacheRoot: root)
         // No date → current rates (same as post-cutoff).
         #expect(terraNil == terraNew)

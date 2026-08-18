@@ -396,10 +396,10 @@ enum CostUsagePricing {
             cacheReadInputCostPerTokenAboveThreshold: 6e-7),
     ]
 
-    // GPT-5.6 Terra and Luna rates effective before 2026-07-30 (Unix 1753833600).
+    // GPT-5.6 Terra and Luna rates effective before 2026-07-30 (Unix 1785369600).
     // Sol pricing was unchanged. Values from OpenAI pricing page snapshot in PR #2521.
     // Co-authored-by: iam-brain (historical rate values).
-    static let codexGPT56PricingCutoff = Date(timeIntervalSince1970: 1_753_833_600)
+    static let codexGPT56PricingCutoff = Date(timeIntervalSince1970: 1_785_369_600)
     private static let codexHistoricalPricing: [String: CodexPricing] = [
         "gpt-5.6-terra": CodexPricing(
             inputCostPerToken: 2.5e-6,
