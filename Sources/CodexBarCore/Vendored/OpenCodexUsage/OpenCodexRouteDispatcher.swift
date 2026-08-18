@@ -7,8 +7,8 @@ public enum OpenCodexRouteTarget: Equatable, Sendable {
 }
 
 public enum OpenCodexRouteDispatcher {
-    // Provider-specific by design: OpenCodex provider prefixes map onto subscription rows or token-only spend.
     public static func route(provider: String) -> OpenCodexRouteTarget {
+        // Provider-specific by design: OpenCodex provider prefixes map onto subscription rows or token-only spend.
         switch provider.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "openai":
             .subscription(.codex)
