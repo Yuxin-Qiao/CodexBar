@@ -977,10 +977,13 @@ final class SpendDashboardController {
         guard configuration != self.configuration else { return }
         let previousConfiguration = self.configuration
         self.configuration = configuration
-        if self.phase.manualRefreshOutstanding,
+        if self.isRefreshing || self.phase.manualRefreshOutstanding,
            let previousConfiguration,
            Self.sameSourceOwnership(previousConfiguration, configuration)
         {
+            // Same-owner revision churn during an in-flight load adopts the newer
+            // configuration and lets the current pass finish once; handleBuiltRequest
+            // reconciles any remaining drift after apply.
             return
         }
         let nextPhase: LoadPhase = self.phase.manualRefreshOutstanding ? .forcing : .ordinary
@@ -1275,9 +1278,14 @@ final class SpendDashboardController {
     }
 
     func refreshDateWindow(now: Date? = nil) {
-        self.loadedAt = now ?? self.nowProvider()
+        let now = now ?? self.nowProvider()
+        let calendar = self.configuration?.bucketCalendar ?? .current
+        let previousDay = calendar.startOfDay(for: self.loadedAt)
+        let nextDay = calendar.startOfDay(for: now)
+        self.loadedAt = now
         self.rebuildModel()
         guard let configuration else { return }
+        guard previousDay != nextDay || self.lastSuccessfulConfiguration == nil else { return }
         let nextPhase: LoadPhase = self.phase.manualRefreshOutstanding ? .forcing : .ordinary
         self.startLoad(configuration: configuration, phase: nextPhase)
     }
