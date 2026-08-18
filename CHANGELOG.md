@@ -3,6 +3,8 @@
 ## 0.53.1 — Unreleased
 
 - Added direct primary/secondary/tertiary usage lane tokens to provider-specific menu bar layouts, so Cursor layouts can pin `Total %`, `Cursor %`, or `Third Party %` (#3038, #3039). Thanks @giuseppebisemi!
+- Keep Copy JSON alongside a new save-to-file panel for Usage & Spend JSON exports (#3032). Thanks @Yuxin-Qiao!
+- Keep model rows with cost visible on the spend dashboard when only some breakdowns report tokens (#3045). Thanks @Yuxin-Qiao!
 - Show spend dashboard row metrics as cost and tokens together instead of cost-only (#3043). Thanks @Yuxin-Qiao!
 - Documented custom-pricing overlays and the Usage & Spend surface (#3033). Thanks @Yuxin-Qiao!
 - Localized the Codex local session cost estimate setting in Korean (#3034). Thanks @Yoonkeee!
@@ -25,6 +27,7 @@
 - Keep unpriced named models visible in the model breakdown list instead of dropping the whole source (#3004). Thanks @Yuxin-Qiao!
 - Keep priced Cursor days visible when some events omit totalCents, and stop invalid Cursor model costs from reviving on later events (#3005). Thanks @Yuxin-Qiao!
 - Claude spend: price bare first-party model IDs from their models.dev vendor catalog, preserve explicit routes, and leave ambiguous cross-vendor matches unpriced (#3002). Thanks @Yuxin-Qiao!
+- Save Export JSON through a native file panel and keep Copy JSON for quick clipboard access (#3032). Thanks @Yuxin-Qiao!
 
 ### Reliability
 - iCloud sync: stop awaiting CKSyncEngine from within its own delegate callbacks, fixing a fatal CloudKit assertion crash minutes after launch with sync enabled (#3030). Thanks @toads for the crash forensics!
