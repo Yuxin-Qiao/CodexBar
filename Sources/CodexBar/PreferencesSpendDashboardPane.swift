@@ -2,6 +2,7 @@ import AppKit
 import Charts
 import CodexBarCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 func spendDashboardDayRangeText(_ days: Int) -> String {
     if days >= SpendDashboardSource.scanDays {
@@ -409,17 +410,9 @@ struct SpendDashboardPane: View {
     }
 
     private func exportJSON() {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        encoder.dateEncodingStrategy = .iso8601
-        let payload = SpendDashboardExportPayload.make(
+        _ = SpendDashboardJSONExporter.save(
             model: self.controller.model,
             hiddenSourceIDs: self.settings.spendDashboardHiddenSourceIDs)
-        guard let data = try? encoder.encode(payload),
-              let json = String(bytes: data, encoding: .utf8)
-        else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(json, forType: .string)
     }
 
     private var sharePayload: ShareStatsPayload? {
@@ -998,6 +991,47 @@ struct SpendDashboardExportPayload: Encodable, Sendable {
                     })
             },
             hiddenSourceIDs: hiddenSourceIDs)
+    }
+}
+
+enum SpendDashboardJSONExporter {
+    static func encodedData(model: SpendDashboardModel, hiddenSourceIDs: [String]) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        return try encoder.encode(
+            SpendDashboardExportPayload.make(model: model, hiddenSourceIDs: hiddenSourceIDs))
+    }
+
+    static func defaultFilename(days: Int) -> String {
+        if days >= SpendDashboardSource.scanDays {
+            return "codexbar-spend-all-time.json"
+        }
+        return "codexbar-spend-last-\(days)-days.json"
+    }
+
+    static func write(_ data: Data, to url: URL) throws {
+        try data.write(to: url, options: .atomic)
+    }
+
+    @MainActor
+    static func save(model: SpendDashboardModel, hiddenSourceIDs: [String]) -> Bool {
+        guard let data = try? self.encodedData(model: model, hiddenSourceIDs: hiddenSourceIDs) else {
+            NSSound.beep()
+            return false
+        }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = self.defaultFilename(days: model.requestedDays)
+        guard panel.runModal() == .OK, let url = panel.url else { return false }
+        do {
+            try self.write(data, to: url)
+            return true
+        } catch {
+            NSSound.beep()
+            return false
+        }
     }
 }
 
