@@ -809,7 +809,10 @@ public struct CostUsageFetcher: Sendable {
                 .sorted()
                 .map { day -> CostUsageDailyReport.Entry in
                     var total = 0
-                    for packed in cache.days[day, default: [:]].values {
+                    for (model, packed) in cache.days[day, default: [:]] {
+                        guard OpenCodexRouteDispatcher.countsTowardCodexSubscription(modelName: model) else {
+                            continue
+                        }
                         for value in [packed[safe: 0] ?? 0, packed[safe: 2] ?? 0] {
                             let addition = total.addingReportingOverflow(max(0, value))
                             total = addition.overflow ? Int.max : addition.partialValue
