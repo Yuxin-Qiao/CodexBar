@@ -1498,4 +1498,102 @@ extension CostUsagePricingTests {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         return root
     }
+
+    // MARK: - Historical pricing (date-aware, issue #2671)
+
+    @Test
+    func `GPT-5_6 Terra and Luna use pre-cutoff rates before 2026-07-30`() throws {
+        let root = try Self.cacheRoot()
+        // One second before the cutoff: 2026-07-29T23:59:59Z.
+        let beforeCutoff = CostUsagePricing.codexGPT56PricingCutoff.addingTimeInterval(-1)
+        let afterCutoff = CostUsagePricing.codexGPT56PricingCutoff.addingTimeInterval(1)
+
+        let terraOld = CostUsagePricing.codexCostUSD(
+            model: "gpt-5.6-terra",
+            inputTokens: 100,
+            cachedInputTokens: 10,
+            outputTokens: 5,
+            pricingDate: beforeCutoff,
+            modelsDevCacheRoot: root)
+        let terraNew = CostUsagePricing.codexCostUSD(
+            model: "gpt-5.6-terra",
+            inputTokens: 100,
+            cachedInputTokens: 10,
+            outputTokens: 5,
+            pricingDate: afterCutoff,
+            modelsDevCacheRoot: root)
+        let lunaOld = CostUsagePricing.codexCostUSD(
+            model: "gpt-5.6-luna",
+            inputTokens: 100,
+            cachedInputTokens: 10,
+            outputTokens: 5,
+            pricingDate: beforeCutoff,
+            modelsDevCacheRoot: root)
+        let lunaNew = CostUsagePricing.codexCostUSD(
+            model: "gpt-5.6-luna",
+            inputTokens: 100,
+            cachedInputTokens: 10,
+            outputTokens: 5,
+            pricingDate: afterCutoff,
+            modelsDevCacheRoot: root)
+
+        // Pre-cutoff Terra: input $2.5/M, cacheRead $0.25/M, output $15/M.
+        #expect(terraOld == (90.0 * 2.5e-6) + (10.0 * 2.5e-7) + (5.0 * 1.5e-5))
+        // Post-cutoff Terra (current): input $2/M, cacheRead $0.20/M, output $12/M.
+        #expect(terraNew == (90.0 * 2e-6) + (10.0 * 2e-7) + (5.0 * 1.2e-5))
+        // Historical Terra is more expensive than current Terra.
+        #expect((terraOld ?? 0) > (terraNew ?? 0))
+
+        // Pre-cutoff Luna: input $1/M, cacheRead $0.10/M, output $6/M.
+        #expect(lunaOld == (90.0 * 1e-6) + (10.0 * 1e-7) + (5.0 * 6e-6))
+        // Post-cutoff Luna (current): input $0.20/M, cacheRead $0.02/M, output $1.20/M.
+        #expect(lunaNew == (90.0 * 2e-7) + (10.0 * 2e-8) + (5.0 * 1.2e-6))
+        // Historical Luna is more expensive than current Luna.
+        #expect((lunaOld ?? 0) > (lunaNew ?? 0))
+    }
+
+    @Test
+    func `GPT-5_6 Sol pricing is unchanged across the 2026-07-30 cutoff`() throws {
+        let root = try Self.cacheRoot()
+        let beforeCutoff = CostUsagePricing.codexGPT56PricingCutoff.addingTimeInterval(-1)
+        let afterCutoff = CostUsagePricing.codexGPT56PricingCutoff.addingTimeInterval(1)
+
+        let solOld = CostUsagePricing.codexCostUSD(
+            model: "gpt-5.6-sol",
+            inputTokens: 100,
+            cachedInputTokens: 10,
+            outputTokens: 5,
+            pricingDate: beforeCutoff,
+            modelsDevCacheRoot: root)
+        let solNew = CostUsagePricing.codexCostUSD(
+            model: "gpt-5.6-sol",
+            inputTokens: 100,
+            cachedInputTokens: 10,
+            outputTokens: 5,
+            pricingDate: afterCutoff,
+            modelsDevCacheRoot: root)
+        // Sol was not in the rate cut; both sides should produce the same cost.
+        #expect(solOld == solNew)
+    }
+
+    @Test
+    func `historical pricing does not activate without a pricingDate`() throws {
+        let root = try Self.cacheRoot()
+        let terraNil = CostUsagePricing.codexCostUSD(
+            model: "gpt-5.6-terra",
+            inputTokens: 100,
+            cachedInputTokens: 10,
+            outputTokens: 5,
+            pricingDate: nil,
+            modelsDevCacheRoot: root)
+        let terraNew = CostUsagePricing.codexCostUSD(
+            model: "gpt-5.6-terra",
+            inputTokens: 100,
+            cachedInputTokens: 10,
+            outputTokens: 5,
+            pricingDate: CostUsagePricing.codexGPT56PricingCutoff.addingTimeInterval(1),
+            modelsDevCacheRoot: root)
+        // No date → current rates (same as post-cutoff).
+        #expect(terraNil == terraNew)
+    }
 }
