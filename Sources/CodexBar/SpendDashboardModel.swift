@@ -855,19 +855,29 @@ struct SpendDashboardModel: Equatable, Sendable {
                 return nil
             }
             var total = 0
+            var sawTokens = false
+            var scannedContributors = 0
             for summary in summaries {
-                guard let tokens = summary.tokens(on: day) else {
-                    // Every source must have scanned the day before an unknown counts as a real
-                    // gap. If any source never reached it, this is the edge of a scan window.
-                    return TokenActivityPoint(
-                        day: day,
-                        totalTokens: nil,
-                        isScanned: summaries.allSatisfy { $0.scanned(day) })
-                }
+                guard summary.scanned(day) else { continue }
+                scannedContributors += 1
+                guard let tokens = summary.tokens(on: day) else { continue }
+                sawTokens = true
                 let addition = total.addingReportingOverflow(tokens)
                 total = addition.overflow ? Int.max : addition.partialValue
             }
-            return TokenActivityPoint(day: day, totalTokens: total)
+            guard scannedContributors > 0 else {
+                return TokenActivityPoint(day: day, totalTokens: nil, isScanned: false)
+            }
+            if sawTokens {
+                return TokenActivityPoint(day: day, totalTokens: total)
+            }
+            let allConfirmZero = summaries.allSatisfy { summary in
+                !summary.scanned(day) || summary.tokens(on: day) == 0
+            }
+            return TokenActivityPoint(
+                day: day,
+                totalTokens: allConfirmZero ? 0 : nil,
+                isScanned: allConfirmZero)
         }
     }
 
