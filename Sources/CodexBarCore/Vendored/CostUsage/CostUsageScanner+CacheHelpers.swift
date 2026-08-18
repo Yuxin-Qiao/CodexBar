@@ -1463,11 +1463,12 @@ extension CostUsageScanner {
                 }
                 continue
             }
-            let entry = Self.makeCodexBilledDayEntry(
+            guard let entry = Self.makeCodexBilledDayEntry(
                 day: day,
                 models: models,
                 unmetered: unmetered,
                 pricing: pricing)
+            else { continue }
             entries.append(entry)
             totalInput += entry.inputTokens ?? 0
             totalCacheRead += entry.cacheReadTokens ?? 0
