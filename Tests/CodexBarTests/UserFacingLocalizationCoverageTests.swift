@@ -231,4 +231,29 @@ struct UserFacingLocalizationCoverageTests {
             #expect(sameClockDifferentZone.contains("7"))
         }
     }
+
+    @Test
+    func `hourly chart labels disambiguate repeated DST fallback hours`() throws {
+        let newYork = try #require(TimeZone(identifier: "America/New_York"))
+        let first1am = Date(timeIntervalSince1970: 1_793_509_200)
+        let second1am = Date(timeIntervalSince1970: 1_793_512_800)
+        try CodexBarLocalizationOverride.$appLanguage.withValue("en") {
+            let label1 = spendDashboardHourlyPointAccessibilityLabel(
+                providerName: "OpenCodex",
+                hour: first1am,
+                timeZone: newYork,
+                includeDate: true)
+            let label2 = spendDashboardHourlyPointAccessibilityLabel(
+                providerName: "OpenCodex",
+                hour: second1am,
+                timeZone: newYork,
+                includeDate: true)
+            let firstAbbreviation = try #require(newYork.abbreviation(for: first1am))
+            let secondAbbreviation = try #require(newYork.abbreviation(for: second1am))
+            #expect(firstAbbreviation != secondAbbreviation)
+            #expect(label1 != label2)
+            #expect(label1.contains(firstAbbreviation))
+            #expect(label2.contains(secondAbbreviation))
+        }
+    }
 }

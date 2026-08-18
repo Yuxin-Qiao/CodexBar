@@ -93,7 +93,10 @@ func spendDashboardHourlyPointAccessibilityLabel(
 {
     var timeStyle = Date.FormatStyle().hour().minute().locale(locale)
     timeStyle.timeZone = timeZone
-    let time = hour.formatted(timeStyle)
+    var time = hour.formatted(timeStyle)
+    if let abbreviation = timeZone.abbreviation(for: hour), !abbreviation.isEmpty {
+        time = "\(time) \(abbreviation)"
+    }
     guard includeDate else {
         return "\(providerName), \(time)"
     }
