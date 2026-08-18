@@ -61,8 +61,8 @@ struct CostUsageFetcherUnknownModelPricingTests {
                 data: fixture.refreshedCatalog)))
 
         #expect(!(snapshot.daily
-            .flatMap { $0.modelBreakdowns ?? [] }
-            .contains { $0.modelName == "opencode-go/deepseek-v4-flash" }))
+                .flatMap { $0.modelBreakdowns ?? [] }
+                .contains { $0.modelName == "opencode-go/deepseek-v4-flash" }))
     }
 
     @Test
