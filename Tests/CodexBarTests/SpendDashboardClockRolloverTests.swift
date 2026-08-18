@@ -60,7 +60,12 @@ struct SpendDashboardClockRolloverTests {
         let laterSameDay = try #require(ISO8601DateFormatter().date(from: "2026-07-16T08:00:00Z"))
         let loadCount = LockIsolated(0)
         let clock = LockIsolated(loadedAt)
-        let configuration = Self.configuration
+        // Pin the bucket timezone so "same day" does not depend on the host machine's zone.
+        let configuration = SpendDashboardConfiguration(
+            costUsageEnabled: true,
+            providerIDs: [UsageProvider.codex.rawValue],
+            codexAccountIdentities: ["rollover"],
+            bucketTimeZoneIdentifier: "UTC")
         let input = Self.input(day: "2026-07-15", cost: 4, updatedAt: loadedAt)
         let defaults = try Self.isolatedDefaults(suiteName: "SpendDashboardClockRolloverTests-same-day")
         defer { defaults.removePersistentDomain(forName: "SpendDashboardClockRolloverTests-same-day") }
