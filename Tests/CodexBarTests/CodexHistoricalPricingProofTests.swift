@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-import XCTest
 @testable import CodexBarCore
 
 @Suite(.serialized)
@@ -12,11 +11,11 @@ struct CodexHistoricalPricingProofTests {
         let model: String
     }
 
-    @Test
+    @Test(.enabled(
+        if: ProcessInfo.processInfo.environment["CODEXBAR_SPEND_PROOF_DIR"] != nil,
+        "Set CODEXBAR_SPEND_PROOF_DIR to write historical pricing proof artifacts."))
     func `writes redacted real scan proof for GPT56 historical pricing`() async throws {
-        guard let dir = ProcessInfo.processInfo.environment["CODEXBAR_SPEND_PROOF_DIR"] else {
-            throw XCTSkip("Set CODEXBAR_SPEND_PROOF_DIR to write historical pricing proof artifacts.")
-        }
+        let dir = try #require(ProcessInfo.processInfo.environment["CODEXBAR_SPEND_PROOF_DIR"])
 
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }
@@ -168,7 +167,7 @@ struct CodexHistoricalPricingProofTests {
         [
             "day": day,
             "model": model,
-            "totalTokens": breakdown.totalTokens,
+            "totalTokens": breakdown.totalTokens as Any,
             "costUSD": breakdown.costUSD as Any,
         ]
     }
