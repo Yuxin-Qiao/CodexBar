@@ -94,9 +94,11 @@ struct SpendDashboardExportTests {
             now: now)
         let data = try SpendDashboardJSONExporter.encodedData(model: model, hiddenSourceIDs: ["cursor"])
         let json = try #require(String(bytes: data, encoding: .utf8))
-        NSPasteboard.general.clearContents()
-        #expect(SpendDashboardJSONExporter.copyToPasteboard(model: model, hiddenSourceIDs: ["cursor"]))
-        #expect(NSPasteboard.general.string(forType: .string) == json)
+        let pb = NSPasteboard(name: NSPasteboard.Name("SpendDashboardExportTests-copy-\(UUID().uuidString)"))
+        pb.clearContents()
+        defer { pb.releaseGlobally() }
+        #expect(SpendDashboardJSONExporter.copyToPasteboard(model: model, hiddenSourceIDs: ["cursor"], pasteboard: pb))
+        #expect(pb.string(forType: .string) == json)
     }
 
     @MainActor
