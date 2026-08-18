@@ -1057,6 +1057,16 @@ enum SpendDashboardJSONExporter {
             panel.allowedContentTypes = [.json]
             panel.canCreateDirectories = true
             panel.nameFieldStringValue = filename
+            if ProcessInfo.processInfo.environment["CODEXBAR_LIVE_SAVE_PANEL"] == "1",
+               let proofDir = ProcessInfo.processInfo.environment["CODEXBAR_SPEND_PROOF_DIR"]
+            {
+                let nativeDirectory = URL(
+                    fileURLWithPath: NSString(string: proofDir).expandingTildeInPath,
+                    isDirectory: true)
+                    .appendingPathComponent("spend-export-native-tmp", isDirectory: true)
+                try? FileManager.default.createDirectory(at: nativeDirectory, withIntermediateDirectories: true)
+                panel.directoryURL = nativeDirectory
+            }
             guard panel.runModal() == .OK else { return false }
             url = panel.url
         }
