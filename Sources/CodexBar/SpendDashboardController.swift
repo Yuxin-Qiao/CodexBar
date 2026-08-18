@@ -365,7 +365,7 @@ enum SpendDashboardSource {
                 snapshot: snapshot))
         }
         return SpendDashboardLoadResult(
-            inputs: self.appendingOpenCodexInput(inputs, request: request),
+            inputs: self.mergingOpenCodexInputs(inputs, request: request),
             failedSourceIDs: request.unavailableSourceIDs)
     }
 
@@ -455,7 +455,7 @@ enum SpendDashboardSource {
         invalidatedSourceIDs.formUnion(lateInvalidatedSourceIDs)
         inputs.removeAll { lateInvalidatedSourceIDs.contains($0.id) }
         return SpendDashboardLoadResult(
-            inputs: self.appendingOpenCodexInput(inputs, request: request),
+            inputs: self.mergingOpenCodexInputs(inputs, request: request),
             failedSourceIDs: failedSourceIDs,
             invalidatedSourceIDs: invalidatedSourceIDs)
     }
@@ -478,41 +478,71 @@ enum SpendDashboardSource {
             calendar: request.configuration.bucketCalendar)
     }
 
-    private static func appendingOpenCodexInput(
+    private static func mergingOpenCodexInputs(
         _ inputs: [SpendDashboardModel.ProviderInput],
         request: SpendDashboardLoadRequest) -> [SpendDashboardModel.ProviderInput]
     {
-        guard request.configuration.openCodexUsageLogsEnabled,
-              let input = self.loadOpenCodexInput(request: request)
-        else { return inputs }
-        var merged = inputs
-        merged.removeAll { $0.id == SpendDashboardModel.openCodexSourceID }
-        merged.append(input)
+        guard request.configuration.openCodexUsageLogsEnabled else { return inputs }
+        let environment = ProcessInfo.processInfo.environment
+        guard let logURL = OpenCodexUsageLog.usageLogURL(environment: environment) else { return inputs }
+        let store = OpenCodexUsageStore(cacheRoot: OpenCodexUsageLog.cacheRoot())
+        guard let entries = try? store.loadEntries(logURL: logURL),
+              !entries.isEmpty
+        else { return inputs.filter { $0.id != SpendDashboardModel.openCodexSourceID } }
+
+        let snapshots = OpenCodexUsageFanOut.snapshotsBySubscription(
+            entries: entries,
+            now: request.now,
+            historyDays: Self.scanDays,
+            calendar: request.configuration.bucketCalendar)
+        var merged = inputs.filter { $0.id != SpendDashboardModel.openCodexSourceID }
+
+        for (provider, supplement) in snapshots {
+            guard Self.shouldPublishOpenCodexSnapshot(supplement) else { continue }
+            if let index = Self.preferredMergeIndex(for: provider, in: merged) {
+                merged[index] = Self.mergeProviderInput(
+                    merged[index],
+                    supplement: supplement,
+                    request: request)
+            } else if request.configuration.providerIDs.contains(provider.rawValue) {
+                merged.append(SpendDashboardModel.ProviderInput(
+                    provider: provider,
+                    displayName: ProviderDescriptorRegistry.descriptor(for: provider).metadata.displayName,
+                    snapshot: supplement))
+            }
+        }
         return merged
     }
 
-    private static func loadOpenCodexInput(
-        request: SpendDashboardLoadRequest) -> SpendDashboardModel.ProviderInput?
+    private static func preferredMergeIndex(
+        for provider: UsageProvider,
+        in inputs: [SpendDashboardModel.ProviderInput]) -> Int?
     {
-        let environment = ProcessInfo.processInfo.environment
-        guard let logURL = OpenCodexUsageLog.usageLogURL(environment: environment) else { return nil }
-        let cacheRoot = OpenCodexUsageLog.cacheRoot()
-        let store = OpenCodexUsageStore(cacheRoot: cacheRoot)
-        guard let snapshot = try? store.loadSnapshot(
-            logURL: logURL,
-            now: request.now,
-            historyDays: Self.scanDays,
-            calendar: request.configuration.bucketCalendar),
-            Self.shouldPublishOpenCodexSnapshot(snapshot)
-        else { return nil }
-        // Provider-specific by design: OpenCodex is a distinct source backed by Codex-compatible usage logs.
-        return SpendDashboardModel.ProviderInput(
-            id: SpendDashboardModel.openCodexSourceID,
-            provider: .codex,
-            displayName: OpenCodexUsageLog.displayName,
-            modelProviderName: OpenCodexUsageLog.displayName,
-            snapshot: snapshot,
-            sourceKind: .openCodex)
+        if provider == .codex {
+            return inputs.firstIndex(where: { $0.provider == .codex })
+        }
+        return inputs.firstIndex(where: { $0.provider == provider && $0.sourceKind == .native })
+            ?? inputs.firstIndex(where: { $0.provider == provider })
+    }
+
+    private static func mergeProviderInput(
+        _ input: SpendDashboardModel.ProviderInput,
+        supplement: CostUsageTokenSnapshot,
+        request: SpendDashboardLoadRequest) -> SpendDashboardModel.ProviderInput
+    {
+        SpendDashboardModel.ProviderInput(
+            id: input.id,
+            provider: input.provider,
+            displayName: input.displayName,
+            modelProviderName: input.modelProviderName,
+            snapshot: OpenCodexUsageFanOut.mergeSnapshots(
+                input.snapshot,
+                supplement,
+                now: request.now,
+                historyDays: self.scanDays,
+                calendar: request.configuration.bucketCalendar),
+            tokenActivityCache: input.tokenActivityCache,
+            sourceKind: input.sourceKind)
     }
 
     static func shouldPublishOpenCodexSnapshot(_ snapshot: CostUsageTokenSnapshot) -> Bool {
@@ -977,10 +1007,13 @@ final class SpendDashboardController {
         guard configuration != self.configuration else { return }
         let previousConfiguration = self.configuration
         self.configuration = configuration
-        if self.phase.manualRefreshOutstanding,
+        if self.isRefreshing || self.phase.manualRefreshOutstanding,
            let previousConfiguration,
            Self.sameSourceOwnership(previousConfiguration, configuration)
         {
+            // Same-owner revision churn during an in-flight load adopts the newer
+            // configuration and lets the current pass finish once; handleBuiltRequest
+            // reconciles any remaining drift after apply.
             return
         }
         let nextPhase: LoadPhase = self.phase.manualRefreshOutstanding ? .forcing : .ordinary
