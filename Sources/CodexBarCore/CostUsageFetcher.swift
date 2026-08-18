@@ -693,6 +693,8 @@ public struct CostUsageFetcher: Sendable {
             for breakdown in entry.modelBreakdowns ?? [] {
                 guard breakdown.costUSD == nil else { continue }
                 if provider == .codex {
+                    guard OpenCodexRouteDispatcher.countsTowardCodexSubscription(modelName: breakdown.modelName)
+                    else { continue }
                     guard !CostUsagePricing.isCodexUnattributedModel(breakdown.modelName) else { continue }
                     for target in CostUsagePricing.codexModelsDevPricingTargets(for: breakdown.modelName) {
                         targets.insert(ModelsDevPricingTarget(providerID: target.providerID, modelID: target.modelID))

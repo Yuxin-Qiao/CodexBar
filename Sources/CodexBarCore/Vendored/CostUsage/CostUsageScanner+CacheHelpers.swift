@@ -1444,10 +1444,12 @@ extension CostUsageScanner {
             for row in usage.codexRows ?? [] where (row.knownCostNanos ?? 0) != 0 {
                 pricing.authoritativeCostEvidenceGroups.insert(CodexDayModelKey(day: row.day, model: row.model))
             }
-            for row in reconciled.rows where CostUsageDayRange.isInRange(
-                dayKey: row.day,
-                since: range.sinceKey,
-                until: range.untilKey)
+            for row in reconciled.rows
+                where CostUsageDayRange.isInRange(
+                    dayKey: row.day,
+                    since: range.sinceKey,
+                    until: range.untilKey)
+                && OpenCodexRouteDispatcher.countsTowardCodexSubscription(modelName: row.model)
             {
                 pricing.rowsByDayModel[row.day, default: [:]][row.model, default: []].append(row)
             }
