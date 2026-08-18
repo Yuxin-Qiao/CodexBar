@@ -478,11 +478,13 @@ enum SpendDashboardSource {
             calendar: request.configuration.bucketCalendar)
     }
 
-    private static func mergingOpenCodexInputs(
+    static func mergingOpenCodexInputs(
         _ inputs: [SpendDashboardModel.ProviderInput],
         request: SpendDashboardLoadRequest) -> [SpendDashboardModel.ProviderInput]
     {
-        guard request.configuration.openCodexUsageLogsEnabled else { return inputs }
+        guard request.configuration.openCodexUsageLogsEnabled,
+              !request.configuration.hiddenSourceIDs.contains(SpendDashboardModel.openCodexSourceID)
+        else { return inputs.filter { $0.id != SpendDashboardModel.openCodexSourceID } }
         let environment = ProcessInfo.processInfo.environment
         guard let logURL = OpenCodexUsageLog.usageLogURL(environment: environment) else { return inputs }
         let store = OpenCodexUsageStore(cacheRoot: OpenCodexUsageLog.cacheRoot())
@@ -520,22 +522,29 @@ enum SpendDashboardSource {
                 merged.append(SpendDashboardModel.ProviderInput(
                     provider: provider,
                     displayName: ProviderDescriptorRegistry.descriptor(for: provider).metadata.displayName,
-                    snapshot: supplement))
+                    snapshot: supplement,
+                    sourceKind: .openCodex))
             }
         }
         return merged
     }
 
-    // Provider-specific by design: OpenCodex fan-out merges into the native Codex subscription row when present.
-    private static func preferredMergeIndex(
+    static func preferredMergeIndex(
         for provider: UsageProvider,
         in inputs: [SpendDashboardModel.ProviderInput]) -> Int?
     {
+        // Provider-specific by design: OpenCodex fan-out merges into the native Codex subscription row when exactly one
+        // exists.
         if provider == .codex {
-            return inputs.firstIndex(where: { $0.provider == .codex })
+            let codexIndices = inputs.indices.filter { inputs[$0].provider == .codex }
+            guard codexIndices.count == 1 else { return nil }
+            return codexIndices.first
         }
-        return inputs.firstIndex(where: { $0.provider == provider && $0.sourceKind == .native })
-            ?? inputs.firstIndex(where: { $0.provider == provider })
+        let matching = inputs.indices.filter { inputs[$0].provider == provider }
+        guard matching.count == 1 else {
+            return inputs.firstIndex(where: { $0.provider == provider && $0.sourceKind == .native })
+        }
+        return matching.first
     }
 
     private static func mergeProviderInput(
@@ -1293,7 +1302,7 @@ final class SpendDashboardController {
         }
         return ReconciledOutcome(
             result: SpendDashboardLoadResult(
-                inputs: inputs,
+                inputs: SpendDashboardSource.mergingOpenCodexInputs(inputs, request: outcome.request),
                 failedSourceIDs: forceFailed.union(barrierFailed),
                 invalidatedSourceIDs: invalidated),
             confirmedEmptySourceIDs: outcome.confirmedEmptySourceIDs)

@@ -920,13 +920,13 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This Codex account projection passes its fixed provider identity to shared spend infrastructure."),
         SuppressedProviderReference(
             path: "Sources/CodexBar/SpendDashboardController.swift",
-            line: 569,
+            line: 577,
             anchor: "provider: .codex,",
             expectedProviderIDs: ["codex"],
             reason: "This Codex account projection passes its fixed provider identity to shared spend infrastructure."),
         SuppressedProviderReference(
             path: "Sources/CodexBar/SpendDashboardController.swift",
-            line: 598,
+            line: 606,
             anchor: "let providerName = store.metadata(for: .codex).displayName",
             expectedProviderIDs: ["codex"],
             reason: "This Codex account projection passes its fixed provider identity to shared spend infrastructure."),
@@ -2330,7 +2330,7 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This exact shared construct dispatches a provider-owned capability at the generic integration boundary."),
         AllowedProviderConstruct(
             path: "Sources/CodexBar/SpendDashboardController.swift",
-            line: 624,
+            line: 632,
             anchor: "if providers.contains(.codex) {",
             expectedProviderIDs: ["codex"],
             expectedReferenceCount: 2,
@@ -2338,7 +2338,7 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This exact shared construct dispatches a provider-owned capability at the generic integration boundary."),
         AllowedProviderConstruct(
             path: "Sources/CodexBar/SpendDashboardController.swift",
-            line: 688,
+            line: 696,
             anchor: "guard provider != .codex else { return nil }",
             expectedProviderIDs: ["codex"],
             expectedReferenceCount: 1,
@@ -2346,7 +2346,7 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This exact shared construct dispatches a provider-owned capability at the generic integration boundary."),
         AllowedProviderConstruct(
             path: "Sources/CodexBar/SpendDashboardController.swift",
-            line: 1369,
+            line: 1377,
             anchor: "guard input.provider == .codex,",
             expectedProviderIDs: ["codex"],
             expectedReferenceCount: 1,

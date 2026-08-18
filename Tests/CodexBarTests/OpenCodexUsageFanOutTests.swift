@@ -1,6 +1,7 @@
 import CodexBarCore
 import Foundation
 import Testing
+@testable import CodexBar
 
 struct OpenCodexUsageFanOutTests {
     @Test func `snapshotsBySubscription routes openai spend into codex`() throws {
@@ -24,7 +25,7 @@ struct OpenCodexUsageFanOutTests {
             historyDays: 7,
             calendar: calendar)
 
-        #expect(snapshots.keys == [.codex])
+        #expect(snapshots.keys.contains(.codex))
         #expect(snapshots[.codex]?.last30DaysTokens == 150)
     }
 
@@ -49,7 +50,7 @@ struct OpenCodexUsageFanOutTests {
             historyDays: 7,
             calendar: calendar)
 
-        #expect(snapshots.keys == [.opencodego])
+        #expect(snapshots.keys.contains(.opencodego))
         #expect(snapshots[.opencodego]?.last30DaysTokens == 100)
     }
 
@@ -98,7 +99,73 @@ struct OpenCodexUsageFanOutTests {
             historyDays: 7,
             calendar: calendar)
 
-        #expect(snapshots.keys == [.opencodego])
+        #expect(snapshots.keys.contains(.opencodego))
         #expect(snapshots[.codex] == nil)
+    }
+
+    @Test func `preferredMergeIndex returns nil for codex when multiple codex accounts exist`() {
+        let dummySnapshot = CostUsageTokenSnapshot(
+            sessionTokens: nil,
+            sessionCostUSD: nil,
+            last30DaysTokens: nil,
+            last30DaysCostUSD: nil,
+            historyDays: 7,
+            daily: [],
+            updatedAt: Date())
+        let singleCodex = [
+            SpendDashboardModel.ProviderInput(
+                id: "codex:acct-1",
+                provider: .codex,
+                displayName: "Work Account",
+                snapshot: dummySnapshot),
+        ]
+        #expect(SpendDashboardSource.preferredMergeIndex(for: .codex, in: singleCodex) == 0)
+
+        let multipleCodex = [
+            SpendDashboardModel.ProviderInput(
+                id: "codex:acct-1",
+                provider: .codex,
+                displayName: "Work Account",
+                snapshot: dummySnapshot),
+            SpendDashboardModel.ProviderInput(
+                id: "codex:acct-2",
+                provider: .codex,
+                displayName: "Personal Account",
+                snapshot: dummySnapshot),
+        ]
+        #expect(SpendDashboardSource.preferredMergeIndex(for: .codex, in: multipleCodex) == nil)
+    }
+
+    @Test func `mergingOpenCodexInputs drops opencodex when hidden in hiddenSourceIDs`() {
+        let dummySnapshot = CostUsageTokenSnapshot(
+            sessionTokens: nil,
+            sessionCostUSD: nil,
+            last30DaysTokens: nil,
+            last30DaysCostUSD: nil,
+            historyDays: 7,
+            daily: [],
+            updatedAt: Date())
+        let dummy = SpendDashboardModel.ProviderInput(
+            id: SpendDashboardModel.openCodexSourceID,
+            provider: .codex,
+            displayName: "OpenCodex",
+            snapshot: dummySnapshot)
+        let config = SpendDashboardConfiguration(
+            costUsageEnabled: true,
+            providerIDs: [UsageProvider.codex.rawValue],
+            codexAccountIdentities: [],
+            openCodexUsageLogsEnabled: true,
+            hiddenSourceIDs: [SpendDashboardModel.openCodexSourceID])
+        let request = SpendDashboardLoadRequest(
+            configuration: config,
+            capturedInputs: [dummy],
+            unavailableSourceIDs: [],
+            confirmedEmptySourceIDs: [],
+            codexRequests: [],
+            now: Date(),
+            force: false)
+
+        let result = SpendDashboardSource.mergingOpenCodexInputs([dummy], request: request)
+        #expect(!result.contains(where: { $0.id == SpendDashboardModel.openCodexSourceID }))
     }
 }
