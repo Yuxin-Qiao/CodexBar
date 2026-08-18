@@ -120,7 +120,7 @@ struct SpendActivityHeatmapTests {
             now: now,
             calendar: Self.calendar)
 
-        let coveredDays = model.tokenActivity.filter { $0.totalTokens != nil }.count
+        let coveredDays = model.tokenActivity.count(where: { $0.totalTokens != nil })
         #expect(coveredDays > 0)
         #expect(model.tokenActivity.first { $0.day == now }?.totalTokens == 40)
     }
