@@ -1338,7 +1338,8 @@ final class SpendDashboardController {
         self.loadedAt = now
         self.rebuildModel()
         guard let configuration else { return }
-        guard previousDay != nextDay || self.lastSuccessfulConfiguration == nil else { return }
+        guard previousDay != nextDay || self.lastSuccessfulConfiguration == nil || self.failedSourceCount > 0
+        else { return }
         let nextPhase: LoadPhase = self.phase.manualRefreshOutstanding ? .forcing : .ordinary
         self.startLoad(configuration: configuration, phase: nextPhase)
     }
