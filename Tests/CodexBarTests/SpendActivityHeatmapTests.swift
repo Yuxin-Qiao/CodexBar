@@ -126,6 +126,31 @@ struct SpendActivityHeatmapTests {
     }
 
     @Test
+    func `scanned provider with unresolved day preserves gap even if other providers have tokens`() throws {
+        let now = try #require(Self.calendar.date(from: DateComponents(year: 2026, month: 7, day: 16)))
+        let valid = Self.snapshot(
+            entries: [Self.entry(day: "2026-07-16", cost: 1, tokens: 40)],
+            historyDays: 30,
+            last30DaysTokens: 40)
+        let scannedWithInvalidDay = Self.snapshot(
+            entries: [Self.entry(day: "2026-07-16", cost: 1, tokens: -5)],
+            historyDays: 30,
+            last30DaysTokens: 10)
+        let model = SpendDashboardModel.build(
+            inputs: [
+                .init(id: "valid", provider: .claude, displayName: "Claude", snapshot: valid),
+                .init(id: "invalid", provider: .openai, displayName: "OpenAI", snapshot: scannedWithInvalidDay),
+            ],
+            requestedDays: 30,
+            now: now,
+            calendar: Self.calendar)
+
+        let point = model.tokenActivity.first { $0.day == now }
+        #expect(point?.totalTokens == nil)
+        #expect(point?.isScanned == true)
+    }
+
+    @Test
     func `covered empty history is zero while unestablished history remains unavailable`() throws {
         let now = try #require(Self.calendar.date(from: DateComponents(year: 2026, month: 7, day: 16)))
         let covered = SpendDashboardModel.build(

@@ -855,29 +855,25 @@ struct SpendDashboardModel: Equatable, Sendable {
                 return nil
             }
             var total = 0
-            var sawTokens = false
             var scannedContributors = 0
+            var hasUnresolvedScannedProvider = false
             for summary in summaries {
                 guard summary.scanned(day) else { continue }
                 scannedContributors += 1
-                guard let tokens = summary.tokens(on: day) else { continue }
-                sawTokens = true
+                guard let tokens = summary.tokens(on: day) else {
+                    hasUnresolvedScannedProvider = true
+                    continue
+                }
                 let addition = total.addingReportingOverflow(tokens)
                 total = addition.overflow ? Int.max : addition.partialValue
             }
             guard scannedContributors > 0 else {
                 return TokenActivityPoint(day: day, totalTokens: nil, isScanned: false)
             }
-            if sawTokens {
-                return TokenActivityPoint(day: day, totalTokens: total)
+            if hasUnresolvedScannedProvider {
+                return TokenActivityPoint(day: day, totalTokens: nil, isScanned: true)
             }
-            let allConfirmZero = summaries.allSatisfy { summary in
-                !summary.scanned(day) || summary.tokens(on: day) == 0
-            }
-            return TokenActivityPoint(
-                day: day,
-                totalTokens: allConfirmZero ? 0 : nil,
-                isScanned: allConfirmZero)
+            return TokenActivityPoint(day: day, totalTokens: total, isScanned: true)
         }
     }
 
