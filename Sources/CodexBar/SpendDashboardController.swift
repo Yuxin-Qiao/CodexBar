@@ -1041,10 +1041,11 @@ final class SpendDashboardController {
                 else { return }
                 let cachedResult = await cachedLoader(cachedRequest)
                 guard !Task.isCancelled,
-                      generation == self.generation,
-                      cachedRequest.configuration == self.configuration
+                      generation == self.generation
                 else { return }
-                self.applyCached(request: cachedRequest, result: cachedResult)
+                if cachedRequest.configuration == self.configuration {
+                    self.applyCached(request: cachedRequest, result: cachedResult)
+                }
             }
             let request = await self.requestBuilder(phase.buildMode)
             guard !Task.isCancelled,
