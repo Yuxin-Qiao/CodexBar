@@ -128,6 +128,11 @@ struct SpendDashboardPane: View {
                 self.synchronizeCodexCostCatchUp()
             }
         }
+        .onChange(of: self.configuration.costUsageEnabled) { _, _ in
+            if self.isVisible, !self.controller.isRefreshing {
+                self.synchronizeCodexCostCatchUp()
+            }
+        }
         .onChange(of: self.controller.isRefreshing) { _, isRefreshing in
             if self.isVisible, !isRefreshing {
                 self.synchronizeCodexCostCatchUp()
