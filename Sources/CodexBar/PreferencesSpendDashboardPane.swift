@@ -393,6 +393,12 @@ struct SpendDashboardPane: View {
     private var shareAction: some View {
         HStack {
             Button {
+                self.copyJSON()
+            } label: {
+                Label(L("Copy JSON"), systemImage: "doc.on.doc")
+            }
+            .disabled(self.controller.model.groups.isEmpty)
+            Button {
                 self.exportJSON()
             } label: {
                 Label(L("Export JSON"), systemImage: "square.and.arrow.down")
@@ -407,6 +413,12 @@ struct SpendDashboardPane: View {
             }
             .disabled(self.sharePayload == nil)
         }
+    }
+
+    private func copyJSON() {
+        _ = SpendDashboardJSONExporter.copyToPasteboard(
+            model: self.controller.model,
+            hiddenSourceIDs: self.settings.spendDashboardHiddenSourceIDs)
     }
 
     private func exportJSON() {
@@ -1012,6 +1024,18 @@ enum SpendDashboardJSONExporter {
 
     static func write(_ data: Data, to url: URL) throws {
         try data.write(to: url, options: .atomic)
+    }
+
+    @MainActor
+    static func copyToPasteboard(model: SpendDashboardModel, hiddenSourceIDs: [String]) -> Bool {
+        guard let data = try? self.encodedData(model: model, hiddenSourceIDs: hiddenSourceIDs),
+              let json = String(bytes: data, encoding: .utf8)
+        else {
+            NSSound.beep()
+            return false
+        }
+        NSPasteboard.general.clearContents()
+        return NSPasteboard.general.setString(json, forType: .string)
     }
 
     @MainActor

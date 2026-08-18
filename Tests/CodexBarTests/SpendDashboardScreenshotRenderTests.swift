@@ -123,6 +123,9 @@ final class SpendDashboardScreenshotRenderTests: XCTestCase {
     private static func exportActionsChrome() -> some View {
         HStack {
             Button {} label: {
+                Label("Copy JSON", systemImage: "doc.on.doc")
+            }
+            Button {} label: {
                 Label("Export JSON", systemImage: "square.and.arrow.down")
             }
             Spacer()

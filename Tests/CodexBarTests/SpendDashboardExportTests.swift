@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 @testable import CodexBar
@@ -14,7 +15,7 @@ struct SpendDashboardExportTests {
     }
 
     @Test
-    func `export writes pretty JSON to a file instead of requiring the pasteboard`() throws {
+    func `export writes pretty JSON to a file`() throws {
         let now = Date(timeIntervalSince1970: 1_784_179_200)
         let model = SpendDashboardModel.build(
             inputs: [
@@ -58,6 +59,44 @@ struct SpendDashboardExportTests {
         let json = try #require(String(bytes: data, encoding: .utf8))
         #expect(json.contains("\n"))
         #expect(json.contains("\"provenance\""))
+    }
+
+    @MainActor
+    @Test
+    func `copy writes JSON to the pasteboard`() throws {
+        let now = Date(timeIntervalSince1970: 1_784_179_200)
+        let model = SpendDashboardModel.build(
+            inputs: [
+                SpendDashboardModel.ProviderInput(
+                    id: "cursor",
+                    provider: .cursor,
+                    displayName: "Cursor",
+                    snapshot: CostUsageTokenSnapshot(
+                        sessionTokens: 10,
+                        sessionCostUSD: 1,
+                        last30DaysTokens: 10,
+                        last30DaysCostUSD: 1,
+                        historyDays: 7,
+                        costProvenance: .listPriceEstimate,
+                        daily: [
+                            CostUsageDailyReport.Entry(
+                                date: "2026-07-16",
+                                inputTokens: 8,
+                                outputTokens: 2,
+                                totalTokens: 10,
+                                costUSD: 1,
+                                modelsUsed: nil,
+                                modelBreakdowns: nil),
+                        ],
+                        updatedAt: now)),
+            ],
+            requestedDays: 7,
+            now: now)
+        let data = try SpendDashboardJSONExporter.encodedData(model: model, hiddenSourceIDs: ["cursor"])
+        let json = try #require(String(bytes: data, encoding: .utf8))
+        NSPasteboard.general.clearContents()
+        #expect(SpendDashboardJSONExporter.copyToPasteboard(model: model, hiddenSourceIDs: ["cursor"]))
+        #expect(NSPasteboard.general.string(forType: .string) == json)
     }
 
     @MainActor
