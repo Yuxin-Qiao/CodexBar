@@ -258,6 +258,9 @@ extension SpendDashboardModel {
             }
             sawNamedBreakdown = true
             guard let tokens = Self.nonnegative(breakdown.totalTokens) else {
+                if breakdown.totalTokens != nil {
+                    return false
+                }
                 missingBreakdownTokens = true
                 continue
             }
@@ -270,7 +273,7 @@ extension SpendDashboardModel {
         guard sawNamedBreakdown else { return Self.hasProvenZeroTokens(entry) }
         guard let entryTokens = Self.nonnegative(entry.totalTokens) else { return sawBreakdownTokens }
         if missingBreakdownTokens {
-            return true
+            return totalTokens <= entryTokens
         }
         return entryTokens == totalTokens
     }
