@@ -1015,16 +1015,28 @@ enum SpendDashboardJSONExporter {
     }
 
     @MainActor
-    static func save(model: SpendDashboardModel, hiddenSourceIDs: [String]) -> Bool {
+    static func save(
+        model: SpendDashboardModel,
+        hiddenSourceIDs: [String],
+        chooseDestination: ((String) -> URL?)? = nil) -> Bool
+    {
         guard let data = try? self.encodedData(model: model, hiddenSourceIDs: hiddenSourceIDs) else {
             NSSound.beep()
             return false
         }
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.json]
-        panel.canCreateDirectories = true
-        panel.nameFieldStringValue = self.defaultFilename(days: model.requestedDays)
-        guard panel.runModal() == .OK, let url = panel.url else { return false }
+        let filename = self.defaultFilename(days: model.requestedDays)
+        let url: URL?
+        if let chooseDestination {
+            url = chooseDestination(filename)
+        } else {
+            let panel = NSSavePanel()
+            panel.allowedContentTypes = [.json]
+            panel.canCreateDirectories = true
+            panel.nameFieldStringValue = filename
+            guard panel.runModal() == .OK else { return false }
+            url = panel.url
+        }
+        guard let url else { return false }
         do {
             try self.write(data, to: url)
             return true
