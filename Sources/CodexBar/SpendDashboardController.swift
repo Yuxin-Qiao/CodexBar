@@ -514,6 +514,7 @@ enum SpendDashboardSource {
         return merged
     }
 
+    // Provider-specific by design: OpenCodex fan-out merges into the native Codex subscription row when present.
     private static func preferredMergeIndex(
         for provider: UsageProvider,
         in inputs: [SpendDashboardModel.ProviderInput]) -> Int?
