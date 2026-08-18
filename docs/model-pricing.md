@@ -50,7 +50,9 @@ Exact-match list-price overrides live at:
 ~/Library/Application Support/CodexBar/custom-pricing.json
 ```
 
-Values are USD per million tokens. Resolution order is **overlay > models.dev > builtin**. Changing the file invalidates the Codex pricing fingerprint so the next scan reloads rates.
+Values are USD per million tokens. For native Codex session scans, resolution order is **overlay > models.dev > builtin**. Changing the file invalidates the Codex pricing fingerprint so the next native Codex scan reloads rates.
+
+The overlay currently applies only to native Codex/OpenAI-compatible session pricing. Claude's local scanner, Cursor, and production OpenCodex snapshot loads do not read this file (OpenCodex keeps an empty overlay). A key such as `anthropic/claude-…` does not change Claude list prices.
 
 Keys are case-insensitive and may be a bare model id (`gpt-5.4`) or `provider/model` (`openai/gpt-5.4`). Only an exact normalized key matches; there is no prefix or family glob.
 
