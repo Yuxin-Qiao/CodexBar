@@ -76,4 +76,29 @@ struct OpenCodexUsageFanOutTests {
 
         #expect(snapshots.isEmpty)
     }
+
+    @Test func `snapshotsBySubscription prefers a routed model prefix over provider`() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try #require(TimeZone(secondsFromGMT: 0))
+        let now = Date(timeIntervalSince1970: 1_784_179_200)
+        let entries = [
+            OpenCodexUsageEntry(
+                requestID: "mismatch-1",
+                timestamp: now,
+                provider: "openai",
+                model: "opencode-go/deepseek-v4-flash",
+                usageStatus: .reported,
+                usage: OpenCodexTokenUsage(inputTokens: 40, outputTokens: 10, totalTokens: 50),
+                totalTokens: 50),
+        ]
+
+        let snapshots = OpenCodexUsageFanOut.snapshotsBySubscription(
+            entries: entries,
+            now: now,
+            historyDays: 7,
+            calendar: calendar)
+
+        #expect(snapshots.keys == [.opencodego])
+        #expect(snapshots[.codex] == nil)
+    }
 }

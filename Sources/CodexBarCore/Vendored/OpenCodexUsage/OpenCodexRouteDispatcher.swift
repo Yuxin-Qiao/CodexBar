@@ -41,4 +41,15 @@ public enum OpenCodexRouteDispatcher {
         }
         return false
     }
+
+    public static func route(provider: String, modelName: String) -> OpenCodexRouteTarget {
+        let trimmedModel = modelName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedModel.contains("/") {
+            let modelRoute = self.route(modelName: trimmedModel)
+            if modelRoute != .unknown {
+                return modelRoute
+            }
+        }
+        return self.route(provider: provider)
+    }
 }

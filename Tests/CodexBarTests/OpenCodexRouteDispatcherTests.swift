@@ -30,4 +30,16 @@ struct OpenCodexRouteDispatcherTests {
     {
         #expect(OpenCodexRouteDispatcher.countsTowardCodexSubscription(modelName: modelName) == expected)
     }
+
+    @Test
+    func `model prefix wins over a mismatched provider label`() {
+        #expect(
+            OpenCodexRouteDispatcher.route(
+                provider: "openai",
+                modelName: "opencode-go/deepseek-v4-flash") == .subscription(.opencodego))
+        #expect(
+            OpenCodexRouteDispatcher.route(
+                provider: "opencode-go",
+                modelName: "gpt-5.2") == .subscription(.opencodego))
+    }
 }

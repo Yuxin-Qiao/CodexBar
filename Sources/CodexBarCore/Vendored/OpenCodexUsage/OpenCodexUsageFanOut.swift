@@ -10,7 +10,10 @@ public enum OpenCodexUsageFanOut {
     {
         var grouped: [UsageProvider: [OpenCodexUsageEntry]] = [:]
         for entry in entries {
-            guard case let .subscription(provider) = OpenCodexRouteDispatcher.route(provider: entry.provider) else {
+            guard case let .subscription(provider) = OpenCodexRouteDispatcher.route(
+                provider: entry.provider,
+                modelName: entry.model)
+            else {
                 continue
             }
             grouped[provider, default: []].append(entry)

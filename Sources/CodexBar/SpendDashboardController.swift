@@ -499,12 +499,24 @@ enum SpendDashboardSource {
 
         for (provider, supplement) in snapshots {
             guard Self.shouldPublishOpenCodexSnapshot(supplement) else { continue }
+            // Provider-specific by design: hide-native keeps OpenCodex on its own Codex row
+            // so visibleInputs can drop overlapping native Codex snapshots.
+            if provider == .codex,
+               request.configuration.hideNativeCodexCostWhenOpenCodexPresent
+            {
+                merged.append(SpendDashboardModel.ProviderInput(
+                    provider: provider,
+                    displayName: ProviderDescriptorRegistry.descriptor(for: provider).metadata.displayName,
+                    snapshot: supplement,
+                    sourceKind: .openCodex))
+                continue
+            }
             if let index = Self.preferredMergeIndex(for: provider, in: merged) {
                 merged[index] = Self.mergeProviderInput(
                     merged[index],
                     supplement: supplement,
                     request: request)
-            } else if request.configuration.providerIDs.contains(provider.rawValue) {
+            } else {
                 merged.append(SpendDashboardModel.ProviderInput(
                     provider: provider,
                     displayName: ProviderDescriptorRegistry.descriptor(for: provider).metadata.displayName,
