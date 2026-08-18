@@ -71,6 +71,19 @@ func spendDashboardProvenanceText(_ provenance: CostProvenance) -> String {
     }
 }
 
+func spendDashboardHourlyChartAccessibilityValue(hourCount: Int, serviceCount: Int) -> String {
+    switch (hourCount == 1, serviceCount == 1) {
+    case (true, true):
+        L("1 hour of usage data across 1 service")
+    case (false, true):
+        L("%d hours of usage data across 1 service", hourCount)
+    case (true, false):
+        L("1 hour of usage data across %d services", serviceCount)
+    case (false, false):
+        L("%d hours of usage data across %d services", hourCount, serviceCount)
+    }
+}
+
 func spendDashboardHourlyPointAccessibilityLabel(
     providerName: String,
     hour: Date,
@@ -917,7 +930,9 @@ struct SpendHourlyChartPresentation: Equatable {
     }
 
     var accessibilityValue: String {
-        L("%d hours of usage data across %d services", self.hourCount, self.series.count)
+        spendDashboardHourlyChartAccessibilityValue(
+            hourCount: self.hourCount,
+            serviceCount: self.series.count)
     }
 }
 

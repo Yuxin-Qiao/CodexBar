@@ -1310,6 +1310,9 @@
 "Hourly estimated spend" = "每小时估算支出";
 "Hour" = "小时";
 "%d hours of usage data across %d services" = "%d 小时用量，涵盖 %d 个服务";
+"1 hour of usage data across 1 service" = "1 小时用量，涵盖 1 个服务";
+"%d hours of usage data across 1 service" = "%d 小时用量，涵盖 1 个服务";
+"1 hour of usage data across %d services" = "1 小时用量，涵盖 %d 个服务";
 "Input" = "输入";
 "Output" = "输出";
 "Cache write" = "缓存写入";

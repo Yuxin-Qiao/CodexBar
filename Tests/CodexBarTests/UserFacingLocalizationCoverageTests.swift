@@ -202,10 +202,17 @@ struct UserFacingLocalizationCoverageTests {
 
         let losAngeles = try #require(TimeZone(identifier: "America/Los_Angeles"))
         let multiDay = SpendHourlyChartPresentation(hourlyPoints: points, calendar: calendar)
+        let sameDay = SpendHourlyChartPresentation(hourlyPoints: [points[0]], calendar: calendar)
         #expect(multiDay.content == .chart)
         #expect(multiDay.includeDateInPointLabels)
+        #expect(!sameDay.includeDateInPointLabels)
         CodexBarLocalizationOverride.$appLanguage.withValue("en") {
-            #expect(multiDay.accessibilityValue == "2 hours of usage data across 1 services")
+            #expect(multiDay.accessibilityValue == "2 hours of usage data across 1 service")
+            #expect(sameDay.accessibilityValue == "1 hour of usage data across 1 service")
+            #expect(spendDashboardHourlyChartAccessibilityValue(hourCount: 1, serviceCount: 2)
+                == "1 hour of usage data across 2 services")
+            #expect(spendDashboardHourlyChartAccessibilityValue(hourCount: 2, serviceCount: 2)
+                == "2 hours of usage data across 2 services")
             let shanghaiLabel = spendDashboardHourlyPointAccessibilityLabel(
                 providerName: "OpenCodex",
                 hour: first,
@@ -223,8 +230,5 @@ struct UserFacingLocalizationCoverageTests {
             #expect(sameClockDifferentZone != shanghaiLabel)
             #expect(sameClockDifferentZone.contains("7"))
         }
-
-        let sameDay = SpendHourlyChartPresentation(hourlyPoints: [points[0]], calendar: calendar)
-        #expect(!sameDay.includeDateInPointLabels)
     }
 }
