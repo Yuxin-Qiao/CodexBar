@@ -44,17 +44,20 @@ When models.dev includes `cost.context_over_200k`, CodexBar parses those values 
 
 ## Custom pricing overlay
 
-Exact-match list-price overrides live at:
+Exact-match list-price overrides live in the platform Application Support directory:
 
 ```text
-~/Library/Application Support/CodexBar/custom-pricing.json
+macOS: ~/Library/Application Support/CodexBar/custom-pricing.json
+Linux: ${XDG_DATA_HOME:-~/.local/share}/CodexBar/custom-pricing.json
 ```
+
+The Linux CLI uses `FileManager`’s Application Support directory (XDG data home), not `~/.config`. Putting the file only under XDG config will be ignored.
 
 Values are USD per million tokens. For native Codex session scans, resolution order is **overlay > models.dev > builtin**. Changing the file invalidates the Codex pricing fingerprint so the next native Codex scan reloads rates.
 
 The overlay currently applies only to native Codex/OpenAI-compatible session pricing. Claude's local scanner, Cursor, and production OpenCodex snapshot loads do not read this file (OpenCodex keeps an empty overlay). A key such as `anthropic/claude-…` does not change Claude list prices.
 
-Keys are case-insensitive and may be a bare model id (`gpt-5.4`) or `provider/model` (`openai/gpt-5.4`). Only an exact normalized key matches; there is no prefix or family glob.
+Keys are case-insensitive and may be a bare model id (`gpt-5.4`) or `provider/model` (`openai/gpt-5.4`). Only an exact normalized key matches; there is no prefix or family glob. If both forms exist for the same model, the **bare key wins** and the provider-qualified row is ignored. Do not define both unless the bare override is the one you want.
 
 ```json
 {
