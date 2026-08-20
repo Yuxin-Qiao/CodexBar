@@ -234,11 +234,18 @@ enum SpendDashboardSource {
                 publication: captured.publication,
                 publicationRevision: captured.revision)
         }
-        for baseline in providerBaselines where mode.shouldRefresh(hasPublication: baseline.publication != nil) {
-            if UsageStore.tokenCostRequiresProviderSnapshot(baseline.provider) {
-                await store.refreshProvider(baseline.provider)
-            } else {
-                await store.refreshSpendDashboardTokenUsageNow(for: baseline.provider, force: true)
+        let baselinesToRefresh = providerBaselines.filter { mode.shouldRefresh(hasPublication: $0.publication != nil) }
+        if !baselinesToRefresh.isEmpty {
+            await withTaskGroup(of: Void.self) { group in
+                for baseline in baselinesToRefresh {
+                    group.addTask {
+                        if UsageStore.tokenCostRequiresProviderSnapshot(baseline.provider) {
+                            await store.refreshProvider(baseline.provider)
+                        } else {
+                            await store.refreshSpendDashboardTokenUsageNow(for: baseline.provider, force: true)
+                        }
+                    }
+                }
             }
         }
 
@@ -443,49 +450,81 @@ enum SpendDashboardSource {
         var inputs = request.capturedInputs
         var failedSourceIDs = request.unavailableSourceIDs
         var invalidatedSourceIDs: Set<String> = []
-        for account in request.codexRequests {
-            let sourceID = "codex:\(account.id)"
-            do {
-                guard self.codexAuthFingerprintMatches(account) else {
+        if !request.codexRequests.isEmpty {
+            var pendingAccounts: [CodexSpendScanRequest] = []
+            for account in request.codexRequests {
+                let sourceID = "codex:\(account.id)"
+                if !self.codexAuthFingerprintMatches(account) {
                     failedSourceIDs.insert(sourceID)
                     invalidatedSourceIDs.insert(sourceID)
-                    continue
+                } else {
+                    pendingAccounts.append(account)
                 }
-                let cacheRoot = cacheRootResolver(account)
-                let snapshot = try await codexSnapshotLoader(self.snapshotContext(
-                    account: account,
-                    cacheRoot: cacheRoot,
-                    request: request,
-                    force: request.force,
-                    historyDays: Self.scanDays))
-                try Task.checkCancellation()
-                let tokenActivityCache = await codexActivityLoader(self.snapshotContext(
-                    account: account,
-                    cacheRoot: cacheRoot,
-                    request: request,
-                    force: false,
-                    historyDays: Self.activityDays))
-                try Task.checkCancellation()
-                guard self.codexAuthFingerprintMatches(account) else {
-                    failedSourceIDs.insert(sourceID)
-                    invalidatedSourceIDs.insert(sourceID)
-                    continue
-                }
-                inputs.append(SpendDashboardModel.ProviderInput(
-                    id: sourceID,
-                    provider: .codex,
-                    displayName: account.displayName,
-                    modelProviderName: ProviderDescriptorRegistry.descriptor(for: .codex).metadata.displayName,
-                    snapshot: snapshot,
-                    tokenActivityCache: tokenActivityCache))
-            } catch is CancellationError {
-                failedSourceIDs.formUnion(request.codexRequests.map { "codex:\($0.id)" })
-                return SpendDashboardLoadResult(
-                    inputs: [],
-                    failedSourceIDs: failedSourceIDs,
-                    invalidatedSourceIDs: invalidatedSourceIDs)
-            } catch {
-                failedSourceIDs.insert(sourceID)
+            }
+            if !pendingAccounts.isEmpty {
+                do {
+                    try await withThrowingTaskGroup(of: (String, SpendDashboardModel.ProviderInput?).self) { group in
+                        for account in pendingAccounts {
+                            group.addTask {
+                                let sourceID = "codex:\(account.id)"
+                                do {
+                                    let cacheRoot = cacheRootResolver(account)
+                                    let snapshot = try await codexSnapshotLoader(self.snapshotContext(
+                                        account: account,
+                                        cacheRoot: cacheRoot,
+                                        request: request,
+                                        force: request.force,
+                                        historyDays: Self.scanDays))
+                                    try Task.checkCancellation()
+                                    let tokenActivityCache = await codexActivityLoader(self.snapshotContext(
+                                        account: account,
+                                        cacheRoot: cacheRoot,
+                                        request: request,
+                                        force: false,
+                                        historyDays: Self.activityDays))
+                                    try Task.checkCancellation()
+                                    guard self.codexAuthFingerprintMatches(account) else {
+                                        return (sourceID, nil)
+                                    }
+                                    let input = SpendDashboardModel.ProviderInput(
+                                        id: sourceID,
+                                        provider: .codex,
+                                        displayName: account.displayName,
+                                        modelProviderName: ProviderDescriptorRegistry.descriptor(for: .codex).metadata
+                                            .displayName,
+                                        snapshot: snapshot,
+                                        tokenActivityCache: tokenActivityCache)
+                                    return (sourceID, input)
+                                } catch is CancellationError {
+                                    throw CancellationError()
+                                } catch {
+                                    return ("codex:\(account.id)", nil)
+                                }
+                            }
+                        }
+                        for try await (sourceID, input) in group {
+                            if let input {
+                                inputs.append(input)
+                            } else {
+                                // Distinguish invalidated (auth changed) vs plain failure by re-checking.
+                                if !self.codexAuthFingerprintMatches(
+                                    pendingAccounts.first { sourceID == "codex:\($0.id)" }!)
+                                {
+                                    failedSourceIDs.insert(sourceID)
+                                    invalidatedSourceIDs.insert(sourceID)
+                                } else {
+                                    failedSourceIDs.insert(sourceID)
+                                }
+                            }
+                        }
+                    }
+                } catch is CancellationError {
+                    failedSourceIDs.formUnion(request.codexRequests.map { "codex:\($0.id)" })
+                    return SpendDashboardLoadResult(
+                        inputs: [],
+                        failedSourceIDs: failedSourceIDs,
+                        invalidatedSourceIDs: invalidatedSourceIDs)
+                } catch {}
             }
         }
         let lateInvalidatedSourceIDs = Set(request.codexRequests.compactMap { account in
