@@ -372,6 +372,7 @@ enum SpendActivityAccessibility {
 struct SpendActivityHeatmapView: View {
     let points: [SpendDashboardModel.TokenActivityPoint]
     let now: Date
+    let calendar: Calendar
     let selectedDay: Date?
     let onSelectDay: ((Date?) -> Void)?
 
@@ -381,14 +382,16 @@ struct SpendActivityHeatmapView: View {
     init(
         points: [SpendDashboardModel.TokenActivityPoint],
         now: Date = Date(),
+        calendar: Calendar = .current,
         selectedDay: Date? = nil,
         onSelectDay: ((Date?) -> Void)? = nil)
     {
         self.points = points
         self.now = now
+        self.calendar = calendar
         self.selectedDay = selectedDay
         self.onSelectDay = onSelectDay
-        self._series = State(initialValue: SpendActivitySeries.make(from: points, now: now))
+        self._series = State(initialValue: SpendActivitySeries.make(from: points, now: now, calendar: calendar))
     }
 
     var body: some View {
@@ -458,7 +461,10 @@ struct SpendActivityHeatmapView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .onChange(of: self.points) { _, points in
-            self.series = SpendActivitySeries.make(from: points, now: self.now)
+            self.series = SpendActivitySeries.make(from: points, now: self.now, calendar: self.calendar)
+        }
+        .onChange(of: self.calendar) { _, calendar in
+            self.series = SpendActivitySeries.make(from: self.points, now: self.now, calendar: calendar)
         }
     }
 
