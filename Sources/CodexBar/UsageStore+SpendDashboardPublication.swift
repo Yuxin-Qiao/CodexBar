@@ -62,8 +62,10 @@ extension UsageStore {
     }
 
     func synchronizeSharedSpendDashboardAfterTokenPublication(for provider: UsageProvider) {
-        // Provider-specific by design: regular Codex publication triggers the account-scoped spend producer.
-        guard provider == .codex, self.sharedSpendDashboardObservationStarted else { return }
+        guard self.sharedSpendDashboardObservationStarted else { return }
+        // Codex and independent spend-dashboard token publications both drive the shared dashboard.
+        let isIndependent = Self.usesSpendDashboardIndependentTokenSnapshot(provider)
+        guard provider == .codex || isIndependent else { return }
         self.applySharedSpendDashboardConfiguration(
             SpendDashboardSource.configuration(settings: self.settings, store: self))
     }
