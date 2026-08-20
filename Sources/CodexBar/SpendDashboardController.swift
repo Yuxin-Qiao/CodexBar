@@ -463,8 +463,10 @@ enum SpendDashboardSource {
             }
             if !pendingAccounts.isEmpty {
                 do {
-                    try await withThrowingTaskGroup(of: (String, SpendDashboardModel.ProviderInput?).self) { group in
-                        for account in pendingAccounts {
+                    try await withThrowingTaskGroup(of: (Int, String, SpendDashboardModel.ProviderInput?)
+                        .self)
+                    { group in
+                        for (index, account) in pendingAccounts.enumerated() {
                             group.addTask {
                                 let sourceID = "codex:\(account.id)"
                                 do {
@@ -483,26 +485,29 @@ enum SpendDashboardSource {
                                         force: false,
                                         historyDays: Self.activityDays))
                                     try Task.checkCancellation()
-                                    guard self.codexAuthFingerprintMatches(account) else {
-                                        return (sourceID, nil)
-                                    }
+                                    guard self.codexAuthFingerprintMatches(account)
+                                    else { return (index, sourceID, nil) }
                                     let input = SpendDashboardModel.ProviderInput(
                                         id: sourceID,
                                         provider: .codex,
                                         displayName: account.displayName,
-                                        modelProviderName: ProviderDescriptorRegistry.descriptor(for: .codex).metadata
+                                        modelProviderName: ProviderDescriptorRegistry.descriptor(for: .codex)
+                                            .metadata
                                             .displayName,
                                         snapshot: snapshot,
                                         tokenActivityCache: tokenActivityCache)
-                                    return (sourceID, input)
-                                } catch is CancellationError {
-                                    throw CancellationError()
-                                } catch {
-                                    return ("codex:\(account.id)", nil)
+                                    return (index, sourceID, input)
+                                } catch is CancellationError { throw CancellationError() } catch {
+                                    return (index, "codex:\(account.id)", nil)
                                 }
                             }
                         }
-                        for try await (sourceID, input) in group {
+                        var results: [(Int, String, SpendDashboardModel.ProviderInput?)] = []
+                        for try await result in group {
+                            results.append(result)
+                        }
+                        results.sort { $0.0 < $1.0 }
+                        for (_, sourceID, input) in results {
                             if let input {
                                 inputs.append(input)
                             } else {
