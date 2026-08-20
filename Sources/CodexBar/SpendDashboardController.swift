@@ -686,6 +686,26 @@ enum SpendDashboardSource {
                 encoder.append(breakdown.priorityTokens)
             }
         }
+        encoder.append(snapshot.hourly.count)
+        for entry in snapshot.hourly {
+            encoder.append(entry.hour.timeIntervalSinceReferenceDate)
+            encoder.append(entry.totalTokens)
+            encoder.append(entry.costUSD)
+        }
+        encoder.append(snapshot.projects.count)
+        encoder.append(snapshot.sessions.count)
+        for project in snapshot.projects {
+            encoder.append(project.name)
+            encoder.append(project.path ?? "")
+            encoder.append(project.totalTokens)
+            encoder.append(project.totalCostUSD)
+            encoder.append(project.daily.count)
+        }
+        for session in snapshot.sessions {
+            encoder.append(session.sessionID)
+            encoder.append(session.totalTokens)
+            encoder.append(session.costUSD)
+        }
         return encoder.finalize()
     }
 
@@ -1540,7 +1560,12 @@ final class SpendDashboardController {
         lhs.costUsageEnabled == rhs.costUsageEnabled &&
             lhs.providerIDs == rhs.providerIDs &&
             lhs.codexAccountIdentities == rhs.codexAccountIdentities &&
-            lhs.sourceOwnershipFingerprints == rhs.sourceOwnershipFingerprints
+            lhs.sourceOwnershipFingerprints == rhs.sourceOwnershipFingerprints &&
+            lhs.bucketTimeZoneIdentifier == rhs.bucketTimeZoneIdentifier &&
+            lhs.openCodexUsageLogsEnabled == rhs.openCodexUsageLogsEnabled &&
+            lhs.hideNativeCodexCostWhenOpenCodexPresent == rhs.hideNativeCodexCostWhenOpenCodexPresent &&
+            lhs.hiddenSourceIDs == rhs.hiddenSourceIDs &&
+            lhs.preferredCurrencyCode == rhs.preferredCurrencyCode
     }
 
     private static func invalidatedSourceIDs(
