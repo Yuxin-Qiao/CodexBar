@@ -234,11 +234,18 @@ enum SpendDashboardSource {
                 publication: captured.publication,
                 publicationRevision: captured.revision)
         }
-        for baseline in providerBaselines where mode.shouldRefresh(hasPublication: baseline.publication != nil) {
-            if UsageStore.tokenCostRequiresProviderSnapshot(baseline.provider) {
-                await store.refreshProvider(baseline.provider)
-            } else {
-                await store.refreshSpendDashboardTokenUsageNow(for: baseline.provider, force: true)
+        let baselinesToRefresh = providerBaselines.filter { mode.shouldRefresh(hasPublication: $0.publication != nil) }
+        if !baselinesToRefresh.isEmpty {
+            await withTaskGroup(of: Void.self) { group in
+                for baseline in baselinesToRefresh {
+                    group.addTask {
+                        if UsageStore.tokenCostRequiresProviderSnapshot(baseline.provider) {
+                            await store.refreshProvider(baseline.provider)
+                        } else {
+                            await store.refreshSpendDashboardTokenUsageNow(for: baseline.provider, force: true)
+                        }
+                    }
+                }
             }
         }
 
