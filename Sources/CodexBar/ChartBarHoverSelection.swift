@@ -37,14 +37,15 @@ enum ChartBarHoverSelection {
     static func bars(
         plotFrame: CGRect,
         unitIntervals: [ClosedRange<CGFloat>],
-        widthRatio: CGFloat = ChartBarHoverSelection.barWidthRatio) -> [Bar]
+        widthRatio: CGFloat = ChartBarHoverSelection.barWidthRatio,
+        scale: CGFloat = NSScreen.main?.backingScaleFactor ?? 2) -> [Bar]
     {
         guard plotFrame.width >= 0,
               plotFrame.height >= 0,
-              widthRatio >= 0
+              widthRatio >= 0,
+              scale > 0
         else { return [] }
 
-        let scale = NSScreen.main?.backingScaleFactor ?? 2
         return unitIntervals.enumerated().map { index, interval in
             let rawWidth = (interval.upperBound - interval.lowerBound) * widthRatio
             let rawCenterX = plotFrame.minX + (interval.lowerBound + interval.upperBound) / 2

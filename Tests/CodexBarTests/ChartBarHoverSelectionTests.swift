@@ -61,6 +61,19 @@ struct ChartBarHoverSelectionTests {
         let bar = try #require(bars.first)
 
         #expect(abs(bar.frame.midX - (plotFrame.minX + 23.5)) < 0.0001)
+        // 23pt interval * 0.7 = 16.1pt, snapped to 2× scale = 16.0
+        #expect(abs(bar.frame.width - 16.0) < 0.0001)
+    }
+
+    @Test
+    func `snapped bar width is deterministic at 1x scale`() throws {
+        let plotFrame = CGRect(x: 0, y: 0, width: 200, height: 80)
+        let bars = ChartBarHoverSelection.bars(
+            plotFrame: plotFrame,
+            unitIntervals: [0...23],
+            widthRatio: 0.7,
+            scale: 1)
+        let bar = try #require(bars.first)
         #expect(abs(bar.frame.width - (23 * ChartBarHoverSelection.barWidthRatio)) < 0.0001)
     }
 }
