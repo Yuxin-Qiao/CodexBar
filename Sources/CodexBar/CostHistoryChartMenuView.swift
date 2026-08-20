@@ -810,9 +810,12 @@ struct CostHistoryChartMenuView: View {
     {
         guard let plotAnchor = proxy.plotFrame else { return nil }
         let plotFrame = geo[plotAnchor]
+        let displayCalendar = Self.gregorianCalendar(timeZone: TimeZone.current)
+        let calendar = Self.bucketCalendar(provider: self.provider, displayCalendar: displayCalendar)
         guard let bars = ChartBarHoverSelection.calendarDayBars(
             dates: model.dateKeys.map(\.date),
             plotFrame: plotFrame,
+            calendar: calendar,
             position: { proxy.position(forX: $0) })
         else { return nil }
         return (plotFrame, bars)

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 enum ChartBarHoverSelection {
@@ -43,13 +44,18 @@ enum ChartBarHoverSelection {
               widthRatio >= 0
         else { return [] }
 
+        let scale = NSScreen.main?.backingScaleFactor ?? 2
         return unitIntervals.enumerated().map { index, interval in
-            let width = (interval.upperBound - interval.lowerBound) * widthRatio
-            let centerX = plotFrame.minX + (interval.lowerBound + interval.upperBound) / 2
+            let rawWidth = (interval.upperBound - interval.lowerBound) * widthRatio
+            let rawCenterX = plotFrame.minX + (interval.lowerBound + interval.upperBound) / 2
+            let width = (rawWidth * scale).rounded() / scale
+            let centerX = (rawCenterX * scale).rounded() / scale
+            let x = ((centerX - width / 2) * scale).rounded() / scale
+            let clampedX = max(plotFrame.minX, min(x, plotFrame.maxX - width))
             return Bar(
                 index: index,
                 frame: CGRect(
-                    x: centerX - width / 2,
+                    x: clampedX,
                     y: plotFrame.minY,
                     width: width,
                     height: plotFrame.height))

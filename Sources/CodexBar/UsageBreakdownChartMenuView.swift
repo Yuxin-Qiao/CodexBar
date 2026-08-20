@@ -384,9 +384,12 @@ struct UsageBreakdownChartMenuView: View {
     {
         guard let plotAnchor = proxy.plotFrame else { return nil }
         let plotFrame = geo[plotAnchor]
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone.current
         guard let bars = ChartBarHoverSelection.calendarDayBars(
             dates: model.selectableDayDates.map(\.date),
             plotFrame: plotFrame,
+            calendar: calendar,
             position: { proxy.position(forX: $0) })
         else { return nil }
         return (plotFrame, bars)
