@@ -254,6 +254,7 @@ enum SpendDashboardSource {
         // newest same-scope publication available at this boundary.
         let captureNow = now ?? nowProvider()
         let providers = self.costCapableProviders(store: store)
+        // Provider-specific by design: spend dashboard
         let codexSources = providers.contains(.codex)
             ? self.codexSources(settings: settings, store: store)
             : []
@@ -276,6 +277,7 @@ enum SpendDashboardSource {
         var inputs: [SpendDashboardModel.ProviderInput] = []
         var unavailableSourceIDs: Set<String> = []
         var confirmedEmptySourceIDs: Set<String> = []
+        // Provider-specific by design: spend dashboard
         for provider in providers where provider != .codex {
             // Provider-specific by design: Grok local session tokens are independent of the
             // remote billing snapshot, so a failed probe still publishes readable logs.
@@ -491,6 +493,7 @@ enum SpendDashboardSource {
                                         id: sourceID,
                                         provider: .codex,
                                         displayName: account.displayName,
+                                        // Provider-specific by design: spend dashboard
                                         modelProviderName: ProviderDescriptorRegistry.descriptor(for: .codex)
                                             .metadata
                                             .displayName,
@@ -602,6 +605,7 @@ enum SpendDashboardSource {
         providers: [UsageProvider]) -> Bool
     {
         settings.costUsageEnabled ||
+            // Provider-specific by design: spend dashboard
             (providers.contains(.codex) && settings.codexLocalSessionCostLedgerEnabled)
     }
 
@@ -757,6 +761,7 @@ enum SpendDashboardSource {
         store: UsageStore) -> [String]
     {
         providers.compactMap { provider in
+            // Provider-specific by design: spend dashboard
             guard provider != .codex else { return nil }
             var config = settings.providerConfig(for: provider) ?? ProviderConfig(id: provider.instanceID)
             config.enabled = nil
@@ -1084,6 +1089,9 @@ final class SpendDashboardController {
     private var loadedAt = Date()
     private var lastSuccessfulConfiguration: SpendDashboardConfiguration?
     private var phase = LoadPhase.ordinary
+    // Throttle high-frequency date-window refreshes (didBecomeActive bursts).
+    private var lastRefreshDateWindowAt: Date?
+    private var lastRefreshDateWindowDayStart: Date?
 
     init(
         userDefaults: UserDefaults = .standard,
@@ -1111,6 +1119,15 @@ final class SpendDashboardController {
         }
         guard configuration != self.configuration else { return }
         let previousConfiguration = self.configuration
+        // Fast-path: display-only changes (filter, currency, hide flag) require
+        // only a model rebuild — no Codex scan or token capture.
+        if let previousConfiguration,
+           Self.isDisplayOnlyConfigurationChange(from: previousConfiguration, to: configuration)
+        {
+            self.configuration = configuration
+            self.rebuildModel()
+            return
+        }
         self.configuration = configuration
         if self.isRefreshing || self.phase.manualRefreshOutstanding,
            let previousConfiguration,
@@ -1435,10 +1452,28 @@ final class SpendDashboardController {
         let calendar = self.configuration?.bucketCalendar ?? .current
         let previousDay = calendar.startOfDay(for: self.loadedAt)
         let nextDay = calendar.startOfDay(for: now)
+        let isSameDay = previousDay == nextDay
+        // Throttle burst activations (didBecomeActive) that otherwise rebuild
+        // the 365-day model on every app focus. Keep a 30s floor for same-day
+        // revisits while still allowing immediate refresh when the bucket day
+        // actually rolled over or a previous load failed.
+        if isSameDay,
+           let lastAt = self.lastRefreshDateWindowAt,
+           let lastDay = self.lastRefreshDateWindowDayStart,
+           lastDay == nextDay,
+           now.timeIntervalSince(lastAt) < 30,
+           self.lastSuccessfulConfiguration != nil,
+           self.failedSourceCount == 0
+        {
+            self.loadedAt = now
+            return
+        }
+        self.lastRefreshDateWindowAt = now
+        self.lastRefreshDateWindowDayStart = nextDay
         self.loadedAt = now
         self.rebuildModel()
         guard let configuration else { return }
-        guard previousDay != nextDay || self.lastSuccessfulConfiguration == nil || self.failedSourceCount > 0
+        guard !isSameDay || self.lastSuccessfulConfiguration == nil || self.failedSourceCount > 0
         else { return }
         let nextPhase: LoadPhase = self.phase.manualRefreshOutstanding ? .forcing : .ordinary
         self.startLoad(configuration: configuration, phase: nextPhase)
@@ -1454,6 +1489,8 @@ final class SpendDashboardController {
         self.openCodexObservation = .disabled
         self.isRefreshing = false
         self.phase = .ordinary
+        self.lastRefreshDateWindowAt = nil
+        self.lastRefreshDateWindowDayStart = nil
         self.publishCurrentState()
     }
 
@@ -1588,6 +1625,7 @@ final class SpendDashboardController {
         _ input: SpendDashboardModel.ProviderInput,
         displayNamesByID: [String: String]) -> SpendDashboardModel.ProviderInput
     {
+        // Provider-specific by design: spend dashboard
         guard input.provider == .codex,
               let displayName = displayNamesByID[input.id],
               displayName != input.displayName
@@ -1609,7 +1647,32 @@ final class SpendDashboardController {
         lhs.costUsageEnabled == rhs.costUsageEnabled &&
             lhs.providerIDs == rhs.providerIDs &&
             lhs.codexAccountIdentities == rhs.codexAccountIdentities &&
-            lhs.sourceOwnershipFingerprints == rhs.sourceOwnershipFingerprints
+            lhs.sourceOwnershipFingerprints == rhs.sourceOwnershipFingerprints &&
+            lhs.bucketTimeZoneIdentifier == rhs.bucketTimeZoneIdentifier &&
+            lhs.openCodexUsageLogsEnabled == rhs.openCodexUsageLogsEnabled &&
+            lhs.hideNativeCodexCostWhenOpenCodexPresent == rhs.hideNativeCodexCostWhenOpenCodexPresent &&
+            lhs.hiddenSourceIDs == rhs.hiddenSourceIDs &&
+            lhs.preferredCurrencyCode == rhs.preferredCurrencyCode
+    }
+
+    private static func isDisplayOnlyConfigurationChange(
+        from lhs: SpendDashboardConfiguration,
+        to rhs: SpendDashboardConfiguration) -> Bool
+    {
+        // Only presentation-layer fields changed; no provider scan or token capture needed.
+        guard lhs.costUsageEnabled == rhs.costUsageEnabled,
+              lhs.providerIDs == rhs.providerIDs,
+              lhs.codexAccountIdentities == rhs.codexAccountIdentities,
+              lhs.sourceOwnershipFingerprints == rhs.sourceOwnershipFingerprints,
+              lhs.sourceRevisions == rhs.sourceRevisions,
+              lhs.bucketTimeZoneIdentifier == rhs.bucketTimeZoneIdentifier,
+              lhs.openCodexUsageLogsEnabled == rhs.openCodexUsageLogsEnabled
+        else { return false }
+        return lhs.hiddenSourceIDs != rhs.hiddenSourceIDs ||
+            lhs.preferredCurrencyCode != rhs.preferredCurrencyCode ||
+            lhs.hideNativeCodexCostWhenOpenCodexPresent != rhs.hideNativeCodexCostWhenOpenCodexPresent ||
+            lhs.menuOwnershipFingerprint != rhs.menuOwnershipFingerprint ||
+            lhs.codexAccountDisplayNames != rhs.codexAccountDisplayNames
     }
 
     private static func invalidatedSourceIDs(
