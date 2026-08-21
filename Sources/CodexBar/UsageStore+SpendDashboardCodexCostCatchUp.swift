@@ -301,6 +301,7 @@ extension UsageStore {
                 now: now,
                 codexHomePath: account.homePath,
                 historyDays: historyDays,
+                scanDurationPerRefresh: 10,
                 calendar: self.settings.costUsageBucketCalendar)
     }
 

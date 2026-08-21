@@ -323,11 +323,17 @@ struct SpendDashboardPane: View {
     }
 
     private func synchronizeCodexCostCatchUp() {
-        // Visible spend dashboard should not idle 33m between 2s slices — accelerate to clear 471/472 in one burst.
-        let mode: CodexCostCatchUpMode = self.isVisible ? .accelerated : .automatic
-        self.store.startSpendDashboardCodexCostCatchUpIfNeeded(
-            accounts: self.codexSpendScanRequests,
-            mode: mode)
+        guard self.isVisible else {
+            self.store.synchronizeSpendDashboardCodexCostCatchUp(accounts: self.codexSpendScanRequests)
+            return
+        }
+        if self.store.spendDashboardCodexCostCatchUpTask == nil {
+            self.store.startSpendDashboardCodexCostCatchUpIfNeeded(
+                accounts: self.codexSpendScanRequests,
+                mode: .accelerated)
+        } else {
+            self.store.synchronizeSpendDashboardCodexCostCatchUp(accounts: self.codexSpendScanRequests)
+        }
     }
 
     private func startCodexCostCatchUp(mode: CodexCostCatchUpMode) {

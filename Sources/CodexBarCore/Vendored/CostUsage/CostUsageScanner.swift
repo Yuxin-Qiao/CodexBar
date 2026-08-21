@@ -5625,6 +5625,7 @@ enum CostUsageScanner {
                     hasKnownBoundedWork: hasKnownBoundedWork,
                     canReuseApproximateProgress: canReuseApproximateProgress,
                     pendingQueuePathCount: cache.codexActiveLookbackState?.pendingFilePaths.count,
+                    isDiscoveryComplete: !fileIndex.hasPendingDiscovery,
                     completionStatesBeforeScan: completionStatesBeforeScan,
                     workRecorder: options.codexScanWorkRecorderForTesting))
             let scanProgress = progressUpdate.summary
@@ -5695,6 +5696,7 @@ enum CostUsageScanner {
         let hasKnownBoundedWork: Bool
         let canReuseApproximateProgress: Bool
         let pendingQueuePathCount: Int?
+        let isDiscoveryComplete: Bool
         let completionStatesBeforeScan: [String: Bool]
         let workRecorder: CodexScanWorkRecorder?
     }
@@ -5743,12 +5745,16 @@ enum CostUsageScanner {
             completedFiles = max(completedFiles, max(0, totalFiles - pendingQueuePathCount))
         }
 
-        // Bounded work previously kept one slot open to prove another pass remains,
-        // but that forced 471/472 to stall for 33m between 2s slices when only one
-        // large file remained. Now allow the final file to close when the pending
-        // queue is ≤1, letting the exact traversal validate without the artificial slot.
+        // Bounded work previously kept one slot open until an exact traversal, which stalled
+        // 471/472 when only one large file remained. Allow that final file to close only after
+        // both the pending queue and file discovery have drained; catch-up still waits for the
+        // exact inventory validation below.
         let incompleteSelectedFiles = statesAfterScan.values.count(where: { !$0 })
-        if let pending = context.pendingQueuePathCount, pending <= 1, incompleteSelectedFiles <= 1 {
+        if let pending = context.pendingQueuePathCount,
+           pending <= 1,
+           context.isDiscoveryComplete,
+           incompleteSelectedFiles <= 1
+        {
             completedFiles = min(completedFiles, totalFiles)
         } else {
             completedFiles = min(completedFiles, max(0, totalFiles - max(1, incompleteSelectedFiles)))
