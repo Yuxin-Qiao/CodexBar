@@ -36,9 +36,9 @@ enum AntigravityLocalReader {
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
 
-    static func parseJSONLCache() -> [CostUsageDailyReport.Entry] {
+    static func parseJSONLCache(paths: [URL]? = nil) -> [CostUsageDailyReport.Entry] {
         var entries: [CostUsageDailyReport.Entry] = []
-        for url in self.tokiCachePaths() {
+        for url in paths ?? self.tokiCachePaths() {
             guard let data = try? Data(contentsOf: url),
                   let text = String(data: data, encoding: .utf8) else { continue }
             var sessionModel: String?
@@ -66,24 +66,37 @@ enum AntigravityLocalReader {
                     if let idx = entries.firstIndex(where: { $0.date == date }) {
                         var e = entries[idx]
                         let ne = CostUsageDailyReport.Entry(
-                            date: e.date, inputTokens: (e.inputTokens ?? 0) + input,
+                            date: e.date,
+                            inputTokens: (e.inputTokens ?? 0) + input,
                             outputTokens: (e.outputTokens ?? 0) + output,
                             cacheReadTokens: (e.cacheReadTokens ?? 0) + read,
                             cacheCreationTokens: (e.cacheCreationTokens ?? 0) + write,
                             reasoningTokens: (e.reasoningTokens ?? 0) + reason,
                             totalTokens: (e.totalTokens ?? 0) + total,
-                            requestCount: (e.requestCount ?? 0) + 1, costUSD: e.costUSD ?? 0,
+                            requestCount: (e.requestCount ?? 0) + 1,
+                            costUSD: e.costUSD ?? 0,
                             modelsUsed: nil,
                             modelBreakdowns: self.mergeBreakdown(e.modelBreakdowns, model: modelId, tokens: total))
                         entries[idx] = ne
                     } else {
                         let e = CostUsageDailyReport.Entry(
-                            date: date, inputTokens: input, outputTokens: output,
-                            cacheReadTokens: read, cacheCreationTokens: write,
-                            reasoningTokens: reason, totalTokens: total, requestCount: 1,
-                            costUSD: 0, modelsUsed: nil,
-                            modelBreakdowns: [CostUsageDailyReport.ModelBreakdown(
-                                modelName: modelId, costUSD: 0, totalTokens: total, requestCount: 1)])
+                            date: date,
+                            inputTokens: input,
+                            outputTokens: output,
+                            cacheReadTokens: read,
+                            cacheCreationTokens: write,
+                            reasoningTokens: reason,
+                            totalTokens: total,
+                            requestCount: 1,
+                            costUSD: 0,
+                            modelsUsed: nil,
+                            modelBreakdowns: [
+                                CostUsageDailyReport.ModelBreakdown(
+                                    modelName: modelId,
+                                    costUSD: 0,
+                                    totalTokens: total,
+                                    requestCount: 1),
+                            ])
                         entries.append(e)
                     }
                 }
@@ -101,23 +114,30 @@ enum AntigravityLocalReader {
         for e in self.parseJSONLCache() + self.parseCLIDBs() {
             if var ex = merged[e.date] {
                 let ne = CostUsageDailyReport.Entry(
-                    date: ex.date, inputTokens: (ex.inputTokens ?? 0) + (e.inputTokens ?? 0),
+                    date: ex.date,
+                    inputTokens: (ex.inputTokens ?? 0) + (e.inputTokens ?? 0),
                     outputTokens: (ex.outputTokens ?? 0) + (e.outputTokens ?? 0),
                     cacheReadTokens: (ex.cacheReadTokens ?? 0) + (e.cacheReadTokens ?? 0),
                     cacheCreationTokens: (ex.cacheCreationTokens ?? 0) + (e.cacheCreationTokens ?? 0),
                     reasoningTokens: (ex.reasoningTokens ?? 0) + (e.reasoningTokens ?? 0),
                     totalTokens: (ex.totalTokens ?? 0) + (e.totalTokens ?? 0),
                     requestCount: (ex.requestCount ?? 0) + (e.requestCount ?? 0),
-                    costUSD: (ex.costUSD ?? 0) + (e.costUSD ?? 0), modelsUsed: nil,
+                    costUSD: (ex.costUSD ?? 0) + (e.costUSD ?? 0),
+                    modelsUsed: nil,
                     modelBreakdowns: self.mergeBreakdowns(ex.modelBreakdowns, e.modelBreakdowns))
                 merged[e.date] = ne
-            } else { merged[e.date] = e }
+            } else {
+                merged[e.date] = e
+            }
         }
         let sorted = merged.values.sorted { $0.date < $1.date }
         let totalCost = sorted.compactMap(\.costUSD).reduce(0, +)
         let totalTokens = sorted.compactMap(\.totalTokens).reduce(0, +)
         let summary: CostUsageDailyReport.Summary? = sorted.isEmpty ? nil : .init(
-            totalInputTokens: nil, totalOutputTokens: nil, totalTokens: totalTokens, totalCostUSD: totalCost)
+            totalInputTokens: nil,
+            totalOutputTokens: nil,
+            totalTokens: totalTokens,
+            totalCostUSD: totalCost)
         return CostUsageDailyReport(data: sorted, summary: summary)
     }
 
@@ -130,18 +150,24 @@ enum AntigravityLocalReader {
     }
 
     private static func mergeBreakdown(
-        _ ex: [CostUsageDailyReport.ModelBreakdown]?, model: String,
+        _ ex: [CostUsageDailyReport.ModelBreakdown]?,
+        model: String,
         tokens: Int) -> [CostUsageDailyReport.ModelBreakdown]
     {
         var arr = ex ?? []
         if let i = arr.firstIndex(where: { $0.modelName == model }) {
             let b = arr[i]
             arr[i] = CostUsageDailyReport.ModelBreakdown(
-                modelName: b.modelName, costUSD: b.costUSD ?? 0,
-                totalTokens: (b.totalTokens ?? 0) + tokens, requestCount: (b.requestCount ?? 0) + 1)
+                modelName: b.modelName,
+                costUSD: b.costUSD ?? 0,
+                totalTokens: (b.totalTokens ?? 0) + tokens,
+                requestCount: (b.requestCount ?? 0) + 1)
         } else {
             arr.append(CostUsageDailyReport.ModelBreakdown(
-                modelName: model, costUSD: 0, totalTokens: tokens, requestCount: 1))
+                modelName: model,
+                costUSD: 0,
+                totalTokens: tokens,
+                requestCount: 1))
         }
         return arr
     }
@@ -154,11 +180,14 @@ enum AntigravityLocalReader {
         for m in (a ?? []) + (b ?? []) {
             if var ex = d[m.modelName] {
                 ex = CostUsageDailyReport.ModelBreakdown(
-                    modelName: ex.modelName, costUSD: (ex.costUSD ?? 0) + (m.costUSD ?? 0),
+                    modelName: ex.modelName,
+                    costUSD: (ex.costUSD ?? 0) + (m.costUSD ?? 0),
                     totalTokens: (ex.totalTokens ?? 0) + (m.totalTokens ?? 0),
                     requestCount: (ex.requestCount ?? 0) + (m.requestCount ?? 0))
                 d[m.modelName] = ex
-            } else { d[m.modelName] = m }
+            } else {
+                d[m.modelName] = m
+            }
         }
         return d.isEmpty ? nil : Array(d.values)
     }
