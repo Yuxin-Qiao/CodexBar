@@ -308,8 +308,10 @@ public struct CostUsageFetcher: Sendable {
             codexHomePath: codexHomePath)
         options.forceRescan = false
         options.refreshMinIntervalSeconds = 0
-        options.maxCodexScanDurationPerRefresh = Self.codexAutomaticScanDurationPerRefresh
         let clampedHistoryDays = max(1, min(365, historyDays))
+        // Spend dashboard scans 365 days and was starved by 2s slices (471/472 for hours). Give it 10s.
+        let isSpendDashboardFullScan = clampedHistoryDays >= 365
+        options.maxCodexScanDurationPerRefresh = isSpendDashboardFullScan ? 10 : Self.codexAutomaticScanDurationPerRefresh
         let since = options.calendar.date(
             byAdding: .day,
             value: -(clampedHistoryDays - 1),

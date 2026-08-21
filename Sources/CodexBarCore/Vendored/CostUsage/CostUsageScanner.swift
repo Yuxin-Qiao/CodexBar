@@ -5743,11 +5743,16 @@ enum CostUsageScanner {
             completedFiles = max(completedFiles, max(0, totalFiles - pendingQueuePathCount))
         }
 
-        // A bounded-work signal proves at least one pass remains even if this slice happened
-        // to visit the final 512 candidates. Keep one conservative slot open until an exact
-        // identity-deduplicated traversal validates the inventory.
+        // Bounded work previously kept one slot open to prove another pass remains,
+        // but that forced 471/472 to stall for 33m between 2s slices when only one
+        // large file remained. Now allow the final file to close when the pending
+        // queue is ≤1, letting the exact traversal validate without the artificial slot.
         let incompleteSelectedFiles = statesAfterScan.values.count(where: { !$0 })
-        completedFiles = min(completedFiles, max(0, totalFiles - max(1, incompleteSelectedFiles)))
+        if let pending = context.pendingQueuePathCount, pending <= 1, incompleteSelectedFiles <= 1 {
+            completedFiles = min(completedFiles, totalFiles)
+        } else {
+            completedFiles = min(completedFiles, max(0, totalFiles - max(1, incompleteSelectedFiles)))
+        }
 
         cache.codexScanInventoryPaths = nil
         return (CodexScanProgressSummary(

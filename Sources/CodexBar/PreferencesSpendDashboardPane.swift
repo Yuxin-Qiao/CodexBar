@@ -188,6 +188,7 @@ struct SpendDashboardPane: View {
         }
         .onDisappear {
             self.isVisible = false
+            self.synchronizeCodexCostCatchUp()
         }
         .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
             self.controller.refreshDateWindow()
@@ -322,8 +323,11 @@ struct SpendDashboardPane: View {
     }
 
     private func synchronizeCodexCostCatchUp() {
-        self.store.synchronizeSpendDashboardCodexCostCatchUp(
-            accounts: self.codexSpendScanRequests)
+        // Visible spend dashboard should not idle 33m between 2s slices — accelerate to clear 471/472 in one burst.
+        let mode: CodexCostCatchUpMode = self.isVisible ? .accelerated : .automatic
+        self.store.startSpendDashboardCodexCostCatchUpIfNeeded(
+            accounts: self.codexSpendScanRequests,
+            mode: mode)
     }
 
     private func startCodexCostCatchUp(mode: CodexCostCatchUpMode) {
