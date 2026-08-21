@@ -611,6 +611,68 @@ struct CostUsageScannerTests {
     }
 
     @Test
+    func `codex stale detection treats omitted reasoning as unknown`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2025, month: 12, day: 20)
+        let iso0 = env.isoString(for: day)
+        let iso1 = env.isoString(for: day.addingTimeInterval(1))
+        let iso2 = env.isoString(for: day.addingTimeInterval(2))
+        let model = "openai/gpt-5.2-codex"
+        let turnContext: [String: Any] = [
+            "type": "turn_context",
+            "timestamp": iso0,
+            "payload": ["model": model],
+        ]
+        func tokenCount(_ timestamp: String, input: Int, output: Int, reasoning: Int?) -> [String: Any] {
+            var total: [String: Any] = [
+                "input_tokens": input,
+                "output_tokens": output,
+            ]
+            if let reasoning {
+                total["reasoning_output_tokens"] = reasoning
+            }
+            return [
+                "type": "event_msg",
+                "timestamp": timestamp,
+                "payload": [
+                    "type": "token_count",
+                    "info": [
+                        "total_token_usage": total,
+                        "last_token_usage": [
+                            "input_tokens": 5,
+                            "output_tokens": 1,
+                        ],
+                    ],
+                ],
+            ]
+        }
+        // The first snapshot includes reasoning; the resumed snapshot omits it. The
+        // omitted field must not count as a reasoning regression that hides the row.
+        let lines = try env.jsonl([
+            turnContext,
+            tokenCount(iso1, input: 10, output: 3, reasoning: 1),
+            tokenCount(iso2, input: 15, output: 4, reasoning: nil),
+        ])
+        let fileURL = try env.writeCodexSessionFile(
+            day: day,
+            filename: "stale-omitted-reasoning.jsonl",
+            contents: lines)
+        let range = CostUsageScanner.CostUsageDayRange(since: day, until: day)
+
+        let parsed = CostUsageScanner.parseCodexFile(fileURL: fileURL, range: range)
+        let dayKey = CostUsageScanner.CostUsageDayRange.dayKey(from: day)
+        let packed = parsed.days[dayKey]?["gpt-5.2-codex"] ?? []
+
+        #expect(packed.count >= 3)
+        #expect(packed[0] == 10)
+        // Both increments contribute one output unit each (1 + 1); the omitted
+        // reasoning field must not cause the second snapshot to be discarded.
+        #expect(packed[2] == 2)
+    }
+
+    @Test
     func `codex bare usage rows count exec aliases with cached input subtraction`() throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }
@@ -790,6 +852,38 @@ struct CostUsageScannerTests {
         #expect(packed[0] == 0)
         #expect(packed[1] == 0)
         #expect(packed[2] == 5)
+    }
+
+    @Test
+    func `codex json fallback applies maximum cache selection`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2025, month: 12, day: 20)
+        let iso = env.isoString(for: day)
+        // A huge integer makes the fast byte parser decline this line so the
+        // JSONSerialization fallback parses it. The legacy nil-coalescing fallback
+        // would have used the present zero and undercounted cached input.
+        let hugeInteger = String(repeating: "9", count: 100)
+        let line = """
+        {"type":"event_msg","timestamp":"\(
+            iso)","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":\(
+            hugeInteger),"cached_input_tokens":0,"cache_read_input_tokens":25,
+            "output_tokens":10},"model":"openai/gpt-5.5"}}}
+        """
+        let fileURL = try env.writeCodexSessionFile(
+            day: day,
+            filename: "fallback-cache-max.jsonl",
+            contents: line + "\n")
+        let range = CostUsageScanner.CostUsageDayRange(since: day, until: day)
+
+        let parsed = CostUsageScanner.parseCodexFile(fileURL: fileURL, range: range)
+        let dayKey = CostUsageScanner.CostUsageDayRange.dayKey(from: day)
+        let packed = parsed.days[dayKey]?["gpt-5.5"] ?? []
+
+        #expect(packed.count >= 3)
+        #expect(packed[1] == 25)
+        #expect(packed[2] == 10)
     }
 
     @Test

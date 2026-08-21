@@ -418,13 +418,18 @@ enum CostUsageScanner {
         last: CostUsageCodexTotals) -> Bool
     {
         // Mirrors tokscale: staleness applies only after an actual field-level
-        // regression, including the optional reasoning subset.
-        let currentReasoning = current.reasoning ?? 0
-        let previousReasoning = previous.reasoning ?? 0
+        // regression, including the optional reasoning subset. Compare reasoning
+        // only when both snapshots provide it; an omitted field is unknown, not zero.
+        let reasoningRegressed: Bool = switch (current.reasoning, previous.reasoning) {
+        case let (.some(currentReasoning), .some(previousReasoning)):
+            currentReasoning < previousReasoning
+        case (.some, .none), (.none, .some), (.none, .none):
+            false
+        }
         guard current.input < previous.input
             || current.cached < previous.cached
             || current.output < previous.output
-            || currentReasoning < previousReasoning
+            || reasoningRegressed
         else { return false }
         let previousTotal = previous.input + previous.output + previous.cached + (previous.reasoning ?? 0)
         let currentTotal = current.input + current.output + current.cached + (current.reasoning ?? 0)
@@ -4829,7 +4834,9 @@ enum CostUsageScanner {
                             let output = max(0, toInt(usage["output_tokens"]))
                             return CostUsageCodexTotals(
                                 input: max(0, toInt(usage["input_tokens"])),
-                                cached: max(0, toInt(usage["cached_input_tokens"] ?? usage["cache_read_input_tokens"])),
+                                cached: max(
+                                    max(0, toInt(usage["cached_input_tokens"])),
+                                    max(0, toInt(usage["cache_read_input_tokens"]))),
                                 output: output,
                                 reasoning: (usage["reasoning_output_tokens"] as? NSNumber)
                                     .map { min(max(0, $0.intValue), output) })
