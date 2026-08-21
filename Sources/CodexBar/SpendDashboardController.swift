@@ -1,4 +1,4 @@
-import CodexBarCore
+import CodexBarCore // swiftlint:disable file_length
 import CryptoKit
 import Foundation
 import Observation
@@ -342,7 +342,7 @@ enum SpendDashboardSource {
     static func load(
         _ request: SpendDashboardLoadRequest,
         cacheRootResolver: @escaping CodexCacheRootResolver,
-        codexSnapshotLoader: CodexSnapshotLoader) async -> SpendDashboardLoadResult
+        codexSnapshotLoader: @escaping CodexSnapshotLoader) async -> SpendDashboardLoadResult
     {
         await self.load(
             request,
@@ -420,7 +420,7 @@ enum SpendDashboardSource {
 
     static func load(
         _ request: SpendDashboardLoadRequest,
-        codexSnapshotLoader: CodexSnapshotLoader) async -> SpendDashboardLoadResult
+        codexSnapshotLoader: @escaping CodexSnapshotLoader) async -> SpendDashboardLoadResult
     {
         await self.load(
             request,
@@ -431,8 +431,8 @@ enum SpendDashboardSource {
 
     static func load(
         _ request: SpendDashboardLoadRequest,
-        codexSnapshotLoader: CodexSnapshotLoader,
-        codexActivityLoader: CodexActivityLoader) async -> SpendDashboardLoadResult
+        codexSnapshotLoader: @escaping CodexSnapshotLoader,
+        codexActivityLoader: @escaping CodexActivityLoader) async -> SpendDashboardLoadResult
     {
         await self.load(
             request,
@@ -443,9 +443,9 @@ enum SpendDashboardSource {
 
     private static func load(
         _ request: SpendDashboardLoadRequest,
-        cacheRootResolver: CodexCacheRootResolver,
-        codexSnapshotLoader: CodexSnapshotLoader,
-        codexActivityLoader: CodexActivityLoader) async -> SpendDashboardLoadResult
+        cacheRootResolver: @escaping CodexCacheRootResolver,
+        codexSnapshotLoader: @escaping CodexSnapshotLoader,
+        codexActivityLoader: @escaping CodexActivityLoader) async -> SpendDashboardLoadResult
     {
         var inputs = request.capturedInputs
         var failedSourceIDs = request.unavailableSourceIDs
