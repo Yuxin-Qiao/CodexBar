@@ -67,7 +67,8 @@ extension UsageStore {
 
     private func scheduleDebouncedSharedSpendDashboardObservation() {
         self.sharedSpendDashboardObservationDebounceTask?.cancel()
-        let delay: Duration = self.startupBehavior.automaticallyStartsBackgroundWork ? .milliseconds(250) : .milliseconds(0)
+        let delay: Duration = self.startupBehavior.automaticallyStartsBackgroundWork
+            ? .milliseconds(250) : .milliseconds(0)
         self.sharedSpendDashboardObservationDebounceTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: delay)
             guard !Task.isCancelled else { return }
@@ -87,7 +88,8 @@ extension UsageStore {
 
     private func scheduleDebouncedTokenPublicationSync() {
         self.sharedSpendDashboardTokenPublicationDebounceTask?.cancel()
-        let delay: Duration = self.startupBehavior.automaticallyStartsBackgroundWork ? .milliseconds(250) : .milliseconds(0)
+        let delay: Duration = self.startupBehavior.automaticallyStartsBackgroundWork
+            ? .milliseconds(250) : .milliseconds(0)
         self.sharedSpendDashboardTokenPublicationDebounceTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: delay)
             guard !Task.isCancelled else { return }
