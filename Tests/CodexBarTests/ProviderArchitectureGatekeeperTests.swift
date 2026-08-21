@@ -1593,25 +1593,25 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "Antigravity quota titles use this token to rank a model family."),
         SuppressedProviderReference(
             path: "Sources/CodexBarCore/Providers/Antigravity/AntigravityStatusProbe.swift",
-            line: 706,
+            line: 747,
             anchor: "if text.contains(\"claude\") {",
             expectedProviderIDs: ["claude"],
             reason: "Antigravity model identifiers use this token to classify a model family."),
         SuppressedProviderReference(
             path: "Sources/CodexBarCore/Providers/Antigravity/AntigravityStatusProbe.swift",
-            line: 709,
+            line: 750,
             anchor: "if text.contains(\"gpt\") || text.contains(\"openai\") {",
             expectedProviderIDs: ["openai"],
             reason: "Antigravity model identifiers use this token to classify a model family."),
         SuppressedProviderReference(
             path: "Sources/CodexBarCore/Providers/Antigravity/AntigravityStatusProbe.swift",
-            line: 712,
+            line: 753,
             anchor: "if text.contains(\"gemini\"), text.contains(\"pro\") {",
             expectedProviderIDs: ["gemini"],
             reason: "Antigravity model identifiers use this token to classify a model family."),
         SuppressedProviderReference(
             path: "Sources/CodexBarCore/Providers/Antigravity/AntigravityStatusProbe.swift",
-            line: 715,
+            line: 756,
             anchor: "if text.contains(\"gemini\"), text.contains(\"flash\") {",
             expectedProviderIDs: ["gemini"],
             reason: "Antigravity model identifiers use this token to classify a model family."),
@@ -3811,6 +3811,30 @@ struct ProviderArchitectureGatekeeperTests {
             expectedReferenceCount: 1,
             expectedReferenceFingerprint: ["codex@0"],
             reason: "This exact WidgetKit construct preserves its compile-time provider selection contract."),
+        AllowedProviderConstruct(
+            path: "Sources/CodexBar/UsageStore+SpendDashboardPublication.swift",
+            line: 81,
+            anchor: "guard provider == .codex || isIndependent else { return }",
+            expectedProviderIDs: ["codex"],
+            expectedReferenceCount: 1,
+            expectedReferenceFingerprint: ["codex@0"],
+            reason: "Shared dashboard handles multiple independent token sources."),
+        AllowedProviderConstruct(
+            path: "Sources/CodexBarCore/Providers/Antigravity/AntigravityOfflineStore.swift",
+            line: 17,
+            anchor: "return home.appendingPathComponent(\".gemini\", isDirectory: true)",
+            expectedProviderIDs: ["gemini"],
+            expectedReferenceCount: 1,
+            expectedReferenceFingerprint: ["gemini@0"],
+            reason: "CLI home path is a fixed external contract."),
+        AllowedProviderConstruct(
+            path: "Sources/CodexBarCore/Providers/Antigravity/AntigravityStatusProbe.swift",
+            line: 748,
+            anchor: "if text.contains(\"claude\") {",
+            expectedProviderIDs: ["claude", "gemini", "openai"],
+            expectedReferenceCount: 4,
+            expectedReferenceFingerprint: ["claude@0", "openai@3", "gemini@6", "gemini@9"],
+            reason: "Model family classification via string matching."),
     ]
     // swiftlint:enable line_length
 

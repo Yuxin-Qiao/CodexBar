@@ -743,6 +743,7 @@ public struct AntigravityStatusSnapshot: Sendable {
         return Self.family(from: label)
     }
 
+    /// Provider-specific by design: model family classification via string matching.
     private static func family(from text: String) -> AntigravityModelFamily {
         if text.contains("claude") {
             return .claudeModels

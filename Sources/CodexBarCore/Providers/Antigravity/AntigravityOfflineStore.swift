@@ -13,6 +13,7 @@ public enum AntigravityOfflineStore {
         {
             return URL(fileURLWithPath: override, isDirectory: true)
         }
+        // Provider-specific by design: CLI home path is a fixed external contract.
         return home.appendingPathComponent(".gemini", isDirectory: true)
     }
 
