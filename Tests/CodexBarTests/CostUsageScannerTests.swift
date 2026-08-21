@@ -509,6 +509,108 @@ struct CostUsageScannerTests {
     }
 
     @Test
+    func `codex cached tokens use maximum of both cache fields`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2025, month: 12, day: 20)
+        let iso = env.isoString(for: day)
+        let model = "openai/gpt-5.2-codex"
+        // cache_read_input_tokens is the authoritative field in this fixture;
+        // the legacy fallback would have silently used the stale zero instead.
+        let tokenCount: [String: Any] = [
+            "type": "event_msg",
+            "timestamp": iso,
+            "payload": [
+                "type": "token_count",
+                "info": [
+                    "last_token_usage": [
+                        "input_tokens": 100,
+                        "cached_input_tokens": 0,
+                        "cache_read_input_tokens": 25,
+                        "output_tokens": 10,
+                    ],
+                    "model": model,
+                ],
+            ],
+        ]
+        let fileURL = try env.writeCodexSessionFile(
+            day: day,
+            filename: "cache-max.jsonl",
+            contents: env.jsonl([tokenCount]))
+        let range = CostUsageScanner.CostUsageDayRange(since: day, until: day)
+
+        let parsed = CostUsageScanner.parseCodexFile(fileURL: fileURL, range: range)
+        let dayKey = CostUsageScanner.CostUsageDayRange.dayKey(from: day)
+        let packed = parsed.days[dayKey]?["gpt-5.2-codex"] ?? []
+
+        #expect(packed.count >= 3)
+        #expect(packed[0] == 100)
+        #expect(packed[1] == 25)
+        #expect(packed[2] == 10)
+    }
+
+    @Test
+    func `codex out-of-order stale snapshot does not double-count last usage`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2025, month: 12, day: 20)
+        let iso0 = env.isoString(for: day)
+        let iso1 = env.isoString(for: day.addingTimeInterval(1))
+        let iso2 = env.isoString(for: day.addingTimeInterval(2))
+        let model = "openai/gpt-5.2-codex"
+        let turnContext: [String: Any] = [
+            "type": "turn_context",
+            "timestamp": iso0,
+            "payload": ["model": model],
+        ]
+        func tokenCount(_ timestamp: String, input: Int, output: Int) -> [String: Any] {
+            [
+                "type": "event_msg",
+                "timestamp": timestamp,
+                "payload": [
+                    "type": "token_count",
+                    "info": [
+                        "total_token_usage": [
+                            "input_tokens": input,
+                            "output_tokens": output,
+                        ],
+                        "last_token_usage": [
+                            "input_tokens": 5,
+                            "output_tokens": 1,
+                        ],
+                    ],
+                ],
+            ]
+        }
+        // Normal increment, then a stale snapshot that regressed by roughly one
+        // increment, then a resume from the true watermark.
+        let lines = try env.jsonl([
+            turnContext,
+            tokenCount(iso1, input: 10, output: 3),
+            tokenCount(iso2, input: 8, output: 2),
+            tokenCount(iso2, input: 15, output: 5),
+        ])
+        let fileURL = try env.writeCodexSessionFile(
+            day: day,
+            filename: "stale-regression.jsonl",
+            contents: lines)
+        let range = CostUsageScanner.CostUsageDayRange(since: day, until: day)
+
+        let parsed = CostUsageScanner.parseCodexFile(fileURL: fileURL, range: range)
+        let dayKey = CostUsageScanner.CostUsageDayRange.dayKey(from: day)
+        let packed = parsed.days[dayKey]?["gpt-5.2-codex"] ?? []
+
+        // Stale detection skips the regressed snapshot without advancing its baseline;
+        // the resumed true watermark contributes a second 5-token increment. Counted
+        // usage is therefore 10/2, while the raw cumulative watermark remains 15/5.
+        #expect(packed.count >= 3)
+        #expect(packed[0] == 10)
+        #expect(packed[2] == 2)
+    }
+
+    @Test
     func `codex incremental parsing keeps current turn id`() throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }

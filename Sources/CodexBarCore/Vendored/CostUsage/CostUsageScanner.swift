@@ -412,6 +412,28 @@ enum CostUsageScanner {
         lhs.input <= rhs.input && lhs.cached <= rhs.cached && lhs.output <= rhs.output
     }
 
+    private static func codexLooksLikeStaleRegression(
+        current: CostUsageCodexTotals,
+        previous: CostUsageCodexTotals,
+        last: CostUsageCodexTotals) -> Bool
+    {
+        // Mirrors tokscale: staleness applies only after an actual field-level
+        // regression, including the optional reasoning subset.
+        let currentReasoning = current.reasoning ?? 0
+        let previousReasoning = previous.reasoning ?? 0
+        guard current.input < previous.input
+            || current.cached < previous.cached
+            || current.output < previous.output
+            || currentReasoning < previousReasoning
+        else { return false }
+        let previousTotal = previous.input + previous.output + previous.cached + (previous.reasoning ?? 0)
+        let currentTotal = current.input + current.output + current.cached + (current.reasoning ?? 0)
+        let lastTotal = last.input + last.output + last.cached + (last.reasoning ?? 0)
+        if previousTotal <= 0 || currentTotal <= 0 || lastTotal <= 0 { return false }
+        return currentTotal * 100 >= previousTotal * 98
+            || currentTotal + lastTotal * 2 >= previousTotal
+    }
+
     private static func codexShouldPreferTotalDelta(
         rawBaseline: CostUsageCodexTotals?,
         currentTotal: CostUsageCodexTotals,
@@ -701,6 +723,17 @@ enum CostUsageScanner {
             if let total {
                 // Best-effort exact re-emission suppression (precision only; containment is load-bearing).
                 if self.tracker.isSeen(total) {
+                    return base
+                }
+                let staleBaseline = self.tracker.watermark ?? self.rawTotalsBaseline
+                if let previousTotal = staleBaseline,
+                   CostUsageScanner.codexLooksLikeStaleRegression(
+                       current: total,
+                       previous: previousTotal,
+                       last: last ?? .init(input: 0, cached: 0, output: 0))
+                {
+                    // Mirrors tokscale: a cumulative snapshot that regressed by roughly
+                    // one recent increment is stale, not a second lineage or hard reset.
                     return base
                 }
                 self.tracker.latchIfBelowWatermark(total)
@@ -3418,15 +3451,17 @@ enum CostUsageScanner {
         let input = max(
             0,
             Self.extractJSONByteIntField(Self.codexJSONFieldInputTokens, from: bytes, in: objectRange, atDepth: 1) ?? 0)
-        let cached = max(
-            0,
-            Self.extractJSONByteIntField(Self.codexJSONFieldCachedInputTokens, from: bytes, in: objectRange, atDepth: 1)
-                ?? Self.extractJSONByteIntField(
-                    Self.codexJSONFieldCacheReadInputTokens,
-                    from: bytes,
-                    in: objectRange,
-                    atDepth: 1)
-                ?? 0)
+        let cachedInput = Self.extractJSONByteIntField(
+            Self.codexJSONFieldCachedInputTokens,
+            from: bytes,
+            in: objectRange,
+            atDepth: 1) ?? 0
+        let cacheRead = Self.extractJSONByteIntField(
+            Self.codexJSONFieldCacheReadInputTokens,
+            from: bytes,
+            in: objectRange,
+            atDepth: 1) ?? 0
+        let cached = max(0, max(cachedInput, cacheRead))
         let output = max(
             0,
             Self
@@ -3909,7 +3944,9 @@ enum CostUsageScanner {
                             let output = toInt($0["output_tokens"])
                             return CostUsageCodexTotals(
                                 input: toInt($0["input_tokens"]),
-                                cached: toInt($0["cached_input_tokens"] ?? $0["cache_read_input_tokens"]),
+                                cached: max(
+                                    toInt($0["cached_input_tokens"] ?? 0),
+                                    toInt($0["cache_read_input_tokens"] ?? 0)),
                                 output: output,
                                 reasoning: ($0["reasoning_output_tokens"] as? NSNumber)
                                     .map { min(max(0, $0.intValue), max(0, output)) })
@@ -3918,7 +3955,11 @@ enum CostUsageScanner {
                             let output = max(0, toInt($0["output_tokens"]))
                             return CostUsageCodexTotals(
                                 input: max(0, toInt($0["input_tokens"])),
-                                cached: max(0, toInt($0["cached_input_tokens"] ?? $0["cache_read_input_tokens"])),
+                                cached: max(
+                                    0,
+                                    max(
+                                        toInt($0["cached_input_tokens"] ?? 0),
+                                        toInt($0["cache_read_input_tokens"] ?? 0))),
                                 output: output,
                                 reasoning: ($0["reasoning_output_tokens"] as? NSNumber)
                                     .map { min(max(0, $0.intValue), output) })
@@ -4238,6 +4279,19 @@ enum CostUsageScanner {
                 // watermark-equality check would skip first-time fork baseline bookkeeping.
                 // Post-latch containment remains the load-bearing overcount guard.
                 if tracker.isSeen(adjustedTotal) {
+                    return
+                }
+                let staleBaseline = tracker.watermark ?? rawTotalsBaseline
+                if let previousTotal = staleBaseline,
+                   !hasUnresolvedForkBaseline,
+                   Self.codexLooksLikeStaleRegression(
+                       current: adjustedTotal,
+                       previous: previousTotal,
+                       last: last ?? .init(input: 0, cached: 0, output: 0))
+                {
+                    // Keep the cancellable parser aligned with the snapshot accumulator:
+                    // stale regressions are skipped before they can reset the baseline or
+                    // latch interleaved mode.
                     return
                 }
                 tracker.latchIfBelowWatermark(adjustedTotal)
