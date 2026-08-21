@@ -3700,6 +3700,54 @@ enum CostUsageScanner {
         }
     }
 
+    /// Extracts usage from non-event rollout lines (one-shot codex exec / headless output).
+    /// Only the four canonical response envelopes are inspected so arbitrary prompt text cannot
+    /// be misread as token data.
+    private static func codexBareUsage(
+        from obj: [String: Any]) -> (totals: CostUsageCodexTotals, model: String?)?
+    {
+        let containers = [
+            obj["usage"] as? [String: Any],
+            (obj["data"] as? [String: Any]).flatMap { $0["usage"] as? [String: Any] },
+            (obj["result"] as? [String: Any]).flatMap { $0["usage"] as? [String: Any] },
+            (obj["response"] as? [String: Any]).flatMap { $0["usage"] as? [String: Any] },
+        ]
+
+        guard let usage = containers.compactMap(\.self).first,
+              let inputTokens = Self.codexBareUsageInt(
+                  usage, keys: ["input_tokens", "prompt_tokens", "input"]),
+              let outputTokens = Self.codexBareUsageInt(
+                  usage, keys: ["output_tokens", "completion_tokens", "output"])
+        else { return nil }
+
+        let cachedTokens = Self.codexBareUsageInt(
+            usage, keys: ["cached_input_tokens", "cache_read_input_tokens", "cached_tokens"]) ?? 0
+        let billedInput = max(0, inputTokens - cachedTokens)
+        guard billedInput > 0 || outputTokens > 0 || cachedTokens > 0 else { return nil }
+
+        func modelEvidence(_ container: [String: Any]?) -> String? {
+            Self.codexModelEvidence(container?["model"] as? String)
+                ?? Self.codexModelEvidence(container?["model_name"] as? String)
+        }
+
+        return (
+            CostUsageCodexTotals(
+                input: billedInput,
+                cached: cachedTokens,
+                output: outputTokens,
+                reasoning: nil),
+            modelEvidence(obj) ?? (obj["data"] as? [String: Any]).flatMap(modelEvidence))
+    }
+
+    private static func codexBareUsageInt(_ dict: [String: Any], keys: [String]) -> Int? {
+        for key in keys {
+            if let number = dict[key] as? NSNumber {
+                return max(0, number.intValue)
+            }
+        }
+        return nil
+    }
+
     private static func codexFastLineTimestampValidity(_ bytes: Data) -> Bool? {
         let timestamp = bytes.withUnsafeBytes { rawBytes in
             let rawBuffer = rawBytes.bindMemory(to: UInt8.self)
@@ -4096,6 +4144,7 @@ enum CostUsageScanner {
         var days: [String: [String: [Int]]] = [:]
         var rows: [CodexUsageRow] = []
         var tokenSnapshots: [CostUsageCodexTokenSnapshot] = []
+        var lastAcceptedTokenTimestamp: String?
 
         func add(dayKey: String, model: String, input: Int, cached: Int, output: Int) {
             guard CostUsageDayRange.isInRange(dayKey: dayKey, since: range.scanSinceKey, until: range.scanUntilKey)
@@ -4122,6 +4171,43 @@ enum CostUsageScanner {
                   let date = Self.dateFromTimestamp(timestamp)
             else { return nil }
             return Int64((date.timeIntervalSince1970 * 1000).rounded())
+        }
+
+        /// Counts one-shot codex exec / headless rollout rows whose usage object is not wrapped in the
+        /// interactive event_msg/token_count envelope. Tokscale parity: accept OpenAI and completion-style
+        /// aliases, subtract cached input from billed input, and fall back to the last accepted timestamp
+        /// so timestamp-less responses remain attributable to the active day.
+        func handleBareUsage(totals: CostUsageCodexTotals, modelEvidence: String?, timestamp: String?) {
+            let resolvedTimestamp = timestamp ?? lastAcceptedTokenTimestamp
+            guard let dayKey = resolvedTimestamp.flatMap({
+                Self.dayKeyFromTimestamp($0) ?? Self.dayKeyFromParsedISO($0)
+            }) else { return }
+
+            observeTimestamp(resolvedTimestamp)
+            let model = Self.codexModelEvidence(modelEvidence)
+                ?? Self.codexModelEvidence(currentModel)
+                ?? CostUsagePricing.codexUnattributedModel
+            let normModel = CostUsagePricing.normalizeCodexModel(model)
+
+            let eventIndex = codexUsageRowIndex
+            codexUsageRowIndex += 1
+            add(dayKey: dayKey, model: normModel, input: totals.input, cached: totals.cached, output: totals.output)
+            if CostUsageDayRange.isInRange(dayKey: dayKey, since: range.scanSinceKey, until: range.scanUntilKey) {
+                rows.append(CodexUsageRow(
+                    day: dayKey,
+                    model: normModel,
+                    rawModel: model,
+                    turnID: currentTurnID,
+                    eventIndex: eventIndex,
+                    timestampUnixMs: unixMilliseconds(from: resolvedTimestamp),
+                    input: totals.input,
+                    cached: totals.cached,
+                    output: totals.output,
+                    reasoning: totals.reasoning))
+            }
+            if let resolvedTimestamp {
+                lastAcceptedTokenTimestamp = resolvedTimestamp
+            }
         }
 
         func observeTimestamp(_ timestamp: String?) {
@@ -4582,6 +4668,20 @@ enum CostUsageScanner {
                                     deferredError = error
                                 }
                             }
+                        }
+                        return
+                    }
+
+                    if line.bytes.containsAscii(#""usage""#) {
+                        autoreleasepool {
+                            guard let obj = (try? JSONSerialization.jsonObject(with: line.bytes)) as? [String: Any],
+                                  obj["type"] == nil,
+                                  let bare = Self.codexBareUsage(from: obj)
+                            else { return }
+                            handleBareUsage(
+                                totals: bare.totals,
+                                modelEvidence: bare.model,
+                                timestamp: obj["timestamp"] as? String)
                         }
                         return
                     }

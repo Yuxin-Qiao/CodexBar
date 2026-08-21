@@ -611,6 +611,77 @@ struct CostUsageScannerTests {
     }
 
     @Test
+    func `codex bare usage rows count exec aliases with cached input subtraction`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2026, month: 8, day: 21)
+        let iso = env.isoString(for: day)
+        let model = "openai/gpt-5.2-codex"
+
+        func bareUsage(model: String?, cachedTokens: Int) -> [String: Any] {
+            var usage: [String: Any] = [
+                "prompt_tokens": 120,
+                "completion_tokens": 30,
+            ]
+            if cachedTokens > 0 {
+                usage["cached_tokens"] = cachedTokens
+            }
+            var line: [String: Any] = [
+                "timestamp": iso,
+                "usage": usage,
+            ]
+            if let model {
+                line["model"] = model
+            }
+            return line
+        }
+
+        let fileURL = try env.writeCodexSessionFile(
+            day: day,
+            filename: "bare-usage.jsonl",
+            contents: env.jsonl([
+                bareUsage(model: model, cachedTokens: 20),
+                ["timestamp": iso, "data": ["usage": ["input": 10, "output": 4]]],
+            ]))
+        let range = CostUsageScanner.CostUsageDayRange(since: day, until: day)
+
+        let parsed = CostUsageScanner.parseCodexFile(fileURL: fileURL, range: range)
+        let dayKey = CostUsageScanner.CostUsageDayRange.dayKey(from: day)
+
+        #expect(parsed.days[dayKey]?["gpt-5.2-codex"] == [100, 20, 30])
+        #expect(parsed.days[dayKey]?["unknown"] == [10, 0, 4])
+        #expect(parsed.rows.count == 2)
+    }
+
+    @Test
+    func `codex bare usage without timestamp uses prior accepted timestamp`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let dayOne = try env.makeLocalNoon(year: 2026, month: 8, day: 21)
+        let dayTwo = try env.makeLocalNoon(year: 2026, month: 8, day: 22)
+        let isoOne = env.isoString(for: dayOne)
+        let fileURL = try env.writeCodexSessionFile(
+            day: dayOne,
+            filename: "bare-usage-timestamp-fallback.jsonl",
+            contents: env.jsonl([
+                ["timestamp": isoOne, "response": ["usage": ["input_tokens": 7, "output_tokens": 3]]],
+                ["result": ["usage": ["input_tokens": 5, "output_tokens": 1]]],
+            ]))
+
+        let parsed = CostUsageScanner.parseCodexFile(
+            fileURL: fileURL,
+            range: .init(since: dayTwo, until: dayTwo))
+
+        // The timestamp-less result row must stay attributable to the last accepted day,
+        // not disappear when the requested report window is the following day.
+        let firstDayKey = CostUsageScanner.CostUsageDayRange.dayKey(from: dayOne)
+        #expect(parsed.days[firstDayKey]?["unknown"] == [12, 0, 4])
+        #expect(parsed.rows.map(\.day) == [firstDayKey, firstDayKey])
+    }
+
+    @Test
     func `codex incremental parsing keeps current turn id`() throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }
