@@ -1,3 +1,4 @@
+// swiftlint:disable file_length
 import Foundation
 
 public enum CostUsageError: LocalizedError, Sendable {
@@ -433,6 +434,19 @@ public struct CostUsageFetcher: Sendable {
             cursorCookieHeaderOverride: cursorCookieHeaderOverride)
         {
             return remoteSnapshot
+        }
+
+        // Provider-specific by design: Cursor local CSV is an offline fallback for the remote dashboard API.
+        if provider == .cursor, let local = await self.loadCursorLocalSnapshot(
+            now: now, historyDays: clampedHistoryDays)
+        {
+            return local
+        }
+        // Provider-specific by design: Antigravity local cache (tokscale) supplements the quota-only probe.
+        if provider == .antigravity, let local = await self.loadAntigravityLocalSnapshot(
+            now: now, historyDays: clampedHistoryDays)
+        {
+            return local
         }
 
         var options = Self.resolvedScannerOptions(
@@ -1119,6 +1133,46 @@ public struct CostUsageFetcher: Sendable {
             credentialScopeFingerprint: report.credentialScopeFingerprint)
     }
     #endif
+
+    private static func loadCursorLocalSnapshot(now: Date, historyDays: Int) async -> CostUsageTokenSnapshot? {
+        let paths = CursorLocalCSVReader.cachedCSVPaths()
+        guard !paths.isEmpty else { return nil }
+        var allRows: [CursorLocalCSVReader.Row] = []
+        for url in paths {
+            allRows.append(contentsOf: CursorLocalCSVReader.parseFile(at: url))
+        }
+        guard !allRows.isEmpty else { return nil }
+        let full = CursorLocalCSVReader.makeDailyReport(from: allRows, now: now)
+        let cal = Calendar.current
+        let since = cal.date(byAdding: .day, value: -(historyDays - 1), to: cal.startOfDay(for: now)) ?? now
+        let sinceKey = CostUsageLocalDay.key(from: since, calendar: cal)
+        let nowKey = CostUsageLocalDay.key(from: now, calendar: cal)
+        let filtered = full.data.filter { $0.date >= sinceKey && $0.date <= nowKey }
+        let daily = CostUsageDailyReport(data: filtered, summary: full.summary)
+        return Self.tokenSnapshot(
+            from: daily,
+            now: now,
+            historyDays: historyDays,
+            useCurrentLocalDayForSession: true,
+            costProvenance: .listPriceEstimate)
+    }
+
+    private static func loadAntigravityLocalSnapshot(now: Date, historyDays: Int) async -> CostUsageTokenSnapshot? {
+        let report = AntigravityLocalReader.makeDailyReport()
+        guard !report.data.isEmpty else { return nil }
+        let cal = Calendar.current
+        let since = cal.date(byAdding: .day, value: -(historyDays - 1), to: cal.startOfDay(for: now)) ?? now
+        let sinceKey = CostUsageLocalDay.key(from: since, calendar: cal)
+        let nowKey = CostUsageLocalDay.key(from: now, calendar: cal)
+        let filtered = report.data.filter { $0.date >= sinceKey && $0.date <= nowKey }
+        let daily = CostUsageDailyReport(data: filtered, summary: report.summary)
+        return Self.tokenSnapshot(
+            from: daily,
+            now: now,
+            historyDays: historyDays,
+            useCurrentLocalDayForSession: true,
+            costProvenance: .listPriceEstimate)
+    }
 
     static func tokenSnapshot(
         from daily: CostUsageDailyReport,
