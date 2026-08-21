@@ -47,6 +47,8 @@ extension UsageStore {
         self.sharedSpendDashboardObservationStarted = false
         self.sharedSpendDashboardObservationDebounceTask?.cancel()
         self.sharedSpendDashboardObservationDebounceTask = nil
+        self.sharedSpendDashboardTokenPublicationDebounceTask?.cancel()
+        self.sharedSpendDashboardTokenPublicationDebounceTask = nil
         self.sharedSpendDashboardControllerStorage?.stop()
         self.cancelSpendDashboardCodexCostCatchUp()
     }
@@ -83,11 +85,11 @@ extension UsageStore {
     }
 
     private func scheduleDebouncedTokenPublicationSync() {
-        self.sharedSpendDashboardObservationDebounceTask?.cancel()
-        self.sharedSpendDashboardObservationDebounceTask = Task { @MainActor [weak self] in
+        self.sharedSpendDashboardTokenPublicationDebounceTask?.cancel()
+        self.sharedSpendDashboardTokenPublicationDebounceTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(250))
             guard !Task.isCancelled else { return }
-            self?.sharedSpendDashboardObservationDebounceTask = nil
+            self?.sharedSpendDashboardTokenPublicationDebounceTask = nil
             guard let self, self.sharedSpendDashboardObservationStarted else { return }
             self.applySharedSpendDashboardConfiguration(
                 SpendDashboardSource.configuration(settings: self.settings, store: self))

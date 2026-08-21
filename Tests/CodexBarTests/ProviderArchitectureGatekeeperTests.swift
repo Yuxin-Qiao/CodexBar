@@ -914,8 +914,8 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This Codex account projection passes its fixed provider identity to shared spend infrastructure."),
         SuppressedProviderReference(
             path: "Sources/CodexBar/SpendDashboardController.swift",
-            line: 413,
-            anchor: "modelProviderName: ProviderDescriptorRegistry.descriptor(for: .codex).metadata",
+            line: 497,
+            anchor: "modelProviderName: ProviderDescriptorRegistry.descriptor(for: .codex)",
             expectedProviderIDs: ["codex"],
             reason: "This Codex account projection passes its fixed provider identity to shared spend infrastructure."),
         SuppressedProviderReference(

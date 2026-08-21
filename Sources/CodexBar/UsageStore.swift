@@ -192,6 +192,7 @@ final class UsageStore {
     @ObservationIgnored var sharedSpendDashboardControllerStorage: SpendDashboardController?
     @ObservationIgnored var sharedSpendDashboardObservationStarted = false
     @ObservationIgnored var sharedSpendDashboardObservationDebounceTask: Task<Void, Never>?
+    @ObservationIgnored var sharedSpendDashboardTokenPublicationDebounceTask: Task<Void, Never>?
     var tokenErrors: [ProviderInstanceID: String] = [:]
     var tokenRefreshInFlight: Set<ProviderInstanceID> = []
     var codexCostCatchUpActivity: CodexCostCatchUpActivity?
