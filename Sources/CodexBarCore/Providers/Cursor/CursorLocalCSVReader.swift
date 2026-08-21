@@ -29,6 +29,7 @@ enum CursorLocalCSVReader {
         let cacheRead: Int
         let cacheWrite: Int
         let output: Int
+        let totalTokens: Int?
         let cost: Double
     }
 
@@ -58,6 +59,10 @@ enum CursorLocalCSVReader {
             let read = self.parseInt(c[idx.read])
             let out = self.parseInt(c[idx.out])
             let cost = self.parseCost(c[idx.cost])
+            // Parse the authoritative Total Tokens column if present.
+            let totalIdx = idx.cost - 1
+            let totalTokens = totalIdx < cols.count && totalIdx < c.count
+                && cols[totalIdx].lowercased().contains("total") ? self.parseInt(c[totalIdx]) : nil
             guard let date = parseDate(c[0], calendar: calendar) else { continue }
             let write = max(0, inW - inWo)
             let input = inWo
@@ -69,6 +74,7 @@ enum CursorLocalCSVReader {
                 cacheRead: read,
                 cacheWrite: write,
                 output: out,
+                totalTokens: totalTokens,
                 cost: cost))
         }
         return rows
@@ -96,7 +102,9 @@ enum CursorLocalCSVReader {
                 costUSD: 0,
                 modelsUsed: nil,
                 modelBreakdowns: [])
-            let tot = row.input + row.output + row.cacheRead + row.cacheWrite
+            // Honor the CSV's authoritative Total Tokens column when present;
+            // otherwise derive from component columns.
+            let tot = row.totalTokens ?? (row.input + row.output + row.cacheRead + row.cacheWrite)
             var bds = e.modelBreakdowns ?? []
             if let i = bds.firstIndex(where: { $0.modelName == row.model }) {
                 let b = bds[i]
