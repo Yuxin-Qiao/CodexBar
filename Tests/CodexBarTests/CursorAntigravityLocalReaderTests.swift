@@ -94,7 +94,9 @@ struct CursorAntigravityLocalReaderTests {
         #expect(breakdowns.count == 1)
         #expect(breakdowns.first?.modelName == "claude-sonnet-4-5")
         let summary = try #require(report.summary)
-        #expect(summary.totalTokens == 2740)
+        // The CSV's own Total Tokens column is authoritative when present
+        // (1500 + 700 + 40), rather than the recomputed bucket sum.
+        #expect(summary.totalTokens == 2240)
     }
 
     @Test
