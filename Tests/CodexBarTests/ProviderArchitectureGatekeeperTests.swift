@@ -3791,7 +3791,7 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This exact WidgetKit construct preserves its compile-time provider selection contract."),
         AllowedProviderConstruct(
             path: "Sources/CodexBar/UsageStore+SpendDashboardPublication.swift",
-            line: 83,
+            line: 84,
             anchor: "guard provider == .codex || isIndependent else { return }",
             expectedProviderIDs: ["codex"],
             expectedReferenceCount: 1,
