@@ -11,10 +11,15 @@ private struct SpendDashboardCodexCostCatchUpContext {
 }
 
 extension UsageStore {
-    func synchronizeSpendDashboardCodexCostCatchUp(accounts: [CodexSpendScanRequest]) {
-        let mode = self.spendDashboardCodexCostCatchUpTask == nil
-            ? .automatic
-            : self.spendDashboardCodexCostCatchUpMode
+    func synchronizeSpendDashboardCodexCostCatchUp(
+        accounts: [CodexSpendScanRequest],
+        preferredMode: CodexCostCatchUpMode? = nil)
+    {
+        // A user-requested stop must stay durable until they explicitly resume; background
+        // synchronization would otherwise restart the worker behind their back.
+        guard !self.spendDashboardCodexCostCatchUpStopRequested else { return }
+        let mode = preferredMode
+            ?? (self.spendDashboardCodexCostCatchUpTask == nil ? .automatic : self.spendDashboardCodexCostCatchUpMode)
         self.startSpendDashboardCodexCostCatchUpIfNeeded(accounts: accounts, mode: mode)
     }
 

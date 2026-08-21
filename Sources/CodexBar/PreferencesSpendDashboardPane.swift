@@ -332,7 +332,11 @@ struct SpendDashboardPane: View {
                 accounts: self.codexSpendScanRequests,
                 mode: .accelerated)
         } else {
-            self.store.synchronizeSpendDashboardCodexCostCatchUp(accounts: self.codexSpendScanRequests)
+            // A worker started before the pane appeared can remain in automatic mode; upgrade it
+            // so the visible dashboard does not keep waiting on background pacing.
+            self.store.synchronizeSpendDashboardCodexCostCatchUp(
+                accounts: self.codexSpendScanRequests,
+                preferredMode: .accelerated)
         }
     }
 
