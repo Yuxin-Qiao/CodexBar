@@ -1553,6 +1553,7 @@ final class SpendDashboardController {
             }
             sources.append(SpendSourcePublication(
                 id: SpendDashboardModel.openCodexSourceID,
+                // Provider-specific by design: OpenCodex enrichment maps to Codex provider
                 provider: .codex,
                 displayName: "OpenCodex",
                 role: .enrichment,

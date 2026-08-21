@@ -76,6 +76,7 @@ extension UsageStore {
     func synchronizeSharedSpendDashboardAfterTokenPublication(for provider: UsageProvider) {
         guard self.sharedSpendDashboardObservationStarted else { return }
         let isIndependent = Self.usesSpendDashboardIndependentTokenSnapshot(provider)
+        // Provider-specific by design: Codex and independent spend-dashboard token publications both drive the shared dashboard.
         guard provider == .codex || isIndependent else { return }
         self.scheduleDebouncedTokenPublicationSync()
     }
