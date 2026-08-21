@@ -2376,14 +2376,6 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This exact shared construct dispatches a provider-owned capability at the generic integration boundary."),
         AllowedProviderConstruct(
             path: "Sources/CodexBar/SpendDashboardController.swift",
-            line: 708,
-            anchor: "guard provider != .codex else { return nil }",
-            expectedProviderIDs: ["codex"],
-            expectedReferenceCount: 1,
-            expectedReferenceFingerprint: ["codex@0"],
-            reason: "This exact shared construct dispatches a provider-owned capability at the generic integration boundary."),
-        AllowedProviderConstruct(
-            path: "Sources/CodexBar/SpendDashboardController.swift",
             line: 1630,
             anchor: "guard input.provider == .codex,",
             expectedProviderIDs: ["codex"],
@@ -3791,7 +3783,7 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This exact WidgetKit construct preserves its compile-time provider selection contract."),
         AllowedProviderConstruct(
             path: "Sources/CodexBar/UsageStore+SpendDashboardPublication.swift",
-            line: 84,
+            line: 85,
             anchor: "guard provider == .codex || isIndependent else { return }",
             expectedProviderIDs: ["codex"],
             expectedReferenceCount: 1,
