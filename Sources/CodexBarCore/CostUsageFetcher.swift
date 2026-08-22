@@ -426,8 +426,8 @@ public struct CostUsageFetcher: Sendable {
 
         let clampedHistoryDays = max(1, min(365, historyDays))
 
-        var remoteSnapshot: CostUsageTokenSnapshot? = nil
-        var remoteError: Error? = nil
+        var remoteSnapshot: CostUsageTokenSnapshot?
+        var remoteError: Error?
         do {
             remoteSnapshot = try await self.loadRemoteTokenSnapshot(
                 provider: provider,
@@ -1150,7 +1150,11 @@ public struct CostUsageFetcher: Sendable {
     }
     #endif
 
-    private static func loadCursorLocalSnapshot(now: Date, historyDays: Int, calendar: Calendar = .current) async -> CostUsageTokenSnapshot? {
+    private static func loadCursorLocalSnapshot(
+        now: Date,
+        historyDays: Int,
+        calendar: Calendar = .current
+    ) async -> CostUsageTokenSnapshot? {
         let paths = CursorLocalCSVReader.cachedCSVPaths()
         guard !paths.isEmpty else { return nil }
         var allRows: [CursorLocalCSVReader.Row] = []
@@ -1158,7 +1162,7 @@ public struct CostUsageFetcher: Sendable {
             allRows.append(contentsOf: CursorLocalCSVReader.parseFile(at: url))
         }
         guard !allRows.isEmpty else { return nil }
-        let full = CursorLocalCSVReader.makeDailyReport(from: allRows, now: now, calendar: calendar)
+        let full = CursorLocalCSVReader.makeDailyReport(from: allRows, calendar: calendar, now: now)
         let cal = calendar
         let since = cal.date(byAdding: .day, value: -(historyDays - 1), to: cal.startOfDay(for: now)) ?? now
         let sinceKey = CostUsageLocalDay.key(from: since, calendar: cal)
@@ -1169,7 +1173,12 @@ public struct CostUsageFetcher: Sendable {
             let costValues = filtered.compactMap(\.costUSD)
             let totalCost: Double? = costValues.isEmpty ? nil : costValues.reduce(0, +)
             let totalTokens = filtered.compactMap(\.totalTokens).reduce(0, +)
-            return .init(totalInputTokens: nil, totalOutputTokens: nil, totalTokens: totalTokens, totalCostUSD: totalCost)
+            return .init(
+                totalInputTokens: nil,
+                totalOutputTokens: nil,
+                totalTokens: totalTokens,
+                totalCostUSD: totalCost)
+
         }()
         let daily = CostUsageDailyReport(data: filtered, summary: filteredSummary)
         return Self.tokenSnapshot(
@@ -1180,7 +1189,11 @@ public struct CostUsageFetcher: Sendable {
             costProvenance: .listPriceEstimate)
     }
 
-    private static func loadAntigravityLocalSnapshot(now: Date, historyDays: Int, calendar: Calendar = .current) async -> CostUsageTokenSnapshot? {
+    private static func loadAntigravityLocalSnapshot(
+        now: Date,
+        historyDays: Int,
+        calendar: Calendar = .current
+    ) async -> CostUsageTokenSnapshot? {
         let cal = calendar
         let report = AntigravityLocalReader.makeDailyReport(calendar: cal)
         guard !report.data.isEmpty else { return nil }
@@ -1193,7 +1206,12 @@ public struct CostUsageFetcher: Sendable {
             let costValues = filtered.compactMap(\.costUSD)
             let totalCost: Double? = costValues.isEmpty ? nil : costValues.reduce(0, +)
             let totalTokens = filtered.compactMap(\.totalTokens).reduce(0, +)
-            return .init(totalInputTokens: nil, totalOutputTokens: nil, totalTokens: totalTokens, totalCostUSD: totalCost)
+            return .init(
+                totalInputTokens: nil,
+                totalOutputTokens: nil,
+                totalTokens: totalTokens,
+                totalCostUSD: totalCost)
+
         }()
         let daily = CostUsageDailyReport(data: filtered, summary: filteredSummary)
         return Self.tokenSnapshot(

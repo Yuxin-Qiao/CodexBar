@@ -119,7 +119,7 @@ enum AntigravityLocalReader {
         for e in self.parseJSONLCache(calendar: calendar) + self.parseCLIDBs() {
             if var ex = merged[e.date] {
                 let mergedCost: Double? = {
-                    if ex.costUSD == nil && e.costUSD == nil { return nil }
+                    if ex.costUSD == nil, e.costUSD == nil { return nil }
                     return (ex.costUSD ?? 0) + (e.costUSD ?? 0)
                 }()
                 let ne = CostUsageDailyReport.Entry(
@@ -190,7 +190,7 @@ enum AntigravityLocalReader {
         for m in (a ?? []) + (b ?? []) {
             if var ex = d[m.modelName] {
                 let mergedCost: Double? = {
-                    if ex.costUSD == nil && m.costUSD == nil { return nil }
+                    if ex.costUSD == nil, m.costUSD == nil { return nil }
                     return (ex.costUSD ?? 0) + (m.costUSD ?? 0)
                 }()
                 ex = CostUsageDailyReport.ModelBreakdown(
