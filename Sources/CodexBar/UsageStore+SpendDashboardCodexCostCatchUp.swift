@@ -18,7 +18,8 @@ extension UsageStore {
         let accounts = Self.uniqueSpendDashboardCodexAccounts(accounts)
         guard !accounts.isEmpty,
               self.settings.isCostUsageEffectivelyEnabled(for: .codex),
-              self.isEnabled(.codex) else {
+              self.isEnabled(.codex)
+        else {
             self.cancelSpendDashboardCodexCostCatchUp()
             return
         }
