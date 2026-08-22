@@ -182,9 +182,11 @@ enum CursorLocalCSVReader {
             df.dateFormat = fmt
             if let d = df.date(from: t) {
                 if fmt == "yyyy-MM-dd" {
-                    var c = calendar.dateComponents([.year, .month, .day], from: d)
+                    var utcCal = Calendar(identifier: .gregorian)
+                    utcCal.timeZone = TimeZone(secondsFromGMT: 0)!
+                    var c = utcCal.dateComponents([.year, .month, .day], from: d)
                     c.hour = 12; c.minute = 0; c.second = 0; c.timeZone = TimeZone(secondsFromGMT: 0)
-                    return calendar.date(from: c) ?? d
+                    return utcCal.date(from: c) ?? d
                 }
                 return d
             }
