@@ -1153,8 +1153,8 @@ public struct CostUsageFetcher: Sendable {
     private static func loadCursorLocalSnapshot(
         now: Date,
         historyDays: Int,
-        calendar: Calendar = .current
-    ) async -> CostUsageTokenSnapshot? {
+        calendar: Calendar = .current) async -> CostUsageTokenSnapshot?
+    {
         let paths = CursorLocalCSVReader.cachedCSVPaths()
         guard !paths.isEmpty else { return nil }
         var allRows: [CursorLocalCSVReader.Row] = []
@@ -1192,8 +1192,8 @@ public struct CostUsageFetcher: Sendable {
     private static func loadAntigravityLocalSnapshot(
         now: Date,
         historyDays: Int,
-        calendar: Calendar = .current
-    ) async -> CostUsageTokenSnapshot? {
+        calendar: Calendar = .current) async -> CostUsageTokenSnapshot?
+    {
         let cal = calendar
         let report = AntigravityLocalReader.makeDailyReport(calendar: cal)
         guard !report.data.isEmpty else { return nil }
