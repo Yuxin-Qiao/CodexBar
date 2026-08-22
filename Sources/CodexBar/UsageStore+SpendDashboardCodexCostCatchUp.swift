@@ -15,6 +15,13 @@ extension UsageStore {
         accounts: [CodexSpendScanRequest],
         preferredMode: CodexCostCatchUpMode? = nil)
     {
+        let accounts = Self.uniqueSpendDashboardCodexAccounts(accounts)
+        guard !accounts.isEmpty,
+              self.settings.isCostUsageEffectivelyEnabled(for: .codex),
+              self.isEnabled(.codex) else {
+            self.cancelSpendDashboardCodexCostCatchUp()
+            return
+        }
         // A user-requested stop must stay durable until they explicitly resume; background
         // synchronization would otherwise restart the worker behind their back.
         guard !self.spendDashboardCodexCostCatchUpStopRequested else { return }

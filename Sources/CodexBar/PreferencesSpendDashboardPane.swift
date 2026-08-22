@@ -143,6 +143,7 @@ struct SpendDashboardPane: View {
     @Bindable var settings: SettingsStore
     @Bindable var store: UsageStore
     @State private var isVisible = false
+    @State private var userSelectedBackground = false
 
     init(settings: SettingsStore, store: UsageStore) {
         self.settings = settings
@@ -296,6 +297,7 @@ struct SpendDashboardPane: View {
                             }
                         } else {
                             Button(L("Continue in background")) {
+                                self.userSelectedBackground = true
                                 self.startCodexCostCatchUp(mode: .automatic)
                             }
                         }
@@ -324,23 +326,30 @@ struct SpendDashboardPane: View {
 
     private func synchronizeCodexCostCatchUp() {
         guard self.isVisible else {
-            self.store.synchronizeSpendDashboardCodexCostCatchUp(accounts: self.codexSpendScanRequests)
+            self.userSelectedBackground = false
+            self.store.synchronizeSpendDashboardCodexCostCatchUp(
+                accounts: self.codexSpendScanRequests,
+                preferredMode: .automatic)
             return
         }
         if self.store.spendDashboardCodexCostCatchUpTask == nil {
-            self.store.startSpendDashboardCodexCostCatchUpIfNeeded(
-                accounts: self.codexSpendScanRequests,
-                mode: .accelerated)
-        } else {
-            // A worker started before the pane appeared can remain in automatic mode; upgrade it
-            // so the visible dashboard does not keep waiting on background pacing.
             self.store.synchronizeSpendDashboardCodexCostCatchUp(
                 accounts: self.codexSpendScanRequests,
                 preferredMode: .accelerated)
+        } else if !self.userSelectedBackground {
+            self.store.synchronizeSpendDashboardCodexCostCatchUp(
+                accounts: self.codexSpendScanRequests,
+                preferredMode: .accelerated)
+        } else {
+            self.store.synchronizeSpendDashboardCodexCostCatchUp(
+                accounts: self.codexSpendScanRequests)
         }
     }
 
     private func startCodexCostCatchUp(mode: CodexCostCatchUpMode) {
+        if mode == .accelerated {
+            self.userSelectedBackground = false
+        }
         self.store.startSpendDashboardCodexCostCatchUpIfNeeded(
             accounts: self.codexSpendScanRequests,
             mode: mode)
