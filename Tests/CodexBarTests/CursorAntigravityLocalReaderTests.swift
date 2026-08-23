@@ -108,8 +108,8 @@ struct CursorAntigravityLocalReaderTests {
         let firstStamp = Int64(noon.timeIntervalSince1970 * 1000)
         let secondStamp = firstStamp + 3_600_000
         let jsonl = [
-            #"{"type":"session_meta","modelId":"test-model-antigravity-a"}"#,
-            #"{"type":"usage","modelId":"test-model-antigravity-a","input":100,"output":30,"cacheRead":50,"cacheWrite":10,"# +
+            #"{"type":"session_meta","modelId":"test-model-a"}"#,
+            #"{"type":"usage","modelId":"test-model-a","input":100,"output":30,"cacheRead":50,"cacheWrite":10,"# +
                 #""timestamp":\#(firstStamp)}"#,
             #"{"type":"usage","input":40,"output":10,"cacheRead":0,"cacheWrite":0,"timestamp":\#(secondStamp)}"#,
         ].joined(separator: "\n") + "\n"
@@ -125,7 +125,7 @@ struct CursorAntigravityLocalReaderTests {
         #expect(entry.requestCount == 2)
         // The second event omits `modelId` and falls back to the session_meta model.
         let breakdowns = try #require(entry.modelBreakdowns)
-        #expect(breakdowns.map(\.modelName) == ["test-model-antigravity-a"])
+        #expect(breakdowns.map(\.modelName) == ["test-model-a"])
         #expect(breakdowns.first?.requestCount == 2)
     }
 
