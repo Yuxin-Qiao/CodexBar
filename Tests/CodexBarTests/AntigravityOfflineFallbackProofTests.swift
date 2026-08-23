@@ -76,15 +76,43 @@ struct AntigravityOfflineFallbackProofTests {
         #expect(shouldFallbackEmpty == false)
     }
 
-    private static func makeContext(env: [String: String], selectedTokenAccountID: UUID? = nil) -> ProviderFetchContext {
+    private static func makeContext(
+        env: [String: String],
+        selectedTokenAccountID: UUID? = nil) -> ProviderFetchContext
+    {
         var effectiveEnv = env
-        effectiveEnv["HOME"] = effectiveEnv["HOME"] ?? FileManager.default.temporaryDirectory.appendingPathComponent("codexbar-antigravity-empty-home-\(UUID().uuidString)", isDirectory: true).path
-        return ProviderFetchContext(runtime: .app, sourceMode: .auto, includeCredits: false, webTimeout: 1, webDebugDumpHTML: false, verbose: false, env: effectiveEnv, settings: nil, fetcher: UsageFetcher(environment: effectiveEnv), claudeFetcher: StubClaudeFetcher(), browserDetection: BrowserDetection(cacheTTL: 0), selectedTokenAccountID: selectedTokenAccountID)
+        effectiveEnv["HOME"] = effectiveEnv["HOME"]
+            ?? FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "codexbar-antigravity-empty-home-\(UUID().uuidString)",
+                isDirectory: true)
+            .path
+        return ProviderFetchContext(
+            runtime: .app,
+            sourceMode: .auto,
+            includeCredits: false,
+            webTimeout: 1,
+            webDebugDumpHTML: false,
+            verbose: false,
+            env: effectiveEnv,
+            settings: nil,
+            fetcher: UsageFetcher(environment: effectiveEnv),
+            claudeFetcher: StubClaudeFetcher(),
+            browserDetection: BrowserDetection(cacheTTL: 0),
+            selectedTokenAccountID: selectedTokenAccountID)
     }
 
     private struct StubClaudeFetcher: ClaudeUsageFetching {
-        func loadLatestUsage(model _: String) async throws -> ClaudeUsageSnapshot { throw ClaudeUsageError.parseFailed("stub") }
-        func debugRawProbe(model _: String) async -> String { "stub" }
-        func detectVersion() -> String? { nil }
+        func loadLatestUsage(model _: String) async throws -> ClaudeUsageSnapshot {
+            throw ClaudeUsageError.parseFailed("stub")
+        }
+
+        func debugRawProbe(model _: String) async -> String {
+            "stub"
+        }
+
+        func detectVersion() -> String? {
+            nil
+        }
     }
 }
