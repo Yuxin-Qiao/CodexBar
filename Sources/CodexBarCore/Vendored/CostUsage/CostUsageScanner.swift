@@ -5753,8 +5753,7 @@ enum CostUsageScanner {
         if let pending = context.pendingQueuePathCount,
            pending <= 1,
            context.isDiscoveryComplete,
-           incompleteSelectedFiles <= 1,
-           !context.hasKnownBoundedWork
+           incompleteSelectedFiles <= 1
         {
             completedFiles = min(completedFiles, totalFiles)
         } else {
