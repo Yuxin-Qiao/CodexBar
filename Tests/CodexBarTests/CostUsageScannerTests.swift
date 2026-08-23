@@ -861,16 +861,27 @@ struct CostUsageScannerTests {
 
         let day = try env.makeLocalNoon(year: 2025, month: 12, day: 20)
         let iso = env.isoString(for: day)
-        // A huge integer makes the fast byte parser decline this line so the
-        // JSONSerialization fallback parses it. The legacy nil-coalescing fallback
-        // would have used the present zero and undercounted cached input.
+        // The fast byte parser declines an escaped cache-read key, and the huge
+        // integer also defeats its nil-coalescing fallback. The line therefore
+        // reaches the JSONSerialization fallback, where the legacy
+        // nil-coalescing selection would have used the present zero and
+        // undercounted cached input.
         let hugeInteger = String(repeating: "9", count: 100)
-        let line = """
-        {"type":"event_msg","timestamp":"\(
-            iso)","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":\(
-            hugeInteger),"cached_input_tokens":0,"cache_read_input_tokens":25,
-            "output_tokens":10},"model":"openai/gpt-5.5"}}}
-        """
+        let cacheReadKey = "cache_\(String(UnicodeScalar(0x72)))ead_input_tokens"
+        let usageJSONParts = [
+            "{\"input_tokens\":\(hugeInteger)",
+            "\"cached_input_tokens\":0",
+            "\"\(cacheReadKey)\":25",
+            "\"output_tokens\":10}",
+        ]
+        let usageJSON = usageJSONParts.joined(separator: ",")
+        let eventJSONParts = [
+            "{\"type\":\"event_msg\",\"timestamp\":\"\(iso)\"",
+            "\"payload\":{\"type\":\"token_count\",\"info\":",
+            "{\"last_token_usage\":\(usageJSON),\"model\":\"openai/gpt-5.5\"}}}",
+        ]
+        let line = eventJSONParts.joined()
+        #expect(line.contains("\n") == false)
         let fileURL = try env.writeCodexSessionFile(
             day: day,
             filename: "fallback-cache-max.jsonl",
