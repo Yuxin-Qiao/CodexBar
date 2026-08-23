@@ -1168,24 +1168,22 @@ public struct CostUsageFetcher: Sendable {
         let sinceKey = CostUsageLocalDay.key(from: since, calendar: cal)
         let nowKey = CostUsageLocalDay.key(from: now, calendar: cal)
         let filtered = full.data.filter { $0.date >= sinceKey && $0.date <= nowKey }
-        let filteredSummary: CostUsageDailyReport.Summary? = {
-            guard !filtered.isEmpty else { return nil }
-            let costValues = filtered.compactMap(\.costUSD)
-            let totalCost: Double? = costValues.isEmpty ? nil : costValues.reduce(0, +)
-            let totalTokens = filtered.compactMap(\.totalTokens).reduce(0, +)
-            return .init(
-                totalInputTokens: nil,
-                totalOutputTokens: nil,
-                totalTokens: totalTokens,
-                totalCostUSD: totalCost)
-
-        }()
+        guard !filtered.isEmpty else { return nil }
+        let costValues = filtered.compactMap(\.costUSD)
+        let totalCost: Double? = costValues.isEmpty ? nil : costValues.reduce(0, +)
+        let totalTokens = filtered.compactMap(\.totalTokens).reduce(0, +)
+        let filteredSummary: CostUsageDailyReport.Summary = .init(
+            totalInputTokens: nil,
+            totalOutputTokens: nil,
+            totalTokens: totalTokens,
+            totalCostUSD: totalCost)
         let daily = CostUsageDailyReport(data: filtered, summary: filteredSummary)
         return Self.tokenSnapshot(
             from: daily,
             now: now,
             historyDays: historyDays,
             useCurrentLocalDayForSession: true,
+            calendar: cal,
             costProvenance: .listPriceEstimate)
     }
 
@@ -1201,24 +1199,22 @@ public struct CostUsageFetcher: Sendable {
         let sinceKey = CostUsageLocalDay.key(from: since, calendar: cal)
         let nowKey = CostUsageLocalDay.key(from: now, calendar: cal)
         let filtered = report.data.filter { $0.date >= sinceKey && $0.date <= nowKey }
-        let filteredSummary: CostUsageDailyReport.Summary? = {
-            guard !filtered.isEmpty else { return nil }
-            let costValues = filtered.compactMap(\.costUSD)
-            let totalCost: Double? = costValues.isEmpty ? nil : costValues.reduce(0, +)
-            let totalTokens = filtered.compactMap(\.totalTokens).reduce(0, +)
-            return .init(
-                totalInputTokens: nil,
-                totalOutputTokens: nil,
-                totalTokens: totalTokens,
-                totalCostUSD: totalCost)
-
-        }()
+        guard !filtered.isEmpty else { return nil }
+        let costValues = filtered.compactMap(\.costUSD)
+        let totalCost: Double? = costValues.isEmpty ? nil : costValues.reduce(0, +)
+        let totalTokens = filtered.compactMap(\.totalTokens).reduce(0, +)
+        let filteredSummary: CostUsageDailyReport.Summary = .init(
+            totalInputTokens: nil,
+            totalOutputTokens: nil,
+            totalTokens: totalTokens,
+            totalCostUSD: totalCost)
         let daily = CostUsageDailyReport(data: filtered, summary: filteredSummary)
         return Self.tokenSnapshot(
             from: daily,
             now: now,
             historyDays: historyDays,
             useCurrentLocalDayForSession: true,
+            calendar: cal,
             costProvenance: .unknown)
     }
 

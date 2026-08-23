@@ -182,11 +182,19 @@ enum CursorLocalCSVReader {
             df.dateFormat = fmt
             if let d = df.date(from: t) {
                 if fmt == "yyyy-MM-dd" {
+                    // Keep date-only rows in the configured calendar's day (noon in that calendar),
+                    // so UTC+13/14 users don't see the row shifted to the next local day.
                     var utcCal = Calendar(identifier: .gregorian)
                     utcCal.timeZone = TimeZone(secondsFromGMT: 0)!
-                    var c = utcCal.dateComponents([.year, .month, .day], from: d)
-                    c.hour = 12; c.minute = 0; c.second = 0; c.timeZone = TimeZone(secondsFromGMT: 0)
-                    return utcCal.date(from: c) ?? d
+                    let utcComps = utcCal.dateComponents([.year, .month, .day], from: d)
+                    var targetComps = DateComponents()
+                    targetComps.year = utcComps.year
+                    targetComps.month = utcComps.month
+                    targetComps.day = utcComps.day
+                    targetComps.hour = 12
+                    targetComps.minute = 0
+                    targetComps.second = 0
+                    return calendar.date(from: targetComps) ?? d
                 }
                 return d
             }
