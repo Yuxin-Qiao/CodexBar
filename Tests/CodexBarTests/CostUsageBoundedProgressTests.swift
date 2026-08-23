@@ -290,7 +290,7 @@ struct CostUsageBoundedProgressTests {
         #expect(firstMetrics.codexProgressAccountingVisits == 0)
         #expect(firstCache.codexActiveLookbackState?.pendingFilePaths == [incompletePath.resolvingTemporaryPath])
         #expect(firstCache.files[incompletePath]?.codexScanComplete == false)
-        #expect(firstCache.codexScanCompletedFiles == corpusSize)
+        #expect(firstCache.codexScanCompletedFiles == corpusSize - 1)
         #expect(firstCache.codexScanTotalFiles == corpusSize)
         #expect(firstCache.codexScanInventoryPaths == nil)
         #expect(firstCache.codexScanCatchUpPending == true)

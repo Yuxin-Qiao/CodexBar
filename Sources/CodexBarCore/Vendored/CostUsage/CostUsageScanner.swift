@@ -5618,11 +5618,17 @@ enum CostUsageScanner {
                 || refreshSelection.exhaustedVisitBudget
                 || cache.codexActiveLookbackState != nil
                 || fileIndex.hasPendingDiscovery
+            let hasDeferredWork = scanBudget.resumedPartialFileCount > 0
+                || scanBudget.deferredByBudgetFileCount > 0
+                || scanBudget.deferredByTimeBudgetFileCount > 0
+            let hasExhaustedVisitBudget = refreshSelection.exhaustedVisitBudget
             let progressUpdate = Self.updateCodexScanProgress(
                 cache: &cache,
                 context: CodexScanProgressUpdateContext(
                     inventoryPaths: filePathsInScan,
                     hasKnownBoundedWork: hasKnownBoundedWork,
+                    hasDeferredWork: hasDeferredWork,
+                    hasExhaustedVisitBudget: hasExhaustedVisitBudget,
                     canReuseApproximateProgress: canReuseApproximateProgress,
                     pendingQueuePathCount: cache.codexActiveLookbackState?.pendingFilePaths.count,
                     isDiscoveryComplete: !fileIndex.hasPendingDiscovery,
@@ -5694,6 +5700,8 @@ enum CostUsageScanner {
     private struct CodexScanProgressUpdateContext {
         let inventoryPaths: Set<String>
         let hasKnownBoundedWork: Bool
+        let hasDeferredWork: Bool
+        let hasExhaustedVisitBudget: Bool
         let canReuseApproximateProgress: Bool
         let pendingQueuePathCount: Int?
         let isDiscoveryComplete: Bool
@@ -5748,13 +5756,15 @@ enum CostUsageScanner {
         // Bounded work previously kept one slot open until an exact traversal, which stalled
         // 471/472 when only one large file remained. Allow that final file to close only after
         // both the pending queue and file discovery have drained; catch-up still waits for the
-        // exact inventory validation below.
+        // exact inventory validation below. Keep deferred bounded work below full progress:
+        // selection exhaustion or time/budget deferral must not publish 100% prematurely.
         let incompleteSelectedFiles = statesAfterScan.values.count(where: { !$0 })
-        if let pending = context.pendingQueuePathCount,
-           pending <= 1,
-           context.isDiscoveryComplete,
-           incompleteSelectedFiles <= 1
-        {
+        let canCloseFinalFile = context.isDiscoveryComplete
+            && !context.hasDeferredWork
+            && !context.hasExhaustedVisitBudget
+            && incompleteSelectedFiles == 0
+            && (context.pendingQueuePathCount ?? 0) <= 1
+        if canCloseFinalFile {
             completedFiles = min(completedFiles, totalFiles)
         } else {
             completedFiles = min(completedFiles, max(0, totalFiles - max(1, incompleteSelectedFiles)))

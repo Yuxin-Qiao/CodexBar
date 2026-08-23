@@ -77,6 +77,7 @@ actor CostUsageStore {
         parserHash: CodexParserHash.value)
     static let cacheGeneration = "sqlite:\(CostUsageStore.schemaVersion)"
     static let compatiblePredecessorParserHashes: Set<String> = [
+        "64e8694e0254c4af", // Previous PR hash before deferred-work fix; persisted rows unchanged.
         "3c984b655688593f", // 0.54.1 current main; immediate predecessor for ab7f upgrade.
         "2d17f4981b78d07f", // 0.54.0 release; this branch changes only progress bookkeeping.
         "98da5914d2f6a9cd", // Pushed PR producer before retry signaling; persisted rows unchanged.
