@@ -833,7 +833,7 @@ struct AntigravityOfflineFetchStrategy: ProviderFetchStrategy {
             updatedAt: Date(),
             identity: ProviderIdentitySnapshot(
                 providerID: .antigravity,
-                accountEmail: AntigravitySelectedAccountGuard.selectedAccountEmail(context: context),
+                accountEmail: nil,
                 accountOrganization: nil,
                 loginMethod: "offline"))
         return self.makeResult(usage: snapshot, sourceLabel: "offline")
