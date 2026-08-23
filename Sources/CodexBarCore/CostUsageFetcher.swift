@@ -428,6 +428,7 @@ public struct CostUsageFetcher: Sendable {
 
         var remoteSnapshot: CostUsageTokenSnapshot?
         var remoteError: Error?
+        // Provider-specific by design: Cursor may fall back to local CSV when its remote dashboard is unavailable.
         do {
             remoteSnapshot = try await self.loadRemoteTokenSnapshot(
                 provider: provider,
@@ -445,7 +446,7 @@ public struct CostUsageFetcher: Sendable {
             return remoteSnapshot
         }
 
-        // Provider-specific by design: Cursor local CSV is an offline fallback for the remote dashboard API.
+        // Provider-specific by design: Cursor and Antigravity local readers backfill providers without remote history.
         let fallbackCalendar = Self.resolvedScannerOptions(
             overrideScannerOptions,
             provider: provider,
@@ -458,7 +459,6 @@ public struct CostUsageFetcher: Sendable {
         if let remoteError {
             throw remoteError
         }
-        // Provider-specific by design: Antigravity local cache (tokscale) supplements the quota-only probe.
         if provider == .antigravity, let local = await self.loadAntigravityLocalSnapshot(
             now: now, historyDays: clampedHistoryDays, calendar: fallbackCalendar)
         {
