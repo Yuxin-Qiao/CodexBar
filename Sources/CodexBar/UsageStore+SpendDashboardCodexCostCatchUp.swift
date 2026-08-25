@@ -26,8 +26,17 @@ extension UsageStore {
         // A user-requested stop must stay durable until they explicitly resume; background
         // synchronization would otherwise restart the worker behind their back.
         guard !self.spendDashboardCodexCostCatchUpStopRequested else { return }
-        let mode = preferredMode
+        var mode = preferredMode
             ?? (self.spendDashboardCodexCostCatchUpTask == nil ? .automatic : self.spendDashboardCodexCostCatchUpMode)
+        if preferredMode == .accelerated,
+           self.spendDashboardCodexCostCatchUpTask == nil
+           || self.spendDashboardCodexCostCatchUpMode != .accelerated,
+           case .pause = self.spendDashboardCodexCostCatchUpDecision(
+               mode: .automatic,
+               previousActiveDuration: nil).action
+        {
+            mode = .automatic
+        }
         self.startSpendDashboardCodexCostCatchUpIfNeeded(accounts: accounts, mode: mode)
     }
 
@@ -314,7 +323,7 @@ extension UsageStore {
                 now: now,
                 codexHomePath: account.homePath,
                 historyDays: historyDays,
-                scanDurationPerRefresh: 10,
+                scanDurationPerRefresh: self.spendDashboardCodexCostCatchUpMode.scanDurationPerRefresh,
                 calendar: self.settings.costUsageBucketCalendar)
     }
 

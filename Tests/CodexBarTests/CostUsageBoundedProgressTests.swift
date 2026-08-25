@@ -786,6 +786,7 @@ struct CostUsageBoundedProgressTests {
             == CostUsageScanner.codexCatchUpScanCandidateLimit)
         #expect(stoppedCache.files[incompletePath]?.codexScanComplete == false)
         #expect(stoppedCache.codexScanCatchUpPending == true)
+        #expect(try #require(stoppedCache.codexScanCompletedFiles) < #require(stoppedCache.codexScanTotalFiles))
     }
 
     @Test

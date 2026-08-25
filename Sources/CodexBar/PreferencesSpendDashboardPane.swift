@@ -332,18 +332,10 @@ struct SpendDashboardPane: View {
                 preferredMode: .automatic)
             return
         }
-        if self.store.spendDashboardCodexCostCatchUpTask == nil {
-            self.store.synchronizeSpendDashboardCodexCostCatchUp(
-                accounts: self.codexSpendScanRequests,
-                preferredMode: .accelerated)
-        } else if !self.userSelectedBackground {
-            self.store.synchronizeSpendDashboardCodexCostCatchUp(
-                accounts: self.codexSpendScanRequests,
-                preferredMode: .accelerated)
-        } else {
-            self.store.synchronizeSpendDashboardCodexCostCatchUp(
-                accounts: self.codexSpendScanRequests)
-        }
+        let preferredMode: CodexCostCatchUpMode? = self.userSelectedBackground ? nil : .accelerated
+        self.store.synchronizeSpendDashboardCodexCostCatchUp(
+            accounts: self.codexSpendScanRequests,
+            preferredMode: preferredMode)
     }
 
     private func startCodexCostCatchUp(mode: CodexCostCatchUpMode) {
@@ -422,6 +414,7 @@ struct SpendDashboardPane: View {
             SpendDashboardPanel {
                 SpendActivityHeatmapView(
                     points: self.controller.model.tokenActivity,
+                    calendar: self.settings.costUsageBucketCalendar,
                     selectedDay: self.controller.selectedDay,
                     onSelectDay: { day in
                         self.controller.selectDay(day)

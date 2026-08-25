@@ -82,6 +82,54 @@ struct SpendDashboardPublicationTests {
     }
 
     @Test
+    func `synchronizes independent snapshot publications`() async {
+        let settings = testSettingsStore(suiteName: "SpendDashboardPublicationTests-independent-sync")
+        settings.costUsageEnabled = true
+        for provider in UsageProvider.allCases {
+            guard let metadata = ProviderRegistry.shared.metadata[provider] else { continue }
+            settings.setProviderEnabled(
+                provider: provider,
+                metadata: metadata,
+                enabled: provider == .claude)
+        }
+        settings.costUsageBucketTimeZoneIdentifier = "UTC"
+        let store = UsageStore(
+            fetcher: UsageFetcher(environment: [:]),
+            browserDetection: BrowserDetection(cacheTTL: 0),
+            settings: settings,
+            startupBehavior: .testing,
+            environmentBase: [:])
+
+        // Seed before observation starts so the post-start publication below has a distinct
+        // publication revision. Codex stays disabled: the regular publisher must not mask the
+        // independent synchronization under test.
+        store._setSpendDashboardTokenSnapshotForTesting(nil, for: .claude)
+        store.startSharedSpendDashboardPublication()
+        defer { store.stopSharedSpendDashboardPublication() }
+        let seeded = SpendDashboardSource.configuration(settings: settings, store: store)
+        await Self.waitUntil {
+            store.spendDashboardPublication.configuration == seeded
+        }
+
+        let refreshedSnapshot = Self.input(id: "claude", provider: .claude, cost: 2.5).snapshot
+        store._setSpendDashboardTokenSnapshotForTesting(refreshedSnapshot, for: .claude)
+
+        // The independent publication boundary must schedule the shared-dashboard sync itself;
+        // removing that call leaves this assertion green only if the regular publisher is used.
+        #expect(store._test_hasPendingSpendDashboardTokenPublicationSync)
+
+        let synchronized = SpendDashboardSource.configuration(settings: settings, store: store)
+        #expect(synchronized != seeded)
+        await Self.waitUntil {
+            store.spendDashboardPublication.configuration == synchronized &&
+                store.spendDashboardPublication.inputs.contains { $0.id == "claude" }
+        }
+
+        #expect(store.spendDashboardPublication.inputs.first { $0.id == "claude" }?
+            .snapshot.last30DaysCostUSD == 2.5)
+    }
+
+    @Test
     func `shared publication starts and stops in-flight Codex dashboard catch-up`() async throws {
         let settings = testSettingsStore(suiteName: "SpendDashboardPublicationTests-codex-catch-up")
         settings.costUsageEnabled = true
@@ -763,7 +811,9 @@ struct SpendDashboardPublicationTests {
     }
 
     private static func waitUntil(_ condition: @MainActor () -> Bool) async {
-        let deadline = Date().addingTimeInterval(5)
+        // Loaded macOS CI can stall MainActor startup long enough for a seeded confirmed-empty
+        // snapshot to age out; wait well past that boundary before treating publication as absent.
+        let deadline = Date().addingTimeInterval(30)
         while Date() < deadline {
             if condition() {
                 return

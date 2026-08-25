@@ -77,22 +77,24 @@ actor CostUsageStore {
         parserHash: CodexParserHash.value)
     static let cacheGeneration = "sqlite:\(CostUsageStore.schemaVersion)"
     static let compatiblePredecessorParserHashes: Set<String> = [
-        "64e8694e0254c4af", // Previous PR hash before deferred-work fix; persisted rows unchanged.
-        "3c984b655688593f", // 0.54.1 current main; immediate predecessor for ab7f upgrade.
-        "2d17f4981b78d07f", // 0.54.0 release; this branch changes only progress bookkeeping.
+        "cfd84d13ad7d4cfa", // 0.55.x scan scheduling and progress bookkeeping; persisted rows unchanged.
         "98da5914d2f6a9cd", // Pushed PR producer before retry signaling; persisted rows unchanged.
         "43609cc56f76a003", // 0.49.3 request-tier pricing; persisted row shape unchanged.
         "b975eb705f905b9a", // 0.49.0-0.49.2 SQLite producer with compatible rows.
         "47144baa8daccf52", // This branch changes only scan scheduling, discovery, and persistence bookkeeping.
         "2d17f4981b78d07f", // Persisted priority-turn cursor; parser and persisted row shape unchanged.
+        "3c984b655688593f", // 0.54.x row-ownership evidence fix; parser and persisted row shape unchanged.
+        "5f8507161b23757c", // 0.54.2 tokscale parity + priority evidence; persisted row shape unchanged.
     ]
 
     /// Test-only crash injection: invoked inside `saveCodexCache`'s transaction after each
     /// persisted file with the running count, so a crash-safety harness can SIGKILL the
     /// process at a deterministic mid-save point. Never set in production.
     nonisolated(unsafe) static var saveCycleCheckpointForTesting: ((Int) -> Void)?
-    /// Test-only interleaving point after optimistic identity succeeds and before its writer lock.
-    nonisolated(unsafe) static var identicalContentPreLockCheckpointForTesting: (() -> Void)?
+    /// Test-only interleaving point scoped to one database so parallel store fixtures stay isolated.
+    nonisolated(unsafe) static var identicalContentPreLockCheckpointForTesting: (
+        databaseURL: URL,
+        checkpoint: () -> Void)?
 
     /// Test-only traversal proof for persisted Codex catch-up reconciliation. Never set in production.
     nonisolated(unsafe) static var codexCatchUpReconciliationVisitForTesting: (() -> Void)?
