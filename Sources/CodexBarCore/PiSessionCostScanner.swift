@@ -15,6 +15,7 @@ private final class PiSessionISO8601FormatterBox: @unchecked Sendable {
     }()
 }
 
+// swiftlint:disable:next type_body_length
 enum PiSessionCostScanner {
     @TaskLocal static var sessionParseObserverForTesting: (@Sendable () -> Void)?
 
@@ -110,7 +111,7 @@ enum PiSessionCostScanner {
         checkCancellation: CostUsageScanner.CancellationCheck?) throws -> CostUsageDailyReport
     {
         // Provider-specific by design: Pi records only OpenAI Codex and Anthropic sessions with distinct pricing.
-        guard provider == .codex || provider == .claude else {
+        guard provider == .codex || provider == .claude || provider == .pi else {
             return CostUsageDailyReport(data: [], summary: nil)
         }
 
@@ -190,6 +191,20 @@ enum PiSessionCostScanner {
                 calendar: range.calendar)
         }
 
+        // Provider-specific by design: the Pi provider aggregates its Codex and Claude-priced local sessions.
+        if provider == .pi {
+            let codexReport = self.buildReport(
+                provider: .codex,
+                cache: cache,
+                range: range,
+                pricingContext: pricingContext)
+            let claudeReport = self.buildReport(
+                provider: .claude,
+                cache: cache,
+                range: range,
+                pricingContext: pricingContext)
+            return CostUsageDailyReport.merged([codexReport, claudeReport])
+        }
         return self.buildReport(
             provider: provider,
             cache: cache,
@@ -228,7 +243,8 @@ enum PiSessionCostScanner {
         calendar: Calendar = .current,
         allowEstablishedEmpty: Bool = false) -> CachedDailyReportResult?
     {
-        guard provider == .codex || provider == .claude else { return nil }
+        // Provider-specific by design: cached Pi history is the merged Codex/Claude report above.
+        guard provider == .codex || provider == .claude || provider == .pi else { return nil }
 
         let range = CostUsageScanner.CostUsageDayRange(since: since, until: until, calendar: calendar)
         let cache = PiSessionCostCacheIO.load(cacheRoot: cacheRoot)
@@ -238,12 +254,27 @@ enum PiSessionCostScanner {
         guard !self.requestedWindowExpandsCache(range: range, cache: cache) else { return nil }
 
         let pricingContext = self.pricingContext(now: now, cacheRoot: cacheRoot)
-        guard cache.pricingKey == pricingContext.pricingKey else { return nil }
-        let report = self.buildReport(
-            provider: provider,
-            cache: cache,
-            range: range,
-            pricingContext: pricingContext)
+        guard pricingContext.matches(cache.pricingKey) else { return nil }
+        let report = if provider == .pi {
+            CostUsageDailyReport.merged([
+                self.buildReport(
+                    provider: .codex,
+                    cache: cache,
+                    range: range,
+                    pricingContext: pricingContext),
+                self.buildReport(
+                    provider: .claude,
+                    cache: cache,
+                    range: range,
+                    pricingContext: pricingContext),
+            ])
+        } else {
+            self.buildReport(
+                provider: provider,
+                cache: cache,
+                range: range,
+                pricingContext: pricingContext)
+        }
         guard allowEstablishedEmpty || !report.data.isEmpty else { return nil }
         let lastScanAt = cache.lastScanUnixMs > 0
             ? Date(timeIntervalSince1970: TimeInterval(cache.lastScanUnixMs) / 1000)
@@ -291,6 +322,7 @@ enum PiSessionCostScanner {
         }
 
         let home = FileManager.default.homeDirectoryForCurrentUser
+        // Provider-specific by design: Pi-family stores use the fixed .pi and .omp home directories.
         return [".pi", ".omp"].map { directory in
             home
                 .appendingPathComponent(directory, isDirectory: true)
@@ -838,6 +870,7 @@ enum PiSessionCostScanner {
         pricingDate: Date? = nil,
         pricingContext: ModelsDevPricingContext? = nil) -> Double?
     {
+        // Provider-specific by design: Pi pricing delegates to the Codex and Claude tariff calculators.
         switch provider {
         case .codex:
             // Pi records input, cache reads, and cache writes as disjoint counts. Codex pricing
@@ -852,6 +885,7 @@ enum PiSessionCostScanner {
                 pricingDate: pricingDate,
                 modelsDevCatalog: pricingContext?.catalog,
                 modelsDevCacheRoot: pricingContext?.cacheRoot)
+        // Provider-specific by design: Claude uses its own first-party input/cache/output tariff.
         case .claude:
             CostUsagePricing.claudeCostUSD(
                 model: modelName,
@@ -887,6 +921,7 @@ enum PiSessionCostScanner {
 
 extension PiSessionCostScanner {
     private static func mappedProvider(fromPiProvider provider: String) -> UsageProvider? {
+        // Provider-specific by design: Pi currently records the Codex and Anthropic integrations it can price.
         switch provider.lowercased() {
         case "openai-codex":
             .codex
