@@ -197,9 +197,66 @@ extension CodexBarCLI {
         }
 
         let hintLine = Self.costEstimateHint(provider: provider)
-        return [header, todayLine, monthLine, meteredLine, hintLine]
-            .compactMap(\.self)
-            .joined(separator: "\n")
+        var lines: [String?] = [header, todayLine, monthLine, meteredLine]
+        if !snapshot.daily.isEmpty {
+            lines.append(contentsOf: Self.claudeTokenDetailLines(snapshot: snapshot, useColor: useColor))
+        }
+        lines.append(hintLine)
+        return lines.compactMap(\.self).joined(separator: "\n")
+    }
+
+    // MARK: - Tokscale-inspired Claude token detail (daily + model breakdown)
+    private static func claudeTokenDetailLines(snapshot: CostUsageTokenSnapshot, useColor: Bool) -> [String] {
+        guard !snapshot.daily.isEmpty else { return [] }
+        var out: [String] = []
+        // Daily breakdown — last up to 7 days, newest first (mirrors tokscale daily view).
+        let sortedDaily = snapshot.daily.sorted { $0.date > $1.date }
+        let recent = Array(sortedDaily.prefix(7))
+        if !recent.isEmpty {
+            out.append("")
+            let title = "Daily breakdown (last \(recent.count) days):"
+            out.append(useColor ? "\u{001B}[1m\(title)\u{001B}[0m" : title)
+            for entry in recent.reversed() {
+                let cost = entry.costUSD.map { UsageFormatter.currencyString($0, currencyCode: snapshot.currencyCode) } ?? "\u{2014}"
+                let total = entry.totalTokens.map { UsageFormatter.tokenCountString($0) } ?? "\u{2014}"
+                var parts: [String] = []
+                if let v = entry.inputTokens { parts.append("in \(UsageFormatter.tokenCountString(v))") }
+                if let v = entry.outputTokens { parts.append("out \(UsageFormatter.tokenCountString(v))") }
+                if let v = entry.cacheReadTokens, v > 0 { parts.append("cacheRead \(UsageFormatter.tokenCountString(v))") }
+                if let v = entry.cacheCreationTokens, v > 0 { parts.append("cacheCreate \(UsageFormatter.tokenCountString(v))") }
+                let mix = parts.isEmpty ? "" : " (" + parts.joined(separator: ", ") + ")"
+                let models = entry.modelsUsed?.isEmpty == false ? " \u{00B7} " + entry.modelsUsed!.prefix(2).joined(separator: ", ") + (entry.modelsUsed!.count > 2 ? " +\(entry.modelsUsed!.count - 2)" : "") : ""
+                out.append("\(entry.date): \(cost) \u{00B7} \(total) tokens\(mix)\(models)")
+            }
+        }
+        // Top models — aggregate across daily modelBreakdowns (mirrors tokscale models view).
+        var modelAgg: [String: (cost: Double, tokens: Int, days: Set<String>)] = [:]
+        for entry in snapshot.daily {
+            for b in entry.modelBreakdowns ?? [] {
+                var cur = modelAgg[b.modelName] ?? (0, 0, [])
+                cur.cost += b.costUSD ?? 0
+                cur.tokens += b.totalTokens ?? 0
+                cur.days.insert(entry.date)
+                modelAgg[b.modelName] = cur
+            }
+        }
+        if !modelAgg.isEmpty {
+            let sorted = modelAgg.sorted { lhs, rhs in
+                if lhs.value.cost != rhs.value.cost { return lhs.value.cost > rhs.value.cost }
+                return lhs.value.tokens > rhs.value.tokens
+            }
+            out.append("")
+            let title = "Top models (\(snapshot.historyLabel ?? "Last \(snapshot.historyDays) days")):"
+            out.append(useColor ? "\u{001B}[1m\(title)\u{001B}[0m" : title)
+            for (idx, item) in sorted.prefix(5).enumerated() {
+                let cost = UsageFormatter.currencyString(item.value.cost, currencyCode: snapshot.currencyCode)
+                let tokens = UsageFormatter.tokenCountString(item.value.tokens)
+                let days = item.value.days.count
+                let display = UsageFormatter.modelDisplayName(item.key)
+                out.append("\(idx + 1). \(display) \u{2014} \(cost) \u{00B7} \(tokens) tokens (\(days) day\(days == 1 ? "" : "s"))")
+            }
+        }
+        return out
     }
 
     private static func renderProjectCostText(header: String, snapshot: CostUsageTokenSnapshot) -> String {

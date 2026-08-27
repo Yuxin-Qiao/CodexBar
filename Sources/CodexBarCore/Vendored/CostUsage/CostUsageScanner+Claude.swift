@@ -106,6 +106,9 @@ extension CostUsageScanner {
         modelsDevCacheRoot: URL? = nil,
         checkCancellation: CancellationCheck? = nil) throws -> ClaudeParseResult
     {
+        guard !Self.isClaudeWorkflowJournal(fileURL: fileURL) else {
+            return ClaudeParseResult(days: [:], rows: [], parsedBytes: startOffset)
+        }
         func add(dayKey: String, model: String, tokens: ClaudeTokens, days: inout [String: [String: [Int]]]) {
             guard CostUsageDayRange.isInRange(dayKey: dayKey, since: range.scanSinceKey, until: range.scanUntilKey)
             else { return }
@@ -281,6 +284,17 @@ extension CostUsageScanner {
         guard let cacheCreation = usage["cache_creation"] as? [String: Any] else { return 0 }
         let tokens = (cacheCreation["ephemeral_1h_input_tokens"] as? NSNumber)?.intValue ?? 0
         return min(total, max(0, tokens))
+    }
+
+    /// True for nested-layout workflow orchestration journals
+    /// (`.../<session>/subagents/**/journal.jsonl`).
+    /// Mirrors tokscale's `is_workflow_journal`: these files share the `.jsonl`
+    /// extension but are workflow metadata, not message transcripts. They are
+    /// discovered by the recursive projects walk and must be excluded so a
+    /// future journal schema cannot leak token-like fields.
+    private static func isClaudeWorkflowJournal(fileURL: URL) -> Bool {
+        guard fileURL.lastPathComponent == "journal.jsonl" else { return false }
+        return fileURL.path.contains("/subagents/")
     }
 
     private static func claudePathRole(fileURL: URL) -> ClaudePathRole {
@@ -609,6 +623,7 @@ extension CostUsageScanner {
         mtimeMs: Int64,
         state: ClaudeScanState) throws
     {
+        guard !Self.isClaudeWorkflowJournal(fileURL: url) else { return }
         try state.checkCancellation?()
         let path = url.path
 
@@ -686,6 +701,7 @@ extension CostUsageScanner {
 
             for case let url as URL in enumerator {
                 try checkCancellation?()
+                guard !Self.isClaudeWorkflowJournal(fileURL: url) else { continue }
                 guard url.pathExtension.lowercased() == "jsonl" else { continue }
                 guard let stamp = CostUsageClaudeFileStamp.read(at: url), stamp.size > 0 else { continue }
                 inventory.files[url.path] = ClaudeSourceFile(url: url, stamp: stamp)
