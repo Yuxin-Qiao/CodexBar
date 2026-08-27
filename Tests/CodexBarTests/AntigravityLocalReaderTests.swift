@@ -101,29 +101,22 @@ struct AntigravityLocalReaderTests {
     @Test
     func `protobuf reader decodes varint and string fields accurately`() {
         let blob = Self.buildGenMetadataBlob()
-        let chatModel = AntigravityProtoReader.messageField(blob, field: 1)
-        #expect(chatModel != nil)
-        if let chatModel {
-            let model = AntigravityProtoReader.stringField(chatModel, field: 19)
-            let label = AntigravityProtoReader.stringField(chatModel, field: 21)
-            #expect(model == "gemini-3.6-flash")
-            #expect(label == "Gemini 3.6 Flash (High)")
+        let turn = AntigravityProtoReader.parseTurn(blob)
+        #expect(turn != nil)
+        if let turn {
+            #expect(turn.model == "gemini-3.6-flash")
+            #expect(turn.label == "Gemini 3.6 Flash (High)")
+            #expect(turn.timestampMs == 1_781_000_000_250)
 
-            let usage = AntigravityProtoReader.messageField(chatModel, field: 4)
+            let usage = turn.usage
             #expect(usage != nil)
             if let usage {
-                let sys = AntigravityProtoReader.varintField(usage, field: 1)
-                let input = AntigravityProtoReader.varintField(usage, field: 2)
-                let cacheRead = AntigravityProtoReader.varintField(usage, field: 5)
-                let output = AntigravityProtoReader.varintField(usage, field: 9)
-                let reasoning = AntigravityProtoReader.varintField(usage, field: 10)
-                let respID = AntigravityProtoReader.stringField(usage, field: 11)
-                #expect(sys == 1132)
-                #expect(input == 500)
-                #expect(cacheRead == 100)
-                #expect(output == 300)
-                #expect(reasoning == 40)
-                #expect(respID == "resp-1")
+                #expect(usage.systemPrompt == 1132)
+                #expect(usage.newInput == 500)
+                #expect(usage.cacheRead == 100)
+                #expect(usage.output == 300)
+                #expect(usage.reasoning == 40)
+                #expect(usage.responseID == "resp-1")
             }
         }
     }
@@ -145,7 +138,7 @@ struct AntigravityLocalReaderTests {
         #expect(varintReader.readVarint() == nil)
         #expect(varintReader.isMalformed)
 
-        // Invalid nanos in timestamp
+        // Invalid nanos in timestamp (> 999,999,999)
         let invalidNanosMsg: [UInt8] = Self.encodeVarint(1, 1_780_000_000) + Self.encodeVarint(2, 1_000_000_000)
         #expect(AntigravityProtoReader.protoTimestampMs(invalidNanosMsg) == nil)
     }
@@ -179,22 +172,6 @@ struct AntigravityLocalReaderTests {
 
         sqlite3_exec(db, "CREATE TABLE gen_metadata (idx INTEGER PRIMARY KEY, data BLOB, size INTEGER);", nil, nil, nil)
         sqlite3_exec(db, "CREATE TABLE trajectory_metadata_blob (id TEXT PRIMARY KEY, data BLOB);", nil, nil, nil)
-
-        let trajBlob = Self.buildTrajectoryBlob()
-        var trajStmt: OpaquePointer?
-        if sqlite3_prepare_v2(
-            db,
-            "INSERT INTO trajectory_metadata_blob (id, data) VALUES ('main', ?)",
-            -1,
-            &trajStmt,
-            nil) == SQLITE_OK
-        {
-            _ = trajBlob.withUnsafeBytes { ptr in
-                sqlite3_bind_blob(trajStmt, 1, ptr.baseAddress, Int32(trajBlob.count), nil)
-            }
-            sqlite3_step(trajStmt)
-            sqlite3_finalize(trajStmt)
-        }
 
         let blob1 = Self.buildGenMetadataBlob(
             model: "gemini-3.6-flash",
@@ -233,7 +210,7 @@ struct AntigravityLocalReaderTests {
     }
 
     @Test
-    func `discovery to report to snapshot end-to-end`() throws {
+    func `production end-to-end token snapshot via CostUsageFetcher`() async throws {
         #if canImport(SQLite3) || canImport(CSQLite3)
         let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
@@ -242,7 +219,7 @@ struct AntigravityLocalReaderTests {
         let convDir = tmp.appendingPathComponent(".gemini/antigravity/conversations", isDirectory: true)
         try FileManager.default.createDirectory(at: convDir, withIntermediateDirectories: true)
 
-        let dbURL = convDir.appendingPathComponent("session-1.db")
+        let dbURL = convDir.appendingPathComponent("session-prod.db")
         var db: OpaquePointer?
         guard sqlite3_open_v2(dbURL.path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nil) == SQLITE_OK,
               let db
@@ -260,7 +237,7 @@ struct AntigravityLocalReaderTests {
             output: 200,
             cacheRead: 50,
             reasoning: 20,
-            responseID: "r-discovery",
+            responseID: "r-prod",
             timestampSeconds: 1_781_000_000)
 
         var stmt: OpaquePointer?
@@ -274,28 +251,12 @@ struct AntigravityLocalReaderTests {
         }
         sqlite3_close(db)
 
-        let discovered = AntigravityLocalReader.cliDBPaths(home: tmp)
-        #expect(discovered.count == 1)
-
-        let outcome = AntigravityLocalReader.parseCLIDBsWithStatus(paths: discovered)
-        #expect(outcome.isComplete)
-        #expect(outcome.entries.count == 1)
-
-        let report = CostUsageDailyReport(
-            data: outcome.entries,
-            summary: .init(
-                totalInputTokens: nil,
-                totalOutputTokens: nil,
-                totalTokens: outcome.entries.first?.totalTokens,
-                totalCostUSD: nil))
-
         let now = Date(timeIntervalSince1970: 1_781_000_000)
-        let snapshot = CostUsageFetcher.tokenSnapshot(
-            from: report,
+        let snapshot = try await CostUsageFetcher.loadTokenSnapshot(
+            provider: .antigravity,
+            environment: ["HOME": tmp.path],
             now: now,
-            historyDays: 30,
-            useCurrentLocalDayForSession: true,
-            historyCoverageIsEstablished: outcome.isComplete)
+            historyDays: 30)
 
         #expect(snapshot.sessionTokens == 2402)
         #expect(snapshot.last30DaysTokens == 2402)
@@ -306,28 +267,34 @@ struct AntigravityLocalReaderTests {
     }
 
     @Test
-    func `WAL and SHM sidecars are preserved and unmodified`() throws {
+    func `live WAL fixture snapshot consistency and sidecar preservation`() throws {
         #if canImport(SQLite3) || canImport(CSQLite3)
         let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tmp) }
 
-        let dbURL = tmp.appendingPathComponent("sidecar-test.db")
-        let walURL = tmp.appendingPathComponent("sidecar-test.db-wal")
-        let shmURL = tmp.appendingPathComponent("sidecar-test.db-shm")
+        let dbURL = tmp.appendingPathComponent("live-wal.db")
+        let walURL = tmp.appendingPathComponent("live-wal.db-wal")
+        let shmURL = tmp.appendingPathComponent("live-wal.db-shm")
 
-        var db: OpaquePointer?
-        guard sqlite3_open_v2(dbURL.path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nil) == SQLITE_OK,
-              let db
+        var writeDB: OpaquePointer?
+        guard sqlite3_open_v2(dbURL.path, &writeDB, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nil) == SQLITE_OK,
+              let writeDB
         else {
-            Issue.record("Failed to create db")
+            Issue.record("Failed to create live WAL db")
             return
         }
-        sqlite3_exec(db, "PRAGMA journal_mode=WAL;", nil, nil, nil)
-        sqlite3_exec(db, "CREATE TABLE gen_metadata (idx INTEGER PRIMARY KEY, data BLOB, size INTEGER);", nil, nil, nil)
-        let blob = Self.buildGenMetadataBlob(responseID: "sidecar-r1")
+        sqlite3_exec(writeDB, "PRAGMA journal_mode=WAL;", nil, nil, nil)
+        sqlite3_exec(
+            writeDB,
+            "CREATE TABLE gen_metadata (idx INTEGER PRIMARY KEY, data BLOB, size INTEGER);",
+            nil,
+            nil,
+            nil)
+
+        let blob = Self.buildGenMetadataBlob(responseID: "live-wal-r1")
         var stmt: OpaquePointer?
-        if sqlite3_prepare_v2(db, "INSERT INTO gen_metadata (idx, data, size) VALUES (0, ?, ?)", -1, &stmt, nil) ==
+        if sqlite3_prepare_v2(writeDB, "INSERT INTO gen_metadata (idx, data, size) VALUES (0, ?, ?)", -1, &stmt, nil) ==
             SQLITE_OK
         {
             _ = blob.withUnsafeBytes { ptr in sqlite3_bind_blob(stmt, 1, ptr.baseAddress, Int32(blob.count), nil) }
@@ -335,17 +302,17 @@ struct AntigravityLocalReaderTests {
             sqlite3_step(stmt)
             sqlite3_finalize(stmt)
         }
-        sqlite3_close(db)
 
-        let walData = Data([0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04])
-        try walData.write(to: walURL)
-
+        // Keep writeDB open to simulate a live process holding WAL lock and sidecars
         let entries = AntigravityLocalReader.parseCLIDBs(paths: [dbURL])
         #expect(entries.count == 1)
+        #expect(entries.first?.totalTokens == 2072)
 
+        #expect(FileManager.default.fileExists(atPath: dbURL.path))
         #expect(FileManager.default.fileExists(atPath: walURL.path))
-        let readWal = try Data(contentsOf: walURL)
-        #expect(readWal == walData)
+        #expect(FileManager.default.fileExists(atPath: shmURL.path))
+
+        sqlite3_close(writeDB)
         #endif
     }
 
@@ -517,6 +484,44 @@ struct AntigravityLocalReaderTests {
         let outcome = AntigravityLocalReader.parseCLIDBsWithStatus(paths: [dbURL])
         #expect(outcome.isComplete == false)
         #endif
+    }
+
+    @Test
+    func `consumer overflow safety across days`() {
+        let day1 = CostUsageDailyReport.Entry(
+            date: "2026-08-20",
+            inputTokens: Int.max - 1,
+            outputTokens: 0,
+            cacheReadTokens: 0,
+            cacheCreationTokens: 0,
+            reasoningTokens: 0,
+            totalTokens: Int.max - 1,
+            requestCount: 1,
+            costUSD: nil,
+            modelsUsed: ["gemini-pro"],
+            modelBreakdowns: nil)
+        let day2 = CostUsageDailyReport.Entry(
+            date: "2026-08-21",
+            inputTokens: 2,
+            outputTokens: 0,
+            cacheReadTokens: 0,
+            cacheCreationTokens: 0,
+            reasoningTokens: 0,
+            totalTokens: 2,
+            requestCount: 1,
+            costUSD: nil,
+            modelsUsed: ["gemini-pro"],
+            modelBreakdowns: nil)
+
+        let report = CostUsageDailyReport(data: [day1, day2], summary: nil)
+        let snapshot = CostUsageFetcher.tokenSnapshot(
+            from: report,
+            now: Date(),
+            historyDays: 30)
+
+        // Verifies summary reduction does not trap when summing (Int.max - 1) + 2
+        let summary = snapshot.summary(forLastDays: 30)
+        #expect(summary.totalTokens == nil)
     }
 
     @Test
