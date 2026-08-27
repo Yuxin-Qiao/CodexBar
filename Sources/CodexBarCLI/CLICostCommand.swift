@@ -205,56 +205,143 @@ extension CodexBarCLI {
         return lines.compactMap(\.self).joined(separator: "\n")
     }
 
-    // MARK: - Tokscale-inspired Claude token detail (daily + model breakdown)
+    private struct ClaudeModelAggregation: Sendable {
+        var cost: Double?
+        var tokens: Int?
+        var hasUnknownCost = false
+        var hasUnknownTokens = false
+        var days = Set<String>()
+    }
+
+    // MARK: - Tokscale-inspired token detail (daily + model breakdown) — generic for any provider with daily data
+
     private static func claudeTokenDetailLines(snapshot: CostUsageTokenSnapshot, useColor: Bool) -> [String] {
-        guard !snapshot.daily.isEmpty else { return [] }
         var out: [String] = []
-        // Daily breakdown — last up to 7 days, newest first (mirrors tokscale daily view).
-        let sortedDaily = snapshot.daily.sorted { $0.date > $1.date }
-        let recent = Array(sortedDaily.prefix(7))
-        if !recent.isEmpty {
-            out.append("")
-            let title = "Daily breakdown (last \(recent.count) days):"
-            out.append(useColor ? "\u{001B}[1m\(title)\u{001B}[0m" : title)
-            for entry in recent.reversed() {
-                let cost = entry.costUSD.map { UsageFormatter.currencyString($0, currencyCode: snapshot.currencyCode) } ?? "\u{2014}"
-                let total = entry.totalTokens.map { UsageFormatter.tokenCountString($0) } ?? "\u{2014}"
-                var parts: [String] = []
-                if let v = entry.inputTokens { parts.append("in \(UsageFormatter.tokenCountString(v))") }
-                if let v = entry.outputTokens { parts.append("out \(UsageFormatter.tokenCountString(v))") }
-                if let v = entry.cacheReadTokens, v > 0 { parts.append("cacheRead \(UsageFormatter.tokenCountString(v))") }
-                if let v = entry.cacheCreationTokens, v > 0 { parts.append("cacheCreate \(UsageFormatter.tokenCountString(v))") }
-                let mix = parts.isEmpty ? "" : " (" + parts.joined(separator: ", ") + ")"
-                let models = entry.modelsUsed?.isEmpty == false ? " \u{00B7} " + entry.modelsUsed!.prefix(2).joined(separator: ", ") + (entry.modelsUsed!.count > 2 ? " +\(entry.modelsUsed!.count - 2)" : "") : ""
-                out.append("\(entry.date): \(cost) \u{00B7} \(total) tokens\(mix)\(models)")
-            }
+        out.append(contentsOf: self.claudeDailyBreakdownLines(snapshot: snapshot, useColor: useColor))
+        out.append(contentsOf: self.claudeTopModelsLines(snapshot: snapshot, useColor: useColor))
+        return out
+    }
+
+    private static func claudeDailyBreakdownLines(snapshot: CostUsageTokenSnapshot, useColor: Bool) -> [String] {
+        guard !snapshot.daily.isEmpty else { return [] }
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: snapshot.updatedAt)
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        let recentDayKeys = (0..<7).compactMap { offset -> String? in
+            guard let d = calendar.date(byAdding: .day, value: -offset, to: today) else { return nil }
+            return formatter.string(from: d)
         }
-        // Top models — aggregate across daily modelBreakdowns (mirrors tokscale models view).
-        var modelAgg: [String: (cost: Double, tokens: Int, days: Set<String>)] = [:]
+        let recentByCalendar = snapshot.daily.filter { recentDayKeys.contains($0.date) }
+            .sorted { $0.date > $1.date }
+        let recent: [CostUsageDailyReport.Entry]
+        let title: String
+        if !recentByCalendar.isEmpty {
+            recent = Array(recentByCalendar.prefix(7))
+            title = "Daily breakdown (last \(recent.count) days):"
+        } else {
+            let sortedDaily = snapshot.daily.sorted { $0.date > $1.date }
+            recent = Array(sortedDaily.prefix(7))
+            title = "Daily breakdown (last \(recent.count) recorded days):"
+        }
+        guard !recent.isEmpty else { return [] }
+        var out: [String] = ["", useColor ? "\u{001B}[1m\(title)\u{001B}[0m" : title]
+        for entry in recent.reversed() {
+            let cost = entry.costUSD
+                .map { UsageFormatter.currencyString($0, currencyCode: snapshot.currencyCode) }
+                ?? "\u{2014}"
+            let total = entry.totalTokens
+                .map { UsageFormatter.tokenCountString($0) } ?? "\u{2014}"
+            var parts: [String] = []
+            if let v = entry.inputTokens { parts.append("in \(UsageFormatter.tokenCountString(v))") }
+            if let v = entry.outputTokens { parts.append("out \(UsageFormatter.tokenCountString(v))") }
+            if let v = entry.cacheReadTokens, v > 0 {
+                parts.append("cacheRead \(UsageFormatter.tokenCountString(v))")
+            }
+            if let v = entry.cacheCreationTokens, v > 0 {
+                parts.append("cacheCreate \(UsageFormatter.tokenCountString(v))")
+            }
+            let mix = parts.isEmpty ? "" : " (" + parts.joined(separator: ", ") + ")"
+            let models = entry.modelsUsed?.isEmpty == false
+                ? " \u{00B7} " + entry.modelsUsed!.prefix(2).joined(separator: ", ")
+                + (entry.modelsUsed!.count > 2 ? " +\(entry.modelsUsed!.count - 2)" : "")
+                : ""
+            out.append("\(entry.date): \(cost) \u{00B7} \(total) tokens\(mix)\(models)")
+        }
+        return out
+    }
+
+    private static func claudeTopModelsLines(snapshot: CostUsageTokenSnapshot, useColor: Bool) -> [String] {
+        var hasUnattributedDay = false
+        var modelAgg: [String: ClaudeModelAggregation] = [:]
         for entry in snapshot.daily {
-            for b in entry.modelBreakdowns ?? [] {
-                var cur = modelAgg[b.modelName] ?? (0, 0, [])
-                cur.cost += b.costUSD ?? 0
-                cur.tokens += b.totalTokens ?? 0
+            guard let breakdowns = entry.modelBreakdowns else {
+                hasUnattributedDay = true
+                continue
+            }
+            for b in breakdowns {
+                var cur = modelAgg[b.modelName] ?? ClaudeModelAggregation(cost: 0, tokens: 0)
+                if let c = b.costUSD {
+                    if !cur.hasUnknownCost { cur.cost = (cur.cost ?? 0) + c }
+                } else {
+                    cur.hasUnknownCost = true
+                    cur.cost = nil
+                }
+                if let t = b.totalTokens {
+                    if !cur.hasUnknownTokens { cur.tokens = (cur.tokens ?? 0) + t }
+                } else {
+                    cur.hasUnknownTokens = true
+                    cur.tokens = nil
+                }
                 cur.days.insert(entry.date)
                 modelAgg[b.modelName] = cur
             }
         }
-        if !modelAgg.isEmpty {
-            let sorted = modelAgg.sorted { lhs, rhs in
-                if lhs.value.cost != rhs.value.cost { return lhs.value.cost > rhs.value.cost }
-                return lhs.value.tokens > rhs.value.tokens
+        guard !modelAgg.isEmpty else { return [] }
+        let hasIncompleteHistory = !snapshot.historyCoverageIsEstablished
+        let hasPartialAggregation = modelAgg.values.contains {
+            $0.hasUnknownCost || $0.hasUnknownTokens
+        }
+        let isPartial = hasIncompleteHistory || hasUnattributedDay || hasPartialAggregation
+        let sorted = modelAgg.sorted { lhs, rhs in
+            let lCost = lhs.value.cost ?? -1
+            let rCost = rhs.value.cost ?? -1
+            if lCost != rCost { return lCost > rCost }
+            let lTokens = lhs.value.tokens ?? -1
+            let rTokens = rhs.value.tokens ?? -1
+            if lTokens != rTokens { return lTokens > rTokens }
+            return lhs.key < rhs.key
+        }
+        var out = [""]
+        let baseLabel = snapshot.historyLabel ?? "Last \(snapshot.historyDays) days"
+        let title = isPartial
+            ? "Top models (\(baseLabel) \u{2014} partial):"
+            : "Top models (\(baseLabel)):"
+        out.append(useColor ? "\u{001B}[1m\(title)\u{001B}[0m" : title)
+        for (idx, item) in sorted.prefix(5).enumerated() {
+            let costStr = item.value.cost
+                .map { UsageFormatter.currencyString($0, currencyCode: snapshot.currencyCode) }
+                ?? "\u{2014}"
+            let tokensStr = item.value.tokens
+                .map { UsageFormatter.tokenCountString($0) } ?? "\u{2014}"
+            let days = item.value.days.count
+            let display = UsageFormatter.modelDisplayName(item.key)
+            let suffix = "\u{00B7} \(tokensStr) tokens (\(days) day\(days == 1 ? "" : "s"))"
+            out.append("\(idx + 1). \(display) \u{2014} \(costStr) \(suffix)")
+        }
+        if isPartial {
+            let reason = if hasIncompleteHistory, hasUnattributedDay {
+                "History incomplete and some days lack model attribution."
+            } else if hasIncompleteHistory {
+                "History incomplete (scan coverage not yet established)."
+            } else if hasUnattributedDay {
+                "Some days lack model attribution."
+            } else {
+                "Some models have unattributed cost/tokens."
             }
-            out.append("")
-            let title = "Top models (\(snapshot.historyLabel ?? "Last \(snapshot.historyDays) days")):"
-            out.append(useColor ? "\u{001B}[1m\(title)\u{001B}[0m" : title)
-            for (idx, item) in sorted.prefix(5).enumerated() {
-                let cost = UsageFormatter.currencyString(item.value.cost, currencyCode: snapshot.currencyCode)
-                let tokens = UsageFormatter.tokenCountString(item.value.tokens)
-                let days = item.value.days.count
-                let display = UsageFormatter.modelDisplayName(item.key)
-                out.append("\(idx + 1). \(display) \u{2014} \(cost) \u{00B7} \(tokens) tokens (\(days) day\(days == 1 ? "" : "s"))")
-            }
+            out.append("Note: \(reason) Ranking is partial.")
         }
         return out
     }

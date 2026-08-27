@@ -775,6 +775,21 @@ extension CostUsageScanner {
         let shouldMutateCache = shouldRefresh && (!hasStableProcessBaseline || options.forceRescan || windowExpanded)
         let modelsDevCatalogResolver = ClaudeModelsDevCatalogResolver(now: now, cacheRoot: options.cacheRoot)
 
+        // Defensive: prune any journal files from cache even on debounce/cold-cache path (review #5041150959 §4).
+        // Inventory now excludes journals, but an existing disk cache from 10s ago may still contain one.
+        // The 60s debounce would otherwise reuse that stale report and memoize it against the new inventory.
+        var didPruneJournalFromCache = false
+        for key in Array(cache.files.keys) where Self.isClaudeWorkflowJournal(fileURL: URL(fileURLWithPath: key)) {
+            cache.files.removeValue(forKey: key)
+            didPruneJournalFromCache = true
+        }
+        if didPruneJournalFromCache, !shouldMutateCache {
+            Self.rebuildClaudeDays(cache: &cache)
+            Self.pruneDays(cache: &cache, sinceKey: range.scanSinceKey, untilKey: range.scanUntilKey)
+            cache.scanSinceKey = range.scanSinceKey
+            cache.scanUntilKey = range.scanUntilKey
+        }
+
         if shouldMutateCache {
             try checkCancellation?()
             if options.forceRescan {
