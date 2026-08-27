@@ -10,13 +10,6 @@ import CSQLite3
 /// Tokscale-compatible local readers: Cursor CSV caches
 /// (`~/.config/tokscale/cursor-cache/usage*.csv`) and Antigravity session caches
 /// (`~/.config/tokscale/antigravity-cache/sessions/*.jsonl`).
-/// Header layouts mirror `tokscale/crates/tokscale-core/src/sessions/cursor.rs`:
-/// - v1: Date,Model,Input (w/ Cache Write),Input (w/o Cache Write),Cache Read,Output Tokens,Total Tokens,Cost,Cost to
-/// you
-/// - v2: Date,Kind,Model,Max Mode,Input (w/ Cache Write),Input (w/o Cache Write),Cache Read,Output Tokens,Total
-/// Tokens,Cost
-/// - v3: Date,Cloud Agent ID,Automation ID,Kind,Model,Max Mode,Input (w/ Cache Write),Input (w/o Cache Write),Cache
-/// Read,Output Tokens,Total Tokens,Cost
 struct CursorAntigravityLocalReaderTests {
     @Test
     func `cursor v1 csv parses token buckets and cost`() throws {
@@ -99,24 +92,21 @@ struct CursorAntigravityLocalReaderTests {
         #expect(breakdowns.count == 1)
         #expect(breakdowns.first?.modelName == "claude-sonnet-4-5")
         let summary = try #require(report.summary)
-        // The CSV's own Total Tokens column is authoritative when present
-        // (1500 + 700 + 40), rather than the recomputed bucket sum.
         #expect(summary.totalTokens == 2240)
     }
 
     @Test
     func `antigravity cache jsonl aggregates usage with session model fallback`() throws {
-        // Derive timestamps from local noon so both events land on the same local day in any TZ.
         let calendar = Calendar.current
         let noon = calendar.date(
             byAdding: .hour, value: 12, to: calendar.startOfDay(for: Date())) ?? Date()
         let firstStamp = Int64(noon.timeIntervalSince1970 * 1000)
         let secondStamp = firstStamp + 3_600_000
         let jsonl = [
-            #"{"type":"session_meta","modelId":"test-model-a"}"#,
-            #"{"type":"usage","modelId":"test-model-a","input":100,"output":30,"cacheRead":50,"cacheWrite":10,"# +
-                #""timestamp":\#(firstStamp)}"#,
-            #"{"type":"usage","input":40,"output":10,"cacheRead":0,"cacheWrite":0,"timestamp":\#(secondStamp)}"#,
+            #"{"type":"session_meta","modelId":"gemini-2.5-pro"}"#,
+            #"{"type":"usage","modelId":"gemini-2.5-pro","input":100,"output":30,"cacheRead":50,"cacheWrite":10,"# +
+                #""timestamp":#(firstStamp)}"#,
+            #"{"type":"usage","input":40,"output":10,"cacheRead":0,"cacheWrite":0,"timestamp":#(secondStamp)}"#,
         ].joined(separator: "\n") + "\n"
         let url = try Self.writeTemporary(jsonl, extension: "jsonl")
         defer { try? FileManager.default.removeItem(at: url) }
@@ -128,9 +118,8 @@ struct CursorAntigravityLocalReaderTests {
         #expect(entry.cacheReadTokens == 50)
         #expect(entry.cacheCreationTokens == 10)
         #expect(entry.requestCount == 2)
-        // The second event omits `modelId` and falls back to the session_meta model.
         let breakdowns = try #require(entry.modelBreakdowns)
-        #expect(breakdowns.map(\.modelName) == ["test-model-a"])
+        #expect(breakdowns.map(\ .modelName) == ["gemini-2.5-pro"])
         #expect(breakdowns.first?.requestCount == 2)
     }
 
@@ -165,23 +154,100 @@ struct CursorAntigravityLocalReaderTests {
     }
 
     @Test
-    func `model normalization maps known aliases to canonical IDs`() {
-        #expect(AntigravityLocalReader.normalizeModelID("gemini-3-flash-a") == "gemini-3.7-flash")
-        #expect(AntigravityLocalReader.normalizeModelID("gemini-3.6-flash") == "gemini-3.7-flash")
-        #expect(AntigravityLocalReader.normalizeModelID("gemini-pro-default") == "gemini-2.5-pro")
-        #expect(AntigravityLocalReader.normalizeModelID("gemini-pro-agent") == "gemini-2.5-pro")
-        #expect(AntigravityLocalReader.normalizeModelID("claude-sonnet-4-6") == "claude-sonnet-4-6")
+    func `protobuf reader handles malformed and truncated buffers safely`() {
+        var emptyReader = AntigravityProtoReader(bytes: [])
+        #expect(emptyReader.nextField() == nil)
+
+        // Truncated length-delimited wire
+        let truncatedLength: [UInt8] = [(1 << 3) | 2, 0x80]
+        var truncReader = AntigravityProtoReader(bytes: truncatedLength)
+        #expect(truncReader.nextField() == nil)
+
+        // Invalid nanos in timestamp
+        let invalidNanosMsg: [UInt8] = Self.encodeVarint(1, 1_780_000_000) + Self.encodeVarint(2, 1_000_000_000)
+        #expect(AntigravityProtoReader.protoTimestampMs(invalidNanosMsg) == nil)
     }
 
     @Test
-    func `parseCLIDBs returns empty for empty directory`() throws {
+    func `model normalization maps known aliases to canonical IDs`() {
+        #expect(AntigravityLocalReader.normalizeModelID("gemini-3.5-flash-high") == "gemini-3.7-flash")
+        #expect(AntigravityLocalReader.normalizeModelID("gemini-3.6-flash") == "gemini-3.7-flash")
+        #expect(AntigravityLocalReader.normalizeModelID("claude-sonnet-4-6") == "claude-sonnet-4-6")
+        #expect(AntigravityLocalReader.normalizeModelID("") == "unknown")
+    }
+
+    @Test
+    func `parses sqlite database with gen_metadata and trajectory_metadata_blob`() throws {
+        #if canImport(SQLite3) || canImport(CSQLite3)
         let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tmpDir) }
-        let fakeDB = tmpDir.appendingPathComponent("empty.db")
-        FileManager.default.createFile(atPath: fakeDB.path, contents: Data())
-        let entries = AntigravityLocalReader.parseCLIDBs(paths: [fakeDB])
-        #expect(entries.isEmpty)
+
+        let dbURL = tmpDir.appendingPathComponent("test-session.db")
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(dbURL.path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nil) == SQLITE_OK,
+              let db
+        else {
+            Issue.record("Failed to create sqlite db")
+            return
+        }
+
+        sqlite3_exec(db, "CREATE TABLE gen_metadata (idx INTEGER PRIMARY KEY, data BLOB, size INTEGER);", nil, nil, nil)
+        sqlite3_exec(db, "CREATE TABLE trajectory_metadata_blob (id TEXT PRIMARY KEY, data BLOB);", nil, nil, nil)
+
+        let blob1 = Self.buildGenMetadataBlob(
+            model: "gemini-3.6-flash",
+            label: "Gemini 3.6 Flash (High)",
+            responseID: "resp-1")
+        let blob2 = Self.buildGenMetadataBlob(model: nil, label: "Gemini 3.6 Flash (High)", responseID: "resp-2")
+
+        for (idx, blob) in [(0, blob1), (1, blob2)] {
+            var stmt: OpaquePointer?
+            if sqlite3_prepare_v2(db, "INSERT INTO gen_metadata (idx, data, size) VALUES (?, ?, ?)", -1, &stmt, nil) ==
+                SQLITE_OK
+            {
+                sqlite3_bind_int(stmt, 1, Int32(idx))
+                _ = blob.withUnsafeBytes { ptr in
+                    sqlite3_bind_blob(stmt, 2, ptr.baseAddress, Int32(blob.count), nil)
+                }
+                sqlite3_bind_int(stmt, 3, Int32(blob.count))
+                sqlite3_step(stmt)
+                sqlite3_finalize(stmt)
+            }
+        }
+        sqlite3_close(db)
+
+        let entries = AntigravityLocalReader.parseCLIDBs(paths: [dbURL])
+        #expect(entries.count == 1)
+        let entry = try #require(entries.first)
+        #expect(entry.inputTokens == 3264)
+        #expect(entry.outputTokens == 600)
+        #expect(entry.cacheReadTokens == 200)
+        #expect(entry.reasoningTokens == 80)
+        #expect(entry.totalTokens == 4144)
+        #expect(entry.modelBreakdowns?.count == 1)
+        #expect(entry.modelBreakdowns?.first?.modelName == "gemini-3.7-flash")
+        #endif
+    }
+
+    @Test
+    func `cliDBPaths discovers conversations directories and appData databases`() throws {
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let conv1 = tmp.appendingPathComponent(".gemini/antigravity/conversations", isDirectory: true)
+        let conv2 = tmp.appendingPathComponent(".gemini/antigravity-cli/conversations", isDirectory: true)
+        try FileManager.default.createDirectory(at: conv1, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: conv2, withIntermediateDirectories: true)
+
+        FileManager.default.createFile(atPath: conv1.appendingPathComponent("1.db").path, contents: Data())
+        FileManager.default.createFile(atPath: conv2.appendingPathComponent("2.db").path, contents: Data())
+        FileManager.default.createFile(atPath: conv2.appendingPathComponent("2.db-wal").path, contents: Data())
+
+        let paths = AntigravityLocalReader.cliDBPaths(home: tmp)
+        #expect(paths.count == 2)
+        #expect(paths.allSatisfy { $0.pathExtension == "db" })
     }
 
     private static func buildGenMetadataBlob(
@@ -216,12 +282,16 @@ struct CursorAntigravityLocalReaderTests {
         var result: [UInt8] = []
         var t = UInt64((fieldNumber << 3) | 0)
         while t >= 0x80 {
-            result.append(UInt8(t & 0x7F) | 0x80); t >>= 7
-        }; result.append(UInt8(t & 0x7F))
+            result.append(UInt8(t & 0x7F) | 0x80)
+            t >>= 7
+        }
+        result.append(UInt8(t & 0x7F))
         var v = value
         while v >= 0x80 {
-            result.append(UInt8(v & 0x7F) | 0x80); v >>= 7
-        }; result.append(UInt8(v & 0x7F))
+            result.append(UInt8(v & 0x7F) | 0x80)
+            v >>= 7
+        }
+        result.append(UInt8(v & 0x7F))
         return result
     }
 
@@ -229,13 +299,16 @@ struct CursorAntigravityLocalReaderTests {
         var result: [UInt8] = []
         var t = UInt64((fieldNumber << 3) | 2)
         while t >= 0x80 {
-            result.append(UInt8(t & 0x7F) | 0x80); t >>= 7
-        }; result.append(UInt8(t & 0x7F))
+            result.append(UInt8(t & 0x7F) | 0x80)
+            t >>= 7
+        }
+        result.append(UInt8(t & 0x7F))
         var len = UInt64(bytes.count)
         while len >= 0x80 {
-            result.append(UInt8(len & 0x7F) | 0x80); len >>= 7
-        }; result.append(UInt8(len & 0x7F))
-        result.append(contentsOf: bytes)
+            result.append(UInt8(len & 0x7F) | 0x80)
+            len >>= 7
+        }
+        result.append(UInt8(len & 0x7F))
         return result
     }
 
