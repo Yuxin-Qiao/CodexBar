@@ -156,7 +156,7 @@ enum AntigravityLocalReader {
         return entries.sorted { $0.date < $1.date }
     }
 
-    // swiftlint:disable:next function_body_length
+    // swiftlint:disable:next function_body_length cyclomatic_complexity
     static func parseCLIDBs(paths: [URL]? = nil, calendar: Calendar = .current) -> [CostUsageDailyReport.Entry] {
         #if canImport(SQLite3) || canImport(CSQLite3)
         var entries: [CostUsageDailyReport.Entry] = []
