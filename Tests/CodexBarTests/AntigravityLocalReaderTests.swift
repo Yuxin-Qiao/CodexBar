@@ -55,8 +55,8 @@ struct AntigravityLocalReaderTests {
         output: UInt64 = 300,
         cacheRead: UInt64 = 100,
         reasoning: UInt64 = 40,
-        responseID: String = "resp-1",
-        timestampSeconds: UInt64 = 1_781_000_000) -> [UInt8]
+        responseID: String? = "resp-1",
+        timestampSeconds: UInt64? = 1_781_000_000) -> [UInt8]
     {
         var usage: [UInt8] = []
         usage.append(contentsOf: self.encodeVarint(1, 1132)) // system prompt
@@ -64,16 +64,19 @@ struct AntigravityLocalReaderTests {
         usage.append(contentsOf: self.encodeVarint(5, cacheRead))
         usage.append(contentsOf: self.encodeVarint(9, output))
         usage.append(contentsOf: self.encodeVarint(10, reasoning))
-        usage.append(contentsOf: self.encodeLengthDelimited(11, Array(responseID.utf8)))
-
-        var genTime: [UInt8] = []
-        genTime.append(contentsOf: self.encodeVarint(1, timestampSeconds))
-        genTime.append(contentsOf: self.encodeVarint(2, 250_000_000)) // 250ms
-        let gen9 = self.encodeLengthDelimited(4, genTime)
+        if let responseID {
+            usage.append(contentsOf: self.encodeLengthDelimited(11, Array(responseID.utf8)))
+        }
 
         var chatModel: [UInt8] = []
         chatModel.append(contentsOf: self.encodeLengthDelimited(4, usage))
-        chatModel.append(contentsOf: self.encodeLengthDelimited(9, gen9))
+        if let timestampSeconds {
+            var genTime: [UInt8] = []
+            genTime.append(contentsOf: self.encodeVarint(1, timestampSeconds))
+            genTime.append(contentsOf: self.encodeVarint(2, 250_000_000)) // 250ms
+            let gen9 = self.encodeLengthDelimited(4, genTime)
+            chatModel.append(contentsOf: self.encodeLengthDelimited(9, gen9))
+        }
         if let model {
             chatModel.append(contentsOf: self.encodeLengthDelimited(19, Array(model.utf8)))
         }
@@ -126,12 +129,36 @@ struct AntigravityLocalReaderTests {
     }
 
     @Test
+    func `protobuf reader handles malformed and truncated buffers safely`() {
+        var emptyReader = AntigravityProtoReader(bytes: [])
+        #expect(emptyReader.nextField() == nil)
+
+        // Truncated length-delimited wire
+        let truncatedLength: [UInt8] = [(1 << 3) | 2, 0x80]
+        var truncReader = AntigravityProtoReader(bytes: truncatedLength)
+        #expect(truncReader.nextField() == nil)
+        #expect(truncReader.isMalformed)
+
+        // Invalid 10th varint byte (continuation bit set)
+        let invalidVarint: [UInt8] = Array(repeating: 0x80, count: 10)
+        var varintReader = AntigravityProtoReader(bytes: invalidVarint)
+        #expect(varintReader.readVarint() == nil)
+        #expect(varintReader.isMalformed)
+
+        // Invalid nanos in timestamp
+        let invalidNanosMsg: [UInt8] = Self.encodeVarint(1, 1_780_000_000) + Self.encodeVarint(2, 1_000_000_000)
+        #expect(AntigravityProtoReader.protoTimestampMs(invalidNanosMsg) == nil)
+    }
+
+    @Test
     func `model normalization maps known aliases to canonical IDs`() {
         #expect(AntigravityLocalReader.normalizeModelID("gemini-3-flash-a") == "gemini-3-flash-a")
         #expect(AntigravityLocalReader.normalizeModelID("gemini-3.6-flash") == "gemini-3.6-flash")
         #expect(AntigravityLocalReader.normalizeModelID("gemini-pro-default") == "gemini-pro-default")
         #expect(AntigravityLocalReader.normalizeModelID("gemini-pro-agent") == "gemini-pro-agent")
         #expect(AntigravityLocalReader.normalizeModelID("claude-sonnet-4-6") == "claude-sonnet-4-6")
+        #expect(AntigravityLocalReader.normalizeModelID("") == "unknown")
+        #expect(AntigravityLocalReader.normalizeModelID("   ") == "unknown")
     }
 
     @Test
@@ -191,9 +218,10 @@ struct AntigravityLocalReaderTests {
         }
         sqlite3_close(db)
 
-        let entries = AntigravityLocalReader.parseCLIDBs(paths: [dbURL])
-        #expect(entries.count == 1)
-        let entry = try #require(entries.first)
+        let outcome = AntigravityLocalReader.parseCLIDBsWithStatus(paths: [dbURL])
+        #expect(outcome.isComplete == true)
+        #expect(outcome.entries.count == 1)
+        let entry = try #require(outcome.entries.first)
         #expect(entry.inputTokens == 3264) // (1132+500) * 2
         #expect(entry.outputTokens == 600)
         #expect(entry.cacheReadTokens == 200)
@@ -201,6 +229,293 @@ struct AntigravityLocalReaderTests {
         #expect(entry.totalTokens == 4144)
         #expect(entry.modelBreakdowns?.count == 1)
         #expect(entry.modelBreakdowns?.first?.modelName == "gemini-3.6-flash")
+        #endif
+    }
+
+    @Test
+    func `discovery to report to snapshot end-to-end`() throws {
+        #if canImport(SQLite3) || canImport(CSQLite3)
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let convDir = tmp.appendingPathComponent(".gemini/antigravity/conversations", isDirectory: true)
+        try FileManager.default.createDirectory(at: convDir, withIntermediateDirectories: true)
+
+        let dbURL = convDir.appendingPathComponent("session-1.db")
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(dbURL.path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nil) == SQLITE_OK,
+              let db
+        else {
+            Issue.record("Failed to create sqlite db")
+            return
+        }
+        sqlite3_exec(db, "CREATE TABLE gen_metadata (idx INTEGER PRIMARY KEY, data BLOB, size INTEGER);", nil, nil, nil)
+        sqlite3_exec(db, "CREATE TABLE trajectory_metadata_blob (id TEXT PRIMARY KEY, data BLOB);", nil, nil, nil)
+
+        let blob = Self.buildGenMetadataBlob(
+            model: "gemini-2.5-pro",
+            label: "Gemini 2.5 Pro",
+            input: 1000,
+            output: 200,
+            cacheRead: 50,
+            reasoning: 20,
+            responseID: "r-discovery",
+            timestampSeconds: 1_781_000_000)
+
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, "INSERT INTO gen_metadata (idx, data, size) VALUES (0, ?, ?)", -1, &stmt, nil) ==
+            SQLITE_OK
+        {
+            _ = blob.withUnsafeBytes { ptr in sqlite3_bind_blob(stmt, 1, ptr.baseAddress, Int32(blob.count), nil) }
+            sqlite3_bind_int(stmt, 2, Int32(blob.count))
+            sqlite3_step(stmt)
+            sqlite3_finalize(stmt)
+        }
+        sqlite3_close(db)
+
+        let discovered = AntigravityLocalReader.cliDBPaths(home: tmp)
+        #expect(discovered.count == 1)
+
+        let outcome = AntigravityLocalReader.parseCLIDBsWithStatus(paths: discovered)
+        #expect(outcome.isComplete)
+        #expect(outcome.entries.count == 1)
+
+        let report = CostUsageDailyReport(
+            data: outcome.entries,
+            summary: .init(
+                totalInputTokens: nil,
+                totalOutputTokens: nil,
+                totalTokens: outcome.entries.first?.totalTokens,
+                totalCostUSD: nil))
+
+        let now = Date(timeIntervalSince1970: 1_781_000_000)
+        let snapshot = CostUsageFetcher.tokenSnapshot(
+            from: report,
+            now: now,
+            historyDays: 30,
+            useCurrentLocalDayForSession: true,
+            historyCoverageIsEstablished: outcome.isComplete)
+
+        #expect(snapshot.sessionTokens == 2402)
+        #expect(snapshot.last30DaysTokens == 2402)
+        #expect(snapshot.historyCoverageIsEstablished == true)
+        #expect(snapshot.daily.count == 1)
+        #expect(snapshot.daily.first?.modelBreakdowns?.first?.modelName == "gemini-2.5-pro")
+        #endif
+    }
+
+    @Test
+    func `WAL and SHM sidecars are preserved and unmodified`() throws {
+        #if canImport(SQLite3) || canImport(CSQLite3)
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let dbURL = tmp.appendingPathComponent("sidecar-test.db")
+        let walURL = tmp.appendingPathComponent("sidecar-test.db-wal")
+        let shmURL = tmp.appendingPathComponent("sidecar-test.db-shm")
+
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(dbURL.path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nil) == SQLITE_OK,
+              let db
+        else {
+            Issue.record("Failed to create db")
+            return
+        }
+        sqlite3_exec(db, "PRAGMA journal_mode=WAL;", nil, nil, nil)
+        sqlite3_exec(db, "CREATE TABLE gen_metadata (idx INTEGER PRIMARY KEY, data BLOB, size INTEGER);", nil, nil, nil)
+        let blob = Self.buildGenMetadataBlob(responseID: "sidecar-r1")
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, "INSERT INTO gen_metadata (idx, data, size) VALUES (0, ?, ?)", -1, &stmt, nil) ==
+            SQLITE_OK
+        {
+            _ = blob.withUnsafeBytes { ptr in sqlite3_bind_blob(stmt, 1, ptr.baseAddress, Int32(blob.count), nil) }
+            sqlite3_bind_int(stmt, 2, Int32(blob.count))
+            sqlite3_step(stmt)
+            sqlite3_finalize(stmt)
+        }
+        sqlite3_close(db)
+
+        let walData = Data([0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04])
+        try walData.write(to: walURL)
+
+        let entries = AntigravityLocalReader.parseCLIDBs(paths: [dbURL])
+        #expect(entries.count == 1)
+
+        #expect(FileManager.default.fileExists(atPath: walURL.path))
+        let readWal = try Data(contentsOf: walURL)
+        #expect(readWal == walData)
+        #endif
+    }
+
+    @Test
+    func `multi-database request count aggregation across shared model`() throws {
+        #if canImport(SQLite3) || canImport(CSQLite3)
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let dbURL1 = tmp.appendingPathComponent("db1.db")
+        let dbURL2 = tmp.appendingPathComponent("db2.db")
+
+        for (dbURL, prefix) in [(dbURL1, "d1"), (dbURL2, "d2")] {
+            var db: OpaquePointer?
+            guard sqlite3_open_v2(dbURL.path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nil) == SQLITE_OK,
+                  let db
+            else {
+                Issue.record("Failed to create db")
+                return
+            }
+            sqlite3_exec(
+                db,
+                "CREATE TABLE gen_metadata (idx INTEGER PRIMARY KEY, data BLOB, size INTEGER);",
+                nil,
+                nil,
+                nil)
+            for i in 0..<2 {
+                let blob = Self.buildGenMetadataBlob(
+                    model: "gemini-2.5-pro",
+                    label: "Gemini 2.5 Pro",
+                    input: 500,
+                    output: 100,
+                    cacheRead: 0,
+                    reasoning: 0,
+                    responseID: "\(prefix)-turn-\(i)",
+                    timestampSeconds: 1_781_000_000)
+                var stmt: OpaquePointer?
+                if sqlite3_prepare_v2(
+                    db,
+                    "INSERT INTO gen_metadata (idx, data, size) VALUES (?, ?, ?)",
+                    -1,
+                    &stmt,
+                    nil) == SQLITE_OK
+                {
+                    sqlite3_bind_int(stmt, 1, Int32(i))
+                    _ = blob
+                        .withUnsafeBytes { ptr in sqlite3_bind_blob(stmt, 2, ptr.baseAddress, Int32(blob.count), nil) }
+                    sqlite3_bind_int(stmt, 3, Int32(blob.count))
+                    sqlite3_step(stmt)
+                    sqlite3_finalize(stmt)
+                }
+            }
+            sqlite3_close(db)
+        }
+
+        let outcome = AntigravityLocalReader.parseCLIDBsWithStatus(paths: [dbURL1, dbURL2])
+        #expect(outcome.isComplete)
+        #expect(outcome.entries.count == 1)
+        let entry = try #require(outcome.entries.first)
+        #expect(entry.requestCount == 4)
+        let breakdown = try #require(entry.modelBreakdowns?.first)
+        #expect(breakdown.modelName == "gemini-2.5-pro")
+        #expect(breakdown.requestCount == 4)
+        #endif
+    }
+
+    @Test
+    func `duplicate and missing response IDs`() throws {
+        #if canImport(SQLite3) || canImport(CSQLite3)
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let dbURL = tmp.appendingPathComponent("dup.db")
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(dbURL.path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nil) == SQLITE_OK,
+              let db
+        else {
+            Issue.record("Failed to create db")
+            return
+        }
+        sqlite3_exec(db, "CREATE TABLE gen_metadata (idx INTEGER PRIMARY KEY, data BLOB, size INTEGER);", nil, nil, nil)
+
+        let blob1 = Self.buildGenMetadataBlob(responseID: "dup-id")
+        let blob2 = Self.buildGenMetadataBlob(responseID: "dup-id") // duplicate ID: should be skipped
+        let blob3 = Self.buildGenMetadataBlob(responseID: nil) // missing ID 1: should be counted
+        let blob4 = Self.buildGenMetadataBlob(responseID: nil) // missing ID 2: should be counted
+
+        for (idx, blob) in [(0, blob1), (1, blob2), (2, blob3), (3, blob4)] {
+            var stmt: OpaquePointer?
+            if sqlite3_prepare_v2(db, "INSERT INTO gen_metadata (idx, data, size) VALUES (?, ?, ?)", -1, &stmt, nil) ==
+                SQLITE_OK
+            {
+                sqlite3_bind_int(stmt, 1, Int32(idx))
+                _ = blob.withUnsafeBytes { ptr in sqlite3_bind_blob(stmt, 2, ptr.baseAddress, Int32(blob.count), nil) }
+                sqlite3_bind_int(stmt, 3, Int32(blob.count))
+                sqlite3_step(stmt)
+                sqlite3_finalize(stmt)
+            }
+        }
+        sqlite3_close(db)
+
+        let entries = AntigravityLocalReader.parseCLIDBs(paths: [dbURL])
+        #expect(entries.count == 1)
+        let entry = try #require(entries.first)
+        #expect(entry.requestCount == 3)
+        #endif
+    }
+
+    @Test
+    func `missing turn timestamp marks scan incomplete`() throws {
+        #if canImport(SQLite3) || canImport(CSQLite3)
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let dbURL = tmp.appendingPathComponent("no-timestamp.db")
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(dbURL.path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nil) == SQLITE_OK,
+              let db
+        else {
+            Issue.record("Failed to create db")
+            return
+        }
+        sqlite3_exec(db, "CREATE TABLE gen_metadata (idx INTEGER PRIMARY KEY, data BLOB, size INTEGER);", nil, nil, nil)
+        sqlite3_exec(db, "CREATE TABLE trajectory_metadata_blob (id TEXT PRIMARY KEY, data BLOB);", nil, nil, nil)
+
+        // Turn without timestampSeconds
+        let blob = Self.buildGenMetadataBlob(responseID: "no-time", timestampSeconds: nil)
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, "INSERT INTO gen_metadata (idx, data, size) VALUES (0, ?, ?)", -1, &stmt, nil) ==
+            SQLITE_OK
+        {
+            _ = blob.withUnsafeBytes { ptr in sqlite3_bind_blob(stmt, 1, ptr.baseAddress, Int32(blob.count), nil) }
+            sqlite3_bind_int(stmt, 2, Int32(blob.count))
+            sqlite3_step(stmt)
+            sqlite3_finalize(stmt)
+        }
+        sqlite3_close(db)
+
+        let outcome = AntigravityLocalReader.parseCLIDBsWithStatus(paths: [dbURL])
+        #expect(outcome.isComplete == false)
+        #expect(outcome.entries.isEmpty)
+        #endif
+    }
+
+    @Test
+    func `resource limits mark scan incomplete`() throws {
+        #if canImport(SQLite3) || canImport(CSQLite3)
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let dbURL = tmp.appendingPathComponent("oversized.db")
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(dbURL.path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nil) == SQLITE_OK,
+              let db
+        else {
+            Issue.record("Failed to create db")
+            return
+        }
+        sqlite3_exec(db, "CREATE TABLE gen_metadata (idx INTEGER PRIMARY KEY, data BLOB, size INTEGER);", nil, nil, nil)
+
+        // Insert a corrupt/empty blob with size indicator
+        sqlite3_exec(db, "INSERT INTO gen_metadata (idx, data, size) VALUES (0, X'', 0);", nil, nil, nil)
+        sqlite3_close(db)
+
+        let outcome = AntigravityLocalReader.parseCLIDBsWithStatus(paths: [dbURL])
+        #expect(outcome.isComplete == false)
         #endif
     }
 

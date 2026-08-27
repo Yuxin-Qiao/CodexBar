@@ -11,6 +11,8 @@ enum AntigravityLocalReader {
     private static let maxBlobsPerDatabase = 10000
     private static let maxBytesPerBlob = 16 * 1024 * 1024
     private static let maxTotalBytesPerDatabase = 64 * 1024 * 1024
+    private static let maxDatabases = 500
+    private static let maxGlobalBytes = 128 * 1024 * 1024
 
     static func tokiCachePaths(home: URL? = nil) -> [URL] {
         let base: URL = if let home {
@@ -62,7 +64,7 @@ enum AntigravityLocalReader {
         return trimmed
     }
 
-    // MARK: - Checked helpers
+    // MARK: - Checked arithmetic helpers
 
     private static func checkedAdd(_ lhs: Int, _ rhs: Int) -> Int? {
         let (res, overflow) = lhs.addingReportingOverflow(rhs)
@@ -78,6 +80,9 @@ enum AntigravityLocalReader {
         return total
     }
 
+    // MARK: - JSONL Parsing
+
+    // swiftlint:disable:next cyclomatic_complexity
     static func parseJSONLCache(paths: [URL]? = nil, calendar: Calendar = .current) -> [CostUsageDailyReport.Entry] {
         var entries: [CostUsageDailyReport.Entry] = []
         var seenResponseIds = Set<String>()
@@ -95,54 +100,69 @@ enum AntigravityLocalReader {
                     continue
                 }
                 if type == "usage" || json["input"] != nil {
-                    if let rid = (json["responseId"] as? String ?? json["response_id"] as? String), !rid.isEmpty {
-                        if seenResponseIds.contains(rid) { continue }
-                        seenResponseIds.insert(rid)
-                    }
                     let rawModel =
                         (json["modelId"] as? String ?? json["model_id"] as? String ?? sessionModel ?? "unknown")
                     let modelId = self.normalizeModelID(rawModel)
-                    let input = max(0, (json["input"] as? Int) ?? 0)
-                    let output = max(0, (json["output"] as? Int) ?? 0)
-                    let read = max(0, (json["cacheRead"] as? Int) ?? (json["cache_read"] as? Int) ?? 0)
-                    let write = max(0, (json["cacheWrite"] as? Int) ?? (json["cache_write"] as? Int) ?? 0)
-                    let reason = max(0, (json["reasoning"] as? Int) ?? 0)
-                    guard let t1 = self.checkedAdd(input, output),
-                          let t2 = self.checkedAdd(t1, read),
-                          let t3 = self.checkedAdd(t2, write),
-                          let total = self.checkedAdd(t3, reason), total != 0 else { continue }
+                    guard let inputVal = json["input"] as? Int, inputVal >= 0,
+                          let outputVal = json["output"] as? Int, outputVal >= 0 else { continue }
+                    let readVal = (json["cacheRead"] as? Int) ?? (json["cache_read"] as? Int) ?? 0
+                    guard readVal >= 0 else { continue }
+                    let writeVal = (json["cacheWrite"] as? Int) ?? (json["cache_write"] as? Int) ?? 0
+                    guard writeVal >= 0 else { continue }
+                    let reasonVal = (json["reasoning"] as? Int) ?? 0
+                    guard reasonVal >= 0 else { continue }
+
+                    guard let t1 = self.checkedAdd(inputVal, outputVal),
+                          let t2 = self.checkedAdd(t1, readVal),
+                          let t3 = self.checkedAdd(t2, writeVal),
+                          let total = self.checkedAdd(t3, reasonVal), total != 0 else { continue }
                     let totalTokens = total
+
                     let ts: Int64
                     if let v = json["timestamp"] as? Int64 {
                         ts = v
                     } else if let v = json["timestamp"] as? Int {
-                        ts = Int64(v)
+                        guard let i64 = Int64(exactly: v) else { continue }
+                        ts = i64
                     } else if let v = json["timestamp"] as? Double {
-                        ts = Int64(v)
+                        guard v.isFinite, !v.isNaN, v >= 0, v <= Double(Int64.max),
+                              let i64 = Int64(exactly: v) ?? Int64(exactly: floor(v)) else { continue }
+                        ts = i64
                     } else if let v = json["timestamp"] as? NSNumber {
+                        let d = v.doubleValue
+                        guard d.isFinite, !d.isNaN, d >= 0, d <= Double(Int64.max) else { continue }
                         ts = v.int64Value
                     } else {
                         continue
                     }
+                    guard ts > 0, ts <= 253_402_300_799_000 else { continue }
+
+                    let responseID = (json["responseId"] as? String ?? json["response_id"] as? String)
+                    if let rid = responseID, !rid.isEmpty {
+                        if seenResponseIds.contains(rid) { continue }
+                        seenResponseIds.insert(rid)
+                    }
+
                     let date = self.timestampToDayKey(ts, calendar: calendar)
 
                     if let idx = entries.firstIndex(where: { $0.date == date }) {
                         let e = entries[idx]
-                        guard let newInput = self.checkedAdd(e.inputTokens ?? 0, input),
-                              let newOutput = self.checkedAdd(e.outputTokens ?? 0, output),
-                              let newRead = self.checkedAdd(e.cacheReadTokens ?? 0, read),
-                              let newWrite = self.checkedAdd(e.cacheCreationTokens ?? 0, write),
-                              let newReason = self.checkedAdd(e.reasoningTokens ?? 0, reason),
+                        guard let newInput = self.checkedAdd(e.inputTokens ?? 0, inputVal),
+                              let newOutput = self.checkedAdd(e.outputTokens ?? 0, outputVal),
+                              let newRead = self.checkedAdd(e.cacheReadTokens ?? 0, readVal),
+                              let newWrite = self.checkedAdd(e.cacheCreationTokens ?? 0, writeVal),
+                              let newReason = self.checkedAdd(e.reasoningTokens ?? 0, reasonVal),
                               let newTotal = self.checkedAdd(e.totalTokens ?? 0, totalTokens) else { continue }
                         guard let newBreakdown = self.checkedMergeBreakdown(
                             e.modelBreakdowns,
                             model: modelId,
                             tokens: totalTokens,
-                            inputTokens: input,
-                            outputTokens: output,
-                            cacheReadTokens: read,
-                            cacheCreationTokens: write,
-                            reasoningTokens: reason) else { continue }
+                            requestCount: 1,
+                            inputTokens: inputVal,
+                            outputTokens: outputVal,
+                            cacheReadTokens: readVal,
+                            cacheCreationTokens: writeVal,
+                            reasoningTokens: reasonVal) else { continue }
                         let ne = CostUsageDailyReport.Entry(
                             date: e.date,
                             inputTokens: newInput,
@@ -159,11 +179,11 @@ enum AntigravityLocalReader {
                     } else {
                         let e = CostUsageDailyReport.Entry(
                             date: date,
-                            inputTokens: input,
-                            outputTokens: output,
-                            cacheReadTokens: read,
-                            cacheCreationTokens: write,
-                            reasoningTokens: reason,
+                            inputTokens: inputVal,
+                            outputTokens: outputVal,
+                            cacheReadTokens: readVal,
+                            cacheCreationTokens: writeVal,
+                            reasoningTokens: reasonVal,
                             totalTokens: totalTokens,
                             requestCount: 1,
                             costUSD: nil,
@@ -174,11 +194,11 @@ enum AntigravityLocalReader {
                                     costUSD: nil,
                                     totalTokens: totalTokens,
                                     requestCount: 1,
-                                    inputTokens: input,
-                                    outputTokens: output,
-                                    cacheReadTokens: read,
-                                    cacheCreationTokens: write,
-                                    reasoningTokens: reason),
+                                    inputTokens: inputVal,
+                                    outputTokens: outputVal,
+                                    cacheReadTokens: readVal,
+                                    cacheCreationTokens: writeVal,
+                                    reasoningTokens: reasonVal),
                             ])
                         entries.append(e)
                     }
@@ -188,9 +208,17 @@ enum AntigravityLocalReader {
         return entries.sorted { $0.date < $1.date }
     }
 
+    // MARK: - SQLite parsing with explicit completeness
+
     struct CLIParseOutcome {
         let entries: [CostUsageDailyReport.Entry]
         let isComplete: Bool
+    }
+
+    struct DailyReportResult {
+        let report: CostUsageDailyReport
+        let isComplete: Bool
+        let isAvailable: Bool
     }
 
     static func parseCLIDBsWithStatus(
@@ -201,8 +229,18 @@ enum AntigravityLocalReader {
         var entries: [CostUsageDailyReport.Entry] = []
         var seenResponseIds = Set<String>()
         var overallComplete = true
-        for url in paths ?? self.cliDBPaths() {
-            let outcome = self.parseSingleDB(at: url, calendar: calendar, seenResponseIds: &seenResponseIds)
+        var globalBytes = 0
+
+        let urls = paths ?? self.cliDBPaths()
+        if urls.count > self.maxDatabases {
+            overallComplete = false
+        }
+        for url in urls.prefix(self.maxDatabases) {
+            let outcome = self.parseSingleDB(
+                at: url,
+                calendar: calendar,
+                seenResponseIds: &seenResponseIds,
+                globalBytes: &globalBytes)
             for newEntry in outcome.entries {
                 if let idx = entries.firstIndex(where: { $0.date == newEntry.date }) {
                     let existing = entries[idx]
@@ -216,6 +254,10 @@ enum AntigravityLocalReader {
                 }
             }
             if !outcome.isComplete { overallComplete = false }
+            if globalBytes > self.maxGlobalBytes {
+                overallComplete = false
+                break
+            }
         }
         return CLIParseOutcome(entries: entries.sorted { $0.date < $1.date }, isComplete: overallComplete)
         #else
@@ -231,39 +273,22 @@ enum AntigravityLocalReader {
     private static func parseSingleDB(
         at url: URL,
         calendar: Calendar,
-        seenResponseIds: inout Set<String>) -> CLIParseOutcome
+        seenResponseIds: inout Set<String>,
+        globalBytes: inout Int) -> CLIParseOutcome
     {
         #if canImport(SQLite3) || canImport(CSQLite3)
         var entries: [CostUsageDailyReport.Entry] = []
         var isComplete = true
-        var totalBytes = 0
+        var totalDbBytes = 0
         var db: OpaquePointer?
         guard sqlite3_open_v2(url.path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK, let db else {
             return CLIParseOutcome(entries: [], isComplete: false)
         }
         defer { sqlite3_close(db) }
-        var sessionCreatedMs: Int64?
-        var metaStmt: OpaquePointer?
-        if sqlite3_prepare_v2(db, "SELECT data FROM trajectory_metadata_blob LIMIT 1", -1, &metaStmt, nil) == SQLITE_OK,
-           let metaStmt
-        {
-            let step = sqlite3_step(metaStmt)
-            if step == SQLITE_ROW, let blobPtr = sqlite3_column_blob(metaStmt, 0) {
-                let blobBytes = Int(sqlite3_column_bytes(metaStmt, 0))
-                if blobBytes > 0, blobBytes <= self.maxBytesPerBlob {
-                    let blobData = Array(UnsafeBufferPointer(
-                        start: blobPtr.assumingMemoryBound(to: UInt8.self),
-                        count: blobBytes))
-                    if let tsData = AntigravityProtoReader.messageField(blobData, field: 2),
-                       let tsMs = AntigravityProtoReader.protoTimestampMs(tsData)
-                    {
-                        sessionCreatedMs = tsMs
-                    }
-                } else if blobBytes > self.maxBytesPerBlob { isComplete = false }
-            } else if step != SQLITE_DONE, step != SQLITE_ROW { isComplete = false }
-            sqlite3_finalize(metaStmt)
-        } else { isComplete = false }
-        var labelToModel: [String: String] = [:]
+
+        _ = sqlite3_exec(db, "BEGIN DEFERRED;", nil, nil, nil)
+        defer { _ = sqlite3_exec(db, "ROLLBACK;", nil, nil, nil) }
+
         var genStmt: OpaquePointer?
         let mapLimit = Int32(self.maxBlobsPerDatabase + 1)
         guard sqlite3_prepare_v2(db, "SELECT data FROM gen_metadata ORDER BY idx LIMIT ?", -1, &genStmt, nil) ==
@@ -272,158 +297,181 @@ enum AntigravityLocalReader {
             return CLIParseOutcome(entries: [], isComplete: false)
         }
         sqlite3_bind_int(genStmt, 1, mapLimit)
-        var mappedCount = 0
-        var mapBudgetExceeded = false
+
+        var rowCount = 0
+        var rawBlobs: [[UInt8]] = []
         while true {
             let step = sqlite3_step(genStmt)
             if step == SQLITE_ROW {
-                guard let ptr = sqlite3_column_blob(genStmt, 0) else { continue }
-                let count = Int(sqlite3_column_bytes(genStmt, 0))
-                if count <= 0 || count > self.maxBytesPerBlob { isComplete = false; continue }
-                if totalBytes + count > self
-                    .maxTotalBytesPerDatabase { mapBudgetExceeded = true; isComplete = false; break }
-                totalBytes += count
-                mappedCount += 1
-                if mappedCount > self.maxBlobsPerDatabase { isComplete = false; break }
-                let blob = Array(UnsafeBufferPointer(start: ptr.assumingMemoryBound(to: UInt8.self), count: count))
-                guard let chatModel = AntigravityProtoReader.messageField(blob, field: 1) else { continue }
-                let label = AntigravityProtoReader.stringField(chatModel, field: 21)
-                let model = AntigravityProtoReader.stringField(chatModel, field: 19)
-                if let model, let label {
-                    let canon = self.normalizeModelID(model)
-                    if let existing = labelToModel[label],
-                       existing != canon { labelToModel[label] = "" } else { labelToModel[label] = canon }
+                rowCount += 1
+                if rowCount > self.maxBlobsPerDatabase {
+                    isComplete = false
+                    break
                 }
-            } else if step == SQLITE_DONE { break } else { isComplete = false; break }
-        }
-        sqlite3_finalize(genStmt)
-        if mapBudgetExceeded || mappedCount > self.maxBlobsPerDatabase {
-            return CLIParseOutcome(entries: [], isComplete: false)
-        }
-        if mappedCount == self.maxBlobsPerDatabase + 1 { isComplete = false; return CLIParseOutcome(
-            entries: [],
-            isComplete: false) }
-        totalBytes = 0
-        var procStmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, "SELECT data FROM gen_metadata ORDER BY idx LIMIT ?", -1, &procStmt, nil) ==
-            SQLITE_OK, let procStmt
-        else {
-            return CLIParseOutcome(entries: [], isComplete: false)
-        }
-        sqlite3_bind_int(procStmt, 1, mapLimit)
-        var processedCount = 0
-        while true {
-            let step = sqlite3_step(procStmt)
-            if step == SQLITE_ROW {
-                guard let ptr = sqlite3_column_blob(procStmt, 0) else { continue }
-                let count = Int(sqlite3_column_bytes(procStmt, 0))
-                if count <= 0 || count > self.maxBytesPerBlob { isComplete = false; continue }
-                if totalBytes + count > self.maxTotalBytesPerDatabase { isComplete = false; break }
-                totalBytes += count
-                processedCount += 1
-                if processedCount > self.maxBlobsPerDatabase { isComplete = false; break }
-                let blob = Array(UnsafeBufferPointer(start: ptr.assumingMemoryBound(to: UInt8.self), count: count))
-                guard let chatModel = AntigravityProtoReader.messageField(blob, field: 1),
-                      let usage = AntigravityProtoReader.messageField(chatModel, field: 4) else { continue }
-                /// Validate token fields strictly (reject if varint exceeds Int.max)
-                func token(_ field: Int, defaultZero: Bool = true) -> Int? {
-                    if let v = AntigravityProtoReader.varintField(usage, field: field) {
-                        guard let iv = Int(exactly: v) else { return nil }
-                        return iv >= 0 ? iv : nil
-                    }
-                    return defaultZero ? 0 : nil
-                }
-                guard let sysVal = token(1), let newInVal = token(2), let cacheReadVal = token(5),
-                      let outputVal = token(9), let reasoningVal = token(10) else { continue }
-                guard let inputTokens = self.checkedAdd(sysVal, newInVal) else { continue }
-                guard let t1 = self.checkedAdd(inputTokens, outputVal), let t2 = self.checkedAdd(t1, cacheReadVal),
-                      let total = self.checkedAdd(
-                          t2,
-                          reasoningVal), total != 0 else { continue }
-                let totalTokens = total
-                if let responseID = AntigravityProtoReader.stringField(usage, field: 11) {
-                    if seenResponseIds.contains(responseID) { continue }
-                    seenResponseIds.insert(responseID)
-                }
-                var turnMs: Int64?
-                if let gen = AntigravityProtoReader.messageField(chatModel, field: 9),
-                   let tsData = AntigravityProtoReader.messageField(
-                       gen,
-                       field: 4)
-                {
-                    turnMs = AntigravityProtoReader.protoTimestampMs(tsData)
-                }
-                let timestampMs: Int64
-                if let tm = turnMs {
-                    timestampMs = tm
-                } else if let sc = sessionCreatedMs {
-                    timestampMs = sc
-                } else {
+                guard let ptr = sqlite3_column_blob(genStmt, 0) else {
+                    isComplete = false
                     continue
                 }
-                let date = self.timestampToDayKey(timestampMs, calendar: calendar)
-                let rawModel = AntigravityProtoReader.stringField(chatModel, field: 19) ?? AntigravityProtoReader
-                    .stringField(
-                        chatModel,
-                        field: 21).flatMap { labelToModel[$0]?.isEmpty == false ? labelToModel[$0] : nil } ?? "unknown"
-                let modelId = self.normalizeModelID(rawModel)
-                if let idx = entries.firstIndex(where: { $0.date == date }) {
-                    let e = entries[idx]
-                    guard let newInput = self.checkedAdd(e.inputTokens ?? 0, inputTokens),
-                          let newOutput = self.checkedAdd(e.outputTokens ?? 0, outputVal),
-                          let newCacheRead = self.checkedAdd(e.cacheReadTokens ?? 0, cacheReadVal),
-                          let newReason = self.checkedAdd(e.reasoningTokens ?? 0, reasoningVal),
-                          let newTotal = self.checkedAdd(e.totalTokens ?? 0, totalTokens)
-                    else { isComplete = false; continue }
-                    guard let newBreakdown = self.checkedMergeBreakdown(
-                        e.modelBreakdowns,
-                        model: modelId,
-                        tokens: totalTokens,
-                        inputTokens: inputTokens,
-                        outputTokens: outputVal,
-                        cacheReadTokens: cacheReadVal,
-                        cacheCreationTokens: 0,
-                        reasoningTokens: reasoningVal) else { isComplete = false; continue }
-                    let ne = CostUsageDailyReport.Entry(
-                        date: e.date,
-                        inputTokens: newInput,
-                        outputTokens: newOutput,
-                        cacheReadTokens: newCacheRead,
-                        cacheCreationTokens: e.cacheCreationTokens ?? 0,
-                        reasoningTokens: newReason,
-                        totalTokens: newTotal,
-                        requestCount: (e.requestCount ?? 0) + 1,
-                        costUSD: nil,
-                        modelsUsed: nil,
-                        modelBreakdowns: newBreakdown)
-                    entries[idx] = ne
+                let count = Int(sqlite3_column_bytes(genStmt, 0))
+                if count <= 0 || count > self.maxBytesPerBlob {
+                    isComplete = false
+                    continue
+                }
+                if totalDbBytes + count > self.maxTotalBytesPerDatabase || globalBytes + count > self.maxGlobalBytes {
+                    isComplete = false
+                    break
+                }
+                totalDbBytes += count
+                globalBytes += count
+                let blob = Array(UnsafeBufferPointer(start: ptr.assumingMemoryBound(to: UInt8.self), count: count))
+                rawBlobs.append(blob)
+            } else if step == SQLITE_DONE {
+                break
+            } else {
+                isComplete = false
+                break
+            }
+        }
+        sqlite3_finalize(genStmt)
+
+        // Pass 1: Build labelToModel map
+        var labelToModel: [String: String] = [:]
+        for blob in rawBlobs {
+            guard let chatModel = AntigravityProtoReader.messageField(blob, field: 1) else { continue }
+            let label = AntigravityProtoReader.stringField(chatModel, field: 21)
+            let model = AntigravityProtoReader.stringField(chatModel, field: 19)
+            if let model, let label {
+                let canon = self.normalizeModelID(model)
+                if let existing = labelToModel[label], existing != canon {
+                    labelToModel[label] = ""
                 } else {
-                    let e = CostUsageDailyReport.Entry(
-                        date: date,
-                        inputTokens: inputTokens,
-                        outputTokens: outputVal,
-                        cacheReadTokens: cacheReadVal,
-                        cacheCreationTokens: 0,
-                        reasoningTokens: reasoningVal,
+                    labelToModel[label] = canon
+                }
+            }
+        }
+
+        // Pass 2: Parse turns
+        for blob in rawBlobs {
+            guard let chatModel = AntigravityProtoReader.messageField(blob, field: 1),
+                  let usage = AntigravityProtoReader.messageField(chatModel, field: 4)
+            else {
+                isComplete = false
+                continue
+            }
+
+            let sysResult = AntigravityProtoReader.tokenValue(usage, field: 1)
+            let newInResult = AntigravityProtoReader.tokenValue(usage, field: 2)
+            let cacheReadResult = AntigravityProtoReader.tokenValue(usage, field: 5)
+            let outputResult = AntigravityProtoReader.tokenValue(usage, field: 9)
+            let reasoningResult = AntigravityProtoReader.tokenValue(usage, field: 10)
+
+            guard case let .valid(sysVal) = sysResult.defaultZero,
+                  case let .valid(newInVal) = newInResult.defaultZero,
+                  case let .valid(cacheReadVal) = cacheReadResult.defaultZero,
+                  case let .valid(outputVal) = outputResult.defaultZero,
+                  case let .valid(reasoningVal) = reasoningResult.defaultZero
+            else {
+                isComplete = false
+                continue
+            }
+
+            guard let inputTokens = self.checkedAdd(sysVal, newInVal),
+                  let t1 = self.checkedAdd(inputTokens, outputVal),
+                  let t2 = self.checkedAdd(t1, cacheReadVal),
+                  let total = self.checkedAdd(t2, reasoningVal), total != 0
+            else {
+                isComplete = false
+                continue
+            }
+            let totalTokens = total
+
+            var turnMs: Int64?
+            if let gen = AntigravityProtoReader.messageField(chatModel, field: 9),
+               let tsData = AntigravityProtoReader.messageField(gen, field: 4)
+            {
+                turnMs = AntigravityProtoReader.protoTimestampMs(tsData)
+            }
+            guard let timestampMs = turnMs, timestampMs > 0, timestampMs <= 253_402_300_799_000 else {
+                isComplete = false
+                continue
+            }
+
+            if let responseID = AntigravityProtoReader.stringField(usage, field: 11) {
+                if seenResponseIds.contains(responseID) { continue }
+                seenResponseIds.insert(responseID)
+            }
+
+            let date = self.timestampToDayKey(timestampMs, calendar: calendar)
+            let rawModel = AntigravityProtoReader.stringField(chatModel, field: 19) ?? AntigravityProtoReader
+                .stringField(
+                    chatModel,
+                    field: 21).flatMap { labelToModel[$0]?.isEmpty == false ? labelToModel[$0] : nil } ?? "unknown"
+            let modelId = self.normalizeModelID(rawModel)
+
+            if let idx = entries.firstIndex(where: { $0.date == date }) {
+                let e = entries[idx]
+                guard let newInput = self.checkedAdd(e.inputTokens ?? 0, inputTokens),
+                      let newOutput = self.checkedAdd(e.outputTokens ?? 0, outputVal),
+                      let newCacheRead = self.checkedAdd(e.cacheReadTokens ?? 0, cacheReadVal),
+                      let newReason = self.checkedAdd(e.reasoningTokens ?? 0, reasoningVal),
+                      let newTotal = self.checkedAdd(e.totalTokens ?? 0, totalTokens)
+                else {
+                    isComplete = false
+                    continue
+                }
+                guard let newBreakdown = self.checkedMergeBreakdown(
+                    e.modelBreakdowns,
+                    model: modelId,
+                    tokens: totalTokens,
+                    requestCount: 1,
+                    inputTokens: inputTokens,
+                    outputTokens: outputVal,
+                    cacheReadTokens: cacheReadVal,
+                    cacheCreationTokens: 0,
+                    reasoningTokens: reasoningVal)
+                else {
+                    isComplete = false
+                    continue
+                }
+                let ne = CostUsageDailyReport.Entry(
+                    date: e.date,
+                    inputTokens: newInput,
+                    outputTokens: newOutput,
+                    cacheReadTokens: newCacheRead,
+                    cacheCreationTokens: e.cacheCreationTokens ?? 0,
+                    reasoningTokens: newReason,
+                    totalTokens: newTotal,
+                    requestCount: (e.requestCount ?? 0) + 1,
+                    costUSD: nil,
+                    modelsUsed: nil,
+                    modelBreakdowns: newBreakdown)
+                entries[idx] = ne
+            } else {
+                let e = CostUsageDailyReport.Entry(
+                    date: date,
+                    inputTokens: inputTokens,
+                    outputTokens: outputVal,
+                    cacheReadTokens: cacheReadVal,
+                    cacheCreationTokens: 0,
+                    reasoningTokens: reasoningVal,
+                    totalTokens: totalTokens,
+                    requestCount: 1,
+                    costUSD: nil,
+                    modelsUsed: nil,
+                    modelBreakdowns: [CostUsageDailyReport.ModelBreakdown(
+                        modelName: modelId,
+                        costUSD: nil,
                         totalTokens: totalTokens,
                         requestCount: 1,
-                        costUSD: nil,
-                        modelsUsed: nil,
-                        modelBreakdowns: [CostUsageDailyReport.ModelBreakdown(
-                            modelName: modelId,
-                            costUSD: nil,
-                            totalTokens: totalTokens,
-                            requestCount: 1,
-                            inputTokens: inputTokens,
-                            outputTokens: outputVal,
-                            cacheReadTokens: cacheReadVal,
-                            cacheCreationTokens: 0,
-                            reasoningTokens: reasoningVal)])
-                    entries.append(e)
-                }
-            } else if step == SQLITE_DONE { break } else { isComplete = false; break }
+                        inputTokens: inputTokens,
+                        outputTokens: outputVal,
+                        cacheReadTokens: cacheReadVal,
+                        cacheCreationTokens: 0,
+                        reasoningTokens: reasoningVal)])
+                entries.append(e)
+            }
         }
-        sqlite3_finalize(procStmt)
+
         return CLIParseOutcome(entries: entries.sorted { $0.date < $1.date }, isComplete: isComplete)
         #else
         return CLIParseOutcome(entries: [], isComplete: true)
@@ -439,7 +487,8 @@ enum AntigravityLocalReader {
               let read = self.checkedAdd(existing.cacheReadTokens ?? 0, new.cacheReadTokens ?? 0),
               let creation = self.checkedAdd(existing.cacheCreationTokens ?? 0, new.cacheCreationTokens ?? 0),
               let reason = self.checkedAdd(existing.reasoningTokens ?? 0, new.reasoningTokens ?? 0),
-              let total = self.checkedAdd(existing.totalTokens ?? 0, new.totalTokens ?? 0) else { return nil }
+              let total = self.checkedAdd(existing.totalTokens ?? 0, new.totalTokens ?? 0),
+              let requests = self.checkedAdd(existing.requestCount ?? 0, new.requestCount ?? 0) else { return nil }
         let breakdowns: [CostUsageDailyReport.ModelBreakdown]?
         if let ex = existing.modelBreakdowns, let nw = new.modelBreakdowns {
             var merged = ex
@@ -448,6 +497,7 @@ enum AntigravityLocalReader {
                     merged,
                     model: b.modelName,
                     tokens: b.totalTokens ?? 0,
+                    requestCount: b.requestCount ?? 1,
                     inputTokens: b.inputTokens,
                     outputTokens: b.outputTokens,
                     cacheReadTokens: b.cacheReadTokens,
@@ -467,40 +517,73 @@ enum AntigravityLocalReader {
             cacheCreationTokens: creation,
             reasoningTokens: reason,
             totalTokens: total,
-            requestCount: (existing.requestCount ?? 0) + (new.requestCount ?? 0),
+            requestCount: requests,
             costUSD: nil,
             modelsUsed: nil,
             modelBreakdowns: breakdowns)
     }
 
-    static func makeDailyReport(calendar: Calendar = .current) -> CostUsageDailyReport {
-        let dbOutcome = self.parseCLIDBsWithStatus(calendar: calendar)
-        let entries: [CostUsageDailyReport.Entry]
-        if dbOutcome.isComplete, !dbOutcome.entries.isEmpty {
-            entries = dbOutcome.entries
-        } else if dbOutcome.isComplete, dbOutcome.entries.isEmpty {
-            entries = self.parseJSONLCache(calendar: calendar)
-        } else {
-            let jsonl = self.parseJSONLCache(calendar: calendar)
-            entries = jsonl.isEmpty ? dbOutcome.entries : jsonl
-        }
-        let sorted = entries.sorted { $0.date < $1.date }
-        var totalTokens = 0
-        var overflowed = false
-        for e in sorted {
-            if let t = e.totalTokens {
-                let (res, overflow) = totalTokens.addingReportingOverflow(t)
-                if overflow { overflowed = true; totalTokens = Int.max; break }
-                totalTokens = res
+    static func makeDailyReportWithStatus(calendar: Calendar = .current) -> DailyReportResult {
+        let dbPaths = self.cliDBPaths()
+        if !dbPaths.isEmpty {
+            let dbOutcome = self.parseCLIDBsWithStatus(paths: dbPaths, calendar: calendar)
+            if dbOutcome.isComplete {
+                let summaryTotal = self.checkedSum(dbOutcome.entries.compactMap(\.totalTokens))
+                let report = CostUsageDailyReport(
+                    data: dbOutcome.entries,
+                    summary: dbOutcome.entries.isEmpty ? nil : .init(
+                        totalInputTokens: nil,
+                        totalOutputTokens: nil,
+                        totalTokens: summaryTotal,
+                        totalCostUSD: nil))
+                return DailyReportResult(report: report, isComplete: true, isAvailable: true)
+            } else {
+                let jsonlPaths = self.tokiCachePaths()
+                if !jsonlPaths.isEmpty {
+                    let jsonlEntries = self.parseJSONLCache(paths: jsonlPaths, calendar: calendar)
+                    if !jsonlEntries.isEmpty {
+                        let summaryTotal = self.checkedSum(jsonlEntries.compactMap(\.totalTokens))
+                        let report = CostUsageDailyReport(
+                            data: jsonlEntries,
+                            summary: .init(
+                                totalInputTokens: nil,
+                                totalOutputTokens: nil,
+                                totalTokens: summaryTotal,
+                                totalCostUSD: nil))
+                        return DailyReportResult(report: report, isComplete: true, isAvailable: true)
+                    }
+                }
+                return DailyReportResult(
+                    report: CostUsageDailyReport(data: [], summary: nil),
+                    isComplete: false,
+                    isAvailable: false)
             }
         }
-        let summaryTotal: Int? = sorted.isEmpty ? nil : (overflowed ? Int.max : totalTokens)
-        let summary: CostUsageDailyReport.Summary? = sorted.isEmpty ? nil : .init(
-            totalInputTokens: nil,
-            totalOutputTokens: nil,
-            totalTokens: summaryTotal,
-            totalCostUSD: nil)
-        return CostUsageDailyReport(data: sorted, summary: summary)
+
+        let jsonlPaths = self.tokiCachePaths()
+        if !jsonlPaths.isEmpty {
+            let jsonlEntries = self.parseJSONLCache(paths: jsonlPaths, calendar: calendar)
+            if !jsonlEntries.isEmpty {
+                let summaryTotal = self.checkedSum(jsonlEntries.compactMap(\.totalTokens))
+                let report = CostUsageDailyReport(
+                    data: jsonlEntries,
+                    summary: .init(
+                        totalInputTokens: nil,
+                        totalOutputTokens: nil,
+                        totalTokens: summaryTotal,
+                        totalCostUSD: nil))
+                return DailyReportResult(report: report, isComplete: true, isAvailable: true)
+            }
+        }
+
+        return DailyReportResult(
+            report: CostUsageDailyReport(data: [], summary: nil),
+            isComplete: true,
+            isAvailable: false)
+    }
+
+    static func makeDailyReport(calendar: Calendar = .current) -> CostUsageDailyReport {
+        self.makeDailyReportWithStatus(calendar: calendar).report
     }
 
     private static func timestampToDayKey(_ ms: Int64, calendar: Calendar = .current) -> String {
@@ -514,6 +597,7 @@ enum AntigravityLocalReader {
         _ ex: [CostUsageDailyReport.ModelBreakdown]?,
         model: String,
         tokens: Int,
+        requestCount: Int = 1,
         inputTokens: Int? = nil,
         outputTokens: Int? = nil,
         cacheReadTokens: Int? = nil,
@@ -524,6 +608,7 @@ enum AntigravityLocalReader {
         if let i = arr.firstIndex(where: { $0.modelName == model }) {
             let b = arr[i]
             guard let newTotal = self.checkedAdd(b.totalTokens ?? 0, tokens),
+                  let newRequests = self.checkedAdd(b.requestCount ?? 0, requestCount),
                   let newInput = self.checkedAdd(b.inputTokens ?? 0, inputTokens ?? 0),
                   let newOutput = self.checkedAdd(b.outputTokens ?? 0, outputTokens ?? 0),
                   let newRead = self.checkedAdd(b.cacheReadTokens ?? 0, cacheReadTokens ?? 0),
@@ -533,7 +618,7 @@ enum AntigravityLocalReader {
                 modelName: b.modelName,
                 costUSD: nil,
                 totalTokens: newTotal,
-                requestCount: (b.requestCount ?? 0) + 1,
+                requestCount: newRequests,
                 inputTokens: newInput,
                 outputTokens: newOutput,
                 cacheReadTokens: newRead,
@@ -544,7 +629,7 @@ enum AntigravityLocalReader {
                 modelName: model,
                 costUSD: nil,
                 totalTokens: tokens,
-                requestCount: 1,
+                requestCount: requestCount,
                 inputTokens: inputTokens,
                 outputTokens: outputTokens,
                 cacheReadTokens: cacheReadTokens,
@@ -568,6 +653,7 @@ enum AntigravityLocalReader {
             ex,
             model: model,
             tokens: tokens,
+            requestCount: 1,
             inputTokens: inputTokens,
             outputTokens: outputTokens,
             cacheReadTokens: cacheReadTokens,
@@ -580,6 +666,20 @@ enum AntigravityLocalReader {
 struct AntigravityProtoReader {
     let bytes: [UInt8]
     var offset: Int = 0
+    var isMalformed: Bool = false
+
+    enum TokenFieldResult {
+        case valid(Int)
+        case missing
+        case malformed
+
+        var defaultZero: TokenFieldResult {
+            switch self {
+            case .missing: .valid(0)
+            case .valid, .malformed: self
+            }
+        }
+    }
 
     mutating func readVarint() -> UInt64? {
         var result: UInt64 = 0
@@ -590,34 +690,50 @@ struct AntigravityProtoReader {
             self.offset += 1
             byteCount += 1
             if byteCount == 10 {
-                if (byte & 0x80) != 0 { return nil }
-                if (byte & 0x7F) > 1 { return nil }
+                if (byte & 0x80) != 0 || (byte & 0x7F) > 1 {
+                    self.isMalformed = true
+                    return nil
+                }
             }
             let payload = UInt64(byte & 0x7F)
-            if shift >= 64 { return nil }
-            if shift == 63, payload > 1 { return nil }
+            if shift >= 64 || (shift == 63 && payload > 1) {
+                self.isMalformed = true
+                return nil
+            }
             result |= payload << shift
             if (byte & 0x80) == 0 { return result }
             shift += 7
-            if shift >= 64 { return nil }
-            if byteCount >= 10 { return nil }
+            if shift >= 64 || byteCount >= 10 {
+                self.isMalformed = true
+                return nil
+            }
         }
+        self.isMalformed = true
         return nil
     }
 
     mutating func nextField() -> (fieldNumber: Int, wireType: Int, data: [UInt8]?, varintValue: UInt64?)? {
         guard self.offset < self.bytes.count else { return nil }
-        guard let tag = self.readVarint() else { return nil }
-        guard tag <= UInt64(Int.max) else { return nil }
+        guard let tag = self.readVarint(), tag <= UInt64(Int.max) else {
+            self.isMalformed = true
+            return nil
+        }
         let fieldNumber = Int(tag >> 3)
         let wireType = Int(tag & 0x07)
         switch wireType {
         case 0:
-            guard let val = self.readVarint() else { return nil }
+            guard let val = self.readVarint() else {
+                self.isMalformed = true
+                return nil
+            }
             return (fieldNumber, wireType, nil, val)
         case 1:
             guard let end = self.offset.addingReportingOverflow(8).overflow ? nil : self.offset + 8,
-                  end <= self.bytes.count else { return nil }
+                  end <= self.bytes.count
+            else {
+                self.isMalformed = true
+                return nil
+            }
             let slice = Array(self.bytes[self.offset..<end])
             self.offset = end
             return (fieldNumber, wireType, slice, nil)
@@ -626,17 +742,25 @@ struct AntigravityProtoReader {
                   let len = Int(exactly: length), len >= 0,
                   let end = self.offset.addingReportingOverflow(len).overflow ? nil : self.offset + len,
                   end <= self.bytes.count
-            else { return nil }
+            else {
+                self.isMalformed = true
+                return nil
+            }
             let slice = Array(self.bytes[self.offset..<end])
             self.offset = end
             return (fieldNumber, wireType, slice, nil)
         case 5:
             guard let end = self.offset.addingReportingOverflow(4).overflow ? nil : self.offset + 4,
-                  end <= self.bytes.count else { return nil }
+                  end <= self.bytes.count
+            else {
+                self.isMalformed = true
+                return nil
+            }
             let slice = Array(self.bytes[self.offset..<end])
             self.offset = end
             return (fieldNumber, wireType, slice, nil)
         default:
+            self.isMalformed = true
             return nil
         }
     }
@@ -667,6 +791,20 @@ struct AntigravityProtoReader {
               !text.isEmpty
         else { return nil }
         return text
+    }
+
+    static func tokenValue(_ data: [UInt8], field: Int) -> TokenFieldResult {
+        var reader = AntigravityProtoReader(bytes: data)
+        while let item = reader.nextField() {
+            if item.fieldNumber == field {
+                if item.wireType == 0, let val = item.varintValue {
+                    guard let iv = Int(exactly: val), iv >= 0 else { return .malformed }
+                    return .valid(iv)
+                }
+                return .malformed
+            }
+        }
+        return reader.isMalformed ? .malformed : .missing
     }
 
     static func protoTimestampMs(_ data: [UInt8]) -> Int64? {
