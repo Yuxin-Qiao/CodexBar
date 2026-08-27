@@ -540,9 +540,12 @@ struct CursorUsageEventsFetcher: Sendable {
     /// to cache-creation input.
     static func makeDailyReport(
         from events: [CursorUsageEvent],
-        calendar: Calendar = .current) -> CostUsageDailyReport
+        calendar: Calendar = .current,
+        modelsDevCatalog: ModelsDevCatalog? = nil,
+        cacheRoot: URL? = nil) -> CostUsageDailyReport
     {
         var days: [String: [String: ModelAccumulator]] = [:]
+        var resolvedCatalog = modelsDevCatalog
         for event in events {
             guard let timestampMS = event.validTimestampMS,
                   let usage = event.tokenUsage,
@@ -551,10 +554,18 @@ struct CursorUsageEventsFetcher: Sendable {
             let date = Date(timeIntervalSince1970: Double(timestampMS) / 1000.0)
             let dayKey = CostUsageLocalDay.key(from: date, calendar: calendar)
             let model = event.model ?? "unknown"
+            var estimatedCents: Double?
+            if usage.cost == .omitted {
+                // Resolve lazily once; an explicit empty catalog prevents per-lookup cache reads.
+                let catalog = resolvedCatalog ?? ModelsDevCache.load(cacheRoot: cacheRoot).artifact?.catalog
+                    ?? ModelsDevCatalog(providers: [:])
+                resolvedCatalog = catalog
+                estimatedCents = Self.estimatedListPriceCents(
+                    for: usage, eventDate: date, model: model, modelsDevCatalog: catalog)
+            }
             var modelsForDay = days[dayKey] ?? [:]
             var accumulator = modelsForDay[model] ?? ModelAccumulator()
-            accumulator.add(usage, estimatedCents: Self.estimatedListPriceCents(
-                for: usage, eventDate: date, model: model))
+            accumulator.add(usage, estimatedCents: estimatedCents)
             modelsForDay[model] = accumulator
             days[dayKey] = modelsForDay
         }
@@ -721,7 +732,8 @@ struct CursorUsageEventsFetcher: Sendable {
     private static func estimatedListPriceCents(
         for usage: CursorEventTokenUsage,
         eventDate: Date,
-        model: String) -> Double?
+        model: String,
+        modelsDevCatalog: ModelsDevCatalog) -> Double?
     {
         guard usage.cost == .omitted else { return nil }
         if let usd = CostUsagePricing.codexCostUSD(
@@ -731,6 +743,7 @@ struct CursorUsageEventsFetcher: Sendable {
             outputTokens: usage.outputTokens,
             cacheWriteInputTokens: usage.cacheWriteTokens,
             pricingDate: eventDate,
+            modelsDevCatalog: modelsDevCatalog,
             customPricing: .empty)
         {
             return usd * 100
@@ -741,7 +754,8 @@ struct CursorUsageEventsFetcher: Sendable {
             cacheReadInputTokens: usage.cacheReadTokens,
             cacheCreationInputTokens: usage.cacheWriteTokens,
             outputTokens: usage.outputTokens,
-            pricingDate: eventDate)
+            pricingDate: eventDate,
+            modelsDevCatalog: modelsDevCatalog)
         {
             return usd * 100
         }
@@ -749,8 +763,8 @@ struct CursorUsageEventsFetcher: Sendable {
     }
 
     private static func cursorClaudeCatalogModel(_ model: String) -> String {
-        guard let match = model.wholeMatch(of: /^claude-(\d+)\.(\d+)-(.+)$/) else { return model }
-        return "claude-\(match.3)-\(match.1)-\(match.2)"
+        guard let match = model.wholeMatch(of: /^claude-(\d+)\.(\d+)-(sonnet|opus|haiku)(-.*)?$/) else { return model }
+        return "claude-\(match.3)-\(match.1)-\(match.2)\(match.4 ?? "")"
     }
 
     private static func makeSummary(from entries: [CostUsageDailyReport.Entry]) -> CostUsageDailyReport.Summary {

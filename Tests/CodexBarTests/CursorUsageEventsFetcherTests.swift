@@ -67,6 +67,14 @@ struct CursorUsageEventsFetcherTests {
         return probe.page ?? 1
     }
 
+    private static func makeDailyReport(
+        from events: [CursorUsageEvent],
+        calendar: Calendar) -> CostUsageDailyReport
+    {
+        CursorUsageEventsFetcher.makeDailyReport(
+            from: events, calendar: calendar, modelsDevCatalog: ModelsDevCatalog(providers: [:]))
+    }
+
     // MARK: - Mapping
 
     @Test
@@ -83,7 +91,7 @@ struct CursorUsageEventsFetcherTests {
             Self.event(timestampMS: day3, model: "claude-4.5-sonnet", input: 1, output: 1, totalCents: 9),
         ]
 
-        let report = CursorUsageEventsFetcher.makeDailyReport(from: events, calendar: Self.utcCalendar)
+        let report = Self.makeDailyReport(from: events, calendar: Self.utcCalendar)
 
         #expect(report.data.count == 2)
 
@@ -117,7 +125,7 @@ struct CursorUsageEventsFetcherTests {
             Self.event(timestampMS: 1_700_000_000_000, model: "claude-4.5-sonnet", input: 5, totalCents: 12),
         ]
 
-        let report = CursorUsageEventsFetcher.makeDailyReport(from: events, calendar: Self.utcCalendar)
+        let report = Self.makeDailyReport(from: events, calendar: Self.utcCalendar)
 
         #expect(report.data.count == 1)
         #expect(report.data[0].requestCount == 1)
@@ -126,7 +134,7 @@ struct CursorUsageEventsFetcherTests {
 
     @Test
     func `make daily report prices unreported cursor events from the shared catalog`() {
-        let report = CursorUsageEventsFetcher.makeDailyReport(
+        let report = Self.makeDailyReport(
             from: [
                 Self.event(timestampMS: 1_700_000_000_000, model: "gpt-5", input: 200, output: 20, totalCents: nil),
             ],
@@ -204,7 +212,7 @@ struct CursorUsageEventsFetcherTests {
             output: 50,
             totalCents: 150)
 
-        let report = CursorUsageEventsFetcher.makeDailyReport(from: [event], calendar: calendar)
+        let report = Self.makeDailyReport(from: [event], calendar: calendar)
         let snapshot = CostUsageFetcher.tokenSnapshot(from: report, now: now, useCurrentLocalDayForSession: true)
 
         // No usage today -> session is zero, while the window total still reflects the older day.
@@ -312,7 +320,7 @@ struct CursorUsageEventsFetcherTests {
                 totalCents: 100),
             chargedCents: 25)
 
-        let report = CursorUsageEventsFetcher.makeDailyReport(from: [event], calendar: Self.utcCalendar)
+        let report = Self.makeDailyReport(from: [event], calendar: Self.utcCalendar)
 
         #expect(report.data.isEmpty)
         #expect(report.summary?.totalCostUSD == 0)
@@ -340,7 +348,7 @@ struct CursorUsageEventsFetcherTests {
             input: 5,
             totalCents: nil)
 
-        let report = CursorUsageEventsFetcher.makeDailyReport(from: [event], calendar: Self.utcCalendar)
+        let report = Self.makeDailyReport(from: [event], calendar: Self.utcCalendar)
 
         #expect(report.data.count == 1)
         #expect(report.data[0].inputTokens == 5)
@@ -364,7 +372,7 @@ struct CursorUsageEventsFetcherTests {
                 totalCents: nil),
         ]
 
-        let report = CursorUsageEventsFetcher.makeDailyReport(from: events, calendar: Self.utcCalendar)
+        let report = Self.makeDailyReport(from: events, calendar: Self.utcCalendar)
         let priced = report.data[0].modelBreakdowns?.first { $0.modelName == "claude-4.5-sonnet" }
         let unpriced = report.data[0].modelBreakdowns?.first { $0.modelName == "gpt-5" }
 
@@ -397,7 +405,7 @@ struct CursorUsageEventsFetcherTests {
                 totalCents: 50),
         ]
 
-        let report = CursorUsageEventsFetcher.makeDailyReport(from: events, calendar: Self.utcCalendar)
+        let report = Self.makeDailyReport(from: events, calendar: Self.utcCalendar)
 
         #expect(report.data.count == 1)
         #expect(report.data[0].costUSD == nil)
@@ -421,7 +429,7 @@ struct CursorUsageEventsFetcherTests {
                 totalCents: nil),
         ]
 
-        let report = CursorUsageEventsFetcher.makeDailyReport(from: events, calendar: Self.utcCalendar)
+        let report = Self.makeDailyReport(from: events, calendar: Self.utcCalendar)
         let priced = report.data.first { $0.costUSD != nil }
         let catalogPricedDay = report.data.first { $0.estimatedRequestCount == 1 }
 
@@ -434,7 +442,7 @@ struct CursorUsageEventsFetcherTests {
 
     @Test
     func `estimates price cached claude tokens without double billing`() {
-        // Cursor reports disjoint counters: input excludes cache. For Muse the
+        // Cursor reports disjoint counters: input excludes cache. For Claude the
         // pricing bills input, cacheRead, and cacheCreation disjointly. The
         // fallback must not fold cache tokens into input for the Claude route.
         let event = Self.event(
@@ -445,13 +453,14 @@ struct CursorUsageEventsFetcherTests {
             cacheWrite: 300,
             cacheRead: 200,
             totalCents: nil)
-        let report = CursorUsageEventsFetcher.makeDailyReport(from: [event], calendar: Self.utcCalendar)
+        let report = Self.makeDailyReport(from: [event], calendar: Self.utcCalendar)
         let expected = CostUsagePricing.claudeCostUSD(
             model: "claude-sonnet-4-20250514",
             inputTokens: 100,
             cacheReadInputTokens: 200,
             cacheCreationInputTokens: 300,
-            outputTokens: 50)
+            outputTokens: 50,
+            modelsDevCatalog: ModelsDevCatalog(providers: [:]))
         #expect(report.data.count == 1)
         #expect(report.data[0].estimatedRequestCount == 1)
         #expect(report.data[0].unpricedRequestCount == nil)
@@ -466,13 +475,14 @@ struct CursorUsageEventsFetcherTests {
             input: 100,
             output: 50,
             totalCents: nil)
-        let report = CursorUsageEventsFetcher.makeDailyReport(from: [event], calendar: Self.utcCalendar)
+        let report = Self.makeDailyReport(from: [event], calendar: Self.utcCalendar)
         let expected = CostUsagePricing.claudeCostUSD(
             model: "claude-sonnet-4-5",
             inputTokens: 100,
             cacheReadInputTokens: 0,
             cacheCreationInputTokens: 0,
-            outputTokens: 50)
+            outputTokens: 50,
+            modelsDevCatalog: ModelsDevCatalog(providers: [:]))
 
         #expect(report.data.count == 1)
         #expect(report.data[0].estimatedRequestCount == 1)
@@ -494,9 +504,9 @@ struct CursorUsageEventsFetcherTests {
                 input: 7,
                 totalCents: nil),
         ]
-        let report = CursorUsageEventsFetcher.makeDailyReport(from: events, calendar: Self.utcCalendar)
+        let report = Self.makeDailyReport(from: events, calendar: Self.utcCalendar)
         #expect(report.data.count == 1)
-        // Only the Muse event has a price; the unknown model is absent from bundled tables.
+        // Only the Claude event has a price; the unknown model is absent from bundled tables.
         #expect(Self.approxEqual(report.data[0].costUSD, 1.0))
         #expect(report.data[0].requestCount == 2)
         #expect(report.data[0].unpricedRequestCount == 1)
@@ -521,7 +531,7 @@ struct CursorUsageEventsFetcherTests {
                 input: 7,
                 totalCents: -1),
         ]
-        let report = CursorUsageEventsFetcher.makeDailyReport(from: events, calendar: Self.utcCalendar)
+        let report = Self.makeDailyReport(from: events, calendar: Self.utcCalendar)
         #expect(report.data.count == 1)
         #expect(report.data[0].requestCount == 2)
         #expect(Self.approxEqual(report.data[0].costUSD, 1.0))
@@ -539,7 +549,7 @@ struct CursorUsageEventsFetcherTests {
             Self.event(timestampMS: 1_700_000_000_000, model: "gpt-5", input: 5, totalCents: 100),
             Self.event(timestampMS: 1_700_000_001_000, model: "gpt-5", input: 7, totalCents: -1),
         ]
-        let report = CursorUsageEventsFetcher.makeDailyReport(from: events, calendar: Self.utcCalendar)
+        let report = Self.makeDailyReport(from: events, calendar: Self.utcCalendar)
 
         #expect(report.data.count == 1)
         #expect(report.data[0].requestCount == 2)
@@ -613,7 +623,7 @@ struct CursorUsageEventsFetcherTests {
         // Verify metered cost is completely untouched (4 * 10 cents = $0.40)
         #expect(Self.approxEqual(CursorUsageEventsFetcher.meteredCostUSD(from: page.usageEventsDisplay), 0.40))
 
-        let report = CursorUsageEventsFetcher.makeDailyReport(from: page.usageEventsDisplay, calendar: Self.utcCalendar)
+        let report = Self.makeDailyReport(from: page.usageEventsDisplay, calendar: Self.utcCalendar)
         #expect(report.data.count == 1)
         let day = report.data[0]
         #expect(day.requestCount == 4)
@@ -716,7 +726,7 @@ struct CursorUsageEventsFetcherTests {
         // Metered cost remains unaffected (6 * 5 cents = $0.30)
         #expect(Self.approxEqual(CursorUsageEventsFetcher.meteredCostUSD(from: page.usageEventsDisplay), 0.30))
 
-        let report = CursorUsageEventsFetcher.makeDailyReport(from: page.usageEventsDisplay, calendar: Self.utcCalendar)
+        let report = Self.makeDailyReport(from: page.usageEventsDisplay, calendar: Self.utcCalendar)
         #expect(report.data.count == 1)
         let day = report.data[0]
         #expect(day.requestCount == 6)
@@ -746,7 +756,7 @@ struct CursorUsageEventsFetcherTests {
                 totalCents: 1),
         ]
 
-        let report = CursorUsageEventsFetcher.makeDailyReport(from: events, calendar: Self.utcCalendar)
+        let report = Self.makeDailyReport(from: events, calendar: Self.utcCalendar)
 
         #expect(report.data.count == 1)
         #expect(report.data[0].inputTokens == nil)

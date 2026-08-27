@@ -4,6 +4,24 @@ import Testing
 @testable import CodexBar
 
 struct OverviewSpendSummaryTests {
+    @Test(arguments: [30, 7], [false, true])
+    func `publication separates available history from unavailable subscription pricing`(
+        historyDays: Int, established: Bool) throws
+    {
+        let fixture = try CursorOverviewProofFixture.make(historyDays: historyDays, established: established)
+        #expect(fixture.model.groups.count == 1)
+        #expect(fixture.model.groups.first?.providers.map(\.provider) == [.cursor])
+        #expect(fixture.model.groups.first?.coveredDayCount == (established ? historyDays : 0))
+        #expect(fixture.counts.total == 2)
+        #expect(fixture.counts.cost == (established ? 1 : 0))
+        #expect(fixture.counts.tokens == (established ? 1 : 0))
+        #expect(fixture.summary.primarySpendText == (established ? "~$12.00" : "Spend unavailable"))
+        #expect(fixture.summary.tokenText == (established ? "~1K tokens" : nil))
+        #expect(fixture.summary.providerCoverageText == "\(established ? 1 : 0) of 2 subscriptions have spend")
+        #expect(fixture.summary.historyCoverageText == "Coverage: \(established ? historyDays : 0) / 30")
+        #expect(fixture.summary.isPartial == established)
+    }
+
     @Test
     func `summary marks incomplete provider coverage as partial`() {
         let group = self.group(
