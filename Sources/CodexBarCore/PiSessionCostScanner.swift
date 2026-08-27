@@ -269,7 +269,8 @@ enum PiSessionCostScanner {
         }
         // Only the scheduler-only transition may reuse the predecessor's identical pricing inputs.
         // A later parser change must invalidate normally unless separately reviewed for compatibility.
-        let compatiblePricingKey = CodexParserHash.value == "55f640e6bb0ccba4"
+        let compatiblePricingKey = (CodexParserHash.value == "55f640e6bb0ccba4" || CodexParserHash
+            .value == "21f10143afe00c55")
             ? key(parserHash: "c6c46a376ba16304")
             : nil
         return ModelsDevPricingContext(
