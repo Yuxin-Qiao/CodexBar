@@ -470,8 +470,12 @@ public struct CostUsageFetcher: Sendable {
                 historyCoverageIsEstablished: false)
         }
         if provider == .antigravity {
+            let homeURL = environment["HOME"].map { URL(fileURLWithPath: $0) }
             if let local = await self.loadAntigravityLocalSnapshot(
-                now: now, historyDays: clampedHistoryDays, calendar: fallbackCalendar)
+                home: homeURL,
+                now: now,
+                historyDays: clampedHistoryDays,
+                calendar: fallbackCalendar)
             {
                 return local
             }
@@ -1227,19 +1231,30 @@ public struct CostUsageFetcher: Sendable {
     }
 
     private static func loadAntigravityLocalSnapshot(
+        home: URL? = nil,
         now: Date,
         historyDays: Int,
         calendar: Calendar = .current) async -> CostUsageTokenSnapshot?
     {
         let cal = calendar
-        let reportResult = AntigravityLocalReader.makeDailyReportWithStatus(calendar: cal)
-        guard reportResult.isAvailable, !reportResult.report.data.isEmpty else { return nil }
+        let reportResult = AntigravityLocalReader.makeDailyReportWithStatus(home: home, calendar: cal)
+        guard reportResult.isAvailable else { return nil }
         let report = reportResult.report
+        if report.data.isEmpty {
+            guard reportResult.isComplete else { return nil }
+            return Self.tokenSnapshot(
+                from: CostUsageDailyReport(data: [], summary: nil),
+                now: now,
+                historyDays: historyDays,
+                useCurrentLocalDayForSession: true,
+                calendar: cal,
+                historyCoverageIsEstablished: true,
+                costProvenance: .unknown)
+        }
         let since = cal.date(byAdding: .day, value: -(historyDays - 1), to: cal.startOfDay(for: now)) ?? now
         let sinceKey = CostUsageLocalDay.key(from: since, calendar: cal)
         let nowKey = CostUsageLocalDay.key(from: now, calendar: cal)
         let filtered = report.data.filter { $0.date >= sinceKey && $0.date <= nowKey }
-        guard !filtered.isEmpty else { return nil }
         let costValues = filtered.compactMap(\.costUSD)
         let totalCost: Double? = costValues.isEmpty ? nil : costValues.reduce(0, +)
         var sum = 0
@@ -1253,7 +1268,7 @@ public struct CostUsageFetcher: Sendable {
             sum = res
         }
         let totalTokens: Int? = overflowed ? nil : sum
-        let filteredSummary: CostUsageDailyReport.Summary = .init(
+        let filteredSummary: CostUsageDailyReport.Summary? = filtered.isEmpty ? nil : .init(
             totalInputTokens: nil,
             totalOutputTokens: nil,
             totalTokens: totalTokens,
