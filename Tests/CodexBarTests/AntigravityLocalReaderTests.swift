@@ -127,10 +127,10 @@ struct AntigravityLocalReaderTests {
 
     @Test
     func `model normalization maps known aliases to canonical IDs`() {
-        #expect(AntigravityLocalReader.normalizeModelID("gemini-3-flash-a") == "gemini-3.7-flash")
-        #expect(AntigravityLocalReader.normalizeModelID("gemini-3.6-flash") == "gemini-3.7-flash")
-        #expect(AntigravityLocalReader.normalizeModelID("gemini-pro-default") == "gemini-2.5-pro")
-        #expect(AntigravityLocalReader.normalizeModelID("gemini-pro-agent") == "gemini-2.5-pro")
+        #expect(AntigravityLocalReader.normalizeModelID("gemini-3-flash-a") == "gemini-3-flash-a")
+        #expect(AntigravityLocalReader.normalizeModelID("gemini-3.6-flash") == "gemini-3.6-flash")
+        #expect(AntigravityLocalReader.normalizeModelID("gemini-pro-default") == "gemini-pro-default")
+        #expect(AntigravityLocalReader.normalizeModelID("gemini-pro-agent") == "gemini-pro-agent")
         #expect(AntigravityLocalReader.normalizeModelID("claude-sonnet-4-6") == "claude-sonnet-4-6")
     }
 
@@ -200,7 +200,7 @@ struct AntigravityLocalReaderTests {
         #expect(entry.reasoningTokens == 80)
         #expect(entry.totalTokens == 4144)
         #expect(entry.modelBreakdowns?.count == 1)
-        #expect(entry.modelBreakdowns?.first?.modelName == "gemini-3.7-flash")
+        #expect(entry.modelBreakdowns?.first?.modelName == "gemini-3.6-flash")
         #endif
     }
 

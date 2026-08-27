@@ -105,8 +105,8 @@ struct CursorAntigravityLocalReaderTests {
         let jsonl = [
             #"{"type":"session_meta","modelId":"gemini-2.5-pro"}"#,
             #"{"type":"usage","modelId":"gemini-2.5-pro","input":100,"output":30,"cacheRead":50,"cacheWrite":10,"# +
-                #""timestamp":#(firstStamp)}"#,
-            #"{"type":"usage","input":40,"output":10,"cacheRead":0,"cacheWrite":0,"timestamp":#(secondStamp)}"#,
+                #""timestamp":\#(firstStamp)}"#,
+            #"{"type":"usage","input":40,"output":10,"cacheRead":0,"cacheWrite":0,"timestamp":\#(secondStamp)}"#,
         ].joined(separator: "\n") + "\n"
         let url = try Self.writeTemporary(jsonl, extension: "jsonl")
         defer { try? FileManager.default.removeItem(at: url) }
@@ -170,8 +170,8 @@ struct CursorAntigravityLocalReaderTests {
 
     @Test
     func `model normalization maps known aliases to canonical IDs`() {
-        #expect(AntigravityLocalReader.normalizeModelID("gemini-3.5-flash-high") == "gemini-3.7-flash")
-        #expect(AntigravityLocalReader.normalizeModelID("gemini-3.6-flash") == "gemini-3.7-flash")
+        #expect(AntigravityLocalReader.normalizeModelID("gemini-3.5-flash-high") == "gemini-3.5-flash-high")
+        #expect(AntigravityLocalReader.normalizeModelID("gemini-3.6-flash") == "gemini-3.6-flash")
         #expect(AntigravityLocalReader.normalizeModelID("claude-sonnet-4-6") == "claude-sonnet-4-6")
         #expect(AntigravityLocalReader.normalizeModelID("") == "unknown")
     }
@@ -194,7 +194,24 @@ struct CursorAntigravityLocalReaderTests {
 
         sqlite3_exec(db, "CREATE TABLE gen_metadata (idx INTEGER PRIMARY KEY, data BLOB, size INTEGER);", nil, nil, nil)
         sqlite3_exec(db, "CREATE TABLE trajectory_metadata_blob (id TEXT PRIMARY KEY, data BLOB);", nil, nil, nil)
-
+        let trajBlob = Self.buildTrajectoryBlob()
+        var trajStmt: OpaquePointer?
+        if sqlite3_prepare_v2(
+            db,
+            "INSERT INTO trajectory_metadata_blob (id, data) VALUES ('main', ?)",
+            -1,
+            &trajStmt,
+            nil) == SQLITE_OK
+        {
+            _ = trajBlob.withUnsafeBytes { ptr in sqlite3_bind_blob(
+                trajStmt,
+                1,
+                ptr.baseAddress,
+                Int32(trajBlob.count),
+                nil) }
+            sqlite3_step(trajStmt)
+            sqlite3_finalize(trajStmt)
+        }
         let blob1 = Self.buildGenMetadataBlob(
             model: "gemini-3.6-flash",
             label: "Gemini 3.6 Flash (High)",
@@ -226,7 +243,7 @@ struct CursorAntigravityLocalReaderTests {
         #expect(entry.reasoningTokens == 80)
         #expect(entry.totalTokens == 4144)
         #expect(entry.modelBreakdowns?.count == 1)
-        #expect(entry.modelBreakdowns?.first?.modelName == "gemini-3.7-flash")
+        #expect(entry.modelBreakdowns?.first?.modelName == "gemini-3.6-flash")
         #endif
     }
 
@@ -257,7 +274,8 @@ struct CursorAntigravityLocalReaderTests {
         output: UInt64 = 300,
         cacheRead: UInt64 = 100,
         reasoning: UInt64 = 40,
-        responseID: String = "resp-1") -> [UInt8]
+        responseID: String = "resp-1",
+        timestampSeconds: UInt64 = 1_781_000_000) -> [UInt8]
     {
         var usage: [UInt8] = []
         usage.append(contentsOf: self.encodeVarint(1, 1132))
@@ -266,9 +284,13 @@ struct CursorAntigravityLocalReaderTests {
         usage.append(contentsOf: self.encodeVarint(9, output))
         usage.append(contentsOf: self.encodeVarint(10, reasoning))
         usage.append(contentsOf: self.encodeLengthDelimited(11, Array(responseID.utf8)))
-
+        var genTime: [UInt8] = []
+        genTime.append(contentsOf: self.encodeVarint(1, timestampSeconds))
+        genTime.append(contentsOf: self.encodeVarint(2, 250_000_000))
+        let gen9 = self.encodeLengthDelimited(4, genTime)
         var chatModel: [UInt8] = []
         chatModel.append(contentsOf: self.encodeLengthDelimited(4, usage))
+        chatModel.append(contentsOf: self.encodeLengthDelimited(9, gen9))
         if let model {
             chatModel.append(contentsOf: self.encodeLengthDelimited(19, Array(model.utf8)))
         }
@@ -276,6 +298,16 @@ struct CursorAntigravityLocalReaderTests {
             chatModel.append(contentsOf: self.encodeLengthDelimited(21, Array(label.utf8)))
         }
         return self.encodeLengthDelimited(1, chatModel)
+    }
+
+    private static func buildTrajectoryBlob(timestampSeconds: UInt64 = 1_780_000_000) -> [UInt8] {
+        var timeMsg: [UInt8] = []
+        timeMsg.append(contentsOf: self.encodeVarint(1, timestampSeconds))
+        timeMsg.append(contentsOf: self.encodeVarint(2, 0))
+        let timeField2 = self.encodeLengthDelimited(2, timeMsg)
+        var root: [UInt8] = []
+        root.append(contentsOf: timeField2)
+        return root
     }
 
     private static func encodeVarint(_ fieldNumber: Int, _ value: UInt64) -> [UInt8] {
@@ -309,6 +341,7 @@ struct CursorAntigravityLocalReaderTests {
             len >>= 7
         }
         result.append(UInt8(len & 0x7F))
+        result.append(contentsOf: bytes)
         return result
     }
 
