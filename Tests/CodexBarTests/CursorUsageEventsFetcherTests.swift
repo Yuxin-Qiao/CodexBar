@@ -551,6 +551,187 @@ struct CursorUsageEventsFetcherTests {
     }
 
     @Test
+    func `decoded json distinguishes omitted and null total cents from invalid values`() throws {
+        // gpt-5 with 200 input, 20 output at catalog rates ($1.25/M in, $10/M out) -> $0.00045 / request
+        let json = """
+        {
+          "totalUsageEventsCount": 4,
+          "usageEventsDisplay": [
+            {
+              "timestamp": "1700000000000",
+              "model": "gpt-5",
+              "chargedCents": 10,
+              "tokenUsage": {
+                "inputTokens": 200,
+                "outputTokens": 20,
+                "cacheWriteTokens": 0,
+                "cacheReadTokens": 0
+              }
+            },
+            {
+              "timestamp": "1700000001000",
+              "model": "gpt-5",
+              "chargedCents": 10,
+              "tokenUsage": {
+                "inputTokens": 200,
+                "outputTokens": 20,
+                "cacheWriteTokens": 0,
+                "cacheReadTokens": 0,
+                "totalCents": null
+              }
+            },
+            {
+              "timestamp": "1700000002000",
+              "model": "gpt-5",
+              "chargedCents": 10,
+              "tokenUsage": {
+                "inputTokens": 10,
+                "outputTokens": 5,
+                "cacheWriteTokens": 0,
+                "cacheReadTokens": 0,
+                "totalCents": 0
+              }
+            },
+            {
+              "timestamp": "1700000003000",
+              "model": "gpt-5",
+              "chargedCents": 10,
+              "tokenUsage": {
+                "inputTokens": 10,
+                "outputTokens": 5,
+                "cacheWriteTokens": 0,
+                "cacheReadTokens": 0,
+                "totalCents": "12.5"
+              }
+            }
+          ]
+        }
+        """
+        let page = try JSONDecoder().decode(CursorUsageEventsPage.self, from: Data(json.utf8))
+        #expect(page.usageEventsDisplay.count == 4)
+
+        // Verify metered cost is completely untouched (4 * 10 cents = $0.40)
+        #expect(Self.approxEqual(CursorUsageEventsFetcher.meteredCostUSD(from: page.usageEventsDisplay), 0.40))
+
+        let report = CursorUsageEventsFetcher.makeDailyReport(from: page.usageEventsDisplay, calendar: Self.utcCalendar)
+        #expect(report.data.count == 1)
+        let day = report.data[0]
+        #expect(day.requestCount == 4)
+        #expect(day.estimatedRequestCount == 2) // 2 omitted/null events estimated
+        #expect(day.unpricedRequestCount == nil)
+        #expect(day.pricedRequestCount == 2) // 0 cents and 12.5 cents
+
+        // Total cost: 2 * 0.00045 + 0.0 + 0.125 = 0.1259
+        #expect(Self.approxEqual(day.costUSD, 0.1259))
+        let coverage = day.coverageCounts
+        #expect(coverage.priced == 2)
+        #expect(coverage.estimated == 2)
+        #expect(coverage.unpriced == 0)
+    }
+
+    @Test
+    func `decoded json with nonfinite negative or malformed total cents stays unpriced and fails closed`() throws {
+        let json = """
+        {
+          "totalUsageEventsCount": 6,
+          "usageEventsDisplay": [
+            {
+              "timestamp": "1700000000000",
+              "model": "gpt-5",
+              "chargedCents": 5,
+              "tokenUsage": {
+                "inputTokens": 100,
+                "outputTokens": 50,
+                "cacheWriteTokens": 0,
+                "cacheReadTokens": 0,
+                "totalCents": 100
+              }
+            },
+            {
+              "timestamp": "1700000001000",
+              "model": "gpt-5",
+              "chargedCents": 5,
+              "tokenUsage": {
+                "inputTokens": 200,
+                "outputTokens": 20,
+                "cacheWriteTokens": 0,
+                "cacheReadTokens": 0,
+                "totalCents": "NaN"
+              }
+            },
+            {
+              "timestamp": "1700000002000",
+              "model": "gpt-5",
+              "chargedCents": 5,
+              "tokenUsage": {
+                "inputTokens": 200,
+                "outputTokens": 20,
+                "cacheWriteTokens": 0,
+                "cacheReadTokens": 0,
+                "totalCents": "Infinity"
+              }
+            },
+            {
+              "timestamp": "1700000003000",
+              "model": "gpt-5",
+              "chargedCents": 5,
+              "tokenUsage": {
+                "inputTokens": 200,
+                "outputTokens": 20,
+                "cacheWriteTokens": 0,
+                "cacheReadTokens": 0,
+                "totalCents": "-Infinity"
+              }
+            },
+            {
+              "timestamp": "1700000004000",
+              "model": "gpt-5",
+              "chargedCents": 5,
+              "tokenUsage": {
+                "inputTokens": 200,
+                "outputTokens": 20,
+                "cacheWriteTokens": 0,
+                "cacheReadTokens": 0,
+                "totalCents": -1
+              }
+            },
+            {
+              "timestamp": "1700000005000",
+              "model": "gpt-5",
+              "chargedCents": 5,
+              "tokenUsage": {
+                "inputTokens": 200,
+                "outputTokens": 20,
+                "cacheWriteTokens": 0,
+                "cacheReadTokens": 0,
+                "totalCents": "not-a-number"
+              }
+            }
+          ]
+        }
+        """
+        let page = try JSONDecoder().decode(CursorUsageEventsPage.self, from: Data(json.utf8))
+        #expect(page.usageEventsDisplay.count == 6)
+
+        // Metered cost remains unaffected (6 * 5 cents = $0.30)
+        #expect(Self.approxEqual(CursorUsageEventsFetcher.meteredCostUSD(from: page.usageEventsDisplay), 0.30))
+
+        let report = CursorUsageEventsFetcher.makeDailyReport(from: page.usageEventsDisplay, calendar: Self.utcCalendar)
+        #expect(report.data.count == 1)
+        let day = report.data[0]
+        #expect(day.requestCount == 6)
+        #expect(day.costUSD == nil) // Aggregate fails closed because of invalid cents
+        #expect(day.estimatedRequestCount == nil) // No estimates manufactured for invalid values!
+        #expect(day.unpricedRequestCount == 5) // 5 invalid events are unpriced
+        #expect(day.pricedRequestCount == 1) // 1 valid event preserved
+
+        let coverage = day.coverageCounts
+        #expect(coverage.priced == 1)
+        #expect(coverage.unpriced == 5)
+        #expect(coverage.estimated == 0)
+    }
+
+    @Test
     func `reports preserve unknown aggregate tokens on cross event overflow`() {
         let events = [
             Self.event(
