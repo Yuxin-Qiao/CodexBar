@@ -46,7 +46,7 @@ struct CodexCostCatchUpPolicyTests {
     }
 
     @Test
-    func `automatic mode pauses for low power mode`() {
+    func `automatic mode throttles instead of pausing for low power mode on battery`() {
         let decision = CodexCostCatchUpPolicy().decision(for: .init(
             mode: .automatic,
             previousActiveDuration: 2,
@@ -54,9 +54,63 @@ struct CodexCostCatchUpPolicyTests {
             lowPowerModeEnabled: true,
             thermalState: .nominal))
 
-        #expect(decision == .init(
-            action: .pause(CodexCostCatchUpPolicy.constrainedRetryDelay, .lowPower),
-            targetDutyCycle: nil))
+        #expect(decision == .init(action: .runAfter(19998), targetDutyCycle: 0.0001))
+    }
+
+    @Test
+    func `automatic mode throttles instead of pausing for low power mode on AC power`() {
+        let decision = CodexCostCatchUpPolicy().decision(for: .init(
+            mode: .automatic,
+            previousActiveDuration: 2,
+            powerSource: .ac,
+            lowPowerModeEnabled: true,
+            thermalState: .nominal))
+
+        #expect(decision == .init(action: .runAfter(3998), targetDutyCycle: 0.0005))
+    }
+
+    @Test
+    func `automatic mode throttles instead of pausing for low power mode for unknown power`() {
+        let decision = CodexCostCatchUpPolicy().decision(for: .init(
+            mode: .automatic,
+            previousActiveDuration: 2,
+            powerSource: .unknown,
+            lowPowerModeEnabled: true,
+            thermalState: .nominal))
+
+        #expect(decision == .init(action: .runAfter(7998), targetDutyCycle: 0.00025))
+    }
+
+    @Test
+    func `automatic mode pauses for serious thermal pressure even when low power mode is enabled`() {
+        for powerSource in [CodexCostCatchUpPowerSource.ac, .battery, .unknown] {
+            let decision = CodexCostCatchUpPolicy().decision(for: .init(
+                mode: .automatic,
+                previousActiveDuration: 2,
+                powerSource: powerSource,
+                lowPowerModeEnabled: true,
+                thermalState: .serious))
+
+            #expect(decision == .init(
+                action: .pause(CodexCostCatchUpPolicy.constrainedRetryDelay, .thermal),
+                targetDutyCycle: nil))
+        }
+    }
+
+    @Test
+    func `automatic mode pauses for critical thermal pressure even when low power mode is enabled`() {
+        for powerSource in [CodexCostCatchUpPowerSource.ac, .battery, .unknown] {
+            let decision = CodexCostCatchUpPolicy().decision(for: .init(
+                mode: .automatic,
+                previousActiveDuration: 2,
+                powerSource: powerSource,
+                lowPowerModeEnabled: true,
+                thermalState: .critical))
+
+            #expect(decision == .init(
+                action: .pause(CodexCostCatchUpPolicy.constrainedRetryDelay, .thermal),
+                targetDutyCycle: nil))
+        }
     }
 
     @Test

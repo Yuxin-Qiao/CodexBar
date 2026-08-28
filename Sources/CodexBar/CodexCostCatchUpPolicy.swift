@@ -95,26 +95,22 @@ struct CodexCostCatchUpPolicy: Sendable {
                 action: .pause(Self.constrainedRetryDelay, .thermal),
                 targetDutyCycle: nil)
         }
-        if input.mode == .automatic {
-            if input.lowPowerModeEnabled {
-                return Decision(
-                    action: .pause(Self.constrainedRetryDelay, .lowPower),
-                    targetDutyCycle: nil)
-            }
-            if input.thermalState == .serious {
-                return Decision(
-                    action: .pause(Self.constrainedRetryDelay, .thermal),
-                    targetDutyCycle: nil)
-            }
+        if input.mode == .automatic, input.thermalState == .serious {
+            return Decision(
+                action: .pause(Self.constrainedRetryDelay, .thermal),
+                targetDutyCycle: nil)
         }
         if input.mode == .accelerated {
             return Decision(action: .runAfter(0), targetDutyCycle: 1)
         }
 
-        let dutyCycle = switch input.powerSource {
-        case .ac: 0.001
-        case .battery: 0.0002
-        case .unknown: 0.0005
+        let dutyCycle = switch (input.lowPowerModeEnabled, input.powerSource) {
+        case (true, .ac): 0.0005
+        case (true, .unknown): 0.00025
+        case (true, .battery): 0.0001
+        case (false, .ac): 0.001
+        case (false, .unknown): 0.0005
+        case (false, .battery): 0.0002
         }
         let activeDuration = max(0, input.previousActiveDuration ?? Self.automaticBurstDuration)
         let delay = activeDuration * (1 - dutyCycle) / dutyCycle
