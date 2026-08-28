@@ -484,6 +484,42 @@ struct UsageStoreSpendDashboardCodexCostCatchUpTests {
     }
 
     @Test
+    func `leaving low power mode interrupts a long dashboard catch-up delay`() async throws {
+        let store = try Self.makeStore(suite: "low-power-transition")
+        let account = Self.account(id: "account", cacheIdentity: "cache-account")
+        var lowPowerModeEnabled = true
+        var sleepDurations: [TimeInterval] = []
+        var advanceCount = 0
+        store._test_spendDashboardCodexCostCatchUpStatusOverride = { _ in
+            Self.status(
+                pending: advanceCount == 0,
+                key: advanceCount == 0 ? "pending" : "complete",
+                processedBytes: advanceCount == 0 ? 25 : 100)
+        }
+        store._test_spendDashboardCodexCostCatchUpAdvanceOverride = { _, _, _ in
+            advanceCount += 1
+            return Self.status(pending: false, key: "complete", processedBytes: 100)
+        }
+        store._test_spendDashboardCodexCostCatchUpSleepOverride = { duration in
+            sleepDurations.append(duration)
+            lowPowerModeEnabled = false
+            await Task.yield()
+        }
+        store._test_spendDashboardCodexCostCatchUpResourceStateOverride = {
+            (.battery, lowPowerModeEnabled, .nominal)
+        }
+
+        store.startSpendDashboardCodexCostCatchUpIfNeeded(accounts: [account])
+        await Self.waitUntil {
+            store.spendDashboardCodexCostCatchUpTask == nil
+        }
+
+        #expect(sleepDurations == [CodexCostCatchUpPolicy.constrainedRetryDelay, 9998])
+        #expect(advanceCount == 1)
+        #expect(store.spendDashboardCodexCostCatchUpActivity?.phase == .complete)
+    }
+
+    @Test
     func `visible synchronization does not bypass serious thermal pressure`() throws {
         let store = try Self.makeStore(suite: "visible-respects-thermal-pressure")
         store._test_spendDashboardCodexCostCatchUpResourceStateOverride = {

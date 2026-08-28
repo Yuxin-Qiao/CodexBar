@@ -140,9 +140,11 @@ extension UsageStore {
                         return
                     }
 
+                    let resourceState = self.codexCostCatchUpResourceState()
                     let decision = self.codexCostCatchUpDecision(
                         mode: self.codexCostCatchUpMode,
-                        previousActiveDuration: previousActiveDuration)
+                        previousActiveDuration: previousActiveDuration,
+                        resourceState: resourceState)
                     switch decision.action {
                     case let .pause(delay, reason):
                         self.publishCodexCostCatchUpActivity(
@@ -150,14 +152,18 @@ extension UsageStore {
                             context: context,
                             phase: .paused,
                             pauseReason: reason)
-                        try await self.sleepBetweenCodexCostCatchUpPasses(seconds: delay)
+                        _ = try await self.sleepBetweenCodexCostCatchUpPasses(
+                            seconds: delay,
+                            resourceState: resourceState)
                         continue
                     case let .runAfter(delay):
                         self.publishCodexCostCatchUpActivity(
                             status: status,
                             context: context,
                             phase: .indexing)
-                        try await self.sleepBetweenCodexCostCatchUpPasses(seconds: delay)
+                        guard try await self.sleepBetweenCodexCostCatchUpPasses(
+                            seconds: delay,
+                            resourceState: resourceState) else { continue }
                     }
 
                     try Task.checkCancellation()
@@ -354,15 +360,23 @@ extension UsageStore {
             calendar: self.settings.costUsageBucketCalendar)
     }
 
-    private func codexCostCatchUpDecision(
-        mode: CodexCostCatchUpMode,
-        previousActiveDuration: TimeInterval?) -> CodexCostCatchUpPolicy.Decision
-    {
+    private func codexCostCatchUpResourceState() -> CodexCostCatchUpResourceState {
         let resourceState = self._test_codexCostCatchUpResourceStateOverride?() ?? (
             powerSource: CodexCostCatchUpPowerSource.current(),
             lowPowerModeEnabled: ProcessInfo.processInfo.isLowPowerModeEnabled,
             thermalState: ProcessInfo.processInfo.thermalState)
-        return CodexCostCatchUpPolicy().decision(for: .init(
+        return CodexCostCatchUpResourceState(
+            powerSource: resourceState.powerSource,
+            lowPowerModeEnabled: resourceState.lowPowerModeEnabled,
+            thermalState: resourceState.thermalState)
+    }
+
+    private func codexCostCatchUpDecision(
+        mode: CodexCostCatchUpMode,
+        previousActiveDuration: TimeInterval?,
+        resourceState: CodexCostCatchUpResourceState) -> CodexCostCatchUpPolicy.Decision
+    {
+        CodexCostCatchUpPolicy().decision(for: .init(
             mode: mode,
             previousActiveDuration: previousActiveDuration,
             powerSource: resourceState.powerSource,
@@ -388,15 +402,45 @@ extension UsageStore {
             staleSnapshotUpdatedAt: status.staleSnapshotUpdatedAt)
     }
 
-    private func sleepBetweenCodexCostCatchUpPasses(seconds: TimeInterval) async throws {
+    private func sleepBetweenCodexCostCatchUpPasses(
+        seconds: TimeInterval,
+        resourceState: CodexCostCatchUpResourceState) async throws -> Bool
+    {
+        let duration = max(0, seconds)
+        guard duration > 0 else {
+            if let override = self._test_codexCostCatchUpSleepOverride {
+                try await override(0)
+            } else {
+                await Task.yield()
+            }
+            return true
+        }
+        guard self.codexCostCatchUpResourceState() == resourceState else { return false }
+        guard resourceState.lowPowerModeEnabled else {
+            try await self.sleepCodexCostCatchUpInterval(seconds: duration)
+            return true
+        }
+
+        // Keep long Low Power sleeps interruptible so a power-state change can take effect
+        // promptly instead of leaving catch-up dormant until the full duty-cycle delay expires.
+        var remaining = duration
+        while remaining > 0 {
+            let interval = min(remaining, CodexCostCatchUpPolicy.constrainedRetryDelay)
+            try await self.sleepCodexCostCatchUpInterval(seconds: interval)
+            try Task.checkCancellation()
+            remaining -= interval
+            if self.codexCostCatchUpResourceState() != resourceState {
+                return false
+            }
+        }
+        return true
+    }
+
+    private func sleepCodexCostCatchUpInterval(seconds: TimeInterval) async throws {
         if let override = self._test_codexCostCatchUpSleepOverride {
             try await override(max(0, seconds))
-            return
+        } else {
+            try await Task.sleep(for: .seconds(seconds))
         }
-        guard seconds > 0 else {
-            await Task.yield()
-            return
-        }
-        try await Task.sleep(for: .seconds(seconds))
     }
 }
