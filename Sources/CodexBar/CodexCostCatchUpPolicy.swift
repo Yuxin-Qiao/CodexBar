@@ -34,6 +34,18 @@ enum CodexCostCatchUpPowerSource: String, Sendable {
     }
 }
 
+struct CodexCostCatchUpResourceState: Sendable, Equatable {
+    let powerSource: CodexCostCatchUpPowerSource
+    let lowPowerModeEnabled: Bool
+    let thermalState: ProcessInfo.ThermalState
+
+    var isConstrained: Bool {
+        self.lowPowerModeEnabled
+            || self.thermalState == .serious
+            || self.thermalState == .critical
+    }
+}
+
 enum CodexCostCatchUpPauseReason: Sendable, Equatable {
     case lowPower
     case thermal

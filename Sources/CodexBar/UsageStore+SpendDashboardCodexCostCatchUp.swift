@@ -201,9 +201,11 @@ extension UsageStore {
                     return
                 }
 
+                let resourceState = self.spendDashboardCodexCostCatchUpResourceState()
                 let decision = self.spendDashboardCodexCostCatchUpDecision(
                     mode: self.spendDashboardCodexCostCatchUpMode,
-                    previousActiveDuration: previousActiveDuration)
+                    previousActiveDuration: previousActiveDuration,
+                    resourceState: resourceState)
                 switch decision.action {
                 case let .pause(delay, reason):
                     self.publishSpendDashboardCodexCostCatchUpActivity(
@@ -211,14 +213,18 @@ extension UsageStore {
                         context: context,
                         phase: .paused,
                         pauseReason: reason)
-                    try await self.sleepBetweenSpendDashboardCodexCostCatchUpPasses(seconds: delay)
+                    _ = try await self.sleepBetweenSpendDashboardCodexCostCatchUpPasses(
+                        seconds: delay,
+                        resourceState: resourceState)
                     continue
                 case let .runAfter(delay):
                     self.publishSpendDashboardCodexCostCatchUpActivity(
                         statuses: statuses,
                         context: context,
                         phase: .indexing)
-                    try await self.sleepBetweenSpendDashboardCodexCostCatchUpPasses(seconds: delay)
+                    guard try await self.sleepBetweenSpendDashboardCodexCostCatchUpPasses(
+                        seconds: delay,
+                        resourceState: resourceState) else { continue }
                 }
 
                 try Task.checkCancellation()
@@ -349,10 +355,10 @@ extension UsageStore {
 
     private func spendDashboardCodexCostCatchUpDecision(
         mode: CodexCostCatchUpMode,
-        previousActiveDuration: TimeInterval?) -> CodexCostCatchUpPolicy.Decision
+        previousActiveDuration: TimeInterval?,
+        resourceState: CodexCostCatchUpResourceState) -> CodexCostCatchUpPolicy.Decision
     {
-        let resourceState = self.spendDashboardCodexCostCatchUpResourceState()
-        return CodexCostCatchUpPolicy().decision(for: .init(
+        CodexCostCatchUpPolicy().decision(for: .init(
             mode: mode,
             previousActiveDuration: previousActiveDuration,
             powerSource: resourceState.powerSource,
@@ -360,22 +366,19 @@ extension UsageStore {
             thermalState: resourceState.thermalState))
     }
 
-    private func spendDashboardCodexCostCatchUpResourceState() -> (
-        powerSource: CodexCostCatchUpPowerSource,
-        lowPowerModeEnabled: Bool,
-        thermalState: ProcessInfo.ThermalState)
-    {
-        self._test_spendDashboardCodexCostCatchUpResourceStateOverride?() ?? (
+    private func spendDashboardCodexCostCatchUpResourceState() -> CodexCostCatchUpResourceState {
+        let resourceState = self._test_spendDashboardCodexCostCatchUpResourceStateOverride?() ?? (
             powerSource: CodexCostCatchUpPowerSource.current(),
             lowPowerModeEnabled: ProcessInfo.processInfo.isLowPowerModeEnabled,
             thermalState: ProcessInfo.processInfo.thermalState)
+        return CodexCostCatchUpResourceState(
+            powerSource: resourceState.powerSource,
+            lowPowerModeEnabled: resourceState.lowPowerModeEnabled,
+            thermalState: resourceState.thermalState)
     }
 
     private func spendDashboardCodexCostCatchUpIsConstrained() -> Bool {
-        let resourceState = self.spendDashboardCodexCostCatchUpResourceState()
-        return resourceState.lowPowerModeEnabled
-            || resourceState.thermalState == .serious
-            || resourceState.thermalState == .critical
+        self.spendDashboardCodexCostCatchUpResourceState().isConstrained
     }
 
     private func publishSpendDashboardCodexCostCatchUpActivity(
@@ -405,16 +408,46 @@ extension UsageStore {
         self.spendDashboardCodexCostCatchUpRevision &+= 1
     }
 
-    private func sleepBetweenSpendDashboardCodexCostCatchUpPasses(seconds: TimeInterval) async throws {
+    private func sleepBetweenSpendDashboardCodexCostCatchUpPasses(
+        seconds: TimeInterval,
+        resourceState: CodexCostCatchUpResourceState) async throws -> Bool
+    {
+        let duration = max(0, seconds)
+        guard duration > 0 else {
+            if let override = self._test_spendDashboardCodexCostCatchUpSleepOverride {
+                try await override(0)
+            } else {
+                await Task.yield()
+            }
+            return true
+        }
+        guard self.spendDashboardCodexCostCatchUpResourceState() == resourceState else { return false }
+        guard resourceState.lowPowerModeEnabled else {
+            try await self.sleepSpendDashboardCodexCostCatchUpInterval(seconds: duration)
+            return true
+        }
+
+        // Keep long Low Power sleeps interruptible so a power-state change can take effect
+        // promptly instead of leaving catch-up dormant until the full duty-cycle delay expires.
+        var remaining = duration
+        while remaining > 0 {
+            let interval = min(remaining, CodexCostCatchUpPolicy.constrainedRetryDelay)
+            try await self.sleepSpendDashboardCodexCostCatchUpInterval(seconds: interval)
+            try Task.checkCancellation()
+            remaining -= interval
+            if self.spendDashboardCodexCostCatchUpResourceState() != resourceState {
+                return false
+            }
+        }
+        return true
+    }
+
+    private func sleepSpendDashboardCodexCostCatchUpInterval(seconds: TimeInterval) async throws {
         if let override = self._test_spendDashboardCodexCostCatchUpSleepOverride {
             try await override(max(0, seconds))
-            return
+        } else {
+            try await Task.sleep(for: .seconds(seconds))
         }
-        guard seconds > 0 else {
-            await Task.yield()
-            return
-        }
-        try await Task.sleep(for: .seconds(seconds))
     }
 
     private static func uniqueSpendDashboardCodexAccounts(
