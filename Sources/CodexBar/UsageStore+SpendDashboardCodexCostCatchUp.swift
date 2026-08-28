@@ -38,9 +38,7 @@ extension UsageStore {
         if preferredMode == .accelerated,
            self.spendDashboardCodexCostCatchUpTask == nil
            || self.spendDashboardCodexCostCatchUpMode != .accelerated,
-           case .pause = self.spendDashboardCodexCostCatchUpDecision(
-               mode: .automatic,
-               previousActiveDuration: nil).action
+           self.spendDashboardCodexCostCatchUpIsConstrained()
         {
             mode = .automatic
         }
@@ -353,16 +351,31 @@ extension UsageStore {
         mode: CodexCostCatchUpMode,
         previousActiveDuration: TimeInterval?) -> CodexCostCatchUpPolicy.Decision
     {
-        let resourceState = self._test_spendDashboardCodexCostCatchUpResourceStateOverride?() ?? (
-            powerSource: CodexCostCatchUpPowerSource.current(),
-            lowPowerModeEnabled: ProcessInfo.processInfo.isLowPowerModeEnabled,
-            thermalState: ProcessInfo.processInfo.thermalState)
+        let resourceState = self.spendDashboardCodexCostCatchUpResourceState()
         return CodexCostCatchUpPolicy().decision(for: .init(
             mode: mode,
             previousActiveDuration: previousActiveDuration,
             powerSource: resourceState.powerSource,
             lowPowerModeEnabled: resourceState.lowPowerModeEnabled,
             thermalState: resourceState.thermalState))
+    }
+
+    private func spendDashboardCodexCostCatchUpResourceState() -> (
+        powerSource: CodexCostCatchUpPowerSource,
+        lowPowerModeEnabled: Bool,
+        thermalState: ProcessInfo.ThermalState)
+    {
+        self._test_spendDashboardCodexCostCatchUpResourceStateOverride?() ?? (
+            powerSource: CodexCostCatchUpPowerSource.current(),
+            lowPowerModeEnabled: ProcessInfo.processInfo.isLowPowerModeEnabled,
+            thermalState: ProcessInfo.processInfo.thermalState)
+    }
+
+    private func spendDashboardCodexCostCatchUpIsConstrained() -> Bool {
+        let resourceState = self.spendDashboardCodexCostCatchUpResourceState()
+        return resourceState.lowPowerModeEnabled
+            || resourceState.thermalState == .serious
+            || resourceState.thermalState == .critical
     }
 
     private func publishSpendDashboardCodexCostCatchUpActivity(
