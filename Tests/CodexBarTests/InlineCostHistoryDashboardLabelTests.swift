@@ -436,6 +436,54 @@ struct InlineCostHistoryDashboardLabelTests {
     }
 
     @Test
+    func `Hermes vendor metered cost hint is not an estimate`() throws {
+        let now = Date(timeIntervalSince1970: 1_700_179_200)
+        let metadata = try #require(ProviderDefaults.metadata[.hermes])
+        let tokenSnapshot = CostUsageTokenSnapshot(
+            sessionTokens: 150,
+            sessionCostUSD: 0.12,
+            last30DaysTokens: 150,
+            last30DaysCostUSD: 0.12,
+            costProvenance: .vendorMetered,
+            daily: [
+                CostUsageDailyReport.Entry(
+                    date: "2023-11-15",
+                    inputTokens: 100,
+                    outputTokens: 50,
+                    totalTokens: 150,
+                    costUSD: 0.12,
+                    modelsUsed: ["hermes-test"],
+                    modelBreakdowns: nil),
+            ],
+            updatedAt: now)
+
+        let model = UsageMenuCardView.Model.make(.init(
+            provider: .hermes,
+            metadata: metadata,
+            snapshot: UsageSnapshot(primary: nil, secondary: nil, updatedAt: now),
+            credits: nil,
+            creditsError: nil,
+            dashboard: nil,
+            dashboardError: nil,
+            tokenSnapshot: tokenSnapshot,
+            tokenError: nil,
+            account: AccountInfo(email: nil, plan: nil),
+            isRefreshing: false,
+            lastError: nil,
+            usageBarsShowUsed: false,
+            resetTimeDisplayStyle: .countdown,
+            tokenCostUsageEnabled: true,
+            showOptionalCreditsAndExtraUsage: true,
+            hidePersonalInfo: false,
+            now: now))
+
+        let dashboard = try #require(model.inlineUsageDashboard)
+        #expect(dashboard.detailLines.contains("Plan metered"))
+        #expect(dashboard.detailLines.allSatisfy { !$0.localizedCaseInsensitiveContains("estimate") })
+        #expect(model.tokenUsage?.hintLine == "Plan metered")
+    }
+
+    @Test
     func `token-only provider details use token chart units`() throws {
         let now = Date(timeIntervalSince1970: 1_700_179_200)
         let metadata = try #require(ProviderDefaults.metadata[.zai])

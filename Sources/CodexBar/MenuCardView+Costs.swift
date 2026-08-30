@@ -271,7 +271,7 @@ extension UsageMenuCardView.Model {
                         sourceCurrencyCode: snapshot.currencyCode)
                 }
                 : [],
-            hintLine: Self.tokenUsageHint(provider: provider),
+            hintLine: Self.tokenUsageHint(provider: provider, snapshot: snapshot),
             errorLine: err,
             errorCopyText: (error?.isEmpty ?? true) ? nil : error)
     }
@@ -301,6 +301,11 @@ extension UsageMenuCardView.Model {
         return lines.isEmpty ? nil : lines.joined(separator: "\n")
     }
 
+    static func tokenUsageHint(provider: UsageProvider, snapshot: CostUsageTokenSnapshot?) -> String? {
+        let lines = Self.tokenUsageHintLines(provider: provider, snapshot: snapshot)
+        return lines.isEmpty ? nil : lines.joined(separator: "\n")
+    }
+
     static func tokenUsageHeader(provider _: UsageProvider) -> String {
         L("Cost")
     }
@@ -312,6 +317,26 @@ extension UsageMenuCardView.Model {
             case .estimate: UsageFormatter.costEstimateHint(provider: provider)
             case let .literal(text): L(text)
             }
+        }
+    }
+
+    static func tokenUsageHintLines(
+        provider: UsageProvider,
+        snapshot: CostUsageTokenSnapshot?) -> [String]
+    {
+        let explicitLines = Self.tokenUsageHintLines(provider: provider)
+        guard explicitLines.isEmpty, let snapshot else { return explicitLines }
+        return [Self.fallbackCostHint(for: snapshot.costProvenance)]
+    }
+
+    static func fallbackCostHint(for provenance: CostProvenance) -> String {
+        switch provenance {
+        case .vendorMetered:
+            L("Plan metered")
+        case .mixed:
+            L("Metered and list-price")
+        case .listPriceEstimate, .unknown:
+            L("cost_estimate_hint")
         }
     }
 
