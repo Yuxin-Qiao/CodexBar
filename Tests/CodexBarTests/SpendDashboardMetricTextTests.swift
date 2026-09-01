@@ -17,4 +17,24 @@ struct SpendDashboardMetricTextTests {
         #expect(spendDashboardMetricText(cost: nil, tokens: 1200, currencyCode: "USD").contains("1"))
         #expect(spendDashboardMetricText(cost: nil, tokens: nil, currencyCode: "USD") == "—")
     }
+
+    @Test
+    func `detail sections expose only breakdowns backed by data`() {
+        #expect(spendDashboardAvailableDetailSections(hasProjects: false, hasSessions: false) == [
+            .subscriptions,
+            .models,
+        ])
+        #expect(spendDashboardAvailableDetailSections(hasProjects: true, hasSessions: true) == [
+            .subscriptions,
+            .models,
+            .projects,
+            .sessions,
+        ])
+    }
+
+    @Test
+    func `hourly trend appears only when hourly data exists`() {
+        #expect(spendDashboardAvailableTrendSections(hasHourlyData: false) == [.daily])
+        #expect(spendDashboardAvailableTrendSections(hasHourlyData: true) == [.daily, .hourly])
+    }
 }
