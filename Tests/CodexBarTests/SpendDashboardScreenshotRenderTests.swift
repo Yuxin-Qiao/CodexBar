@@ -239,7 +239,9 @@ final class SpendDashboardScreenshotRenderTests: XCTestCase {
                 "usage-spend-sessions",
                 AnyView(self.chrome(selectedDays: 7, group: hourlyGroup, detailSection: .sessions))),
             ("usage-spend-export-actions", AnyView(self.exportActionsChrome())),
-            ("usage-spend-hourly", AnyView(self.chrome(selectedDays: 7, group: hourlyGroup))),
+            (
+                "usage-spend-hourly",
+                AnyView(self.chrome(selectedDays: 7, group: hourlyGroup, trendSection: .hourly))),
             ("usage-spend-hourly-selected-day", AnyView(self.chrome(selectedDays: 7, group: selectedGroup))),
             (
                 "overview-spend-summary",

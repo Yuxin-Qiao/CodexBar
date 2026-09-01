@@ -230,6 +230,7 @@ struct SpendDashboardPane: View {
             .labelsHidden()
             .pickerStyle(.segmented)
             .frame(width: 248)
+            .accessibilityIdentifier("spend-dashboard-range-picker")
 
             Button {
                 self.store.refreshSpendDashboard(accounts: self.codexSpendScanRequests)
@@ -461,6 +462,7 @@ struct SpendDashboardPane: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            .accessibilityIdentifier("spend-dashboard-data-controls")
         }
     }
 
@@ -791,6 +793,7 @@ private struct SpendDashboardSummary: View {
                     }
                     .buttonStyle(.plain)
                     .help(L("Clear"))
+                    .accessibilityIdentifier("spend-dashboard-clear-selected-day")
                 }
             }
             .font(.caption)
@@ -855,6 +858,7 @@ private struct SpendDashboardDetailPanel: View {
                 .pickerStyle(.segmented)
                 .controlSize(.small)
                 .frame(maxWidth: 460, alignment: .leading)
+                .accessibilityIdentifier("spend-dashboard-detail-picker")
 
                 self.detailContent
             }
@@ -1090,6 +1094,7 @@ private struct SpendDashboardTrendPanel: View {
                         .pickerStyle(.segmented)
                         .controlSize(.small)
                         .frame(width: 140)
+                        .accessibilityIdentifier("spend-dashboard-trend-picker")
                     }
                 }
 
