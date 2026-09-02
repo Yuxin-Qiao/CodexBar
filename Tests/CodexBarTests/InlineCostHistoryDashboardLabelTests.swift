@@ -5,6 +5,22 @@ import Testing
 
 struct InlineCostHistoryDashboardLabelTests {
     @Test
+    func `unknown cost provenance does not claim a local price estimate`() {
+        let snapshot = CostUsageTokenSnapshot(
+            sessionTokens: 12,
+            sessionCostUSD: nil,
+            last30DaysTokens: 12,
+            last30DaysCostUSD: nil,
+            costProvenance: .unknown,
+            daily: [],
+            updatedAt: Date())
+
+        #expect(UsageMenuCardView.Model.tokenUsageHintLines(provider: .hermes, snapshot: snapshot).isEmpty)
+        #expect(UsageMenuCardView.Model.fallbackCostHint(for: .unknown) == nil)
+        #expect(UsageMenuCardView.Model.fallbackCostHint(for: .listPriceEstimate) != nil)
+    }
+
+    @Test
     func `local cost history Today KPI uses current day session value`() throws {
         let now = Date(timeIntervalSince1970: 1_700_179_200)
         let metadata = try #require(ProviderDefaults.metadata[.claude])

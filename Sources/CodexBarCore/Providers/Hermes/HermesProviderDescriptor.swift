@@ -68,14 +68,9 @@ struct HermesLocalFetchStrategy: ProviderFetchStrategy {
     }
 
     func fetch(_ context: ProviderFetchContext) async throws -> ProviderFetchResult {
-        let result = try await CostUsageScanExecutor.run { checkCancellation in
-            try HermesLocalReader.makeDailyReportWithStatus(
-                context: HermesLocalReader.Context(environment: context.env),
-                calendar: .current,
-                checkCancellation: checkCancellation)
-        }
-        guard result.isAvailable, !result.report.data.isEmpty else {
-            let path = HermesLocalReader.hermesHomeURL(environment: context.env).path
+        let localContext = HermesLocalReader.Context(environment: context.env)
+        guard HermesLocalReader.hasLocalStore(context: localContext) else {
+            let path = localContext.home.path
             throw HermesLocalError.noLocalData(path)
         }
         let snapshot = UsageSnapshot(

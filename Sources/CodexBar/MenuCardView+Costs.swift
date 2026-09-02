@@ -326,17 +326,19 @@ extension UsageMenuCardView.Model {
     {
         let explicitLines = Self.tokenUsageHintLines(provider: provider)
         guard explicitLines.isEmpty, let snapshot else { return explicitLines }
-        return [Self.fallbackCostHint(for: snapshot.costProvenance)]
+        return Self.fallbackCostHint(for: snapshot.costProvenance).map { [$0] } ?? []
     }
 
-    static func fallbackCostHint(for provenance: CostProvenance) -> String {
+    static func fallbackCostHint(for provenance: CostProvenance) -> String? {
         switch provenance {
         case .vendorMetered:
             L("Plan metered")
         case .mixed:
             L("Metered and list-price")
-        case .listPriceEstimate, .unknown:
+        case .listPriceEstimate:
             L("cost_estimate_hint")
+        case .unknown:
+            nil
         }
     }
 

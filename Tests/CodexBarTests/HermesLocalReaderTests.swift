@@ -90,6 +90,15 @@ final class HermesLocalReaderTests: XCTestCase {
         XCTAssertTrue(result.report.data.isEmpty)
     }
 
+    func testLightweightAvailabilityDoesNotRequireOpeningOrParsingDatabase() throws {
+        let context = HermesLocalReader.Context(home: self.tempDirectory)
+        XCTAssertFalse(HermesLocalReader.hasLocalStore(context: context))
+
+        let databaseURL = self.tempDirectory.appendingPathComponent("state.db")
+        try Data("not a sqlite database".utf8).write(to: databaseURL)
+        XCTAssertTrue(HermesLocalReader.hasLocalStore(context: context))
+    }
+
     func testEmptyDatabaseReturnsCompleteWithNoEntries() throws {
         #if canImport(SQLite3) || canImport(CSQLite3)
         let dbURL = self.tempDirectory.appendingPathComponent("state.db")

@@ -295,6 +295,13 @@ public enum HermesLocalReader {
         try self.discoverDatabasePathsWithStatus(context: context, budget: budget).paths
     }
 
+    /// Lightweight provider availability check. This only discovers selected `state.db`
+    /// paths; the token-cost pipeline owns opening and scanning them once per refresh.
+    public static func hasLocalStore(context: Context) -> Bool {
+        let budget = Budget()
+        return ((try? self.discoverDatabasePaths(context: context, budget: budget)) ?? []).isEmpty == false
+    }
+
     private static func discoverDatabasePathsWithStatus(
         context: Context,
         budget: Budget) throws -> DatabaseDiscoveryResult
