@@ -52,8 +52,10 @@ final class CostHistoryMetricNativeProofTests: XCTestCase {
                 modelsUsed: ["fixture-model"],
                 modelBreakdowns: [breakdown]))
         }
-        let projects = (1...5).map { index in
-            CostUsageProjectBreakdown(
+        var projects: [CostUsageProjectBreakdown] = []
+        var sessions: [CostUsageSessionBreakdown] = []
+        for index in 1...5 {
+            let project = CostUsageProjectBreakdown(
                 name: "Fixture project \(index)",
                 path: "/tmp/codexbar-cost-proof/project-\(index)",
                 totalTokens: index * 10000,
@@ -61,11 +63,12 @@ final class CostHistoryMetricNativeProofTests: XCTestCase {
                 daily: [],
                 modelBreakdowns: nil,
                 sources: [])
-        }
-        let sessions = (1...5).map { index in
-            CostUsageSessionBreakdown(
+            projects.append(project)
+
+            let lastActivity = Date(timeIntervalSince1970: TimeInterval(index))
+            let session = CostUsageSessionBreakdown(
                 sessionID: "fixture-session-\(index)",
-                lastActivity: Date(timeIntervalSince1970: TimeInterval(index)),
+                lastActivity: lastActivity,
                 inputTokens: index * 1000,
                 cachedInputTokens: index * 500,
                 outputTokens: index * 100,
@@ -73,6 +76,7 @@ final class CostHistoryMetricNativeProofTests: XCTestCase {
                 requestCount: index,
                 costUSD: Double(index),
                 modelBreakdowns: [])
+            sessions.append(session)
         }
         let chart = CostHistoryChartMenuView(
             provider: .codex,
