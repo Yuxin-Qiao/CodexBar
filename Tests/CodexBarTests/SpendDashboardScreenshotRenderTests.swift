@@ -227,11 +227,11 @@ final class SpendDashboardScreenshotRenderTests: XCTestCase {
             ("usage-spend-30d", AnyView(self.chrome(selectedDays: 30, group: thirtyGroup))),
             ("usage-spend-all", AnyView(self.chrome(selectedDays: SpendDashboardSource.scanDays, group: allGroup))),
             (
-                "usage-spend-models",
+                "usage-spend-providers",
                 AnyView(self.chrome(
                     selectedDays: SpendDashboardSource.scanDays,
                     group: allGroup,
-                    detailSection: .models))),
+                    detailSection: .providers))),
             (
                 "usage-spend-projects",
                 AnyView(self.chrome(selectedDays: 7, group: hourlyGroup, detailSection: .projects))),
@@ -258,7 +258,7 @@ final class SpendDashboardScreenshotRenderTests: XCTestCase {
     private static func chrome(
         selectedDays: Int,
         group: SpendDashboardModel.CurrencyGroup,
-        detailSection: SpendDashboardDetailSection = .subscriptions,
+        detailSection: SpendDashboardDetailSection = .providers,
         trendSection: SpendDashboardTrendSection? = nil) -> some View
     {
         VStack(alignment: .leading, spacing: 18) {

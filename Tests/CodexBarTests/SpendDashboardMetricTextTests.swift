@@ -21,12 +21,10 @@ struct SpendDashboardMetricTextTests {
     @Test
     func `detail sections expose only breakdowns backed by data`() {
         #expect(spendDashboardAvailableDetailSections(hasProjects: false, hasSessions: false) == [
-            .subscriptions,
-            .models,
+            .providers,
         ])
         #expect(spendDashboardAvailableDetailSections(hasProjects: true, hasSessions: true) == [
-            .subscriptions,
-            .models,
+            .providers,
             .projects,
             .sessions,
         ])
@@ -36,5 +34,17 @@ struct SpendDashboardMetricTextTests {
     func `hourly trend appears only when hourly data exists`() {
         #expect(spendDashboardAvailableTrendSections(hasHourlyData: false) == [.daily])
         #expect(spendDashboardAvailableTrendSections(hasHourlyData: true) == [.daily, .hourly])
+    }
+
+    @Test
+    func `provider metric marks partial aggregates without hiding known values`() {
+        let text = spendDashboardBreakdownMetricText(
+            cost: 2.5,
+            tokens: 1200,
+            currencyCode: "USD",
+            hasPartialCost: true,
+            hasPartialTokens: true)
+        #expect(text.contains("~$"))
+        #expect(text.contains("~1"))
     }
 }
