@@ -613,6 +613,48 @@ final class HermesLocalReaderTests: XCTestCase {
         #endif
     }
 
+    func testAuthoritativeSessionCostWinsWhenModelProvenanceDiffers() throws {
+        #if canImport(SQLite3) || canImport(CSQLite3)
+        let dbURL = self.tempDirectory.appendingPathComponent("state.db")
+        guard let db = self.createDatabase(at: dbURL) else {
+            XCTFail("Failed to create test database")
+            return
+        }
+        defer { sqlite3_close(db) }
+
+        let now = Date().timeIntervalSince1970
+        let sql = """
+        INSERT INTO sessions (
+            id, model, started_at, api_call_count, input_tokens, output_tokens,
+            actual_cost_usd, cost_status, cost_source
+        ) VALUES (
+            'sess_authoritative', 'hermes-authoritative-model', \(now), 1, 100, 50,
+            0.12, 'actual', 'provider_cost_api'
+        );
+        INSERT INTO session_model_usage (
+            session_id, model, billing_provider, api_call_count, input_tokens, output_tokens,
+            estimated_cost_usd, actual_cost_usd, cost_status, cost_source, first_seen, last_seen
+        ) VALUES (
+            'sess_authoritative', 'hermes-authoritative-model', 'nous', 1, 100, 50,
+            0.05, 0.0, 'estimated', 'official_docs_snapshot', \(now), \(now)
+        );
+        """
+        XCTAssertEqual(
+            sqlite3_exec(db, sql, nil, nil, nil),
+            SQLITE_OK,
+            String(cString: sqlite3_errmsg(db)))
+
+        let context = HermesLocalReader.Context(home: self.tempDirectory)
+        let result = try HermesLocalReader.makeDailyReportWithStatus(context: context)
+        XCTAssertEqual(result.coverage, .complete)
+        let entry = try XCTUnwrap(result.report.data.first)
+        XCTAssertEqual(entry.totalTokens, 150)
+        XCTAssertEqual(entry.costUSD, 0.12)
+        XCTAssertEqual(HermesLocalReader.costProvenance(for: result.report.data), .vendorMetered)
+        XCTAssertEqual(entry.modelBreakdowns?.first?.costUSD, 0.12)
+        #endif
+    }
+
     func testCostProvenanceDoesNotRequirePositiveAPICallCount() async throws {
         #if canImport(SQLite3) || canImport(CSQLite3)
         let dbURL = self.tempDirectory.appendingPathComponent("state.db")

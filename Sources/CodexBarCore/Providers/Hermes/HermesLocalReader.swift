@@ -568,6 +568,32 @@ public enum HermesLocalReader {
             }
             let smuRows = smuRowsBySession[sessionID] ?? []
             let sessionRow = sessionRowsByID[sessionID]
+            let sessionCost = sessionRow.map { row in
+                self.costValue(
+                    actual: row.actualCostUSD,
+                    estimated: row.estimatedCostUSD,
+                    status: row.costStatus,
+                    source: row.costSource)
+            }
+            // A vendor-metered session total is authoritative for the whole session. If its
+            // per-model rows carry estimates (or no cost), do not add those estimates beside the
+            // session total; retain the model token details and publish the actual once as the
+            // residual. Rows whose costs are also actual remain eligible for normal subtraction.
+            let prefersAuthoritativeSessionActual: Bool = if let sessionCost,
+                                                             sessionCost.kind == .actual,
+                                                             sessionCost.amount != nil
+            {
+                smuRows.contains { row in
+                    let rowCost = self.costValue(
+                        actual: row.actualCostUSD,
+                        estimated: row.estimatedCostUSD,
+                        status: row.costStatus,
+                        source: row.costSource)
+                    return rowCost.kind != .actual || rowCost.amount == nil
+                }
+            } else {
+                false
+            }
 
             var smuInput: Int64 = 0
             var smuOutput: Int64 = 0
@@ -606,12 +632,17 @@ public enum HermesLocalReader {
                 smuCacheWrite = nextCw
                 smuReasoning = nextReas
 
-                let costValue = self.costValue(
+                let parsedCostValue = self.costValue(
                     actual: row.actualCostUSD,
                     estimated: row.estimatedCostUSD,
                     status: row.costStatus,
                     source: row.costSource)
-                if let cost = costValue.amount {
+                let costValue = prefersAuthoritativeSessionActual
+                    ? CostValue(amount: nil, kind: .actual)
+                    : parsedCostValue
+                if prefersAuthoritativeSessionActual {
+                    smuCostKind = self.mergedCostKind(smuCostKind, .actual)
+                } else if let cost = costValue.amount {
                     let next = smuCost + cost
                     guard next.isFinite else {
                         smuComplete = false
@@ -684,11 +715,7 @@ public enum HermesLocalReader {
                 let sCacheRead = max(0, s.cacheReadTokens)
                 let sCacheWrite = max(0, s.cacheWriteTokens)
                 let sReasoning = max(0, s.reasoningTokens)
-                let sessionCostValue = self.costValue(
-                    actual: s.actualCostUSD,
-                    estimated: s.estimatedCostUSD,
-                    status: s.costStatus,
-                    source: s.costSource)
+                let sessionCostValue = sessionCost ?? CostValue(amount: nil, kind: .unknown)
                 let sCost = sessionCostValue.amount
                 let sCalls = s.apiCallCount
 
