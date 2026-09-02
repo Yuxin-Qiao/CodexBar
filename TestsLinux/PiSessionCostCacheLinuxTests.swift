@@ -13,8 +13,6 @@ struct PiSessionCostCacheLinuxTests {
 
         for tokens in [100, 250] {
             var cache = PiSessionCostCache()
-            cache.rootFingerprint = "owned-roots-\(tokens)"
-            cache.hasPresentRoots = true
             cache.lastScanUnixMs = Int64(tokens)
             cache.scanSinceKey = "2026-08-20"
             cache.scanUntilKey = "2026-08-21"
@@ -22,15 +20,12 @@ struct PiSessionCostCacheLinuxTests {
             cache.daysByProvider = ["codex": ["2026-08-20": [
                 "gpt-5.4": PiPackedUsage(inputTokens: tokens, totalTokens: tokens),
             ]]]
-            var evidence = PiPartialEvidence()
-            evidence.record(.codex, day: "2026-08-20")
             cache.files = [root.appendingPathComponent("session.jsonl").path: PiSessionFileUsage(
                 mtimeUnixMs: Int64(tokens),
                 size: Int64(tokens),
                 parsedBytes: Int64(tokens),
                 lastModelContext: nil,
-                contributions: cache.daysByProvider,
-                partialEvidence: evidence)]
+                contributions: cache.daysByProvider)]
 
             PiSessionCostCacheIO.save(cache: cache, cacheRoot: root, calendar: calendar)
 
@@ -41,8 +36,6 @@ struct PiSessionCostCacheLinuxTests {
             let decoded = try JSONDecoder().decode(PiSessionCostCache.self, from: data)
             for saved in [decoded, PiSessionCostCacheIO.load(cacheRoot: root)] {
                 #expect(saved.version == cache.version)
-                #expect(saved.rootFingerprint == cache.rootFingerprint)
-                #expect(saved.hasPresentRoots)
                 #expect(saved.lastScanUnixMs == cache.lastScanUnixMs)
                 #expect(saved.scanSinceKey == cache.scanSinceKey)
                 #expect(saved.scanUntilKey == cache.scanUntilKey)
@@ -50,7 +43,7 @@ struct PiSessionCostCacheLinuxTests {
                 #expect(saved.timeZoneIdentifier == calendar.timeZone.identifier)
                 #expect(saved.daysByProvider == cache.daysByProvider)
                 #expect(saved.files.values.first?.parsedBytes == Int64(tokens))
-                #expect(saved.files.values.first?.partialEvidence.days["2026-08-20"] == .codex)
+                #expect(saved.files.values.first?.contributions == cache.daysByProvider)
             }
             let contents = try FileManager.default.contentsOfDirectory(atPath: url.deletingLastPathComponent().path)
             #expect(contents == [url.lastPathComponent])

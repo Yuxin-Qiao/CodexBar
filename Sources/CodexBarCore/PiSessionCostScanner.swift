@@ -254,7 +254,7 @@ enum PiSessionCostScanner {
         guard !self.requestedWindowExpandsCache(range: range, cache: cache) else { return nil }
 
         let pricingContext = self.pricingContext(now: now, cacheRoot: cacheRoot)
-        guard pricingContext.matches(cache.pricingKey) else { return nil }
+        guard cache.pricingKey == pricingContext.pricingKey else { return nil }
         let report = if provider == .pi {
             CostUsageDailyReport.merged([
                 self.buildReport(
