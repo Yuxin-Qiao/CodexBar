@@ -151,6 +151,7 @@ extension UsageStore {
         // Provider-specific by design: Codex and Hermes retain established history during bounded local catch-up.
         if provider == .codex || provider == .hermes,
            !snapshot.historyCoverageIsEstablished,
+           !snapshot.daily.isEmpty,
            self.tokenSnapshotPublicationForCurrentProviderConfig(for: provider)?
                .snapshot?.historyCoverageIsEstablished == true
         {

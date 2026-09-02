@@ -90,6 +90,18 @@ final class HermesLocalReaderTests: XCTestCase {
         XCTAssertTrue(result.report.data.isEmpty)
     }
 
+    func testMissingDatabaseSnapshotIsConfirmedEmpty() async throws {
+        let snapshot = try await CostUsageFetcher.loadTokenSnapshot(
+            provider: .hermes,
+            environment: ["HERMES_HOME": self.tempDirectory.path],
+            now: Date(),
+            historyDays: 30)
+        XCTAssertTrue(snapshot.historyCoverageIsEstablished)
+        XCTAssertEqual(snapshot.sessionRequests, 0)
+        XCTAssertEqual(snapshot.last30DaysRequests, 0)
+        XCTAssertTrue(snapshot.daily.isEmpty)
+    }
+
     func testLightweightAvailabilityDoesNotRequireOpeningOrParsingDatabase() throws {
         let context = HermesLocalReader.Context(home: self.tempDirectory)
         XCTAssertFalse(HermesLocalReader.hasLocalStore(context: context))
@@ -445,19 +457,17 @@ final class HermesLocalReaderTests: XCTestCase {
         let now = Date().timeIntervalSince1970
         let stale = now - 60
         let defaultSQL = """
-        INSERT INTO sessions (id, started_at) VALUES ('sess_shared', \(stale));
-        INSERT INTO session_model_usage (
-            session_id, model, billing_provider, task, input_tokens, output_tokens, first_seen, last_seen
+        INSERT INTO sessions (
+            id, model, billing_provider, started_at, last_activity_at, api_call_count, input_tokens, output_tokens
         ) VALUES (
-            'sess_shared', 'shared-model', 'nous', 'work', 300, 100, \(stale), \(stale)
+            'sess_shared', 'old-model', 'old-provider', \(stale), \(stale), 1, 300, 100
         );
         """
         let profileSQL = """
-        INSERT INTO sessions (id, started_at) VALUES ('sess_shared', \(stale));
-        INSERT INTO session_model_usage (
-            session_id, model, billing_provider, task, input_tokens, output_tokens, first_seen, last_seen
+        INSERT INTO sessions (
+            id, model, billing_provider, started_at, last_activity_at, api_call_count, input_tokens, output_tokens
         ) VALUES (
-            'sess_shared', 'shared-model', 'nous', 'work', 450, 150, \(stale), \(now)
+            'sess_shared', 'new-model', 'other-provider', \(stale), \(now), 2, 450, 150
         );
         """
         XCTAssertEqual(sqlite3_exec(db1, defaultSQL, nil, nil, nil), SQLITE_OK)
@@ -470,6 +480,7 @@ final class HermesLocalReaderTests: XCTestCase {
         let entry = try XCTUnwrap(result.report.data.first)
         // Counted once using the newer profile observation, not the stale default copy.
         XCTAssertEqual(entry.totalTokens, 600)
+        XCTAssertEqual(entry.modelBreakdowns?.first?.modelName, "new-model")
         #endif
     }
 
@@ -566,6 +577,8 @@ final class HermesLocalReaderTests: XCTestCase {
         XCTAssertEqual(snapshot.last30DaysTokens, 1500)
         XCTAssertEqual(snapshot.sessionCostUSD, 0.12)
         XCTAssertEqual(snapshot.last30DaysCostUSD, 0.12)
+        XCTAssertEqual(snapshot.sessionRequests, 1)
+        XCTAssertEqual(snapshot.last30DaysRequests, 1)
         XCTAssertEqual(snapshot.costProvenance, .listPriceEstimate)
         #endif
     }

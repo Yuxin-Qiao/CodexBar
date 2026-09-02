@@ -735,7 +735,10 @@ public enum HermesLocalReader {
                     let modelName = s.model?.trimmingCharacters(in: .whitespacesAndNewlines)
                     let effectiveModel = (modelName?.isEmpty == false) ? modelName! : "unknown"
                     let providerKey = s.billingProvider?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let dedup = "hermes:res:\(sessionID):\(effectiveModel):\(providerKey ?? "<null>")"
+                    // Residual rows represent the session-level remainder. Keep one newest
+                    // observation per session even when its mutable model/provider metadata
+                    // changed between the default and profile databases.
+                    let dedup = "hermes:res:\(sessionID)"
                     items.append(UsageItem(
                         sessionID: sessionID,
                         model: effectiveModel,
