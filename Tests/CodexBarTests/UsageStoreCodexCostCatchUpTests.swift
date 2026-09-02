@@ -93,7 +93,7 @@ struct UsageStoreCodexCostCatchUpTests {
         #expect(statusLoadCount == 2)
         #expect(snapshotLoadCount == 1)
         #expect(cachedLoadCount == 1)
-        #expect(sleepDurations.first == 1998)
+        #expect(sleepDurations.first == 398)
         #expect(store.tokenSnapshot(for: .codex)?.last30DaysCostUSD == 2)
         #expect(store.tokenSnapshotPublicationRevision(for: .codex) == 2)
         #expect(store.tokenError(for: .codex) == nil)
@@ -346,7 +346,7 @@ struct UsageStoreCodexCostCatchUpTests {
             store.codexCostCatchUpTask == nil
         }
 
-        #expect(sleepDurations == [CodexCostCatchUpPolicy.constrainedRetryDelay, 9998])
+        #expect(sleepDurations == [CodexCostCatchUpPolicy.constrainedRetryDelay, 1998])
         #expect(advanceCount == 1)
         #expect(store.codexCostCatchUpActivity?.phase == .complete)
     }
