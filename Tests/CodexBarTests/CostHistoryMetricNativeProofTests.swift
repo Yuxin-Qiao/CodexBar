@@ -133,6 +133,8 @@ final class CostHistoryMetricNativeProofTests: XCTestCase {
         XCTAssertTrue(driver.topEdgeConstraintVerified)
         XCTAssertTrue(driver.verticalConstraintVerified)
         XCTAssertTrue(driver.metricControlClearanceVerified)
+        XCTAssertTrue(driver.chartHoverClearanceVerified)
+        XCTAssertTrue(driver.chartPointerVerified)
         XCTAssertEqual(driver.pointerSegments, [1, 0])
         XCTAssertEqual(driver.selectedSegments, [1, 0])
         XCTAssertFalse(driver.observedOrigins.isEmpty)
@@ -154,6 +156,8 @@ private final class CostMetricProofDriver {
     private(set) var topEdgeConstraintVerified = false
     private(set) var verticalConstraintVerified = false
     private(set) var metricControlClearanceVerified = false
+    private(set) var chartHoverClearanceVerified = false
+    private(set) var chartPointerVerified = false
     private(set) var failure: String?
 
     init(hosting: MenuHostingView<CostHistoryChartMenuView>, menu: NSMenu) {
@@ -179,10 +183,11 @@ private final class CostMetricProofDriver {
 
     private func tick() {
         guard let control = Self.descendant(of: self.hosting, as: NSSegmentedControl.self),
+              let chartHoverView = Self.descendant(of: self.hosting, as: MouseLocationReader.TrackingView.self),
               let scrollView = self.hosting.enclosingScrollView
         else {
             if Date().timeIntervalSince(self.proofStartedAt) > 5 {
-                self.failure = "Native metric proof could not find the segmented control or menu scroll view."
+                self.failure = "Native metric proof could not find the picker, chart hover view, or menu scroll view."
                 self.finish()
             }
             return
@@ -191,26 +196,36 @@ private final class CostMetricProofDriver {
         self.observedOrigins.append(origin)
         switch self.stage {
         case 0:
-            guard self.verifyTopEdgeConstraint(scrollView, control: control) else { return }
+            guard self.verifyTopEdgeConstraint(
+                scrollView,
+                control: control,
+                chartHoverView: chartHoverView)
+            else { return }
             self.baselineOrigin = origin
-            Self.movePointer(toSegment: 1, in: control)
+            Self.movePointer(to: chartHoverView)
             self.advance(to: 1)
         case 1 where Date().timeIntervalSince(self.stageStartedAt) >= 0.25:
+            guard self.verifyPointer(in: chartHoverView) else { return }
+            self.chartPointerVerified = true
+            guard self.requireStable(origin, action: "Hovering the chart") else { return }
+            Self.movePointer(toSegment: 1, in: control)
+            self.advance(to: 2)
+        case 2 where Date().timeIntervalSince(self.stageStartedAt) >= 0.25:
             guard self.verifyPointer(atSegment: 1, in: control) else { return }
             guard self.requireStable(origin, action: "Hovering the cost segment") else { return }
             guard self.activateSegment(1, in: control) else { return }
-            self.advance(to: 2)
-        case 2 where control.selectedSegment == 1:
+            self.advance(to: 3)
+        case 3 where control.selectedSegment == 1:
             self.selectedSegments.append(1)
             guard self.requireStable(origin, action: "Switching to cost") else { return }
             Self.movePointer(toSegment: 0, in: control)
-            self.advance(to: 3)
-        case 3 where Date().timeIntervalSince(self.stageStartedAt) >= 0.25:
+            self.advance(to: 4)
+        case 4 where Date().timeIntervalSince(self.stageStartedAt) >= 0.25:
             guard self.verifyPointer(atSegment: 0, in: control) else { return }
             guard self.requireStable(origin, action: "Hovering the token segment") else { return }
             guard self.activateSegment(0, in: control) else { return }
-            self.advance(to: 4)
-        case 4 where control.selectedSegment == 0:
+            self.advance(to: 5)
+        case 5 where control.selectedSegment == 0:
             self.selectedSegments.append(0)
             _ = self.requireStable(origin, action: "Switching to tokens")
             self.finish()
@@ -222,7 +237,11 @@ private final class CostMetricProofDriver {
         }
     }
 
-    private func verifyTopEdgeConstraint(_ scrollView: NSScrollView, control: NSSegmentedControl) -> Bool {
+    private func verifyTopEdgeConstraint(
+        _ scrollView: NSScrollView,
+        control: NSSegmentedControl,
+        chartHoverView: NSView) -> Bool
+    {
         guard let menuWindow = scrollView.window,
               let screen = menuWindow.screen,
               let documentView = scrollView.documentView
@@ -267,6 +286,18 @@ private final class CostMetricProofDriver {
             return false
         }
         self.metricControlClearanceVerified = true
+
+        let hoverFrameInWindow = chartHoverView.convert(chartHoverView.bounds, to: nil)
+        let hoverTopOnScreen = menuWindow.convertPoint(
+            toScreen: NSPoint(x: hoverFrameInWindow.midX, y: hoverFrameInWindow.maxY)).y
+        let hoverTopClearance = menuFrame.maxY - hoverTopOnScreen
+        guard hoverTopClearance >= minimumControlTopClearance else {
+            self.failure = "Native metric proof chart hover surface remained in the menu's top scroll gutter "
+                + "(clearance=\(hoverTopClearance), minimum=\(minimumControlTopClearance))."
+            self.finish()
+            return false
+        }
+        self.chartHoverClearanceVerified = true
         return true
     }
 
@@ -305,6 +336,15 @@ private final class CostMetricProofDriver {
 
     private static func movePointer(toSegment segment: Int, in control: NSSegmentedControl) {
         let point = self.eventPoint(forSegment: segment, in: control)
+        self.postPointerMove(to: point)
+    }
+
+    private static func movePointer(to view: NSView) {
+        let local = NSPoint(x: view.bounds.midX, y: view.bounds.minY + 1)
+        self.postPointerMove(to: self.eventPoint(local: local, in: view))
+    }
+
+    private static func postPointerMove(to point: CGPoint) {
         CGEvent(
             mouseEventSource: nil,
             mouseType: .mouseMoved,
@@ -318,6 +358,21 @@ private final class CostMetricProofDriver {
               NSApplication.shared.sendAction(action, to: control.target, from: control)
         else {
             self.failure = "Native metric proof could not dispatch the segmented control action."
+            self.finish()
+            return false
+        }
+        return true
+    }
+
+    private func verifyPointer(in view: NSView) -> Bool {
+        guard let window = view.window else {
+            self.failure = "Native metric proof could not resolve the chart hover window."
+            self.finish()
+            return false
+        }
+        let viewPoint = view.convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        guard view.bounds.contains(viewPoint) else {
+            self.failure = "Native metric proof pointer did not reach the chart hover surface."
             self.finish()
             return false
         }
@@ -352,8 +407,12 @@ private final class CostMetricProofDriver {
     private static func eventPoint(forSegment segment: Int, in control: NSSegmentedControl) -> CGPoint {
         let segmentWidth = control.bounds.width / CGFloat(max(control.segmentCount, 1))
         let local = NSPoint(x: segmentWidth * (CGFloat(segment) + 0.5), y: control.bounds.midY)
-        let windowPoint = control.convert(local, to: nil)
-        let cocoaPoint = control.window?.convertPoint(toScreen: windowPoint) ?? windowPoint
+        return self.eventPoint(local: local, in: control)
+    }
+
+    private static func eventPoint(local: NSPoint, in view: NSView) -> CGPoint {
+        let windowPoint = view.convert(local, to: nil)
+        let cocoaPoint = view.window?.convertPoint(toScreen: windowPoint) ?? windowPoint
         let mainDisplayHeight = CGDisplayBounds(CGMainDisplayID()).height
         return CGPoint(x: cocoaPoint.x, y: mainDisplayHeight - cocoaPoint.y)
     }

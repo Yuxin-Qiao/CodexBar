@@ -121,6 +121,12 @@ struct CostHistoryChartMenuView: View {
                     .foregroundStyle(.secondary)
                     .accessibilityLabel(L("No data available"))
             } else {
+                // Keep hoverable content below AppKit's native top auto-scroll gutter.
+                Color.clear
+                    .frame(height: Self.metricPickerHeight)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+
                 Chart {
                     ForEach(model.points) { point in
                         BarMark(
