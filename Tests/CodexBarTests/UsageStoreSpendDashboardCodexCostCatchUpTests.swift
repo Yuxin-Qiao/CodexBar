@@ -514,7 +514,7 @@ struct UsageStoreSpendDashboardCodexCostCatchUpTests {
             store.spendDashboardCodexCostCatchUpTask == nil
         }
 
-        #expect(sleepDurations == [CodexCostCatchUpPolicy.constrainedRetryDelay, 9998])
+        #expect(sleepDurations == [CodexCostCatchUpPolicy.constrainedRetryDelay, 1998])
         #expect(advanceCount == 1)
         #expect(store.spendDashboardCodexCostCatchUpActivity?.phase == .complete)
     }

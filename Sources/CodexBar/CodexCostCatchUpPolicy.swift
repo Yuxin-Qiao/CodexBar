@@ -120,9 +120,9 @@ struct CodexCostCatchUpPolicy: Sendable {
         case (true, .ac): 0.0005
         case (true, .unknown): 0.00025
         case (true, .battery): 0.0001
-        case (false, .ac): 0.001
-        case (false, .unknown): 0.0005
-        case (false, .battery): 0.0002
+        case (false, .ac): 0.005
+        case (false, .unknown): 0.0025
+        case (false, .battery): 0.001
         }
         let activeDuration = max(0, input.previousActiveDuration ?? Self.automaticBurstDuration)
         let delay = activeDuration * (1 - dutyCycle) / dutyCycle
