@@ -148,8 +148,8 @@ extension UsageStore {
     func retainsEstablishedTokenHistory(_ snapshot: CostUsageTokenSnapshot, for provider: UsageProvider) -> Bool {
         // A bounded Codex refresh can succeed with partial rows while catch-up remains pending.
         // Account and history-window changes fail the current-publication lookup below.
-        // Provider-specific by design: only Codex retains established history during bounded catch-up.
-        if provider == .codex,
+        // Provider-specific by design: Codex and Hermes retain established history during bounded local catch-up.
+        if provider == .codex || provider == .hermes,
            !snapshot.historyCoverageIsEstablished,
            self.tokenSnapshotPublicationForCurrentProviderConfig(for: provider)?
                .snapshot?.historyCoverageIsEstablished == true

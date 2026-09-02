@@ -36,8 +36,11 @@ public enum HermesLocalReader {
         var hasActual = false
         var hasEstimate = false
         for entry in entries {
-            hasActual = hasActual || (entry.pricedRequestCount ?? 0) > 0
-            hasEstimate = hasEstimate || (entry.estimatedRequestCount ?? 0) > 0
+            // A zero request count is still authoritative when the producer persisted a cost
+            // status. The count remains zero for coverage; the optional category field carries
+            // the independent provenance signal.
+            hasActual = hasActual || entry.pricedRequestCount != nil
+            hasEstimate = hasEstimate || entry.estimatedRequestCount != nil
         }
         switch (hasActual, hasEstimate) {
         case (true, true): return .mixed
@@ -1037,9 +1040,13 @@ public enum HermesLocalReader {
         var requestCount: Int = 0
         var requestCountKnown: Bool = true
         var pricedRequestCount: Int = 0
+        var sawPricedCost = false
         var unpricedRequestCount: Int = 0
         var unmeteredRequestCount: Int = 0
         var estimatedRequestCount: Int = 0
+        var sawEstimatedCost = false
+        var sawUnpricedCost = false
+        var sawUnmeteredCost = false
         var modelBreakdowns: [String: ModelAccumulator] = [:]
     }
 
@@ -1055,9 +1062,40 @@ public enum HermesLocalReader {
         var requestCount: Int = 0
         var requestCountKnown: Bool = true
         var pricedRequestCount: Int = 0
+        var sawPricedCost = false
         var unpricedRequestCount: Int = 0
         var unmeteredRequestCount: Int = 0
         var estimatedRequestCount: Int = 0
+        var sawEstimatedCost = false
+        var sawUnpricedCost = false
+        var sawUnmeteredCost = false
+    }
+
+    private static func updateCoverage(_ accumulator: inout ModelAccumulator, item: UsageItem) -> Bool {
+        let units = self.coverageUnits(for: item)
+        switch item.costKind {
+        case .actual:
+            accumulator.sawPricedCost = true
+            let (next, overflow) = accumulator.pricedRequestCount.addingReportingOverflow(units)
+            guard !overflow else { return false }
+            accumulator.pricedRequestCount = next
+        case .estimated:
+            accumulator.sawEstimatedCost = true
+            let (next, overflow) = accumulator.estimatedRequestCount.addingReportingOverflow(units)
+            guard !overflow else { return false }
+            accumulator.estimatedRequestCount = next
+        case .included:
+            accumulator.sawUnmeteredCost = true
+            let (next, overflow) = accumulator.unmeteredRequestCount.addingReportingOverflow(units)
+            guard !overflow else { return false }
+            accumulator.unmeteredRequestCount = next
+        case .unknown, .mixed:
+            accumulator.sawUnpricedCost = true
+            let (next, overflow) = accumulator.unpricedRequestCount.addingReportingOverflow(units)
+            guard !overflow else { return false }
+            accumulator.unpricedRequestCount = next
+        }
+        return true
     }
 
     private static func coverageUnits(for item: UsageItem) -> Int {
@@ -1069,41 +1107,22 @@ public enum HermesLocalReader {
         let units = self.coverageUnits(for: item)
         switch item.costKind {
         case .actual:
+            accumulator.sawPricedCost = true
             let (next, overflow) = accumulator.pricedRequestCount.addingReportingOverflow(units)
             guard !overflow else { return false }
             accumulator.pricedRequestCount = next
         case .estimated:
+            accumulator.sawEstimatedCost = true
             let (next, overflow) = accumulator.estimatedRequestCount.addingReportingOverflow(units)
             guard !overflow else { return false }
             accumulator.estimatedRequestCount = next
         case .included:
+            accumulator.sawUnmeteredCost = true
             let (next, overflow) = accumulator.unmeteredRequestCount.addingReportingOverflow(units)
             guard !overflow else { return false }
             accumulator.unmeteredRequestCount = next
         case .unknown, .mixed:
-            let (next, overflow) = accumulator.unpricedRequestCount.addingReportingOverflow(units)
-            guard !overflow else { return false }
-            accumulator.unpricedRequestCount = next
-        }
-        return true
-    }
-
-    private static func updateCoverage(_ accumulator: inout ModelAccumulator, item: UsageItem) -> Bool {
-        let units = self.coverageUnits(for: item)
-        switch item.costKind {
-        case .actual:
-            let (next, overflow) = accumulator.pricedRequestCount.addingReportingOverflow(units)
-            guard !overflow else { return false }
-            accumulator.pricedRequestCount = next
-        case .estimated:
-            let (next, overflow) = accumulator.estimatedRequestCount.addingReportingOverflow(units)
-            guard !overflow else { return false }
-            accumulator.estimatedRequestCount = next
-        case .included:
-            let (next, overflow) = accumulator.unmeteredRequestCount.addingReportingOverflow(units)
-            guard !overflow else { return false }
-            accumulator.unmeteredRequestCount = next
-        case .unknown, .mixed:
+            accumulator.sawUnpricedCost = true
             let (next, overflow) = accumulator.unpricedRequestCount.addingReportingOverflow(units)
             guard !overflow else { return false }
             accumulator.unpricedRequestCount = next
@@ -1316,10 +1335,10 @@ public enum HermesLocalReader {
                 costUSD: costUSD,
                 modelsUsed: breakdowns?.map(\.modelName).sorted(),
                 modelBreakdowns: breakdowns,
-                unpricedRequestCount: accum.unpricedRequestCount > 0 ? accum.unpricedRequestCount : nil,
-                unmeteredRequestCount: accum.unmeteredRequestCount > 0 ? accum.unmeteredRequestCount : nil,
-                estimatedRequestCount: accum.estimatedRequestCount > 0 ? accum.estimatedRequestCount : nil,
-                pricedRequestCount: accum.pricedRequestCount > 0 ? accum.pricedRequestCount : nil)
+                unpricedRequestCount: accum.sawUnpricedCost ? accum.unpricedRequestCount : nil,
+                unmeteredRequestCount: accum.sawUnmeteredCost ? accum.unmeteredRequestCount : nil,
+                estimatedRequestCount: accum.sawEstimatedCost ? accum.estimatedRequestCount : nil,
+                pricedRequestCount: accum.sawPricedCost ? accum.pricedRequestCount : nil)
             entries.append(entry)
         }
         entries.sort { $0.date < $1.date }

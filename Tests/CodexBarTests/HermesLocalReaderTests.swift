@@ -599,4 +599,48 @@ final class HermesLocalReaderTests: XCTestCase {
         XCTAssertEqual(result.report.data.first?.costUSD, 0.12)
         #endif
     }
+
+    func testCostProvenanceDoesNotRequirePositiveAPICallCount() async throws {
+        #if canImport(SQLite3) || canImport(CSQLite3)
+        let dbURL = self.tempDirectory.appendingPathComponent("state.db")
+        guard let db = self.createDatabase(at: dbURL) else {
+            XCTFail("Failed to create test database")
+            return
+        }
+        defer { sqlite3_close(db) }
+
+        let now = Date().timeIntervalSince1970
+        let sql = """
+        INSERT INTO sessions (id, model, started_at) VALUES
+            ('sess_actual_zero_calls', 'actual-zero-calls', \(now)),
+            ('sess_estimated_zero_calls', 'estimated-zero-calls', \(now));
+        INSERT INTO session_model_usage (
+            session_id, model, billing_provider, api_call_count, input_tokens, output_tokens,
+            estimated_cost_usd, actual_cost_usd, cost_status, cost_source, first_seen, last_seen
+        ) VALUES
+            ('sess_actual_zero_calls', 'actual-zero-calls', 'provider', 0, 10, 1,
+             0.05, 0.05, 'actual', 'provider_cost_api', \(now), \(now)),
+            ('sess_estimated_zero_calls', 'estimated-zero-calls', 'provider', 0, 20, 2,
+             0.07, 0.07, 'estimated', 'official_docs_snapshot', \(now), \(now));
+        """
+        XCTAssertEqual(sqlite3_exec(db, sql, nil, nil, nil), SQLITE_OK)
+
+        let context = HermesLocalReader.Context(home: self.tempDirectory)
+        let result = try HermesLocalReader.makeDailyReportWithStatus(context: context)
+        XCTAssertEqual(result.coverage, .complete)
+        let entry = try XCTUnwrap(result.report.data.first)
+        XCTAssertNil(entry.requestCount)
+        XCTAssertEqual(entry.coverageCounts, CostUsageCoverageCounts())
+        XCTAssertEqual(entry.pricedRequestCount, 0)
+        XCTAssertEqual(entry.estimatedRequestCount, 0)
+        XCTAssertEqual(HermesLocalReader.costProvenance(for: result.report.data), .mixed)
+
+        let snapshot = try await CostUsageFetcher.loadTokenSnapshot(
+            provider: .hermes,
+            environment: ["HERMES_HOME": self.tempDirectory.path],
+            now: Date(timeIntervalSince1970: now),
+            historyDays: 1)
+        XCTAssertEqual(snapshot.costProvenance, .mixed)
+        #endif
+    }
 }

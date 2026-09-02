@@ -49,6 +49,24 @@ struct UsageStoreCodexCostCatchUpTests {
     }
 
     @Test
+    func `incomplete Hermes refresh cannot replace an established same-scope snapshot`() throws {
+        let store = try Self.makeStore(suite: "retains-hermes-established")
+        store.publishTokenSnapshot(Self.tokenSnapshot(cost: 3, now: Date()), for: .hermes)
+        let establishedRevision = store.tokenSnapshotPublicationRevision(for: .hermes)
+
+        store.publishTokenSnapshot(
+            Self.tokenSnapshot(
+                cost: 9,
+                now: Date().addingTimeInterval(1),
+                historyCoverageIsEstablished: false),
+            for: .hermes)
+
+        #expect(store.tokenSnapshot(for: .hermes)?.last30DaysCostUSD == 3)
+        #expect(store.tokenSnapshot(for: .hermes)?.historyCoverageIsEstablished == true)
+        #expect(store.tokenSnapshotPublicationRevision(for: .hermes) == establishedRevision)
+    }
+
+    @Test
     func `bounded catch-up automatically publishes only the final stable snapshot`() async throws {
         let store = try Self.makeStore(suite: "publishes-final")
         var snapshotLoadCount = 0
