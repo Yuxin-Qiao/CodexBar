@@ -34,6 +34,9 @@ final class CostHistoryMetricNativeProofTests: XCTestCase {
             defer: false)
         host.title = "CodexBar Cost Metric Proof"
         host.isReleasedWhenClosed = false
+        guard let screen = host.screen ?? NSScreen.main else {
+            return XCTFail("Native metric proof requires an attached display.")
+        }
 
         var daily: [CostUsageDailyReport.Entry] = []
         for day in 1...30 {
@@ -55,6 +58,17 @@ final class CostHistoryMetricNativeProofTests: XCTestCase {
         var projects: [CostUsageProjectBreakdown] = []
         var sessions: [CostUsageSessionBreakdown] = []
         for index in 1...5 {
+            var sources: [CostUsageProjectSourceBreakdown] = []
+            for sourceIndex in 1...3 {
+                let source = CostUsageProjectSourceBreakdown(
+                    name: "Fixture source \(sourceIndex)",
+                    path: "/tmp/codexbar-cost-proof/source-\(index)-\(sourceIndex)",
+                    totalTokens: sourceIndex * 1000,
+                    totalCostUSD: Double(sourceIndex),
+                    daily: [],
+                    modelBreakdowns: nil)
+                sources.append(source)
+            }
             let project = CostUsageProjectBreakdown(
                 name: "Fixture project \(index)",
                 path: "/tmp/codexbar-cost-proof/project-\(index)",
@@ -62,7 +76,7 @@ final class CostHistoryMetricNativeProofTests: XCTestCase {
                 totalCostUSD: Double(index),
                 daily: [],
                 modelBreakdowns: nil,
-                sources: [])
+                sources: sources)
             projects.append(project)
 
             let lastActivity = Date(timeIntervalSince1970: TimeInterval(index))
@@ -94,12 +108,6 @@ final class CostHistoryMetricNativeProofTests: XCTestCase {
         let menu = NSMenu()
         menu.addItem(item)
 
-        let button = CostMetricProofButton(frame: NSRect(x: 140, y: 65, width: 200, height: 32))
-        button.title = "Open cost menu"
-        button.proofMenu = menu
-        host.contentView?.addSubview(button)
-        host.center()
-
         defer {
             menu.cancelTracking()
             host.close()
@@ -116,9 +124,16 @@ final class CostHistoryMetricNativeProofTests: XCTestCase {
         let driver = CostMetricProofDriver(hosting: hosting, menu: menu)
         driver.start()
         defer { driver.stop() }
-        button.openMenu()
+        let popupPoint = NSPoint(x: screen.visibleFrame.midX, y: screen.visibleFrame.maxY)
+        menu.popUp(positioning: nil, at: popupPoint, in: nil)
 
-        XCTAssertNil(driver.failure)
+        if let failure = driver.failure {
+            return XCTFail(failure)
+        }
+        XCTAssertTrue(driver.topEdgeConstraintVerified)
+        XCTAssertTrue(driver.verticalConstraintVerified)
+        XCTAssertTrue(driver.metricControlClearanceVerified)
+        XCTAssertEqual(driver.pointerSegments, [1, 0])
         XCTAssertEqual(driver.selectedSegments, [1, 0])
         XCTAssertFalse(driver.observedOrigins.isEmpty)
     }
@@ -134,7 +149,11 @@ private final class CostMetricProofDriver {
     private var stageStartedAt = Date()
     private var baselineOrigin: CGPoint?
     private(set) var observedOrigins: [CGPoint] = []
+    private(set) var pointerSegments: [Int] = []
     private(set) var selectedSegments: [Int] = []
+    private(set) var topEdgeConstraintVerified = false
+    private(set) var verticalConstraintVerified = false
+    private(set) var metricControlClearanceVerified = false
     private(set) var failure: String?
 
     init(hosting: MenuHostingView<CostHistoryChartMenuView>, menu: NSMenu) {
@@ -172,10 +191,12 @@ private final class CostMetricProofDriver {
         self.observedOrigins.append(origin)
         switch self.stage {
         case 0:
+            guard self.verifyTopEdgeConstraint(scrollView, control: control) else { return }
             self.baselineOrigin = origin
             Self.movePointer(toSegment: 1, in: control)
             self.advance(to: 1)
         case 1 where Date().timeIntervalSince(self.stageStartedAt) >= 0.25:
+            guard self.verifyPointer(atSegment: 1, in: control) else { return }
             guard self.requireStable(origin, action: "Hovering the cost segment") else { return }
             guard self.activateSegment(1, in: control) else { return }
             self.advance(to: 2)
@@ -185,6 +206,7 @@ private final class CostMetricProofDriver {
             Self.movePointer(toSegment: 0, in: control)
             self.advance(to: 3)
         case 3 where Date().timeIntervalSince(self.stageStartedAt) >= 0.25:
+            guard self.verifyPointer(atSegment: 0, in: control) else { return }
             guard self.requireStable(origin, action: "Hovering the token segment") else { return }
             guard self.activateSegment(0, in: control) else { return }
             self.advance(to: 4)
@@ -198,6 +220,54 @@ private final class CostMetricProofDriver {
                 self.finish()
             }
         }
+    }
+
+    private func verifyTopEdgeConstraint(_ scrollView: NSScrollView, control: NSSegmentedControl) -> Bool {
+        guard let menuWindow = scrollView.window,
+              let screen = menuWindow.screen,
+              let documentView = scrollView.documentView
+        else {
+            self.failure = "Native metric proof could not resolve the menu window, display, or document view."
+            self.finish()
+            return false
+        }
+
+        let menuFrame = menuWindow.frame
+        let visibleFrame = screen.visibleFrame
+        let topEdgeDistance = abs(visibleFrame.maxY - menuFrame.maxY)
+        // AppKit keeps a five-point safety inset around a constrained native menu.
+        guard topEdgeDistance <= 6 else {
+            self.failure = "Native metric proof menu missed the display top edge by \(topEdgeDistance) points."
+            self.finish()
+            return false
+        }
+        self.topEdgeConstraintVerified = true
+
+        let documentHeight = documentView.bounds.height
+        let viewportHeight = scrollView.contentView.documentVisibleRect.height
+        guard documentHeight > viewportHeight + 1 else {
+            self.failure = "Native metric proof menu was not vertically constrained "
+                + "(document=\(documentHeight), viewport=\(viewportHeight))."
+            self.finish()
+            return false
+        }
+        self.verticalConstraintVerified = true
+
+        let controlTopInWindow = control.convert(
+            NSPoint(x: control.bounds.midX, y: control.bounds.maxY),
+            to: nil)
+        let controlTopOnScreen = menuWindow.convertPoint(toScreen: controlTopInWindow).y
+        let controlTopClearance = menuFrame.maxY - controlTopOnScreen
+        // Two control heights provide a scale-aware guard against the native menu's top scroll affordance.
+        let minimumControlTopClearance = control.bounds.height * 2
+        guard controlTopClearance >= minimumControlTopClearance else {
+            self.failure = "Native metric proof control remained in the menu's top scroll gutter "
+                + "(clearance=\(controlTopClearance), minimum=\(minimumControlTopClearance))."
+            self.finish()
+            return false
+        }
+        self.metricControlClearanceVerified = true
+        return true
     }
 
     private func advance(to stage: Int) {
@@ -254,6 +324,31 @@ private final class CostMetricProofDriver {
         return true
     }
 
+    private func verifyPointer(atSegment expectedSegment: Int, in control: NSSegmentedControl) -> Bool {
+        guard let window = control.window, control.segmentCount > 0 else {
+            self.failure = "Native metric proof could not resolve the segmented control window."
+            self.finish()
+            return false
+        }
+        let windowPoint = window.mouseLocationOutsideOfEventStream
+        let controlPoint = control.convert(windowPoint, from: nil)
+        guard control.bounds.contains(controlPoint) else {
+            self.failure = "Native metric proof pointer did not reach the segmented control."
+            self.finish()
+            return false
+        }
+        let segmentWidth = control.bounds.width / CGFloat(control.segmentCount)
+        let reachedSegment = min(Int(controlPoint.x / segmentWidth), control.segmentCount - 1)
+        guard reachedSegment == expectedSegment else {
+            self.failure = "Native metric proof pointer reached segment \(reachedSegment), "
+                + "expected \(expectedSegment)."
+            self.finish()
+            return false
+        }
+        self.pointerSegments.append(reachedSegment)
+        return true
+    }
+
     private static func eventPoint(forSegment segment: Int, in control: NSSegmentedControl) -> CGPoint {
         let segmentWidth = control.bounds.width / CGFloat(max(control.segmentCount, 1))
         let local = NSPoint(x: segmentWidth * (CGFloat(segment) + 0.5), y: control.bounds.midY)
@@ -261,14 +356,5 @@ private final class CostMetricProofDriver {
         let cocoaPoint = control.window?.convertPoint(toScreen: windowPoint) ?? windowPoint
         let screenTop = NSScreen.screens.map(\.frame.maxY).max() ?? NSScreen.main?.frame.maxY ?? 0
         return CGPoint(x: cocoaPoint.x, y: screenTop - cocoaPoint.y)
-    }
-}
-
-@MainActor
-private final class CostMetricProofButton: NSButton {
-    var proofMenu: NSMenu?
-
-    func openMenu() {
-        self.proofMenu?.popUp(positioning: nil, at: NSPoint(x: 0, y: self.bounds.maxY), in: self)
     }
 }
