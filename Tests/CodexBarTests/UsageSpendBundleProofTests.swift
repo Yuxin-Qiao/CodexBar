@@ -63,6 +63,17 @@ struct UsageSpendBundleProofTests {
             "system temporary directory") == true)
     }
 
+    @Test
+    func `proof mode ignores a hostile temporary directory override`() {
+        let proofRoot = URL(fileURLWithPath: "/Users/example/real-profile", isDirectory: true)
+        var environment = self.isolatedEnvironment(proofRoot: proofRoot)
+        environment["TMPDIR"] = "/"
+
+        #expect(UsageSpendBundleProof.trustedSystemTemporaryDirectory() != "/")
+        #expect(UsageSpendBundleProof.isolationFailure(environment: environment)?.contains(
+            "system temporary directory") == true)
+    }
+
     private func isolatedEnvironment(proofRoot: URL) -> [String: String] {
         [
             "CODEXBAR_SPEND_BUNDLE_PROOF_DIR": proofRoot.path,

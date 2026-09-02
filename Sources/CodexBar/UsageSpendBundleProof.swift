@@ -1,5 +1,6 @@
 import AppKit
 import CodexBarCore
+import Darwin
 import Foundation
 
 /// Opt-in, self-contained runtime proof for the packaged Usage & Spend preferences pane.
@@ -56,10 +57,9 @@ enum UsageSpendBundleProof {
         else {
             return "proof root must be an absolute path"
         }
-        let temporaryRoot = FileManager.default.temporaryDirectory
-            .standardizedFileURL
-            .resolvingSymlinksInPath()
-            .path
+        guard let temporaryRoot = self.trustedSystemTemporaryDirectory() else {
+            return "system temporary directory is unavailable"
+        }
         guard self.isStrictDescendant(proofRoot, of: temporaryRoot) else {
             return "proof root must be inside the system temporary directory"
         }
@@ -79,6 +79,23 @@ enum UsageSpendBundleProof {
             return "CFFIXED_USER_HOME and HOME must resolve to the same directory"
         }
         return nil
+    }
+
+    /// Resolves the OS-owned per-user temporary directory without consulting `TMPDIR`.
+    /// Proof mode writes defaults after this boundary passes, so an environment-controlled root is unsafe.
+    nonisolated static func trustedSystemTemporaryDirectory() -> String? {
+        let length = confstr(_CS_DARWIN_USER_TEMP_DIR, nil, 0)
+        guard length > 0 else { return nil }
+        var buffer = [CChar](repeating: 0, count: length)
+        let written = buffer.withUnsafeMutableBufferPointer { pointer in
+            confstr(_CS_DARWIN_USER_TEMP_DIR, pointer.baseAddress, length)
+        }
+        guard written > 0, let terminator = buffer.firstIndex(of: 0) else { return nil }
+        guard let path = String(
+            bytes: buffer[..<terminator].map { UInt8(bitPattern: $0) },
+            encoding: .utf8)
+        else { return nil }
+        return self.canonicalAbsolutePath(path)
     }
 
     private nonisolated static func canonicalAbsolutePath(_ rawPath: String) -> String? {
