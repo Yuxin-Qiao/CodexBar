@@ -27,6 +27,7 @@ enum UsageSpendBundleProof {
 
     nonisolated static func isolationFailure(environment: [String: String]) -> String? {
         let requiredKeys = [
+            self.directoryKey,
             "CFFIXED_USER_HOME",
             "HOME",
             "CODEX_HOME",
@@ -49,7 +50,50 @@ enum UsageSpendBundleProof {
         guard invalid.isEmpty else {
             return "expected 1 for \(invalid.sorted().joined(separator: ", "))"
         }
+
+        guard let requestedDirectory = self.requestDirectory(environment: environment),
+              let proofRoot = self.canonicalAbsolutePath(requestedDirectory)
+        else {
+            return "proof root must be an absolute path"
+        }
+        let temporaryRoot = FileManager.default.temporaryDirectory
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+            .path
+        guard self.isStrictDescendant(proofRoot, of: temporaryRoot) else {
+            return "proof root must be inside the system temporary directory"
+        }
+
+        let profileKeys = ["CFFIXED_USER_HOME", "HOME", "CODEX_HOME"]
+        var profilePaths: [String: String] = [:]
+        for key in profileKeys {
+            guard let rawPath = environment[key], let path = self.canonicalAbsolutePath(rawPath) else {
+                return "\(key) must be an absolute path"
+            }
+            guard self.isStrictDescendant(path, of: proofRoot) else {
+                return "\(key) must be inside the proof root"
+            }
+            profilePaths[key] = path
+        }
+        guard profilePaths["CFFIXED_USER_HOME"] == profilePaths["HOME"] else {
+            return "CFFIXED_USER_HOME and HOME must resolve to the same directory"
+        }
         return nil
+    }
+
+    private nonisolated static func canonicalAbsolutePath(_ rawPath: String) -> String? {
+        let path = rawPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !path.isEmpty, (path as NSString).isAbsolutePath else { return nil }
+        return URL(fileURLWithPath: path, isDirectory: true)
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+            .path
+    }
+
+    private nonisolated static func isStrictDescendant(_ path: String, of root: String) -> Bool {
+        guard path != root else { return false }
+        let rootPrefix = root.hasSuffix("/") ? root : root + "/"
+        return path.hasPrefix(rootPrefix)
     }
 
     static func prepareProcessIsolation() {
