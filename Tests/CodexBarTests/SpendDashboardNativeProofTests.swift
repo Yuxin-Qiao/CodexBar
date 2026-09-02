@@ -164,7 +164,8 @@ final class SpendDashboardNativeProofTests: XCTestCase {
         try self.writeAccessibilityDump(window: window, directory: directory)
         try self.press(label: "Day", inside: "spend-dashboard-trend-picker")
         try self.press(label: "Hour", inside: "spend-dashboard-trend-picker")
-        try self.press(label: "Models", inside: "spend-dashboard-detail-picker")
+        try self.press(label: "Projects", inside: "spend-dashboard-detail-picker")
+        try self.press(label: "Providers", inside: "spend-dashboard-detail-picker")
         self.pumpEvents()
         try self.writeReceipt(
             name: "selectors",
