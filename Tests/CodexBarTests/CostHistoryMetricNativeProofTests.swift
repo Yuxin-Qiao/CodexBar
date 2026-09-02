@@ -354,7 +354,7 @@ private final class CostMetricProofDriver {
         let local = NSPoint(x: segmentWidth * (CGFloat(segment) + 0.5), y: control.bounds.midY)
         let windowPoint = control.convert(local, to: nil)
         let cocoaPoint = control.window?.convertPoint(toScreen: windowPoint) ?? windowPoint
-        let screenTop = NSScreen.screens.map(\.frame.maxY).max() ?? NSScreen.main?.frame.maxY ?? 0
-        return CGPoint(x: cocoaPoint.x, y: screenTop - cocoaPoint.y)
+        let mainDisplayHeight = CGDisplayBounds(CGMainDisplayID()).height
+        return CGPoint(x: cocoaPoint.x, y: mainDisplayHeight - cocoaPoint.y)
     }
 }
