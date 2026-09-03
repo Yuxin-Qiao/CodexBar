@@ -48,7 +48,7 @@ public enum PiProviderDescriptor {
             fetchPlan: ProviderFetchPlan(
                 sourceModes: [.auto],
                 pipeline: ProviderFetchPipeline(resolveStrategies: { _ in [PiLocalFetchStrategy()] })),
-            cli: ProviderCLIConfig(name: "pi", versionDetector: nil))
+            cli: ProviderCLIConfig(name: "pi", versionDetector: nil, supportsCostCommand: true))
     }
 
     private static func noDataMessage() -> String {

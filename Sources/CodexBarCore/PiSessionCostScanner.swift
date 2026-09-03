@@ -59,6 +59,11 @@ enum PiSessionCostScanner {
         let rootIndex: Int
     }
 
+    private struct SessionRoot {
+        let url: URL
+        let missingIsKnownEmpty: Bool
+    }
+
     private struct AssistantIdentity {
         let provider: UsageProvider
         let modelName: String
@@ -168,9 +173,10 @@ enum PiSessionCostScanner {
             var files: [SessionFileCandidate] = []
             for (rootIndex, root) in roots.enumerated() {
                 let result = self.listPiSessionFiles(
-                    root: root,
+                    root: root.url,
                     startCutoffLocal: startCutoff,
-                    calendar: range.calendar)
+                    calendar: range.calendar,
+                    missingIsKnownEmpty: root.missingIsKnownEmpty)
                 scanIsComplete = scanIsComplete && result.isComplete
                 for url in result.files {
                     files.append(SessionFileCandidate(url: url, rootIndex: rootIndex))
@@ -365,18 +371,22 @@ enum PiSessionCostScanner {
         return false
     }
 
-    private static func defaultSessionRoots(options: Options) -> [URL] {
+    private static func defaultSessionRoots(options: Options) -> [SessionRoot] {
         if options.piSessionsRoot != nil || options.ompSessionsRoot != nil {
-            return [options.piSessionsRoot, options.ompSessionsRoot].compactMap(\.self)
+            return [options.piSessionsRoot, options.ompSessionsRoot]
+                .compactMap(\.self)
+                .map { SessionRoot(url: $0, missingIsKnownEmpty: false) }
         }
 
         let home = FileManager.default.homeDirectoryForCurrentUser
         // Provider-specific by design: Pi-family stores use the fixed .pi and .omp home directories.
         return [".pi", ".omp"].map { directory in
-            home
-                .appendingPathComponent(directory, isDirectory: true)
-                .appendingPathComponent("agent", isDirectory: true)
-                .appendingPathComponent("sessions", isDirectory: true)
+            SessionRoot(
+                url: home
+                    .appendingPathComponent(directory, isDirectory: true)
+                    .appendingPathComponent("agent", isDirectory: true)
+                    .appendingPathComponent("sessions", isDirectory: true),
+                missingIsKnownEmpty: true)
         }
     }
 
@@ -388,11 +398,13 @@ enum PiSessionCostScanner {
     private static func listPiSessionFiles(
         root: URL,
         startCutoffLocal: Date,
-        calendar: Calendar) -> SessionFileListResult
+        calendar: Calendar,
+        missingIsKnownEmpty: Bool) -> SessionFileListResult
     {
         guard FileManager.default.fileExists(atPath: root.path) else {
-            // A missing default store is a known empty store, not an inspection failure.
-            return SessionFileListResult(files: [], isComplete: true)
+            // A missing default store is a known empty store, but a missing configured root may
+            // indicate an unmounted or unavailable location and must keep the scan incomplete.
+            return SessionFileListResult(files: [], isComplete: missingIsKnownEmpty)
         }
 
         let rootValues = try? root.resourceValues(forKeys: [.isDirectoryKey])
@@ -636,7 +648,13 @@ enum PiSessionCostScanner {
                 prefixBytes: Self.maxLineBytes,
                 checkCancellation: checkCancellation,
                 onLine: { line in
-                    guard !line.bytes.isEmpty, !line.wasTruncated else { return }
+                    guard !line.bytes.isEmpty else { return }
+                    if line.wasTruncated {
+                        // Dropping an oversized record must not advance the cache past usage we
+                        // could not parse; retain the previous file snapshot and retry later.
+                        isComplete = false
+                        return
+                    }
                     autoreleasepool {
                         guard let object = (try? JSONSerialization.jsonObject(with: line.bytes)) as? [String: Any]
                         else { return }

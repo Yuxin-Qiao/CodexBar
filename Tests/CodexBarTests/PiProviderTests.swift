@@ -71,6 +71,29 @@ struct PiProviderTests {
         #expect(descriptor.tokenCost.supportsTokenCost)
         #expect(descriptor.tokenCost.supportsTokenSnapshot)
         #expect(descriptor.metadata.defaultEnabled == false)
+        #expect(descriptor.cli.supportsCostCommand)
+    }
+
+    @Test
+    func `pi provider does not establish history when a configured root is missing`() async throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2026, month: 4, day: 2)
+        let missingRoot = env.root.appendingPathComponent("not-mounted")
+        let snapshot = try await CostUsageFetcher.loadTokenSnapshot(
+            provider: .pi,
+            now: day,
+            forceRefresh: true,
+            historyDays: 1,
+            allowPricingRefresh: false,
+            scannerOptions: CostUsageScanner.Options(cacheRoot: env.cacheRoot),
+            piScannerOptions: PiSessionCostScanner.Options(
+                piSessionsRoot: missingRoot,
+                cacheRoot: env.cacheRoot,
+                refreshMinIntervalSeconds: 0))
+
+        #expect(!snapshot.historyCoverageIsEstablished)
     }
 
     @Test
@@ -202,5 +225,30 @@ struct PiProviderTests {
         }
         #expect(!refreshed.isComplete)
         #expect(refreshed.report.data.first?.totalTokens == 25)
+    }
+
+    @Test
+    func `pi provider marks truncated records incomplete`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2026, month: 4, day: 4)
+        let padding = String(repeating: "x", count: 16 * 1024 * 1024 + 1024)
+        let oversized = "{\"type\":\"message\",\"message\":{\"role\":\"assistant\",\"padding\":\"\(padding)\"}}\n"
+        _ = try env.writePiSessionFile(
+            relativePath: "2026-04-04T10-00-00-000Z_truncated.jsonl",
+            contents: oversized)
+        let result = try PiSessionCostScanner.loadDailyReportResultCancellable(
+            provider: .codex,
+            since: day,
+            until: day,
+            now: day,
+            options: PiSessionCostScanner.Options(
+                piSessionsRoot: env.piSessionsRoot,
+                cacheRoot: env.cacheRoot,
+                refreshMinIntervalSeconds: 0),
+            checkCancellation: nil)
+
+        #expect(!result.isComplete)
     }
 }
