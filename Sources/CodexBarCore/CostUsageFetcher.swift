@@ -431,7 +431,7 @@ public struct CostUsageFetcher: Sendable {
             // A missing store is a confirmed empty source and should clear stale UI data. A
             // present-but-unreadable store remains incomplete so the caller can retain a
             // previously established snapshot until the next successful scan.
-            let storeIsAbsent = !HermesLocalReader.hasLocalStore(context: hermesContext)
+            let storeIsAbsent = HermesLocalReader.localStoreStatus(context: hermesContext) == .absent
             return Self.tokenSnapshot(
                 from: CostUsageDailyReport(data: [], summary: nil),
                 now: now,

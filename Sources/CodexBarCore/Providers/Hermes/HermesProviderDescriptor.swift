@@ -39,6 +39,7 @@ public enum HermesProviderDescriptor {
                     let home = HermesLocalReader.hermesHomeURL().path
                     return "No Hermes sessions found in \(home)/state.db. Run Hermes Agent to generate usage history."
                 },
+                menuHintLines: [.literal("Plan metered")],
                 supportsTokenSnapshot: true,
                 showsHintInProviderDetails: true),
             presentation: ProviderUsagePresentation(

@@ -105,10 +105,19 @@ final class HermesLocalReaderTests: XCTestCase {
     func testLightweightAvailabilityDoesNotRequireOpeningOrParsingDatabase() throws {
         let context = HermesLocalReader.Context(home: self.tempDirectory)
         XCTAssertFalse(HermesLocalReader.hasLocalStore(context: context))
+        XCTAssertEqual(HermesLocalReader.localStoreStatus(context: context), .absent)
 
         let databaseURL = self.tempDirectory.appendingPathComponent("state.db")
         try Data("not a sqlite database".utf8).write(to: databaseURL)
         XCTAssertTrue(HermesLocalReader.hasLocalStore(context: context))
+        XCTAssertEqual(HermesLocalReader.localStoreStatus(context: context), .present)
+    }
+
+    func testProfileDiscoveryFailureIsUnavailable() throws {
+        let profilesURL = self.tempDirectory.appendingPathComponent("profiles")
+        try Data("not a directory".utf8).write(to: profilesURL)
+        let context = HermesLocalReader.Context(home: self.tempDirectory)
+        XCTAssertEqual(HermesLocalReader.localStoreStatus(context: context), .unavailable)
     }
 
     func testEmptyDatabaseReturnsCompleteWithNoEntries() throws {
@@ -484,6 +493,53 @@ final class HermesLocalReaderTests: XCTestCase {
         #endif
     }
 
+    func testNewerProfileModelRowsSuppressOlderSessionResidual() throws {
+        #if canImport(SQLite3) || canImport(CSQLite3)
+        let defaultDB = self.tempDirectory.appendingPathComponent("state.db")
+        let profileDB = self.tempDirectory.appendingPathComponent("profiles/dev/state.db")
+        guard let db1 = self.createDatabase(at: defaultDB),
+              let db2 = self.createDatabase(at: profileDB)
+        else {
+            XCTFail("Failed to create test databases")
+            return
+        }
+        defer {
+            sqlite3_close(db1)
+            sqlite3_close(db2)
+        }
+
+        let now = Date().timeIntervalSince1970
+        let stale = now - 60
+        let defaultSQL = """
+        INSERT INTO sessions (
+            id, model, started_at, last_activity_at, api_call_count, input_tokens, output_tokens
+        ) VALUES (
+            'sess_residual_merge', 'old-session-model', \(stale), \(stale), 1, 100, 0
+        );
+        """
+        let profileSQL = """
+        INSERT INTO session_model_usage (
+            session_id, model, billing_provider, api_call_count,
+            input_tokens, output_tokens, first_seen, last_seen
+        ) VALUES (
+            'sess_residual_merge', 'new-model', 'provider', 1,
+            100, 0, \(now), \(now)
+        );
+        """
+        XCTAssertEqual(sqlite3_exec(db1, defaultSQL, nil, nil, nil), SQLITE_OK)
+        XCTAssertEqual(sqlite3_exec(db2, profileSQL, nil, nil, nil), SQLITE_OK)
+
+        let context = HermesLocalReader.Context(home: self.tempDirectory)
+        let result = try HermesLocalReader.makeDailyReportWithStatus(context: context)
+        XCTAssertEqual(result.coverage, .complete)
+        let entry = try XCTUnwrap(result.report.data.first)
+        XCTAssertEqual(entry.totalTokens, 100)
+        XCTAssertEqual(entry.requestCount, 1)
+        XCTAssertEqual(entry.modelBreakdowns?.count, 1)
+        XCTAssertEqual(entry.modelBreakdowns?.first?.modelName, "new-model")
+        #endif
+    }
+
     func testProfileScopedHomeDoesNotReadSiblingProfiles() throws {
         #if canImport(SQLite3) || canImport(CSQLite3)
         let root = self.tempDirectory.appendingPathComponent("hermes-root", isDirectory: true)
@@ -652,6 +708,44 @@ final class HermesLocalReaderTests: XCTestCase {
         XCTAssertEqual(entry.costUSD, 0.12)
         XCTAssertEqual(HermesLocalReader.costProvenance(for: result.report.data), .vendorMetered)
         XCTAssertEqual(entry.modelBreakdowns?.first?.costUSD, 0.12)
+        #endif
+    }
+
+    func testKnownEstimatedSessionCostSurvivesUnknownModelCost() throws {
+        #if canImport(SQLite3) || canImport(CSQLite3)
+        let dbURL = self.tempDirectory.appendingPathComponent("state.db")
+        guard let db = self.createDatabase(at: dbURL) else {
+            XCTFail("Failed to create test database")
+            return
+        }
+        defer { sqlite3_close(db) }
+
+        let now = Date().timeIntervalSince1970
+        let sql = """
+        INSERT INTO sessions (
+            id, model, started_at, api_call_count, input_tokens, output_tokens,
+            estimated_cost_usd, cost_status, cost_source
+        ) VALUES (
+            'sess_estimated_authoritative', 'hermes-estimated-model', \(now), 1, 100, 0,
+            0.20, 'estimated', 'official_docs_snapshot'
+        );
+        INSERT INTO session_model_usage (
+            session_id, model, billing_provider, api_call_count, input_tokens, output_tokens,
+            estimated_cost_usd, actual_cost_usd, cost_status, cost_source, first_seen, last_seen
+        ) VALUES (
+            'sess_estimated_authoritative', 'hermes-estimated-model', 'nous', 1, 100, 0,
+            0.0, 0.0, 'unknown', 'none', \(now), \(now)
+        );
+        """
+        XCTAssertEqual(sqlite3_exec(db, sql, nil, nil, nil), SQLITE_OK)
+
+        let context = HermesLocalReader.Context(home: self.tempDirectory)
+        let result = try HermesLocalReader.makeDailyReportWithStatus(context: context)
+        XCTAssertEqual(result.coverage, .complete)
+        let entry = try XCTUnwrap(result.report.data.first)
+        XCTAssertEqual(entry.totalTokens, 100)
+        XCTAssertEqual(try XCTUnwrap(entry.costUSD), 0.20, accuracy: 0.0001)
+        XCTAssertEqual(HermesLocalReader.costProvenance(for: result.report.data), .listPriceEstimate)
         #endif
     }
 

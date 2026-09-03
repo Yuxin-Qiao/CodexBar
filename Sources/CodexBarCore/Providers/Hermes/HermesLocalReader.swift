@@ -9,6 +9,12 @@ import CSQLite3
 
 // swiftlint:disable:next type_body_length
 public enum HermesLocalReader {
+    public enum LocalStoreStatus: Sendable, Equatable {
+        case present
+        case absent
+        case unavailable
+    }
+
     public enum Coverage: Sendable, Equatable {
         case complete
         case partial
@@ -253,6 +259,7 @@ public enum HermesLocalReader {
 
     private struct UsageItem {
         let sessionID: String
+        let sourceDatabase: String
         let model: String
         let billingProvider: String?
         let task: String?
@@ -303,6 +310,18 @@ public enum HermesLocalReader {
     public static func hasLocalStore(context: Context) -> Bool {
         let budget = Budget()
         return ((try? self.discoverDatabasePaths(context: context, budget: budget)) ?? []).isEmpty == false
+    }
+
+    /// Distinguish a confirmed empty Hermes home from a store that could not be inspected.
+    /// Callers use this to avoid clearing an already-established snapshot after a transient
+    /// profile-directory or filesystem failure.
+    public static func localStoreStatus(context: Context) -> LocalStoreStatus {
+        let budget = Budget()
+        guard let discovery = try? self.discoverDatabasePathsWithStatus(context: context, budget: budget) else {
+            return .unavailable
+        }
+        guard discovery.isComplete else { return .unavailable }
+        return discovery.paths.isEmpty ? .absent : .present
     }
 
     private static func discoverDatabasePathsWithStatus(
@@ -561,6 +580,7 @@ public enum HermesLocalReader {
 
         var items: [UsageItem] = []
         let allSessionIDs = Set(smuRowsBySession.keys).union(sessionRowsByID.keys)
+        let sourceDatabase = url.standardizedFileURL.path
 
         for sessionID in allSessionIDs {
             if smuComplete, sessionsComplete {
@@ -579,9 +599,8 @@ public enum HermesLocalReader {
             // per-model rows carry estimates (or no cost), do not add those estimates beside the
             // session total; retain the model token details and publish the actual once as the
             // residual. Rows whose costs are also actual remain eligible for normal subtraction.
-            let prefersAuthoritativeSessionActual: Bool = if let sessionCost,
-                                                             sessionCost.kind == .actual,
-                                                             sessionCost.amount != nil
+            let prefersAuthoritativeSessionCost: Bool = if let sessionCost,
+                                                           sessionCost.amount != nil
             {
                 smuRows.contains { row in
                     let rowCost = self.costValue(
@@ -589,7 +608,7 @@ public enum HermesLocalReader {
                         estimated: row.estimatedCostUSD,
                         status: row.costStatus,
                         source: row.costSource)
-                    return rowCost.kind != .actual || rowCost.amount == nil
+                    return rowCost.kind != sessionCost.kind || rowCost.amount == nil
                 }
             } else {
                 false
@@ -637,11 +656,11 @@ public enum HermesLocalReader {
                     estimated: row.estimatedCostUSD,
                     status: row.costStatus,
                     source: row.costSource)
-                let costValue = prefersAuthoritativeSessionActual
-                    ? CostValue(amount: nil, kind: .actual)
+                let costValue = prefersAuthoritativeSessionCost
+                    ? CostValue(amount: nil, kind: sessionCost?.kind ?? .unknown)
                     : parsedCostValue
-                if prefersAuthoritativeSessionActual {
-                    smuCostKind = self.mergedCostKind(smuCostKind, .actual)
+                if prefersAuthoritativeSessionCost {
+                    smuCostKind = self.mergedCostKind(smuCostKind, sessionCost?.kind ?? .unknown)
                 } else if let cost = costValue.amount {
                     let next = smuCost + cost
                     guard next.isFinite else {
@@ -692,6 +711,7 @@ public enum HermesLocalReader {
                     "\(baseURLKey):\(billingModeKey):\(taskKey)"
                 items.append(UsageItem(
                     sessionID: sessionID,
+                    sourceDatabase: sourceDatabase,
                     model: row.model,
                     billingProvider: providerKey,
                     task: taskKey,
@@ -748,6 +768,7 @@ public enum HermesLocalReader {
                 let hasResidual = resTotal > 0
                     || (resCost ?? 0) > 0
                     || (resCalls ?? 0) > 0
+                    || (prefersAuthoritativeSessionCost && sCost != nil)
                     || (smuRows.isEmpty && (sCost != nil || (sCalls ?? 0) > 0))
                 if hasResidual {
                     // Residual cumulative session totals follow the latest activity timestamp.
@@ -768,6 +789,7 @@ public enum HermesLocalReader {
                     let dedup = "hermes:res:\(sessionID)"
                     items.append(UsageItem(
                         sessionID: sessionID,
+                        sourceDatabase: sourceDatabase,
                         model: effectiveModel,
                         billingProvider: providerKey,
                         task: "",
@@ -1186,6 +1208,60 @@ public enum HermesLocalReader {
         return false
     }
 
+    /// A stale session-only residual from one Hermes profile must not survive when a newer
+    /// profile contains model rows that already cover the same cumulative counters. Keep the
+    /// source path on each item so a legitimate residual within one database is not suppressed.
+    private static func suppressCoveredResiduals(_ itemsByDedupKey: inout [String: UsageItem]) {
+        let values = Array(itemsByDedupKey.values)
+        let modelItemsBySession = Dictionary(grouping: values.filter { $0.dedupKey.hasPrefix("hermes:smu:") }) {
+            $0.sessionID
+        }
+        for residual in values where residual.dedupKey.hasPrefix("hermes:res:") {
+            let candidates = (modelItemsBySession[residual.sessionID] ?? []).filter { candidate in
+                guard candidate.sourceDatabase != residual.sourceDatabase else { return false }
+                guard let candidateTimestamp = self.normalizedTimestamp(candidate.timestamp) else { return false }
+                guard let residualTimestamp = self.normalizedTimestamp(residual.timestamp) else { return true }
+                return candidateTimestamp >= residualTimestamp
+            }
+            guard !candidates.isEmpty else { continue }
+            let tokenTotal = candidates.reduce(into: Int64(0)) { total, candidate in
+                let (next, overflow) = total.addingReportingOverflow(max(0, candidate.totalTokens))
+                total = overflow ? Int64.max : next
+            }
+            guard tokenTotal >= max(0, residual.totalTokens) else { continue }
+
+            // If the session-level cost is already represented by the newer model rows, remove
+            // the residual entirely. Otherwise keep a cost-only residual so authoritative cost
+            // coverage is not lost while token counters remain de-duplicated.
+            let residualCost = residual.costUSD
+            let matchingCost = candidates
+                .filter { $0.costKind == residual.costKind }
+                .compactMap(\.costUSD)
+                .reduce(0.0, +)
+            if residualCost == nil || matchingCost >= (residualCost ?? 0) {
+                itemsByDedupKey.removeValue(forKey: residual.dedupKey)
+            } else {
+                itemsByDedupKey[residual.dedupKey] = UsageItem(
+                    sessionID: residual.sessionID,
+                    sourceDatabase: residual.sourceDatabase,
+                    model: residual.model,
+                    billingProvider: residual.billingProvider,
+                    task: residual.task,
+                    timestamp: residual.timestamp,
+                    apiCalls: 0,
+                    input: 0,
+                    output: 0,
+                    cacheRead: 0,
+                    cacheWrite: 0,
+                    reasoning: 0,
+                    totalTokens: 0,
+                    costUSD: residualCost,
+                    costKind: residual.costKind,
+                    dedupKey: residual.dedupKey)
+            }
+        }
+    }
+
     // swiftlint:disable function_body_length
     // swiftlint:disable:next cyclomatic_complexity
     private static func aggregate(
@@ -1208,6 +1284,7 @@ public enum HermesLocalReader {
                 itemsByDedupKey[item.dedupKey] = item
             }
         }
+        self.suppressCoveredResiduals(&itemsByDedupKey)
 
         var dayMap: [String: DayAccumulator] = [:]
         var aggregationComplete = isComplete
