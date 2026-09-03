@@ -51,6 +51,7 @@ enum PiSessionCostScanner {
         let parsedBytes: Int64
         let sessionID: String?
         let lastModelContext: PiModelContext?
+        let isComplete: Bool
     }
 
     private struct SessionFileCandidate {
@@ -183,7 +184,7 @@ enum PiSessionCostScanner {
             let filePathsInScan = Set(files.map(\.url.path))
 
             for file in files {
-                try self.scanPiSessionFile(
+                let fileIsComplete = try self.scanPiSessionFile(
                     fileURL: file.url,
                     cache: &cache,
                     context: ScanContext(
@@ -191,6 +192,7 @@ enum PiSessionCostScanner {
                         forceRescan: options.forceRescan || windowExpanded || pricingChanged,
                         pricingContext: pricingContext,
                         checkCancellation: checkCancellation))
+                scanIsComplete = scanIsComplete && fileIsComplete
             }
             try checkCancellation?()
 
@@ -464,7 +466,7 @@ enum PiSessionCostScanner {
         fileURL: URL,
         cache: inout PiSessionCostCache,
         context: ScanContext)
-        throws
+        throws -> Bool
     {
         try context.checkCancellation?()
         let path = fileURL.path
@@ -483,7 +485,7 @@ enum PiSessionCostScanner {
            cached.mtimeUnixMs == mtimeMs,
            cached.size == size
         {
-            return
+            return true
         }
 
         if !context.forceRescan,
@@ -500,6 +502,7 @@ enum PiSessionCostScanner {
                 initialModelContext: cached.lastModelContext,
                 pricingContext: context.pricingContext,
                 checkCancellation: context.checkCancellation)
+            guard delta.isComplete else { return false }
             if !delta.contributions.isEmpty {
                 self.applyContributions(
                     daysByProvider: &cache.daysByProvider,
@@ -520,8 +523,15 @@ enum PiSessionCostScanner {
                 contributions: merged,
                 unkeyedContributions: mergedUnkeyed,
                 entryUsages: mergedEntryUsages))
-            return
+            return true
         }
+
+        let parsed = try self.parsePiSessionFile(
+            fileURL: fileURL,
+            range: context.range,
+            pricingContext: context.pricingContext,
+            checkCancellation: context.checkCancellation)
+        guard parsed.isComplete else { return false }
 
         if let cached {
             self.applyContributions(
@@ -530,11 +540,6 @@ enum PiSessionCostScanner {
                 sign: -1)
         }
 
-        let parsed = try self.parsePiSessionFile(
-            fileURL: fileURL,
-            range: context.range,
-            pricingContext: context.pricingContext,
-            checkCancellation: context.checkCancellation)
         if !parsed.contributions.isEmpty {
             self.applyContributions(daysByProvider: &cache.daysByProvider, contributions: parsed.contributions, sign: 1)
         }
@@ -548,6 +553,7 @@ enum PiSessionCostScanner {
             contributions: parsed.contributions,
             unkeyedContributions: parsed.unkeyedContributions,
             entryUsages: parsed.entryUsages))
+        return true
     }
 
     private static func parsePiSessionFile(
@@ -621,6 +627,7 @@ enum PiSessionCostScanner {
         }
 
         let parsedBytes: Int64
+        var isComplete = true
         do {
             parsedBytes = try CostUsageJsonl.scan(
                 fileURL: fileURL,
@@ -675,6 +682,7 @@ enum PiSessionCostScanner {
             throw CancellationError()
         } catch {
             parsedBytes = startOffset
+            isComplete = false
         }
 
         return ParseResult(
@@ -683,7 +691,8 @@ enum PiSessionCostScanner {
             entryUsages: entryUsages,
             parsedBytes: parsedBytes,
             sessionID: sessionID,
-            lastModelContext: currentModelContext)
+            lastModelContext: currentModelContext,
+            isComplete: isComplete)
     }
 
     private static func sessionIdentifier(from object: [String: Any]) -> String? {

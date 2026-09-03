@@ -149,4 +149,58 @@ struct PiProviderTests {
         #expect(refreshed.sessionTokens == 25)
         #expect(!refreshed.historyCoverageIsEstablished)
     }
+
+    @Test
+    func `pi provider marks a session read failure incomplete and keeps cached usage`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2026, month: 4, day: 3)
+        let entry: [String: Any] = [
+            "type": "message",
+            "timestamp": env.isoString(for: day),
+            "message": [
+                "role": "assistant",
+                "provider": "openai-codex",
+                "model": "openai/gpt-5.4",
+                "timestamp": Int(day.timeIntervalSince1970 * 1000),
+                "usage": ["input": 20, "output": 5, "totalTokens": 25],
+            ],
+        ]
+        let fileURL = try env.writePiSessionFile(
+            relativePath: "2026-04-03T10-00-00-000Z_read-failure.jsonl",
+            contents: env.jsonl([entry]))
+        let options = PiSessionCostScanner.Options(
+            piSessionsRoot: env.piSessionsRoot,
+            cacheRoot: env.cacheRoot,
+            refreshMinIntervalSeconds: 0)
+        let initial = try PiSessionCostScanner.loadDailyReportResultCancellable(
+            provider: .codex,
+            since: day,
+            until: day,
+            now: day,
+            options: options,
+            checkCancellation: nil)
+        #expect(initial.isComplete)
+        #expect(initial.report.data.first?.totalTokens == 25)
+
+        let removeFile: @Sendable () -> Void = {
+            try? FileManager.default.removeItem(at: fileURL)
+        }
+        let refreshed = try PiSessionCostScanner.$sessionParseObserverForTesting.withValue(removeFile) {
+            try PiSessionCostScanner.loadDailyReportResultCancellable(
+                provider: .codex,
+                since: day,
+                until: day.addingTimeInterval(1),
+                now: day.addingTimeInterval(1),
+                options: PiSessionCostScanner.Options(
+                    piSessionsRoot: env.piSessionsRoot,
+                    cacheRoot: env.cacheRoot,
+                    refreshMinIntervalSeconds: 0,
+                    forceRescan: true),
+                checkCancellation: nil)
+        }
+        #expect(!refreshed.isComplete)
+        #expect(refreshed.report.data.first?.totalTokens == 25)
+    }
 }
