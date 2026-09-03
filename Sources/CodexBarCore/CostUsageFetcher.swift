@@ -503,16 +503,18 @@ public struct CostUsageFetcher: Sendable {
                 now: now,
                 cacheRoot: piOptionsOnly.cacheRoot,
                 client: modelsDevClient)
-            let piDaily: CostUsageDailyReport = try await CostUsageScanExecutor.run { checkCancellation in
-                try PiSessionCostScanner.loadDailyReportCancellable(
-                    // Provider-specific by design: this call reads Pi's local aggregate session ledger.
-                    provider: .pi,
-                    since: piSince,
-                    until: now,
-                    now: now,
-                    options: piOptions,
-                    checkCancellation: checkCancellation)
-            }
+            let piScanResult: PiSessionCostScanner.DailyReportResult = try await CostUsageScanExecutor
+                .run { checkCancellation in
+                    try PiSessionCostScanner.loadDailyReportResultCancellable(
+                        // Provider-specific by design: this call reads Pi's local aggregate session ledger.
+                        provider: .pi,
+                        since: piSince,
+                        until: now,
+                        now: now,
+                        options: piOptions,
+                        checkCancellation: checkCancellation)
+                }
+            let piDaily = piScanResult.report
             if allowPricingRefresh, retryUnknownPricing {
                 var didRefresh = false
                 for pricingProvider in [UsageProvider.codex, UsageProvider.claude] {
@@ -551,7 +553,7 @@ public struct CostUsageFetcher: Sendable {
                 now: now,
                 historyDays: clampedHistoryDays,
                 calendar: piOptionsOnly.calendar,
-                historyCoverageIsEstablished: true,
+                historyCoverageIsEstablished: piScanResult.isComplete,
                 costProvenance: .listPriceEstimate,
                 projects: [],
                 sessions: [],
