@@ -226,6 +226,7 @@ final class UsageStore {
     var providerStorageFootprints: [ProviderInstanceID: ProviderStorageFootprint] = [:]
     @ObservationIgnored var lastCreditsSnapshot: CreditsSnapshot?
     @ObservationIgnored var lastCreditsSnapshotAccountKey: String?
+    @ObservationIgnored var lastCreditsSnapshotOwnerGuard: CodexAccountScopedRefreshGuard?
     @ObservationIgnored var lastCreditsSource: CodexCreditsSource = .none
     @ObservationIgnored var creditsFailureStreak: Int = 0
     @ObservationIgnored var openAIDashboardAttachmentAuthorized: Bool = false {

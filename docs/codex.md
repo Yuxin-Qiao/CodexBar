@@ -71,6 +71,8 @@ Usage source picker:
 - Stacked account refreshes retain each managed account's selected workspace through usage publication and menu
   matching, even when its auth file names a different default workspace. Changing the selected workspace while a
   refresh is running discards the old workspace's result.
+- System Account promotion fails closed when a managed selection differs from the auth file's default workspace.
+  CodexBar keeps that selection managed rather than silently promoting the default or rewriting Codex-owned auth.
 - Reusing OpenCode OAuth enables remote account quota, not OpenCode session token/cost ingestion. See
   [OpenCode with Codex or OpenAI](opencode.md#using-opencode-with-codex-or-openai) for the current history boundary.
 
