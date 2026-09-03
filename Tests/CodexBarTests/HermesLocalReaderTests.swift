@@ -540,6 +540,65 @@ final class HermesLocalReaderTests: XCTestCase {
         #endif
     }
 
+    func testNewerProfileModelCostsAreSubtractedFromOlderSessionResidual() throws {
+        #if canImport(SQLite3) || canImport(CSQLite3)
+        let defaultDB = self.tempDirectory.appendingPathComponent("state.db")
+        let profileDB = self.tempDirectory.appendingPathComponent("profiles/dev/state.db")
+        guard let db1 = self.createDatabase(at: defaultDB),
+              let db2 = self.createDatabase(at: profileDB)
+        else {
+            XCTFail("Failed to create test databases")
+            return
+        }
+        defer {
+            sqlite3_close(db1)
+            sqlite3_close(db2)
+        }
+
+        let now = Date().timeIntervalSince1970
+        let defaultSQL = """
+        INSERT INTO sessions (
+            id, model, billing_provider, started_at, last_activity_at, api_call_count, input_tokens, output_tokens,
+            actual_cost_usd, cost_status, cost_source
+        ) VALUES (
+            'sess_residual_cost_merge', 'old-session-model', 'provider', \(now - 60), \(now - 60), 1, 100, 0,
+            1.00, 'actual', 'provider_cost_api'
+        );
+        """
+        let profileSQL = """
+        INSERT INTO session_model_usage (
+            session_id, model, billing_provider, api_call_count,
+            input_tokens, output_tokens, actual_cost_usd, cost_status, cost_source, first_seen, last_seen
+        ) VALUES (
+            'sess_residual_cost_merge', 'new-model', 'provider', 1,
+            100, 0, 0.40, 'actual', 'provider_cost_api', \(now), \(now)
+        );
+        """
+        XCTAssertEqual(sqlite3_exec(db1, defaultSQL, nil, nil, nil), SQLITE_OK)
+        XCTAssertEqual(sqlite3_exec(db2, profileSQL, nil, nil, nil), SQLITE_OK)
+
+        let context = HermesLocalReader.Context(home: self.tempDirectory)
+        let result = try HermesLocalReader.makeDailyReportWithStatus(context: context)
+        XCTAssertEqual(result.coverage, .complete)
+        let entry = try XCTUnwrap(result.report.data.first)
+        XCTAssertEqual(entry.totalTokens, 100)
+        XCTAssertEqual(try XCTUnwrap(entry.costUSD), 1.00, accuracy: 0.0001)
+        XCTAssertEqual(
+            try XCTUnwrap(entry.modelBreakdowns).compactMap(\.costUSD).reduce(0, +),
+            1.00,
+            accuracy: 0.0001)
+        XCTAssertEqual(
+            try XCTUnwrap(try XCTUnwrap(entry.modelBreakdowns).first(where: { $0.modelName == "new-model" })?.costUSD),
+            0.40,
+            accuracy: 0.0001)
+        XCTAssertEqual(
+            try XCTUnwrap(try XCTUnwrap(entry.modelBreakdowns).first(where: { $0.modelName == "old-session-model" })?
+                .costUSD),
+            0.60,
+            accuracy: 0.0001)
+        #endif
+    }
+
     func testProfileScopedHomeDoesNotReadSiblingProfiles() throws {
         #if canImport(SQLite3) || canImport(CSQLite3)
         let root = self.tempDirectory.appendingPathComponent("hermes-root", isDirectory: true)

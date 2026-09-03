@@ -326,13 +326,13 @@ extension UsageMenuCardView.Model {
     {
         let explicitLines = Self.tokenUsageHintLines(provider: provider)
         guard explicitLines.isEmpty, let snapshot else { return explicitLines }
-        return Self.fallbackCostHint(for: snapshot.costProvenance).map { [$0] } ?? []
+        return Self.providerCostHint(provider: provider, provenance: snapshot.costProvenance).map { [$0] } ?? []
     }
 
     static func fallbackCostHint(for provenance: CostProvenance) -> String? {
         switch provenance {
         case .vendorMetered:
-            L("Plan metered")
+            nil
         case .mixed:
             L("Metered and list-price")
         case .listPriceEstimate:
@@ -340,6 +340,15 @@ extension UsageMenuCardView.Model {
         case .unknown:
             nil
         }
+    }
+
+    private static func providerCostHint(provider: UsageProvider, provenance: CostProvenance) -> String? {
+        // Hermes is the only provider whose local reader exposes vendor-metered plan usage. Keep
+        // the shared fallback neutral so pay-as-you-go providers such as xAI are not called plans.
+        if provider == .hermes, provenance == .vendorMetered {
+            return L("Plan metered")
+        }
+        return self.fallbackCostHint(for: provenance)
     }
 
     static func costHistoryWindowLabel(days: Int) -> String {

@@ -16,7 +16,17 @@ struct InlineCostHistoryDashboardLabelTests {
             updatedAt: Date())
 
         #expect(UsageMenuCardView.Model.tokenUsageHintLines(provider: .hermes, snapshot: snapshot).isEmpty)
+        let meteredSnapshot = CostUsageTokenSnapshot(
+            sessionTokens: 12,
+            sessionCostUSD: 0.12,
+            last30DaysTokens: 12,
+            last30DaysCostUSD: 0.12,
+            costProvenance: .vendorMetered,
+            daily: [],
+            updatedAt: Date())
+        #expect(UsageMenuCardView.Model.tokenUsageHintLines(provider: .xai, snapshot: meteredSnapshot).isEmpty)
         #expect(UsageMenuCardView.Model.fallbackCostHint(for: .unknown) == nil)
+        #expect(UsageMenuCardView.Model.fallbackCostHint(for: .vendorMetered) == nil)
         #expect(UsageMenuCardView.Model.fallbackCostHint(for: .listPriceEstimate) != nil)
     }
 

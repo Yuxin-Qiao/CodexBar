@@ -1277,7 +1277,11 @@ public enum HermesLocalReader {
                 .filter { $0.costKind == residual.costKind }
                 .compactMap(\.costUSD)
                 .reduce(0.0, +)
-            if residualCost == nil || matchingCost >= (residualCost ?? 0) {
+            // Model rows from a newer profile may carry only part of the authoritative session
+            // cost. Subtract their same-provenance amount from the retained residual instead of
+            // adding the entire stale session total beside those rows.
+            let unmatchedResidualCost = residualCost.map { max(0.0, $0 - matchingCost) }
+            if unmatchedResidualCost == nil || unmatchedResidualCost.map({ $0 <= 0 }) == true {
                 itemsByDedupKey.removeValue(forKey: residual.dedupKey)
             } else {
                 itemsByDedupKey[residual.dedupKey] = UsageItem(
@@ -1294,7 +1298,7 @@ public enum HermesLocalReader {
                     cacheWrite: 0,
                     reasoning: 0,
                     totalTokens: 0,
-                    costUSD: residualCost,
+                    costUSD: unmatchedResidualCost,
                     costKind: residual.costKind,
                     dedupKey: residual.dedupKey)
             }
