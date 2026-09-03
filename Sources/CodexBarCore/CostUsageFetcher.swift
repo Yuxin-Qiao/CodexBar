@@ -517,6 +517,7 @@ public struct CostUsageFetcher: Sendable {
             let piDaily = piScanResult.report
             if allowPricingRefresh, retryUnknownPricing {
                 var didRefresh = false
+                // Provider-specific by design: Pi model names reuse the Codex and Claude pricing catalogs.
                 for pricingProvider in [UsageProvider.codex, UsageProvider.claude] {
                     if let request = Self.unknownPricingRefreshRequest(
                         provider: pricingProvider,
