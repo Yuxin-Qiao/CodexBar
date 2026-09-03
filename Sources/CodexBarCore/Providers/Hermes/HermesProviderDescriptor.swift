@@ -50,7 +50,8 @@ public enum HermesProviderDescriptor {
                 pipeline: ProviderFetchPipeline(resolveStrategies: self.resolveStrategies)),
             cli: ProviderCLIConfig(
                 name: "hermes",
-                versionDetector: nil))
+                versionDetector: nil,
+                supportsCostCommand: true))
     }
 
     private static func resolveStrategies(context: ProviderFetchContext) async -> [any ProviderFetchStrategy] {
