@@ -274,6 +274,11 @@ public enum HermesLocalReader {
         let costUSD: Double?
         let costKind: CostKind
         let dedupKey: String
+        /// Full cumulative session counters used when reconciling a residual against a newer
+        /// profile. These are nil for model rows and keep residual coverage comparisons from
+        /// mistaking the residual remainder for the whole session.
+        let sessionTotalTokens: Int64?
+        let sessionTotalApiCalls: Int64?
     }
 
     private enum CostKind: Sendable, Equatable {
@@ -764,7 +769,9 @@ public enum HermesLocalReader {
                     totalTokens: rowTotal,
                     costUSD: costValue.amount,
                     costKind: costValue.kind,
-                    dedupKey: dedup))
+                    dedupKey: dedup,
+                    sessionTotalTokens: nil,
+                    sessionTotalApiCalls: nil))
             }
 
             // Reconcile residual against sessions aggregate row
@@ -777,6 +784,8 @@ public enum HermesLocalReader {
                 let sessionCostValue = sessionCost ?? CostValue(amount: nil, kind: .unknown)
                 let sCost = sessionCostValue.amount
                 let sCalls = s.apiCallCount
+                let sessionTotalTokens = self.checkedSum([sInput, sOutput, sCacheRead, sCacheWrite])
+                let sessionTotalApiCalls = sCalls.map { max(0, $0) }
 
                 let resInput = max(0, sInput - smuInput)
                 let resOutput = max(0, sOutput - smuOutput)
@@ -842,7 +851,9 @@ public enum HermesLocalReader {
                         totalTokens: resTotal,
                         costUSD: resCost,
                         costKind: resCost == nil ? .unknown : sessionCostValue.kind,
-                        dedupKey: dedup))
+                        dedupKey: dedup,
+                        sessionTotalTokens: sessionTotalTokens,
+                        sessionTotalApiCalls: sessionTotalApiCalls))
                 }
             }
         }
@@ -1267,11 +1278,31 @@ public enum HermesLocalReader {
                 let (next, overflow) = total.addingReportingOverflow(max(0, candidate.totalTokens))
                 total = overflow ? Int64.max : next
             }
-            guard tokenTotal >= max(0, residual.totalTokens) else { continue }
+            let sessionTokenTotal = max(0, residual.sessionTotalTokens ?? residual.totalTokens)
+            guard tokenTotal >= sessionTokenTotal else { continue }
 
-            // If the session-level cost is already represented by the newer model rows, remove
-            // the residual entirely. Otherwise keep a cost-only residual so authoritative cost
-            // coverage is not lost while token counters remain de-duplicated.
+            let candidateCalls = candidates.compactMap(\.apiCalls)
+            let candidateCallsAreComplete = candidateCalls.count == candidates.count
+            // A token-complete profile is not enough to discard a residual when the newer model
+            // rows omit call counts. Keep the residual request count in that case.
+            if residual.sessionTotalApiCalls != nil, !candidateCallsAreComplete, residual.apiCalls != nil {
+                continue
+            }
+            let unmatchedResidualCalls: Int64? = {
+                guard let sessionCalls = residual.sessionTotalApiCalls, candidateCallsAreComplete else {
+                    return residual.apiCalls
+                }
+                let candidateCallTotal = candidateCalls.reduce(into: Int64(0)) { total, calls in
+                    let (next, overflow) = total.addingReportingOverflow(max(0, calls))
+                    total = overflow ? Int64.max : next
+                }
+                return max(0, sessionCalls - candidateCallTotal)
+            }()
+
+            // If the session-level cost and request count are already represented by the newer
+            // model rows, remove the residual entirely. Otherwise keep a cost/request-only
+            // residual so authoritative coverage is not lost while token counters remain
+            // de-duplicated.
             let residualCost = residual.costUSD
             let matchingCost = candidates
                 .filter { $0.costKind == residual.costKind }
@@ -1281,7 +1312,9 @@ public enum HermesLocalReader {
             // cost. Subtract their same-provenance amount from the retained residual instead of
             // adding the entire stale session total beside those rows.
             let unmatchedResidualCost = residualCost.map { max(0.0, $0 - matchingCost) }
-            if unmatchedResidualCost == nil || unmatchedResidualCost.map({ $0 <= 0 }) == true {
+            let hasUnmatchedCost = unmatchedResidualCost.map { $0 > 0 } == true
+            let hasUnmatchedCalls = unmatchedResidualCalls.map { $0 > 0 } == true
+            if !hasUnmatchedCost, !hasUnmatchedCalls {
                 itemsByDedupKey.removeValue(forKey: residual.dedupKey)
             } else {
                 itemsByDedupKey[residual.dedupKey] = UsageItem(
@@ -1291,7 +1324,7 @@ public enum HermesLocalReader {
                     billingProvider: residual.billingProvider,
                     task: residual.task,
                     timestamp: residual.timestamp,
-                    apiCalls: 0,
+                    apiCalls: unmatchedResidualCalls,
                     input: 0,
                     output: 0,
                     cacheRead: 0,
@@ -1300,7 +1333,9 @@ public enum HermesLocalReader {
                     totalTokens: 0,
                     costUSD: unmatchedResidualCost,
                     costKind: residual.costKind,
-                    dedupKey: residual.dedupKey)
+                    dedupKey: residual.dedupKey,
+                    sessionTotalTokens: residual.sessionTotalTokens,
+                    sessionTotalApiCalls: residual.sessionTotalApiCalls)
             }
         }
     }

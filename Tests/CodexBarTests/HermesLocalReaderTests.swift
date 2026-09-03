@@ -516,6 +516,13 @@ final class HermesLocalReaderTests: XCTestCase {
         ) VALUES (
             'sess_residual_merge', 'old-session-model', \(stale), \(stale), 1, 100, 0
         );
+        INSERT INTO session_model_usage (
+            session_id, model, billing_provider, api_call_count,
+            input_tokens, output_tokens, first_seen, last_seen
+        ) VALUES (
+            'sess_residual_merge', 'new-model', 'provider', 1,
+            60, 0, \(stale), \(stale)
+        );
         """
         let profileSQL = """
         INSERT INTO session_model_usage (
@@ -523,7 +530,7 @@ final class HermesLocalReaderTests: XCTestCase {
             input_tokens, output_tokens, first_seen, last_seen
         ) VALUES (
             'sess_residual_merge', 'new-model', 'provider', 1,
-            100, 0, \(now), \(now)
+            60, 0, \(now), \(now)
         );
         """
         XCTAssertEqual(sqlite3_exec(db1, defaultSQL, nil, nil, nil), SQLITE_OK)
@@ -535,67 +542,14 @@ final class HermesLocalReaderTests: XCTestCase {
         let entry = try XCTUnwrap(result.report.data.first)
         XCTAssertEqual(entry.totalTokens, 100)
         XCTAssertEqual(entry.requestCount, 1)
-        XCTAssertEqual(entry.modelBreakdowns?.count, 1)
+        XCTAssertEqual(entry.modelBreakdowns?.count, 2)
         XCTAssertEqual(entry.modelBreakdowns?.first?.modelName, "new-model")
-        #endif
-    }
-
-    func testNewerProfileModelCostsAreSubtractedFromOlderSessionResidual() throws {
-        #if canImport(SQLite3) || canImport(CSQLite3)
-        let defaultDB = self.tempDirectory.appendingPathComponent("state.db")
-        let profileDB = self.tempDirectory.appendingPathComponent("profiles/dev/state.db")
-        guard let db1 = self.createDatabase(at: defaultDB),
-              let db2 = self.createDatabase(at: profileDB)
-        else {
-            XCTFail("Failed to create test databases")
-            return
-        }
-        defer {
-            sqlite3_close(db1)
-            sqlite3_close(db2)
-        }
-
-        let now = Date().timeIntervalSince1970
-        let defaultSQL = """
-        INSERT INTO sessions (
-            id, model, billing_provider, started_at, last_activity_at, api_call_count, input_tokens, output_tokens,
-            actual_cost_usd, cost_status, cost_source
-        ) VALUES (
-            'sess_residual_cost_merge', 'old-session-model', 'provider', \(now - 60), \(now - 60), 1, 100, 0,
-            1.00, 'actual', 'provider_cost_api'
-        );
-        """
-        let profileSQL = """
-        INSERT INTO session_model_usage (
-            session_id, model, billing_provider, api_call_count,
-            input_tokens, output_tokens, actual_cost_usd, cost_status, cost_source, first_seen, last_seen
-        ) VALUES (
-            'sess_residual_cost_merge', 'new-model', 'provider', 1,
-            100, 0, 0.40, 'actual', 'provider_cost_api', \(now), \(now)
-        );
-        """
-        XCTAssertEqual(sqlite3_exec(db1, defaultSQL, nil, nil, nil), SQLITE_OK)
-        XCTAssertEqual(sqlite3_exec(db2, profileSQL, nil, nil, nil), SQLITE_OK)
-
-        let context = HermesLocalReader.Context(home: self.tempDirectory)
-        let result = try HermesLocalReader.makeDailyReportWithStatus(context: context)
-        XCTAssertEqual(result.coverage, .complete)
-        let entry = try XCTUnwrap(result.report.data.first)
-        XCTAssertEqual(entry.totalTokens, 100)
-        XCTAssertEqual(try XCTUnwrap(entry.costUSD), 1.00, accuracy: 0.0001)
         XCTAssertEqual(
-            try XCTUnwrap(entry.modelBreakdowns).compactMap(\.costUSD).reduce(0, +),
-            1.00,
-            accuracy: 0.0001)
+            try XCTUnwrap(entry.modelBreakdowns?.first(where: { $0.modelName == "new-model" })?.totalTokens),
+            60)
         XCTAssertEqual(
-            try XCTUnwrap(try XCTUnwrap(entry.modelBreakdowns).first(where: { $0.modelName == "new-model" })?.costUSD),
-            0.40,
-            accuracy: 0.0001)
-        XCTAssertEqual(
-            try XCTUnwrap(try XCTUnwrap(entry.modelBreakdowns).first(where: { $0.modelName == "old-session-model" })?
-                .costUSD),
-            0.60,
-            accuracy: 0.0001)
+            try XCTUnwrap(entry.modelBreakdowns?.first(where: { $0.modelName == "old-session-model" })?.totalTokens),
+            40)
         #endif
     }
 
@@ -895,6 +849,126 @@ final class HermesLocalReaderTests: XCTestCase {
             now: Date(timeIntervalSince1970: now),
             historyDays: 1)
         XCTAssertEqual(snapshot.costProvenance, .mixed)
+        #endif
+    }
+}
+
+extension HermesLocalReaderTests {
+    func testNewerProfileModelRowsPreserveUnmatchedSessionCalls() throws {
+        #if canImport(SQLite3) || canImport(CSQLite3)
+        let defaultDB = self.tempDirectory.appendingPathComponent("state.db")
+        let profileDB = self.tempDirectory.appendingPathComponent("profiles/dev/state.db")
+        guard let db1 = self.createDatabase(at: defaultDB),
+              let db2 = self.createDatabase(at: profileDB)
+        else {
+            XCTFail("Failed to create test databases")
+            return
+        }
+        defer {
+            sqlite3_close(db1)
+            sqlite3_close(db2)
+        }
+
+        let now = Date().timeIntervalSince1970
+        let stale = now - 60
+        let defaultSQL = """
+        INSERT INTO sessions (
+            id, model, started_at, last_activity_at, api_call_count, input_tokens, output_tokens
+        ) VALUES (
+            'sess_request_residual_merge', 'old-session-model', \(stale), \(stale), 10, 100, 0
+        );
+        INSERT INTO session_model_usage (
+            session_id, model, billing_provider, api_call_count,
+            input_tokens, output_tokens, first_seen, last_seen
+        ) VALUES (
+            'sess_request_residual_merge', 'new-model', 'provider', 5,
+            60, 0, \(stale), \(stale)
+        );
+        """
+        let profileSQL = """
+        INSERT INTO session_model_usage (
+            session_id, model, billing_provider, api_call_count,
+            input_tokens, output_tokens, first_seen, last_seen
+        ) VALUES (
+            'sess_request_residual_merge', 'new-model', 'provider', 5,
+            100, 0, \(now), \(now)
+        );
+        """
+        XCTAssertEqual(sqlite3_exec(db1, defaultSQL, nil, nil, nil), SQLITE_OK)
+        XCTAssertEqual(sqlite3_exec(db2, profileSQL, nil, nil, nil), SQLITE_OK)
+
+        let context = HermesLocalReader.Context(home: self.tempDirectory)
+        let result = try HermesLocalReader.makeDailyReportWithStatus(context: context)
+        XCTAssertEqual(result.coverage, .complete)
+        let entry = try XCTUnwrap(result.report.data.first)
+        XCTAssertEqual(entry.totalTokens, 100)
+        XCTAssertEqual(entry.requestCount, 10)
+        XCTAssertEqual(entry.modelBreakdowns?.count, 2)
+        XCTAssertEqual(
+            try XCTUnwrap(entry.modelBreakdowns?.first(where: { $0.modelName == "new-model" })?.requestCount),
+            5)
+        XCTAssertEqual(
+            try XCTUnwrap(entry.modelBreakdowns?.first(where: { $0.modelName == "old-session-model" })?.requestCount),
+            5)
+        #endif
+    }
+
+    func testNewerProfileModelCostsAreSubtractedFromOlderSessionResidual() throws {
+        #if canImport(SQLite3) || canImport(CSQLite3)
+        let defaultDB = self.tempDirectory.appendingPathComponent("state.db")
+        let profileDB = self.tempDirectory.appendingPathComponent("profiles/dev/state.db")
+        guard let db1 = self.createDatabase(at: defaultDB),
+              let db2 = self.createDatabase(at: profileDB)
+        else {
+            XCTFail("Failed to create test databases")
+            return
+        }
+        defer {
+            sqlite3_close(db1)
+            sqlite3_close(db2)
+        }
+
+        let now = Date().timeIntervalSince1970
+        let defaultSQL = """
+        INSERT INTO sessions (
+            id, model, billing_provider, started_at, last_activity_at, api_call_count, input_tokens, output_tokens,
+            actual_cost_usd, cost_status, cost_source
+        ) VALUES (
+            'sess_residual_cost_merge', 'old-session-model', 'provider', \(now - 60), \(now - 60), 1, 100, 0,
+            1.00, 'actual', 'provider_cost_api'
+        );
+        """
+        let profileSQL = """
+        INSERT INTO session_model_usage (
+            session_id, model, billing_provider, api_call_count,
+            input_tokens, output_tokens, actual_cost_usd, cost_status, cost_source, first_seen, last_seen
+        ) VALUES (
+            'sess_residual_cost_merge', 'new-model', 'provider', 1,
+            100, 0, 0.40, 'actual', 'provider_cost_api', \(now), \(now)
+        );
+        """
+        XCTAssertEqual(sqlite3_exec(db1, defaultSQL, nil, nil, nil), SQLITE_OK)
+        XCTAssertEqual(sqlite3_exec(db2, profileSQL, nil, nil, nil), SQLITE_OK)
+
+        let context = HermesLocalReader.Context(home: self.tempDirectory)
+        let result = try HermesLocalReader.makeDailyReportWithStatus(context: context)
+        XCTAssertEqual(result.coverage, .complete)
+        let entry = try XCTUnwrap(result.report.data.first)
+        XCTAssertEqual(entry.totalTokens, 100)
+        XCTAssertEqual(try XCTUnwrap(entry.costUSD), 1.00, accuracy: 0.0001)
+        XCTAssertEqual(
+            try XCTUnwrap(entry.modelBreakdowns).compactMap(\.costUSD).reduce(0, +),
+            1.00,
+            accuracy: 0.0001)
+        XCTAssertEqual(
+            try XCTUnwrap(try XCTUnwrap(entry.modelBreakdowns).first(where: { $0.modelName == "new-model" })?.costUSD),
+            0.40,
+            accuracy: 0.0001)
+        XCTAssertEqual(
+            try XCTUnwrap(try XCTUnwrap(entry.modelBreakdowns).first(where: { $0.modelName == "old-session-model" })?
+                .costUSD),
+            0.60,
+            accuracy: 0.0001)
         #endif
     }
 }
