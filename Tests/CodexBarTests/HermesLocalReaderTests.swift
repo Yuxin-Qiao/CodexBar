@@ -749,6 +749,52 @@ final class HermesLocalReaderTests: XCTestCase {
         #endif
     }
 
+    func testSameProvenanceModelCostsAreCappedAtSessionTotal() throws {
+        #if canImport(SQLite3) || canImport(CSQLite3)
+        let dbURL = self.tempDirectory.appendingPathComponent("state.db")
+        guard let db = self.createDatabase(at: dbURL) else {
+            XCTFail("Failed to create test database")
+            return
+        }
+        defer { sqlite3_close(db) }
+
+        let now = Date().timeIntervalSince1970
+        let sql = """
+        INSERT INTO sessions (
+            id, model, started_at, api_call_count, input_tokens, output_tokens,
+            actual_cost_usd, cost_status, cost_source
+        ) VALUES (
+            'sess_cost_cap', 'session-model', \(now), 2, 200, 100,
+            0.10, 'actual', 'provider_cost_api'
+        );
+        INSERT INTO session_model_usage (
+            session_id, model, billing_provider, api_call_count, input_tokens, output_tokens,
+            actual_cost_usd, cost_status, cost_source, first_seen, last_seen
+        ) VALUES
+            ('sess_cost_cap', 'model-a', 'nous', 1, 100, 50,
+             0.08, 'actual', 'provider_cost_api', \(now), \(now)),
+            ('sess_cost_cap', 'model-b', 'nous', 1, 100, 50,
+             0.08, 'actual', 'provider_cost_api', \(now), \(now));
+        """
+        XCTAssertEqual(sqlite3_exec(db, sql, nil, nil, nil), SQLITE_OK)
+
+        let context = HermesLocalReader.Context(home: self.tempDirectory)
+        let result = try HermesLocalReader.makeDailyReportWithStatus(context: context)
+        let entry = try XCTUnwrap(result.report.data.first)
+        XCTAssertEqual(try XCTUnwrap(entry.costUSD), 0.10, accuracy: 0.0001)
+        XCTAssertEqual(
+            try XCTUnwrap(entry.modelBreakdowns).compactMap(\.costUSD).reduce(0, +),
+            0.10,
+            accuracy: 0.0001)
+        XCTAssertEqual(
+            try XCTUnwrap(try XCTUnwrap(entry.modelBreakdowns).compactMap { breakdown in
+                breakdown.modelName == "model-a" ? breakdown.costUSD : nil
+            }.first),
+            0.05,
+            accuracy: 0.0001)
+        #endif
+    }
+
     func testCostProvenanceDoesNotRequirePositiveAPICallCount() async throws {
         #if canImport(SQLite3) || canImport(CSQLite3)
         let dbURL = self.tempDirectory.appendingPathComponent("state.db")

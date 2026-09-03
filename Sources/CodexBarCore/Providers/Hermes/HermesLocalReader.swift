@@ -599,8 +599,41 @@ public enum HermesLocalReader {
             // per-model rows carry estimates (or no cost), do not add those estimates beside the
             // session total; retain the model token details and publish the actual once as the
             // residual. Rows whose costs are also actual remain eligible for normal subtraction.
+            let knownModelCostTotal: Double? = {
+                var total = 0.0
+                for row in smuRows {
+                    let rowCost = self.costValue(
+                        actual: row.actualCostUSD,
+                        estimated: row.estimatedCostUSD,
+                        status: row.costStatus,
+                        source: row.costSource)
+                    guard let amount = rowCost.amount else { return nil }
+                    let next = total + amount
+                    guard next.isFinite else { return nil }
+                    total = next
+                }
+                return total
+            }()
+            let modelCostScale: Double? = if let sessionCost,
+                                             let sessionAmount = sessionCost.amount,
+                                             let knownModelCostTotal,
+                                             knownModelCostTotal > sessionAmount,
+                                             knownModelCostTotal > 0,
+                                             smuRows.allSatisfy({ row in
+                                                 let rowCost = self.costValue(
+                                                     actual: row.actualCostUSD,
+                                                     estimated: row.estimatedCostUSD,
+                                                     status: row.costStatus,
+                                                     source: row.costSource)
+                                                 return rowCost.kind == sessionCost.kind && rowCost.amount != nil
+                                             })
+            {
+                sessionAmount / knownModelCostTotal
+            } else {
+                nil
+            }
             let prefersAuthoritativeSessionCost: Bool = if let sessionCost,
-                                                           sessionCost.amount != nil
+                                                           let sessionAmount = sessionCost.amount
             {
                 smuRows.contains { row in
                     let rowCost = self.costValue(
@@ -609,7 +642,7 @@ public enum HermesLocalReader {
                         status: row.costStatus,
                         source: row.costSource)
                     return rowCost.kind != sessionCost.kind || rowCost.amount == nil
-                }
+                } || ((knownModelCostTotal.map { $0 > sessionAmount } ?? false) && modelCostScale == nil)
             } else {
                 false
             }
@@ -656,9 +689,15 @@ public enum HermesLocalReader {
                     estimated: row.estimatedCostUSD,
                     status: row.costStatus,
                     source: row.costSource)
-                let costValue = prefersAuthoritativeSessionCost
-                    ? CostValue(amount: nil, kind: sessionCost?.kind ?? .unknown)
-                    : parsedCostValue
+                let costValue: CostValue = if prefersAuthoritativeSessionCost {
+                    CostValue(amount: nil, kind: sessionCost?.kind ?? .unknown)
+                } else if let modelCostScale,
+                          let amount = parsedCostValue.amount
+                {
+                    CostValue(amount: amount * modelCostScale, kind: parsedCostValue.kind)
+                } else {
+                    parsedCostValue
+                }
                 if prefersAuthoritativeSessionCost {
                     smuCostKind = self.mergedCostKind(smuCostKind, sessionCost?.kind ?? .unknown)
                 } else if let cost = costValue.amount {

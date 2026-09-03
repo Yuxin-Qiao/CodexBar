@@ -332,7 +332,7 @@ extension UsageMenuCardView.Model {
     static func fallbackCostHint(for provenance: CostProvenance) -> String? {
         switch provenance {
         case .vendorMetered:
-            nil
+            L("Plan metered")
         case .mixed:
             L("Metered and list-price")
         case .listPriceEstimate:
