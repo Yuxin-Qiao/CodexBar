@@ -96,8 +96,7 @@ struct CodexCostCatchUpPolicy: Sendable {
                 targetDutyCycle: nil)
         }
         if input.mode == .automatic {
-            // Thermal precedence: serious pressure pauses before Low Power is considered,
-            // so a combined state is always reported with the thermal reason.
+            // Report the stronger constraint when both pauses apply.
             if input.thermalState == .serious {
                 return Decision(
                     action: .pause(Self.constrainedRetryDelay, .thermal),

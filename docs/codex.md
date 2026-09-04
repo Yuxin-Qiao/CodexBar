@@ -186,7 +186,7 @@ is limited, using additional rows when needed.
 4) Last imported browser cookie email (cached).
 
 ## Credits
-- Web dashboard fills credits only when OAuth/CLI do not provide them.
+- Web dashboard fills credits only when OAuth/CLI do not provide them. Account-matched extra usage reconciles monthly caps and purchased balances separately: a newer confirmed zero clears an old balance, while an unread balance preserves the last successful reading. Extra usage shows monthly spend/limit and a distinct purchased balance when available; the optional credits setting controls visibility.
 - CLI RPC: `account/rateLimits/read` → credits balance.
 - CLI PTY diagnostics can still parse `Credits:` from saved/manual `/status` output.
 
@@ -243,6 +243,7 @@ is limited, using additional rows when needed.
   still scan local history. Faster provider refreshes still update quota/status. The scanner's default 60-second
   debounce is a separate internal limit, bypassed by forced scans and catch-up passes; it is not the app's refresh cadence.
 - Usage & Spend catch-up remains inactive after a no-progress or error pause until you choose **Refresh** in the dashboard toolbar or catch-up panel. Opening the dashboard or receiving background updates does not retry those terminal pauses. Low-power and thermal pauses can still recover automatically; this retry policy does not change cached history or token accounting.
+- Automatic catch-up reports thermal pressure when serious heat and Low Power Mode coexist. Both constraints keep the existing 60-second pause before rechecking resource state.
 - Inline cost charts preserve a slot for every day in that window, using the selected cost-bucket time zone and the snapshot's date. Missing days are zero only after history coverage is established; unscanned days and entries without prices remain unknown. Long windows fit within the menu width without dropping dates.
 - **Hide personal information** replaces project/source names with numbered labels and hides their paths in the cost-history submenu; Usage & Spend also masks project names. Costs, tokens, grouping, and stored history are unchanged, and disabling the setting restores the original labels. This is display masking, not data deletion or export sanitization.
 - While a bounded refresh catches up with new session history, established totals remain visible only for the same

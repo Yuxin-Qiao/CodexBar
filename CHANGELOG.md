@@ -3,6 +3,8 @@
 ## Unreleased
 
 ### Fixed
+- Codex: report thermal pressure as the catch-up pause reason when serious heat and Low Power Mode coincide, preserving the existing pause and scan budget (#3242). Thanks @Yuxin-Qiao!
+- Cost history: keep tall charts in a bounded scroll view so switching Token/Cost no longer jumps the native menu or undoes an immediate wheel scroll (#3380). Thanks @Yuxin-Qiao!
 - z.ai: abbreviate large model token totals with M/B while preserving exact hourly and daily chart values (#3308, #3310). Thanks @medpath1024 and @fantasy!
 - Settings: disable iCloud sync sub-options when the main sync switch is off, preserving their saved choices for the next time sync is enabled (#3406). Thanks @elijahfriedman!
 - Antigravity: match local token-history timestamps by per-turn IDs when auxiliary or reordered steps would otherwise assign usage to the wrong day, while withholding conflicting evidence and preserving legacy timestamp recovery (#3403). Thanks @WeGoToMars!
@@ -12,6 +14,7 @@
 - Claude: stop labeling restored quota history as CLI usage, while retaining the limited-detail warning, original percentages, and stale-data guidance.
 - Claude: offer Switch Account after a successful CLI quota read without identity fields, while preserving recovery actions for failed refreshes and restored history (partial fix for #3395). Thanks @PoroGramr!
 - Usage & Spend: prefer heatmap tooltips above hovered cells and keep them within narrow grids; retain daily keyboard selection without the extra system focus rectangle (#3407). Thanks @elijahfriedman!
+- Codex: show extra-credit spend and limits with a distinct purchased balance; reconcile cap and balance freshness independently so confirmed zero balances stay cleared and monthly bars agree with their totals (#3296). Thanks @sf-jin-ku!
 
 ## 0.56.4 — 2026-09-03
 
