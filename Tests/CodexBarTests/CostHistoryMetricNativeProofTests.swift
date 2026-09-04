@@ -9,7 +9,7 @@ import XCTest
 /// Opt-in native NSMenu regression proof with synthetic cost data and no provider transports.
 @MainActor
 final class CostHistoryMetricNativeProofTests: XCTestCase {
-    func test_metricSwitchDoesNotScrollNativeMenu() throws {
+    func test_metricSwitchDoesNotScrollNativeMenus() throws {
         let environment = ProcessInfo.processInfo.environment
         guard environment["CODEXBAR_COST_METRIC_NATIVE_PROOF"] == "1" else {
             throw XCTSkip("Set CODEXBAR_COST_METRIC_NATIVE_PROOF=1 to run the native menu proof.")
@@ -38,135 +38,65 @@ final class CostHistoryMetricNativeProofTests: XCTestCase {
         guard let screen = host.screen ?? NSScreen.main else {
             return XCTFail("Native metric proof requires an attached display.")
         }
-
-        let fixture = makeCostMetricProofFixture()
-        let metricChanges = fixture.metricChanges
-        let hosting = fixture.hosting
-        let item = NSMenuItem()
-        item.view = fixture.viewport
-        item.isEnabled = true
-        let menu = NSMenu()
-        menu.autoenablesItems = false
-        menu.addItem(item)
-
         defer {
-            menu.cancelTracking()
             host.close()
             _ = application.setActivationPolicy(previousPolicy)
             if NSWorkspace.shared.frontmostApplication?.processIdentifier == ProcessInfo.processInfo.processIdentifier {
                 previousApplication?.activate()
             }
         }
+        // Both menu topologies share one application lifecycle. Relaunching AppKit between
+        // popups can deliver activation changes into the next menu's tracking loop.
         XCTAssertTrue(application.setActivationPolicy(.regular))
         application.finishLaunching()
-        application.activate(ignoringOtherApps: true)
         host.makeKeyAndOrderFront(nil)
+        application.activate(ignoringOtherApps: true)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.15))
 
-        let driver = CostMetricProofDriver(hosting: hosting, menu: menu, verifyWheel: true)
-        driver.start()
-        defer { driver.stop() }
-        let popupPoint = NSPoint(x: screen.visibleFrame.midX, y: screen.visibleFrame.maxY)
-        menu.popUp(positioning: nil, at: popupPoint, in: nil)
+        for nested in [false, true] {
+            let fixture = makeCostMetricProofFixture()
+            let chartItem = NSMenuItem()
+            chartItem.view = fixture.viewport
+            chartItem.isEnabled = true
+            let chartMenu = NSMenu()
+            chartMenu.autoenablesItems = false
+            chartMenu.addItem(chartItem)
+            let parentItem = NSMenuItem(title: "Cost history", action: nil, keyEquivalent: "")
+            parentItem.isEnabled = true
+            parentItem.submenu = chartMenu
+            let rootMenu = StatusItemMenu()
+            rootMenu.autoenablesItems = false
+            rootMenu.addItem(parentItem)
+            let popupPoint = NSPoint(x: screen.visibleFrame.midX, y: screen.visibleFrame.maxY)
+            let driver = CostMetricProofDriver(
+                hosting: fixture.hosting,
+                menu: chartMenu,
+                rootMenu: nested ? rootMenu : nil,
+                rootPopupPoint: nested ? popupPoint : nil,
+                verifyWheel: true)
+            driver.start()
+            (nested ? rootMenu : chartMenu).popUp(positioning: nil, at: popupPoint, in: nil)
+            driver.stop()
 
-        if let failure = driver.failure {
-            return XCTFail(failure)
-        }
-        XCTAssertTrue(driver.topEdgeConstraintVerified)
-        XCTAssertTrue(driver.verticalConstraintVerified)
-        XCTAssertTrue(driver.metricControlClearanceVerified)
-        XCTAssertTrue(driver.chartHoverClearanceVerified)
-        XCTAssertTrue(driver.chartPointerVerified)
-        XCTAssertEqual(driver.pointerSegments, [1, 0])
-        XCTAssertEqual(driver.selectedSegments, [1, 0])
-        XCTAssertEqual(metricChanges.values, [.cost, .tokens])
-        XCTAssertTrue(driver.wheelScrollVerified)
-        XCTAssertFalse(driver.observedOrigins.isEmpty)
-    }
-
-    func test_costHistoryChartKeepsViewportWhenOpenedFromNestedNativeMenu() throws {
-        let environment = ProcessInfo.processInfo.environment
-        guard environment["CODEXBAR_COST_METRIC_NATIVE_PROOF"] == "1" else {
-            throw XCTSkip("Set CODEXBAR_COST_METRIC_NATIVE_PROOF=1 to run the native menu proof.")
-        }
-        guard environment["CODEXBAR_SUPPRESS_TEST_KEYCHAIN_ACCESS"] == "1",
-              environment[CodexCredentialFileAccess.isolationEnvironmentKey] == "1",
-              environment["CODEXBAR_TEST_SESSION_FILE_ISOLATION"] == "1",
-              environment["CODEXBAR_ALLOW_TEST_KEYCHAIN_ACCESS"] != "1"
-        else {
-            return XCTFail("Native proof requires credential, Keychain, and session isolation.")
-        }
-
-        let application = NSApplication.shared
-        guard application.delegate == nil, UserDefaults.standard.object(forKey: "NSOpen") == nil else {
-            return XCTFail("Native proof requires a standalone test application.")
-        }
-        let previousPolicy = application.activationPolicy()
-        let previousApplication = NSWorkspace.shared.frontmostApplication
-        let host = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 160),
-            styleMask: [.titled, .closable],
-            backing: .buffered,
-            defer: false)
-        host.title = "CodexBar Nested Cost Metric Proof"
-        host.isReleasedWhenClosed = false
-        guard let screen = host.screen ?? NSScreen.main else {
-            return XCTFail("Native metric proof requires an attached display.")
-        }
-
-        let fixture = makeCostMetricProofFixture()
-        let metricChanges = fixture.metricChanges
-        let hosting = fixture.hosting
-        let chartItem = NSMenuItem()
-        chartItem.view = fixture.viewport
-        chartItem.isEnabled = true
-        let chartMenu = NSMenu()
-        chartMenu.autoenablesItems = false
-        chartMenu.addItem(chartItem)
-        let parentItem = NSMenuItem(title: "Cost history", action: nil, keyEquivalent: "")
-        parentItem.isEnabled = true
-        parentItem.submenu = chartMenu
-        let rootMenu = StatusItemMenu()
-        rootMenu.autoenablesItems = false
-        rootMenu.addItem(parentItem)
-
-        defer {
-            rootMenu.cancelTracking()
-            chartMenu.cancelTracking()
-            host.close()
-            _ = application.setActivationPolicy(previousPolicy)
-            if NSWorkspace.shared.frontmostApplication?.processIdentifier == ProcessInfo.processInfo.processIdentifier {
-                previousApplication?.activate()
+            if let failure = driver.failure {
+                XCTFail("\(nested ? "Nested" : "Standalone") menu: \(failure)")
             }
+            XCTAssertTrue(driver.topEdgeConstraintVerified)
+            XCTAssertTrue(driver.verticalConstraintVerified)
+            XCTAssertTrue(driver.metricControlClearanceVerified)
+            XCTAssertTrue(driver.chartHoverClearanceVerified)
+            XCTAssertTrue(driver.chartPointerVerified)
+            XCTAssertEqual(driver.pointerSegments, [1, 0])
+            XCTAssertEqual(driver.selectedSegments, [1, 0])
+            XCTAssertEqual(fixture.metricChanges.values, [.cost, .tokens])
+            XCTAssertTrue(driver.wheelScrollVerified)
+            XCTAssertFalse(driver.observedOrigins.isEmpty)
+            if nested {
+                XCTAssertTrue(driver.nestedPointerSent)
+                XCTAssertTrue(driver.nestedSubmenuObserved)
+            }
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.15))
         }
-        XCTAssertTrue(application.setActivationPolicy(.regular))
-        application.finishLaunching()
-        application.activate(ignoringOtherApps: true)
-        host.makeKeyAndOrderFront(nil)
-
-        let popupPoint = NSPoint(x: screen.visibleFrame.midX, y: screen.visibleFrame.maxY)
-        let driver = CostMetricProofDriver(
-            hosting: hosting,
-            menu: chartMenu,
-            rootMenu: rootMenu,
-            rootPopupPoint: popupPoint,
-            verifyWheel: true)
-        driver.start()
-        defer { driver.stop() }
-        rootMenu.popUp(positioning: nil, at: popupPoint, in: nil)
-
-        XCTAssertTrue(driver.nestedPointerSent)
-        XCTAssertTrue(driver.nestedSubmenuObserved)
-        if let failure = driver.failure {
-            return XCTFail(failure)
-        }
-        XCTAssertTrue(driver.topEdgeConstraintVerified)
-        XCTAssertTrue(driver.verticalConstraintVerified)
-        XCTAssertTrue(driver.metricControlClearanceVerified)
-        XCTAssertTrue(driver.chartHoverClearanceVerified)
-        XCTAssertTrue(driver.chartPointerVerified)
-        XCTAssertEqual(metricChanges.values, [.cost, .tokens])
-        XCTAssertTrue(driver.wheelScrollVerified)
-        XCTAssertFalse(driver.observedOrigins.isEmpty)
     }
 }
 
@@ -614,8 +544,8 @@ private final class CostMetricProofDriver {
 
     private func finish() {
         self.stop()
-        self.menu.cancelTracking()
-        self.rootMenu?.cancelTracking()
+        // The root owns nested tracking; cancelling both menus can dismiss the next popup.
+        (self.rootMenu ?? self.menu).cancelTracking()
     }
 
     private static func matches(_ origin: CGPoint, _ baseline: CGPoint?) -> Bool {
