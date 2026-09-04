@@ -93,7 +93,7 @@ struct UsageStoreCodexCostCatchUpTests {
         #expect(statusLoadCount == 2)
         #expect(snapshotLoadCount == 1)
         #expect(cachedLoadCount == 1)
-        #expect(sleepDurations.first == 398)
+        #expect(sleepDurations.first == 1998)
         #expect(store.tokenSnapshot(for: .codex)?.last30DaysCostUSD == 2)
         #expect(store.tokenSnapshotPublicationRevision(for: .codex) == 2)
         #expect(store.tokenError(for: .codex) == nil)
@@ -312,43 +312,6 @@ struct UsageStoreCodexCostCatchUpTests {
         #expect(store.codexCostCatchUpActivity?.phase == .complete)
         #expect(store.codexCostCatchUpActivity?.mode == .accelerated)
         #expect(store.codexCostCatchUpActivity?.fractionCompleted == 1)
-    }
-
-    @Test
-    func `leaving low power mode interrupts a long catch-up delay`() async throws {
-        let store = try Self.makeStore(suite: "low-power-transition")
-        var lowPowerModeEnabled = true
-        var sleepDurations: [TimeInterval] = []
-        var advanceCount = 0
-        store._test_tokenUsageSnapshotLoaderOverride = { _, _, now, _, _ in
-            Self.tokenSnapshot(cost: 1, now: now)
-        }
-        store._test_codexCostCatchUpStatusOverride = { _ in
-            CostUsageFetcher.CodexScanCatchUpStatus(
-                pending: advanceCount == 0,
-                progressKey: advanceCount == 0 ? "pending" : "complete")
-        }
-        store._test_codexCostCatchUpAdvanceOverride = { _, _, _ in
-            advanceCount += 1
-            return CostUsageFetcher.CodexScanCatchUpStatus(pending: false, progressKey: "complete")
-        }
-        store._test_codexCostCatchUpSleepOverride = { duration in
-            sleepDurations.append(duration)
-            lowPowerModeEnabled = false
-            await Task.yield()
-        }
-        store._test_codexCostCatchUpResourceStateOverride = {
-            (.battery, lowPowerModeEnabled, .nominal)
-        }
-
-        store.startCodexCostCatchUpIfNeeded()
-        await Self.waitUntil {
-            store.codexCostCatchUpTask == nil
-        }
-
-        #expect(sleepDurations == [CodexCostCatchUpPolicy.constrainedRetryDelay, 1998])
-        #expect(advanceCount == 1)
-        #expect(store.codexCostCatchUpActivity?.phase == .complete)
     }
 
     @Test

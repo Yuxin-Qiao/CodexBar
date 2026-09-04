@@ -34,18 +34,6 @@ enum CodexCostCatchUpPowerSource: String, Sendable {
     }
 }
 
-struct CodexCostCatchUpResourceState: Sendable, Equatable {
-    let powerSource: CodexCostCatchUpPowerSource
-    let lowPowerModeEnabled: Bool
-    let thermalState: ProcessInfo.ThermalState
-
-    var isConstrained: Bool {
-        self.lowPowerModeEnabled
-            || self.thermalState == .serious
-            || self.thermalState == .critical
-    }
-}
-
 enum CodexCostCatchUpPauseReason: Sendable, Equatable {
     case lowPower
     case thermal
@@ -107,22 +95,28 @@ struct CodexCostCatchUpPolicy: Sendable {
                 action: .pause(Self.constrainedRetryDelay, .thermal),
                 targetDutyCycle: nil)
         }
-        if input.mode == .automatic, input.thermalState == .serious {
-            return Decision(
-                action: .pause(Self.constrainedRetryDelay, .thermal),
-                targetDutyCycle: nil)
+        if input.mode == .automatic {
+            // Thermal precedence: serious pressure pauses before Low Power is considered,
+            // so a combined state is always reported with the thermal reason.
+            if input.thermalState == .serious {
+                return Decision(
+                    action: .pause(Self.constrainedRetryDelay, .thermal),
+                    targetDutyCycle: nil)
+            }
+            if input.lowPowerModeEnabled {
+                return Decision(
+                    action: .pause(Self.constrainedRetryDelay, .lowPower),
+                    targetDutyCycle: nil)
+            }
         }
         if input.mode == .accelerated {
             return Decision(action: .runAfter(0), targetDutyCycle: 1)
         }
 
-        let dutyCycle = switch (input.lowPowerModeEnabled, input.powerSource) {
-        case (true, .ac): 0.0005
-        case (true, .unknown): 0.00025
-        case (true, .battery): 0.0001
-        case (false, .ac): 0.005
-        case (false, .unknown): 0.0025
-        case (false, .battery): 0.001
+        let dutyCycle = switch input.powerSource {
+        case .ac: 0.001
+        case .battery: 0.0002
+        case .unknown: 0.0005
         }
         let activeDuration = max(0, input.previousActiveDuration ?? Self.automaticBurstDuration)
         let delay = activeDuration * (1 - dutyCycle) / dutyCycle
