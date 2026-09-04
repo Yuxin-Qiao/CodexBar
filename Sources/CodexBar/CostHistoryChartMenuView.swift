@@ -218,9 +218,16 @@ struct CostHistoryChartMenuView: View {
                         }
                         Spacer(minLength: 0)
                         if availableMetrics.count > 1 {
-                            MetricPicker(metrics: availableMetrics, selection: self.$metric)
-                                .frame(width: Self.metricPickerWidth, height: Self.metricPickerHeight)
-                                .accessibilityLabel(L("Display mode"))
+                            Picker(L("Display mode"), selection: self.$metric) {
+                                ForEach(availableMetrics, id: \.self) { metric in
+                                    Text(metric.title).tag(metric)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .controlSize(.small)
+                            .labelsHidden()
+                            .frame(width: Self.metricPickerWidth, height: Self.metricPickerHeight)
+                            .accessibilityLabel(L("Display mode"))
                         }
                     }
                     .frame(height: Self.metricPickerHeight)
@@ -1271,189 +1278,6 @@ extension CostHistoryChartMenuView {
             daily: daily,
             metric: metric ?? self.defaultMetric(provider: provider, daily: daily))
         return (model.detailViewportRowCount, model.hasDetailOverflow, model.detailRowHeight)
-    }
-
-    /// SwiftUI's segmented Picker is backed by an AppKit control that lets NSMenu reveal a
-    /// constrained custom row after a click. Keep the native segmented appearance while routing
-    /// the click through a control that can restore the menu viewport after SwiftUI relayouts.
-    @MainActor
-    private struct MetricPicker: NSViewRepresentable {
-        let metrics: [ChartMetric]
-        @Binding var selection: ChartMetric
-
-        func makeNSView(context: Context) -> MetricPickerView {
-            let view = MetricPickerView()
-            self.update(view)
-            self.installSelectionHandler(on: view)
-            return view
-        }
-
-        func updateNSView(_ nsView: MetricPickerView, context: Context) {
-            self.update(nsView)
-            self.installSelectionHandler(on: nsView)
-        }
-
-        private func update(_ view: MetricPickerView) {
-            view.titles = self.metrics.map(\.title)
-            view.selectedIndex = self.metrics.firstIndex(of: self.selection) ?? 0
-        }
-
-        private func installSelectionHandler(on view: MetricPickerView) {
-            view.onSelectionChanged = { index in
-                guard self.metrics.indices.contains(index) else { return }
-                self.selection = self.metrics[index]
-            }
-        }
-    }
-
-    @MainActor
-    private final class MetricPickerView: NSSegmentedControl {
-        var titles: [String] = [] {
-            didSet { self.configureSegments() }
-        }
-
-        var selectedIndex = 0 {
-            didSet { self.selectedSegment = self.selectedIndex }
-        }
-
-        var onSelectionChanged: ((Int) -> Void)?
-        private var pressedIndex: Int?
-        private var pressedSegmentScreenRect: NSRect?
-        private var originToRestore: NSPoint?
-        private var restoreTimer: Timer?
-        private var restoreDeadline: Date?
-
-        override init(frame frameRect: NSRect) {
-            super.init(frame: frameRect)
-            self.configure()
-        }
-
-        required init?(coder: NSCoder) {
-            super.init(coder: coder)
-            self.configure()
-        }
-
-        override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
-            true
-        }
-
-        override var intrinsicContentSize: NSSize {
-            let size = super.intrinsicContentSize
-            return NSSize(width: size.width, height: 20)
-        }
-
-        override func hitTest(_ point: NSPoint) -> NSView? {
-            guard let index = self.index(at: point) else { return nil }
-            // NSMenu's tracking loop can consume mouse-down before it reaches a custom row. Keep
-            // the hit-tested segment and pre-click viewport so mouse-up can complete the action.
-            self.capturePress(index: index)
-            return self
-        }
-
-        override func mouseDown(with event: NSEvent) {
-            let point = self.convert(event.locationInWindow, from: nil)
-            if let index = self.index(at: point) {
-                self.capturePress(index: index)
-            }
-        }
-
-        override func mouseUp(with event: NSEvent) {
-            let releasedPoint = self.convert(event.locationInWindow, from: nil)
-            let releasedIndex = self.index(at: releasedPoint)
-            let pressedIndex = self.pressedIndex
-            defer {
-                self.pressedIndex = nil
-                self.pressedSegmentScreenRect = nil
-            }
-            guard let pressedIndex,
-                  self.isPointerInsidePressedSegment || releasedIndex == pressedIndex
-            else { return }
-            self.selectedIndex = pressedIndex
-            self.onSelectionChanged?(pressedIndex)
-            self.restoreViewport()
-        }
-
-        private func index(at point: NSPoint) -> Int? {
-            guard self.bounds.contains(point), self.segmentCount > 0 else { return nil }
-            let width = self.bounds.width / CGFloat(self.segmentCount)
-            return min(Int(point.x / width), self.segmentCount - 1)
-        }
-
-        private func configure() {
-            self.segmentStyle = .texturedRounded
-            self.trackingMode = .selectOne
-            self.controlSize = .small
-            self.target = self
-            self.action = #selector(self.segmentActivated(_:))
-            self.setAccessibilityLabel(L("Display mode"))
-            self.configureSegments()
-        }
-
-        @objc private func segmentActivated(_ sender: NSSegmentedControl) {
-            self.onSelectionChanged?(sender.selectedSegment)
-        }
-
-        private func configureSegments() {
-            self.segmentCount = self.titles.count
-            for (index, title) in self.titles.enumerated() {
-                self.setLabel(title, forSegment: index)
-            }
-            self.selectedSegment = self.selectedIndex
-        }
-
-        private func capturePress(index: Int) {
-            self.pressedIndex = index
-            self.originToRestore = self.enclosingScrollView?.contentView.documentVisibleRect.origin
-            guard let window else { return }
-            let windowRect = self.convert(self.segmentRect(for: index), to: nil)
-            self.pressedSegmentScreenRect = window.convertToScreen(windowRect)
-        }
-
-        private var isPointerInsidePressedSegment: Bool {
-            guard let pressedSegmentScreenRect else { return true }
-            return pressedSegmentScreenRect.insetBy(dx: -4, dy: -4).contains(NSEvent.mouseLocation)
-        }
-
-        private func segmentRect(for index: Int) -> NSRect {
-            let width = self.bounds.width / CGFloat(max(self.segmentCount, 1))
-            return NSRect(
-                x: CGFloat(index) * width,
-                y: self.bounds.minY,
-                width: width,
-                height: self.bounds.height)
-        }
-
-        private func restoreViewport() {
-            guard self.originToRestore != nil else { return }
-            self.restoreTimer?.invalidate()
-            self.restoreDeadline = Date(timeIntervalSinceNow: 0.5)
-            let timer = Timer(
-                timeInterval: 0.01,
-                target: self,
-                selector: #selector(self.restoreTimerFired(_:)),
-                userInfo: nil,
-                repeats: true)
-            RunLoop.main.add(timer, forMode: .common)
-            self.restoreTimer = timer
-        }
-
-        @objc private func restoreTimerFired(_ timer: Timer) {
-            guard let origin = self.originToRestore,
-                  let scrollView = self.enclosingScrollView
-            else {
-                timer.invalidate()
-                self.restoreTimer = nil
-                self.restoreDeadline = nil
-                return
-            }
-            scrollView.contentView.scroll(to: origin)
-            scrollView.reflectScrolledClipView(scrollView.contentView)
-            if let deadline = self.restoreDeadline, Date() >= deadline {
-                timer.invalidate()
-                self.restoreTimer = nil
-                self.restoreDeadline = nil
-            }
-        }
     }
 }
 

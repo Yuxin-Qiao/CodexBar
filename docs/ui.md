@@ -8,6 +8,7 @@ read_when:
 # UI & icon
 
 ## Settings
+- Usage & Spend heatmap tooltips prefer the space above the hovered cell and stay within the grid, falling below when needed. On narrow grids they compact vertically and may overlap cells; keyboard selection remains available in the daily grid.
 - Both the application menu and status menu open About in the Settings window. An existing Settings window is reused
   and switches to the About pane.
 
@@ -115,3 +116,5 @@ Runs out tokens remain hidden until 3% of their window has elapsed.
   provider picker; detailed pipeline in `docs/widgets.md`.
 
 See also: `docs/widgets.md`.
+
+Cost-history submenus keep tall histories in a scrollable viewport. Switching Token/Cost preserves the viewport; scrolling over the chart moves through the history without moving the native menu.

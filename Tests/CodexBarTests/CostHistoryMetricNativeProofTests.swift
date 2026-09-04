@@ -2,6 +2,7 @@ import AppKit
 import CodexBarCore
 import CoreGraphics
 import Foundation
+import SwiftUI
 import XCTest
 @testable import CodexBar
 
@@ -42,7 +43,7 @@ final class CostHistoryMetricNativeProofTests: XCTestCase {
         let metricChanges = fixture.metricChanges
         let hosting = fixture.hosting
         let item = NSMenuItem()
-        item.view = hosting
+        item.view = fixture.viewport
         item.isEnabled = true
         let menu = NSMenu()
         menu.autoenablesItems = false
@@ -116,7 +117,7 @@ final class CostHistoryMetricNativeProofTests: XCTestCase {
         let metricChanges = fixture.metricChanges
         let hosting = fixture.hosting
         let chartItem = NSMenuItem()
-        chartItem.view = hosting
+        chartItem.view = fixture.viewport
         chartItem.isEnabled = true
         let chartMenu = NSMenu()
         chartMenu.autoenablesItems = false
@@ -148,7 +149,7 @@ final class CostHistoryMetricNativeProofTests: XCTestCase {
             menu: chartMenu,
             rootMenu: rootMenu,
             rootPopupPoint: popupPoint,
-            stopAfterChartHover: true)
+            verifyWheel: true)
         driver.start()
         defer { driver.stop() }
         rootMenu.popUp(positioning: nil, at: popupPoint, in: nil)
@@ -163,14 +164,16 @@ final class CostHistoryMetricNativeProofTests: XCTestCase {
         XCTAssertTrue(driver.metricControlClearanceVerified)
         XCTAssertTrue(driver.chartHoverClearanceVerified)
         XCTAssertTrue(driver.chartPointerVerified)
-        XCTAssertTrue(metricChanges.values.isEmpty)
+        XCTAssertEqual(metricChanges.values, [.cost, .tokens])
+        XCTAssertTrue(driver.wheelScrollVerified)
         XCTAssertFalse(driver.observedOrigins.isEmpty)
     }
 }
 
 @MainActor
 private func makeCostMetricProofFixture() -> (
-    hosting: MenuHostingView<CostHistoryChartMenuView>,
+    hosting: MenuHostingView<AnyView>,
+    viewport: CostHistoryMenuScrollView,
     metricChanges: MetricChangeRecorder)
 {
     var daily: [CostUsageDailyReport.Entry] = []
@@ -232,9 +235,15 @@ private func makeCostMetricProofFixture() -> (
         hidePersonalInfo: false,
         width: 400,
         onMetricChanged: { metricChanges.values.append($0) })
-    let hosting = MenuHostingView(rootView: chart)
+    // Keep the same chart controls while guaranteeing one oversized native row on any display.
+    let fillerHeight = NSScreen.screens.map(\.visibleFrame.height).max() ?? 1200
+    let hosting = MenuHostingView(rootView: AnyView(VStack(spacing: 0) {
+        chart
+        Color.clear.frame(height: fillerHeight)
+    }))
     hosting.applyMeasuredHeight(width: 400, height: hosting.measuredFittingHeight(width: 400))
-    return (hosting, metricChanges)
+    let viewport = CostHistoryMenuScrollView(hosting: hosting, width: 400, maximumHeight: 620)
+    return (hosting, viewport, metricChanges)
 }
 
 @MainActor
@@ -244,22 +253,23 @@ private final class MetricChangeRecorder {
 
 @MainActor
 private final class CostMetricProofDriver {
-    private let hosting: MenuHostingView<CostHistoryChartMenuView>
+    private let hosting: MenuHostingView<AnyView>
     private let menu: NSMenu
     private let rootMenu: NSMenu?
     private let rootPopupPoint: NSPoint?
-    private let stopAfterChartHover: Bool
     private let verifyWheel: Bool
     private(set) var nestedPointerSent = false
     private var timer: Timer?
     private var stage = 0
     private var proofStartedAt = Date()
     private var stageStartedAt = Date()
+    private var baselineWindowFrame: CGRect?
+    private var baselineNativeOrigin: CGPoint?
     private var baselineOrigin: CGPoint?
     private var wheelBaselineOrigin: CGPoint?
     private var wheelArmedAt: Date?
-    private var wheelPointerMovedAt: Date?
-    private var wheelPointerMoved = false
+    private var wheelSettledOrigin: CGPoint?
+    private var boundsObservers: [NSObjectProtocol] = []
     private var wheelPosted = false
     private(set) var observedOrigins: [CGPoint] = []
     private(set) var pointerSegments: [Int] = []
@@ -274,18 +284,16 @@ private final class CostMetricProofDriver {
     private(set) var failure: String?
 
     init(
-        hosting: MenuHostingView<CostHistoryChartMenuView>,
+        hosting: MenuHostingView<AnyView>,
         menu: NSMenu,
         rootMenu: NSMenu? = nil,
         rootPopupPoint: NSPoint? = nil,
-        stopAfterChartHover: Bool = false,
         verifyWheel: Bool = false)
     {
         self.hosting = hosting
         self.menu = menu
         self.rootMenu = rootMenu
         self.rootPopupPoint = rootPopupPoint
-        self.stopAfterChartHover = stopAfterChartHover
         self.verifyWheel = verifyWheel
     }
 
@@ -303,6 +311,8 @@ private final class CostMetricProofDriver {
     func stop() {
         self.timer?.invalidate()
         self.timer = nil
+        self.boundsObservers.forEach(NotificationCenter.default.removeObserver)
+        self.boundsObservers.removeAll()
     }
 
     private struct ProofContext {
@@ -313,6 +323,11 @@ private final class CostMetricProofDriver {
     }
 
     private func tick() {
+        guard Date().timeIntervalSince(self.proofStartedAt) < 20 else {
+            self.failure = "Native metric proof exceeded its overall deadline at stage \(self.stage)."
+            self.finish()
+            return
+        }
         self.sendPointerToNestedParentIfNeeded()
         guard let context = self.proofContext() else {
             self.handleMissingProofContext()
@@ -320,6 +335,24 @@ private final class CostMetricProofDriver {
         }
         if self.rootMenu != nil {
             self.nestedSubmenuObserved = true
+        }
+        if let frame = self.baselineWindowFrame, context.scrollView.window?.frame != frame {
+            self.failure = "Metric interaction moved the native menu window."
+            self.finish()
+            return
+        }
+        if let native = context.scrollView.enclosingScrollView,
+           let baseline = self.baselineNativeOrigin,
+           !Self.matches(native.contentView.bounds.origin, baseline)
+        {
+            self.failure = "Metric interaction scrolled the native ancestor."
+            self.finish()
+            return
+        }
+        if self.stage > 0, !self.wheelPosted,
+           !self.requireStable(context.origin, action: "Metric interaction")
+        {
+            return
         }
         self.observedOrigins.append(context.origin)
         switch self.stage {
@@ -349,7 +382,8 @@ private final class CostMetricProofDriver {
     }
 
     private func proofContext() -> ProofContext? {
-        guard let control = Self.descendant(of: self.hosting, as: NSSegmentedControl.self),
+        guard self.hosting.window?.screen != nil,
+              let control = Self.descendant(of: self.hosting, as: NSSegmentedControl.self),
               let chartHoverView = Self.descendant(of: self.hosting, as: MouseLocationReader.TrackingView.self),
               let scrollView = self.hosting.enclosingScrollView
         else {
@@ -374,7 +408,11 @@ private final class CostMetricProofDriver {
             control: context.control,
             chartHoverView: context.chartHoverView)
         else { return }
+        self.baselineWindowFrame = context.scrollView.window?.frame
+        self.baselineNativeOrigin = context.scrollView.enclosingScrollView?.contentView.bounds.origin
         self.baselineOrigin = context.origin
+        self.observeBounds(of: context.scrollView)
+        self.capture("tokens", window: context.scrollView.window)
         Self.movePointer(to: context.chartHoverView)
         self.advance(to: 1)
     }
@@ -384,10 +422,6 @@ private final class CostMetricProofDriver {
         guard self.verifyPointer(in: context.chartHoverView) else { return }
         self.chartPointerVerified = true
         guard self.requireStable(context.origin, action: "Hovering the chart") else { return }
-        if self.stopAfterChartHover {
-            self.finish()
-            return
-        }
         Self.movePointer(toSegment: 1, in: context.control)
         self.advance(to: 2)
     }
@@ -404,6 +438,7 @@ private final class CostMetricProofDriver {
         guard context.control.selectedSegment == 1 else { return }
         self.selectedSegments.append(1)
         guard self.requireStable(context.origin, action: "Switching to cost") else { return }
+        self.capture("cost", window: context.scrollView.window)
         Self.movePointer(toSegment: 0, in: context.control)
         self.advance(to: 4)
     }
@@ -428,48 +463,27 @@ private final class CostMetricProofDriver {
     }
 
     private func handleWheelStage(_ context: ProofContext) {
-        guard Date().timeIntervalSince(self.stageStartedAt) >= 0.5 else { return }
+        let elapsed = Date().timeIntervalSince(self.stageStartedAt)
+        guard elapsed >= 0.06 else { return }
         if !self.wheelPosted {
-            if self.wheelBaselineOrigin == nil {
-                // Start away from the top so the real wheel event has room to move the viewport.
-                context.scrollView.contentView.scroll(to: NSPoint(x: 0, y: 100))
-                context.scrollView.reflectScrolledClipView(context.scrollView.contentView)
-                self.wheelBaselineOrigin = context.scrollView.contentView.documentVisibleRect.origin
-                self.wheelArmedAt = Date()
-                return
-            }
-            guard Self.matches(context.origin, self.wheelBaselineOrigin) else {
-                self.failure = "Native metric proof menu moved before the wheel event was posted."
-                self.finish()
-                return
-            }
-            guard let wheelArmedAt = self.wheelArmedAt,
-                  Date().timeIntervalSince(wheelArmedAt) >= 0.5
-            else { return }
-            if !self.wheelPointerMoved {
-                self.wheelPointerMoved = true
-                self.wheelPointerMovedAt = Date()
-                Self.movePointer(to: context.chartHoverView)
-                return
-            }
-            guard Self.matches(context.origin, self.wheelBaselineOrigin) else {
-                self.failure = "Native metric proof menu moved while placing the pointer for the wheel event."
-                self.finish()
-                return
-            }
-            guard let wheelPointerMovedAt = self.wheelPointerMovedAt,
-                  Date().timeIntervalSince(wheelPointerMovedAt) >= 0.1
-            else { return }
-            self.wheelPosted = true
+            self.wheelBaselineOrigin = context.origin
             Self.movePointer(to: context.chartHoverView)
-            Self.postScrollWheel(delta: -8)
-        } else if !Self.matches(context.origin, self.wheelBaselineOrigin) {
-            self.wheelScrollVerified = true
-            self.finish()
-        } else if Date().timeIntervalSince(self.stageStartedAt) > 5 {
-            self.failure = "Native metric proof wheel event did not move the menu viewport."
-            self.finish()
+            Self.postScrollWheel(delta: -40)
+            self.wheelPosted = true
+            self.wheelArmedAt = Date()
+            return
         }
+        guard let armed = self.wheelArmedAt else { return }
+        if Date().timeIntervalSince(armed) >= 0.4, self.wheelSettledOrigin == nil {
+            self.wheelSettledOrigin = context.origin
+        }
+        guard Date().timeIntervalSince(armed) >= 1 else { return }
+        self.wheelScrollVerified = !Self.matches(context.origin, self.wheelBaselineOrigin)
+            && Self.matches(context.origin, self.wheelSettledOrigin)
+        if !self.wheelScrollVerified {
+            self.failure = "Intentional wheel scrolling immediately after metric selection was lost."
+        }
+        self.finish()
     }
 
     private func handleStageTimeout() {
@@ -512,6 +526,16 @@ private final class CostMetricProofDriver {
             self.finish()
             return false
         }
+        guard let native = scrollView.enclosingScrollView, let nativeDocument = native.documentView else {
+            self.failure = "Native menu scroll ancestor is missing."
+            self.finish()
+            return false
+        }
+        if nativeDocument.bounds.height > native.contentView.documentVisibleRect.height + 1 {
+            self.failure = "The bounded cost row still overflowed the native menu."
+            self.finish()
+            return false
+        }
         self.verticalConstraintVerified = true
 
         let controlTopInWindow = control.convert(
@@ -519,8 +543,8 @@ private final class CostMetricProofDriver {
             to: nil)
         let controlTopOnScreen = menuWindow.convertPoint(toScreen: controlTopInWindow).y
         let controlTopClearance = menuFrame.maxY - controlTopOnScreen
-        // Two control heights provide a scale-aware guard against the native menu's top scroll affordance.
-        let minimumControlTopClearance = control.bounds.height * 2
+        // The native row fits without scroll gutters; keep controls at least one control height below its edge.
+        let minimumControlTopClearance = control.bounds.height
         guard controlTopClearance >= minimumControlTopClearance else {
             self.failure = "Native metric proof control remained in the menu's top scroll gutter "
                 + "(clearance=\(controlTopClearance), minimum=\(minimumControlTopClearance))."
@@ -558,6 +582,36 @@ private final class CostMetricProofDriver {
         return true
     }
 
+    private func observeBounds(of scrollView: NSScrollView) {
+        let clips = [scrollView.contentView, scrollView.enclosingScrollView?.contentView].compactMap(\.self)
+        for clip in clips {
+            clip.postsBoundsChangedNotifications = true
+            let origin = clip.bounds.origin
+            let isOwned = clip === scrollView.contentView
+            let observer = NotificationCenter.default.addObserver(
+                forName: NSView.boundsDidChangeNotification, object: clip, queue: .main)
+            { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, !isOwned || !self.wheelPosted else { return }
+                    guard !Self.matches(clip.bounds.origin, origin) else { return }
+                    self.failure = "Metric interaction transiently moved a scroll viewport."
+                    self.finish()
+                }
+            }
+            self.boundsObservers.append(observer)
+        }
+    }
+
+    private func capture(_ name: String, window: NSWindow?) {
+        guard let directory = ProcessInfo.processInfo.environment["CODEXBAR_COST_PROOF_DIRECTORY"],
+              let window else { return }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        process.arguments = ["-x", "-o", "-l", String(window.windowNumber), "\(directory)/\(name).png"]
+        try? process.run()
+        process.waitUntilExit()
+    }
+
     private func finish() {
         self.stop()
         self.menu.cancelTracking()
@@ -570,9 +624,13 @@ private final class CostMetricProofDriver {
     }
 
     private static func descendant<T: NSView>(of view: NSView, as _: T.Type) -> T? {
-        if let match = view as? T { return match }
+        if let match = view as? T {
+            return match
+        }
         for subview in view.subviews {
-            if let match = self.descendant(of: subview, as: T.self) { return match }
+            if let match = self.descendant(of: subview, as: T.self) {
+                return match
+            }
         }
         return nil
     }
