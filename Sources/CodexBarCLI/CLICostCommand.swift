@@ -226,19 +226,26 @@ extension CodexBarCLI {
         useColor: Bool) -> [String]
     {
         // Single shared selection: daily and top-model sections describe the same window.
-        let recent = Self.claudeRecentEntries(snapshot: snapshot, calendar: calendar)
-        guard !recent.isEmpty else { return [] }
+        let selection = Self.claudeRecentEntries(snapshot: snapshot, calendar: calendar)
+        guard !selection.entries.isEmpty else { return [] }
         var out: [String] = []
-        out.append(contentsOf: Self.claudeDailyLines(entries: recent, snapshot: snapshot, useColor: useColor))
-        out.append(contentsOf: Self.claudeTopModelsLines(entries: recent, snapshot: snapshot, useColor: useColor))
+        out.append(contentsOf: Self.claudeDailyLines(
+            entries: selection.entries,
+            snapshot: snapshot,
+            recorded: selection.recorded,
+            useColor: useColor))
+        out.append(contentsOf: Self.claudeTopModelsLines(
+            entries: selection.entries,
+            snapshot: snapshot,
+            useColor: useColor))
         return out
     }
 
     private static func claudeRecentEntries(
         snapshot: CostUsageTokenSnapshot,
-        calendar: Calendar) -> [CostUsageDailyReport.Entry]
+        calendar: Calendar) -> (entries: [CostUsageDailyReport.Entry], recorded: Bool)
     {
-        guard !snapshot.daily.isEmpty else { return [] }
+        guard !snapshot.daily.isEmpty else { return ([], false) }
         let today = calendar.startOfDay(for: snapshot.updatedAt)
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -250,20 +257,27 @@ extension CodexBarCLI {
             guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else { return nil }
             return formatter.string(from: day)
         }
-        // No recorded-day fallback: a stale snapshot shows no detail rather than
-        // mislabeling out-of-window days as the requested interval.
-        return Array(snapshot.daily.filter { recentDayKeys.contains($0.date) }
+        let recent = snapshot.daily.filter { recentDayKeys.contains($0.date) }
             .sorted { $0.date > $1.date }
-            .prefix(intervalDays))
+        if !recent.isEmpty {
+            return (Array(recent.prefix(intervalDays)), false)
+        }
+        // Stale snapshot: fall back to the latest recorded days, capped at the
+        // requested interval and labeled as recorded (never as calendar days).
+        let recorded = snapshot.daily.sorted { $0.date > $1.date }.prefix(intervalDays)
+        return (Array(recorded), true)
     }
 
     private static func claudeDailyLines(
         entries: [CostUsageDailyReport.Entry],
         snapshot: CostUsageTokenSnapshot,
+        recorded: Bool,
         useColor: Bool) -> [String]
     {
         let intervalDays = min(7, max(1, snapshot.historyDays))
-        let title = "Daily breakdown (last \(intervalDays) calendar day\(intervalDays == 1 ? "" : "s")):"
+        let title = recorded
+            ? "Daily breakdown (last \(entries.count) recorded day\(entries.count == 1 ? "" : "s")):"
+            : "Daily breakdown (last \(intervalDays) calendar day\(intervalDays == 1 ? "" : "s")):"
         var out: [String] = ["", useColor ? "\u{001B}[1m\(title)\u{001B}[0m" : title]
         for entry in entries.reversed() {
             // A priced subtotal beside an unpriced model row is not the exact day cost.

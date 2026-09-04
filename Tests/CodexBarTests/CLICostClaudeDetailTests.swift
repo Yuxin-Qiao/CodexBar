@@ -148,13 +148,19 @@ struct CLICostClaudeDetailTests {
     }
 
     @Test
-    func `stale history outside the calendar window shows no detail`() {
+    func `stale history falls back to recorded days capped at the requested interval`() {
+        let old = [
+            Self.entry(date: "2020-01-01", tokens: 10, cost: 0.1, model: "claude-sonnet-4-20250514"),
+            Self.entry(date: "2020-01-02", tokens: 20, cost: 0.2, model: "claude-sonnet-4-20250514"),
+            Self.entry(date: "2020-01-03", tokens: 30, cost: 0.3, model: "claude-sonnet-4-20250514"),
+        ]
         let snapshot = CostUsageTokenSnapshot(
             sessionTokens: nil,
             sessionCostUSD: nil,
-            last30DaysTokens: 10,
-            last30DaysCostUSD: 0.1,
-            daily: [Self.entry(date: "2020-01-01", tokens: 10, cost: 0.1)],
+            last30DaysTokens: 60,
+            last30DaysCostUSD: 0.6,
+            historyDays: 1,
+            daily: old,
             updatedAt: Date(timeIntervalSince1970: 1_777_000_000))
 
         let output = CodexBarCLI.renderCostText(
@@ -163,9 +169,13 @@ struct CLICostClaudeDetailTests {
             useColor: false,
             includeBreakdown: true)
 
-        #expect(!output.contains("Daily breakdown"))
-        #expect(!output.contains("Top models"))
-        #expect(!output.contains("2020-01-01:"))
+        // One recorded day (not three): the fallback honors the requested interval
+        // and never labels stale rows as calendar days.
+        #expect(output.contains("Daily breakdown (last 1 recorded day):"))
+        #expect(output.contains("2020-01-03:"))
+        #expect(!output.contains("2020-01-02:"))
+        #expect(!output.contains("calendar day"))
+        #expect(output.contains("Top models ("))
     }
 
     private static var utcCalendar: Calendar {
