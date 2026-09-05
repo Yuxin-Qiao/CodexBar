@@ -99,20 +99,24 @@ struct CostHistoryChartMenuViewTests {
             provider: .claude,
             metric: .tokens,
             historyCoverageIsEstablished: false))
-        #expect(CostHistoryChartMenuView._showsHistoryRefreshingForTesting(
+        #expect(!CostHistoryChartMenuView._showsHistoryRefreshingForTesting(
             provider: .grok,
             metric: .tokens,
             historyCoverageIsEstablished: false))
     }
 
     @Test
-    func `empty incomplete Grok history is marked refreshing`() {
-        #expect(CostHistoryChartMenuView._emptyHistoryShowsRefreshingForTesting(
+    func `empty incomplete Grok history shows the incomplete notice instead of refreshing`() {
+        #expect(CostHistoryChartMenuView._showsIncompleteHistoryNoticeForTesting(
             provider: .grok,
             historyCoverageIsEstablished: false))
-        #expect(!CostHistoryChartMenuView._emptyHistoryShowsRefreshingForTesting(
+        #expect(!CostHistoryChartMenuView._showsIncompleteHistoryNoticeForTesting(
             provider: .grok,
             historyCoverageIsEstablished: true))
+        #expect(!CostHistoryChartMenuView._showsIncompleteHistoryNoticeForTesting(
+            provider: .codex,
+            historyCoverageIsEstablished: false))
+        #expect(CostHistoryChartMenuView._incompleteHistoryNoticeForTesting() == "Local token history is incomplete.")
     }
 
     @Test
