@@ -1555,3 +1555,4 @@
 "now" = "现在";
 "Spending cap, not balance" = "支出上限，并非余额";
 "%@ weekly" = "%@ 每周";
+"Local token history is incomplete." = "本地 Token 历史记录不完整。";
