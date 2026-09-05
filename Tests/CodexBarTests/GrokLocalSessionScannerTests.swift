@@ -103,6 +103,73 @@ struct GrokLocalSessionScannerTests {
     }
 
     @Test
+    func `enumeration failure keeps an empty scan incomplete`() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grok-enumeration-failure-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent("sessions", isDirectory: true),
+            withIntermediateDirectories: true)
+        let summary = GrokLocalSessionScanner.summarize(
+            env: ["GROK_HOME": root.path],
+            lookbackDays: 7,
+            now: Date(),
+            byteBudget: GrokLocalSessionScanner.defaultTotalReadBytes,
+            sessionEnumerator: Self.failingEnumeration())
+        #expect(summary.totalTokens == 0)
+        #expect(summary.daily.isEmpty)
+        #expect(!summary.historyCoverageIsEstablished)
+        let snapshot = summary.toCostUsageTokenSnapshot(historyDays: 7)
+        #expect(snapshot.sessionTokens == nil)
+        #expect(snapshot.last30DaysTokens == nil)
+    }
+
+    @Test
+    func `enumeration failure preserves counted totals as incomplete`() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grok-enumeration-partial-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let session = root.appendingPathComponent("sessions/%2Ftmp%2Fdemo/session-a", isDirectory: true)
+        try FileManager.default.createDirectory(at: session, withIntermediateDirectories: true)
+        let timestampMs = Int64(Date().timeIntervalSince1970 * 1000)
+        try """
+        {"params":{"update":{"usage":{"inputTokens":100,"outputTokens":50,"totalTokens":150}}},\
+        "_meta":{"eventId":"ev-1","agentTimestampMs":\(timestampMs)}}
+        """.write(to: session.appendingPathComponent("updates.jsonl"), atomically: true, encoding: .utf8)
+        let summary = GrokLocalSessionScanner.summarize(
+            env: ["GROK_HOME": root.path],
+            lookbackDays: 30,
+            now: Date(),
+            byteBudget: GrokLocalSessionScanner.defaultTotalReadBytes,
+            sessionEnumerator: Self.failingEnumeration())
+        #expect(summary.totalTokens == 150)
+        #expect(!summary.historyCoverageIsEstablished)
+    }
+
+    @Test
+    func `discovery cap exhaustion stays incomplete`() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grok-discovery-cap-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent("sessions", isDirectory: true),
+            withIntermediateDirectories: true)
+        let summary = GrokLocalSessionScanner.summarize(
+            env: ["GROK_HOME": root.path],
+            lookbackDays: 7,
+            now: Date(),
+            byteBudget: GrokLocalSessionScanner.defaultTotalReadBytes,
+            sessionEnumerator: GrokSessionDirectoryEnumerator { _ in
+                GrokDiscoveredSessions(
+                    directories: [],
+                    enumerationFailed: false,
+                    discoveryCapped: true)
+            })
+        #expect(summary.totalTokens == 0)
+        #expect(!summary.historyCoverageIsEstablished)
+    }
+
+    @Test
     func `local scan clock wins over a stale remote snapshot`() throws {
         let calendar = Calendar.current
         let staleRemoteTime = Date(timeIntervalSince1970: 1_787_079_600)
@@ -136,5 +203,18 @@ struct GrokLocalSessionScannerTests {
         ]
         try JSONSerialization.data(withJSONObject: payload).write(to: url)
         try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: url.path)
+    }
+
+    private static func failingEnumeration() -> GrokSessionDirectoryEnumerator {
+        GrokSessionDirectoryEnumerator { root in
+            let listing = try GrokSessionDirectoryEnumerator.live(
+                fileManager: FileManager.default,
+                maximumEntries: GrokLocalSessionScanner.maximumDiscoveredEntries,
+                checkCancellation: {}).enumerate(root)
+            return GrokDiscoveredSessions(
+                directories: listing.directories,
+                enumerationFailed: true,
+                discoveryCapped: listing.discoveryCapped)
+        }
     }
 }

@@ -37,6 +37,38 @@ struct GrokBuildLocalScannerTests {
     }
 
     @Test
+    func `ignores out-of-window rows with invalid tokens without marking incomplete`() throws {
+        let fixture = try self.makeFixture("window-external-invalid")
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        try self.writeUpdates([
+            self.usageLine(input: 100, output: 50, eventID: "current"),
+            #"{"params":{"update":{"usage":{"inputTokens":10}}},"_meta":{"eventId":"old-bad",""# +
+                #"agentTimestampMs":1600000000000}}"#,
+            #"{"params":{"update":{"usage":{"inputTokens":10}}},"_meta":{"eventId":"future-bad",""# +
+                #"agentTimestampMs":1800000000000}}"#,
+        ], to: fixture.session)
+
+        let summary = self.scan(fixture.root)
+        #expect(summary.totalTokens == 150)
+        #expect(summary.historyCoverageIsEstablished)
+    }
+
+    @Test
+    func `counts a current row sharing an ID with an out-of-window row`() throws {
+        let fixture = try self.makeFixture("window-external-id")
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        try self.writeUpdates([
+            #"{"params":{"update":{"usage":{"inputTokens":30,"outputTokens":20,"totalTokens":50}}},"# +
+                #""_meta":{"eventId":"shared","agentTimestampMs":1600000000000}}"#,
+            self.usageLine(input: 100, output: 50, eventID: "shared"),
+        ], to: fixture.session)
+
+        let summary = self.scan(fixture.root)
+        #expect(summary.totalTokens == 150)
+        #expect(summary.historyCoverageIsEstablished)
+    }
+
+    @Test
     func `counts a later valid row when the first row with its event ID is invalid`() throws {
         let fixture = try self.makeFixture("dedup-invalid-first")
         defer { try? FileManager.default.removeItem(at: fixture.root) }
@@ -215,6 +247,187 @@ struct GrokBuildLocalScannerTests {
 
     private func fileSize(at url: URL) throws -> Int {
         try (FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.intValue ?? 0
+    }
+
+    /// Records every bounded read requested through the production wiring.
+    private final class RecordingGrokReader {
+        struct Request {
+            let url: URL
+            let limit: Int
+            let bytes: Int
+        }
+
+        private(set) var requests: [Request] = []
+
+        func reader() -> GrokBoundedReader {
+            GrokBoundedReader { url, limit in
+                guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+                defer { try? handle.close() }
+                let data = try handle.read(upToCount: limit)
+                self.requests.append(Request(url: url, limit: limit, bytes: data?.count ?? 0))
+                return data
+            }
+        }
+    }
+
+    @Test
+    func `reads recent candidates before stale ones under a tight budget`() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grok-recency-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let archive = root.appendingPathComponent("sessions/%2Ftmp%2Fproj/a-archive", isDirectory: true)
+        let active = root.appendingPathComponent("sessions/%2Ftmp%2Fproj/z-active", isDirectory: true)
+        try FileManager.default.createDirectory(at: archive, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: active, withIntermediateDirectories: true)
+        try self.writeUpdates([self.usageLine(input: 10, output: 10, eventID: "old")], to: archive)
+        try self.writeUpdates([self.usageLine(input: 100, output: 50, eventID: "new")], to: active)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSince1970: 1_600_000_000)],
+            ofItemAtPath: archive.appendingPathComponent("updates.jsonl").path)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSince1970: 1_700_000_004)],
+            ofItemAtPath: active.appendingPathComponent("updates.jsonl").path)
+        let activeSize = try self.fileSize(at: active.appendingPathComponent("updates.jsonl"))
+
+        func scan() -> GrokLocalSessionSummary {
+            GrokLocalSessionScanner.summarize(
+                env: ["GROK_HOME": root.path],
+                lookbackDays: 30,
+                now: Date(timeIntervalSince1970: 1_700_000_005),
+                byteBudget: activeSize + 10)
+        }
+        let first = scan()
+        #expect(first.totalTokens == 150)
+        #expect(!first.historyCoverageIsEstablished)
+        #expect(scan().totalTokens == first.totalTokens)
+    }
+
+    @Test
+    func `orders equal recency deterministically by path`() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grok-recency-tie-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let first = root.appendingPathComponent("sessions/%2Ftmp%2Fproj/session-a", isDirectory: true)
+        let second = root.appendingPathComponent("sessions/%2Ftmp%2Fproj/session-b", isDirectory: true)
+        try FileManager.default.createDirectory(at: first, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: second, withIntermediateDirectories: true)
+        try self.writeUpdates([self.usageLine(input: 100, output: 50, eventID: "a")], to: first)
+        try self.writeUpdates([self.usageLine(input: 30, output: 20, eventID: "b")], to: second)
+        let sharedDate = Date(timeIntervalSince1970: 1_700_000_004)
+        for session in [first, second] {
+            try FileManager.default.setAttributes(
+                [.modificationDate: sharedDate],
+                ofItemAtPath: session.appendingPathComponent("updates.jsonl").path)
+        }
+        let firstSize = try self.fileSize(at: first.appendingPathComponent("updates.jsonl"))
+
+        func scan() -> GrokLocalSessionSummary {
+            GrokLocalSessionScanner.summarize(
+                env: ["GROK_HOME": root.path],
+                lookbackDays: 30,
+                now: Date(timeIntervalSince1970: 1_700_000_005),
+                byteBudget: firstSize + 10)
+        }
+        #expect(scan().totalTokens == 150)
+        #expect(scan().totalTokens == 150)
+    }
+
+    @Test
+    func `counts current events from stale files when the budget allows`() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grok-stale-mtime-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let session = root.appendingPathComponent("sessions/%2Ftmp%2Fproj/session-1", isDirectory: true)
+        try FileManager.default.createDirectory(at: session, withIntermediateDirectories: true)
+        try self.writeUpdates([self.usageLine(input: 100, output: 50, eventID: "ev-1")], to: session)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSince1970: 1_600_000_000)],
+            ofItemAtPath: session.appendingPathComponent("updates.jsonl").path)
+
+        let summary = self.scan(root)
+        #expect(summary.totalTokens == 150)
+        #expect(summary.historyCoverageIsEstablished)
+    }
+
+    @Test
+    func `caps every read at the remaining budget`() throws {
+        let fixture = try self.makeFixture("read-limits")
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        try self.writeUpdates([self.usageLine(input: 100, output: 50, eventID: "ev-1")], to: fixture.session)
+        let recording = RecordingGrokReader()
+        let summary = GrokLocalSessionScanner.summarize(
+            env: ["GROK_HOME": fixture.root.path],
+            lookbackDays: 30,
+            now: Date(timeIntervalSince1970: 1_700_000_005),
+            byteBudget: 5,
+            boundedReader: recording.reader())
+        #expect(summary.totalTokens == 0)
+        #expect(!summary.historyCoverageIsEstablished)
+        #expect(!recording.requests.isEmpty)
+        #expect(recording.requests.allSatisfy { $0.limit <= 5 })
+        #expect(recording.requests.reduce(0) { $0 + $1.bytes } <= 5)
+    }
+
+    @Test
+    func `shares one budget between signals and updates in a directory`() throws {
+        let fixture = try self.makeFixture("shared-budget")
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        try self.writeUpdates([self.usageLine(input: 100, output: 50, eventID: "ev-1")], to: fixture.session)
+        try self.writeSignals(tokens: 40, timestamp: self.timestampMs, to: fixture.session)
+        let signalsSize = try self.fileSize(at: fixture.session.appendingPathComponent("signals.json"))
+        let recording = RecordingGrokReader()
+        let summary = GrokLocalSessionScanner.summarize(
+            env: ["GROK_HOME": fixture.root.path],
+            lookbackDays: 30,
+            now: Date(timeIntervalSince1970: 1_700_000_005),
+            byteBudget: signalsSize,
+            boundedReader: recording.reader())
+        #expect(summary.totalTokens == 40)
+        #expect(!summary.historyCoverageIsEstablished)
+        #expect(recording.requests.map(\.url.lastPathComponent) == ["signals.json"])
+    }
+
+    @Test
+    func `makes no reads with a zero budget`() throws {
+        let fixture = try self.makeFixture("zero-budget")
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        try self.writeUpdates([self.usageLine(input: 100, output: 50, eventID: "ev-1")], to: fixture.session)
+        let recording = RecordingGrokReader()
+        let summary = GrokLocalSessionScanner.summarize(
+            env: ["GROK_HOME": fixture.root.path],
+            lookbackDays: 30,
+            now: Date(timeIntervalSince1970: 1_700_000_005),
+            byteBudget: 0,
+            boundedReader: recording.reader())
+        #expect(summary.totalTokens == 0)
+        #expect(!summary.historyCoverageIsEstablished)
+        #expect(recording.requests.isEmpty)
+    }
+
+    @Test
+    func `treats an exact budget fit as complete but later candidates as incomplete`() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grok-exact-fit-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let first = root.appendingPathComponent("sessions/%2Ftmp%2Fproj/session-a", isDirectory: true)
+        let second = root.appendingPathComponent("sessions/%2Ftmp%2Fproj/session-b", isDirectory: true)
+        try FileManager.default.createDirectory(at: first, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: second, withIntermediateDirectories: true)
+        try self.writeUpdates([self.usageLine(input: 100, output: 50, eventID: "a")], to: first)
+        try self.writeUpdates([self.usageLine(input: 30, output: 20, eventID: "b")], to: second)
+        for session in [first, second] {
+            try FileManager.default.setAttributes(
+                [.modificationDate: Date(timeIntervalSince1970: 1_700_000_004)],
+                ofItemAtPath: session.appendingPathComponent("updates.jsonl").path)
+        }
+        let firstSize = try self.fileSize(at: first.appendingPathComponent("updates.jsonl"))
+        let summary = GrokLocalSessionScanner.summarize(
+            env: ["GROK_HOME": root.path],
+            lookbackDays: 30,
+            now: Date(timeIntervalSince1970: 1_700_000_005),
+            byteBudget: firstSize)
+        #expect(summary.totalTokens == 150)
+        #expect(!summary.historyCoverageIsEstablished)
     }
 
     private func makeFixture(_ name: String) throws -> (root: URL, session: URL) {
