@@ -91,22 +91,19 @@ private struct GrokScanOptions: Sendable {
 
 /// Shared cap on bytes read during one refresh. Touched serially by the scan loop.
 private final class GrokReadBudget: @unchecked Sendable {
-    private var remaining: Int
+    private(set) var remaining: Int
     private(set) var isExhausted = false
 
     init(bytes: Int) {
         self.remaining = bytes
     }
 
-    /// Consumes the bytes actually read. Returns false without consuming when the
-    /// read would exceed what remains, and latches `isExhausted` so later reads stop.
-    func consume(_ bytes: Int) -> Bool {
-        guard bytes <= self.remaining else {
-            self.isExhausted = true
-            return false
-        }
-        self.remaining -= bytes
-        return true
+    func consume(_ bytes: Int) {
+        self.remaining = max(0, self.remaining - bytes)
+    }
+
+    func markExhausted() {
+        self.isExhausted = true
     }
 }
 
@@ -125,6 +122,101 @@ private struct GrokUpdatesResult {
 private struct GrokSignalsSnapshot {
     let row: GrokUsageRow?
     let models: Set<String>
+}
+
+struct GrokDiscoveredSessions {
+    let directories: [URL]
+    let enumerationFailed: Bool
+    let discoveryCapped: Bool
+}
+
+/// Bounded file reading. Production reads through FileHandle with the given
+/// limit; tests substitute a recording reader on the same wiring.
+struct GrokBoundedReader {
+    var read: (URL, Int) throws -> Data?
+
+    static func live() -> Self {
+        Self { url, limit in
+            guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+            defer { try? handle.close() }
+            return try handle.read(upToCount: limit)
+        }
+    }
+}
+
+/// Lists candidate session directories. The live implementation walks the
+/// filesystem and reports traversal errors; tests substitute a stub.
+/// Resolved locally in scan(), never stored in Sendable options.
+struct GrokSessionDirectoryEnumerator {
+    var enumerate: (URL) throws -> GrokDiscoveredSessions
+
+    static func live(
+        fileManager: FileManager,
+        maximumEntries: Int,
+        checkCancellation: @escaping @Sendable () throws -> Void) -> Self
+    {
+        Self { root in
+            var directories = Set<URL>()
+            var latestMtimeByDirectory: [URL: Date] = [:]
+            var enumerationFailed = false
+            var discoveryCapped = false
+            guard let enumerator = fileManager.enumerator(
+                at: root,
+                includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
+                options: [.skipsHiddenFiles],
+                errorHandler: { _, _ in
+                    enumerationFailed = true
+                    return true
+                })
+            else {
+                return GrokDiscoveredSessions(
+                    directories: [],
+                    enumerationFailed: true,
+                    discoveryCapped: false)
+            }
+            var entryCount = 0
+            while let url = enumerator.nextObject() as? URL {
+                try checkCancellation()
+                entryCount += 1
+                guard entryCount <= maximumEntries else {
+                    discoveryCapped = true
+                    break
+                }
+                guard url.lastPathComponent == "updates.jsonl" || url.lastPathComponent == "signals.json" else {
+                    continue
+                }
+                let directory = url.deletingLastPathComponent()
+                directories.insert(directory)
+                let resourceValues = try? url.resourceValues(forKeys: [.contentModificationDateKey])
+                if let modifiedAt = resourceValues?.contentModificationDate {
+                    latestMtimeByDirectory[directory] = max(
+                        latestMtimeByDirectory[directory] ?? .distantPast,
+                        modifiedAt)
+                }
+            }
+            // Modification times only order reads; whether a row counts is still
+            // decided by its production timestamp. Candidates without metadata
+            // sort after recent ones, deterministically by path.
+            let ordered = directories.sorted { lhs, rhs in
+                let leftMtime = latestMtimeByDirectory[lhs]
+                let rightMtime = latestMtimeByDirectory[rhs]
+                if let leftMtime, let rightMtime {
+                    if leftMtime != rightMtime {
+                        return leftMtime > rightMtime
+                    }
+                } else if leftMtime != nil {
+                    return true
+                } else if rightMtime != nil {
+                    return false
+                }
+                return lhs.path < rhs.path
+            }
+            return GrokDiscoveredSessions(
+                directories: ordered,
+                enumerationFailed: enumerationFailed,
+                discoveryCapped: discoveryCapped)
+        }
+    }
 }
 
 private struct GrokDayAccumulator {
@@ -176,9 +268,9 @@ private struct GrokAccumulator {
 public enum GrokLocalSessionScanner {
     public static let defaultLookbackDays = 30
     static let defaultTotalReadBytes = 64 * 1024 * 1024
+    static let maximumDiscoveredEntries = 50000
     private static let maximumUpdatesFileBytes = 8 * 1024 * 1024
     private static let maximumSignalsFileBytes = 1024 * 1024
-    private static let maximumDiscoveredEntries = 50000
 
     public static func summarize(
         env: [String: String] = ProcessInfo.processInfo.environment,
@@ -203,7 +295,9 @@ public enum GrokLocalSessionScanner {
         lookbackDays: Int = defaultLookbackDays,
         now: Date = .init(),
         calendar: Calendar = .current,
-        byteBudget: Int) -> GrokLocalSessionSummary
+        byteBudget: Int,
+        sessionEnumerator: GrokSessionDirectoryEnumerator? = nil,
+        boundedReader: GrokBoundedReader? = nil) -> GrokLocalSessionSummary
     {
         let options = GrokScanOptions(
             lookbackDays: lookbackDays,
@@ -211,7 +305,12 @@ public enum GrokLocalSessionScanner {
             calendar: calendar,
             checkCancellation: {},
             byteBudget: byteBudget)
-        return (try? self.scan(env: env, fileManager: fileManager, options: options))
+        return (try? self.scan(
+            env: env,
+            fileManager: fileManager,
+            options: options,
+            sessionEnumerator: sessionEnumerator,
+            reader: boundedReader))
             ?? self.emptySummary(scannedAt: now)
     }
 
@@ -234,38 +333,28 @@ public enum GrokLocalSessionScanner {
     private static func scan(
         env: [String: String],
         fileManager: FileManager = .default,
-        options: GrokScanOptions) throws -> GrokLocalSessionSummary
+        options: GrokScanOptions,
+        sessionEnumerator: GrokSessionDirectoryEnumerator? = nil,
+        reader: GrokBoundedReader? = nil) throws -> GrokLocalSessionSummary
     {
         try options.checkCancellation()
         let root = GrokCredentialsStore.grokHomeURL(env: env, fileManager: fileManager)
             .appendingPathComponent("sessions", isDirectory: true)
         var isDirectory: ObjCBool = false
-        guard fileManager.fileExists(atPath: root.path, isDirectory: &isDirectory), isDirectory.boolValue,
-              let enumerator = fileManager.enumerator(
-                  at: root,
-                  includingPropertiesForKeys: [.isRegularFileKey],
-                  options: [.skipsHiddenFiles])
-        else {
+        guard fileManager.fileExists(atPath: root.path, isDirectory: &isDirectory), isDirectory.boolValue else {
             return self.emptySummary(scannedAt: options.now)
         }
+        let enumerator = sessionEnumerator ?? .live(
+            fileManager: fileManager,
+            maximumEntries: self.maximumDiscoveredEntries,
+            checkCancellation: options.checkCancellation)
+        let reader = reader ?? .live()
 
         var accumulator = GrokAccumulator(calendar: options.calendar)
-        var directories = Set<URL>()
-        var entryCount = 0
-        while let url = enumerator.nextObject() as? URL {
-            try options.checkCancellation()
-            entryCount += 1
-            guard entryCount <= self.maximumDiscoveredEntries else {
-                accumulator.isComplete = false
-                break
-            }
-            guard url.lastPathComponent == "updates.jsonl" || url.lastPathComponent == "signals.json" else {
-                continue
-            }
-            directories.insert(url.deletingLastPathComponent())
-        }
+        let discovered = try enumerator.enumerate(root)
+        accumulator.isComplete = accumulator.isComplete && !discovered.enumerationFailed && !discovered.discoveryCapped
 
-        for directory in directories.sorted(by: { $0.path < $1.path }) {
+        for directory in discovered.directories {
             try options.checkCancellation()
             guard !options.readBudget.isExhausted else {
                 accumulator.isComplete = false
@@ -274,13 +363,15 @@ public enum GrokLocalSessionScanner {
             let signals = self.readSignals(
                 at: directory.appendingPathComponent("signals.json"),
                 fileManager: fileManager,
-                budget: options.readBudget)
+                budget: options.readBudget,
+                reader: reader)
             let updatesURL = directory.appendingPathComponent("updates.jsonl")
             let updates = fileManager.fileExists(atPath: updatesURL.path)
                 ? try self.readUpdates(
                     at: updatesURL,
                     fallbackModels: signals.models,
-                    options: options)
+                    options: options,
+                    reader: reader)
                 : GrokUpdatesResult(rows: [], sawUsage: false, isComplete: true)
             accumulator.isComplete = accumulator.isComplete && updates.isComplete
 
@@ -303,13 +394,15 @@ public enum GrokLocalSessionScanner {
     private static func readUpdates(
         at url: URL,
         fallbackModels: Set<String>,
-        options: GrokScanOptions) throws -> GrokUpdatesResult
+        options: GrokScanOptions,
+        reader: GrokBoundedReader) throws -> GrokUpdatesResult
     {
         try options.checkCancellation()
         guard let data = self.readBoundedData(
             at: url,
             maximumBytes: self.maximumUpdatesFileBytes,
-            budget: options.readBudget),
+            budget: options.readBudget,
+            reader: reader),
             let content = String(data: data, encoding: .utf8)
         else {
             return GrokUpdatesResult(rows: [], sawUsage: false, isComplete: false)
@@ -343,14 +436,17 @@ public enum GrokLocalSessionScanner {
             sawUsage = true
             let eventID = self.nonEmptyString(meta["eventId"] ?? paramsMeta["eventId"])
             guard let date = self.parseDate(
-                meta["agentTimestampMs"] ?? meta["timestamp"] ?? paramsMeta["agentTimestampMs"] ?? json["ts"]),
-                let totalTokens = self.validatedUsageTotal(usage)
+                meta["agentTimestampMs"] ?? meta["timestamp"] ?? paramsMeta["agentTimestampMs"] ?? json["ts"])
             else {
                 isComplete = false
                 continue
             }
-            guard seenRows.insert(eventID.map { "event:\($0)" } ?? "row:\(line)").inserted else { continue }
             guard date >= options.cutoff, date <= options.now else { continue }
+            guard let totalTokens = self.validatedUsageTotal(usage) else {
+                isComplete = false
+                continue
+            }
+            guard seenRows.insert(eventID.map { "event:\($0)" } ?? "row:\(line)").inserted else { continue }
 
             let usageModels = (usage["modelUsage"] as? [String: Any])?.keys
                 .compactMap { self.nonEmptyString($0) } ?? []
@@ -362,11 +458,18 @@ public enum GrokLocalSessionScanner {
         return GrokUpdatesResult(rows: rows, sawUsage: sawUsage, isComplete: isComplete)
     }
 
-    private static func readSignals(at url: URL, fileManager: FileManager, budget: GrokReadBudget)
-        -> GrokSignalsSnapshot
+    private static func readSignals(
+        at url: URL,
+        fileManager: FileManager,
+        budget: GrokReadBudget,
+        reader: GrokBoundedReader) -> GrokSignalsSnapshot
     {
         guard fileManager.fileExists(atPath: url.path),
-              let data = self.readBoundedData(at: url, maximumBytes: self.maximumSignalsFileBytes, budget: budget),
+              let data = self.readBoundedData(
+                  at: url,
+                  maximumBytes: self.maximumSignalsFileBytes,
+                  budget: budget,
+                  reader: reader),
               let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         else {
             return GrokSignalsSnapshot(row: nil, models: [])
@@ -407,13 +510,31 @@ public enum GrokLocalSessionScanner {
         return total
     }
 
-    private static func readBoundedData(at url: URL, maximumBytes: Int, budget: GrokReadBudget) -> Data? {
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
-        defer { try? handle.close() }
-        guard let data = try? handle.read(upToCount: maximumBytes + 1),
-              budget.consume(data.count),
-              data.count <= maximumBytes
-        else {
+    private static func readBoundedData(
+        at url: URL,
+        maximumBytes: Int,
+        budget: GrokReadBudget,
+        reader: GrokBoundedReader) -> Data?
+    {
+        // No read once the shared budget is spent.
+        guard budget.remaining > 0, !budget.isExhausted else {
+            budget.markExhausted()
+            return nil
+        }
+        // Pre-read allowance: remaining budget, never more than the cap+1 probe.
+        let allowance = min(budget.remaining, maximumBytes + 1)
+        guard let data = try? reader.read(url, allowance) else { return nil }
+        budget.consume(data.count)
+        // A short read proves EOF: the whole file fit in the allowance.
+        if data.count < allowance {
+            return data
+        }
+        // A full allowance read is only complete with a size proof of exact fit.
+        let fileSize = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize
+        guard let fileSize, fileSize <= data.count, data.count <= maximumBytes else {
+            if allowance < maximumBytes + 1 {
+                budget.markExhausted()
+            }
             return nil
         }
         return data
