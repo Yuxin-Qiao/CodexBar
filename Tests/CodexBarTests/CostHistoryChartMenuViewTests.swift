@@ -99,6 +99,20 @@ struct CostHistoryChartMenuViewTests {
             provider: .claude,
             metric: .tokens,
             historyCoverageIsEstablished: false))
+        #expect(CostHistoryChartMenuView._showsHistoryRefreshingForTesting(
+            provider: .grok,
+            metric: .tokens,
+            historyCoverageIsEstablished: false))
+    }
+
+    @Test
+    func `empty incomplete Grok history is marked refreshing`() {
+        #expect(CostHistoryChartMenuView._emptyHistoryShowsRefreshingForTesting(
+            provider: .grok,
+            historyCoverageIsEstablished: false))
+        #expect(!CostHistoryChartMenuView._emptyHistoryShowsRefreshingForTesting(
+            provider: .grok,
+            historyCoverageIsEstablished: true))
     }
 
     @Test

@@ -37,7 +37,7 @@ struct GrokLocalSessionScannerTests {
         #expect(summary.daily.map(\.sessionCount) == [1, 1])
         #expect(Set(summary.daily.map(\.date)).count == 2)
 
-        let snapshot = try #require(summary.toCostUsageTokenSnapshot(historyDays: 7))
+        let snapshot = summary.toCostUsageTokenSnapshot(historyDays: 7)
         #expect(snapshot.last30DaysTokens == 350)
         #expect(snapshot.last30DaysCostUSD == nil)
         #expect(snapshot.daily.allSatisfy { $0.costUSD == nil })
@@ -46,7 +46,7 @@ struct GrokLocalSessionScannerTests {
     }
 
     @Test
-    func `idle days do not reuse yesterday as today`() throws {
+    func `incomplete legacy history does not fabricate an idle-day zero`() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("grok-session-idle-\(UUID().uuidString)", isDirectory: true)
         let session = root.appendingPathComponent("sessions/%2Ftmp%2Fdemo/session-a", isDirectory: true)
@@ -63,20 +63,45 @@ struct GrokLocalSessionScannerTests {
             env: ["GROK_HOME": root.path],
             lookbackDays: 7,
             now: today)
-        let snapshot = try #require(summary.toCostUsageTokenSnapshot(historyDays: 7))
+        let snapshot = summary.toCostUsageTokenSnapshot(historyDays: 7)
         #expect(snapshot.last30DaysTokens == 100)
         #expect(snapshot.sessionTokens == nil)
+        #expect(snapshot.sessionRequests == nil)
     }
 
     @Test
-    func `empty homes do not publish a spend snapshot`() {
+    func `incomplete empty homes publish an unestablished spend snapshot`() {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("grok-session-empty-\(UUID().uuidString)", isDirectory: true)
         let summary = GrokLocalSessionScanner.summarize(
             env: ["GROK_HOME": root.path],
             lookbackDays: 7,
             now: Date())
-        #expect(summary.toCostUsageTokenSnapshot(historyDays: 7) == nil)
+        let snapshot = summary.toCostUsageTokenSnapshot(historyDays: 7)
+        #expect(!snapshot.historyCoverageIsEstablished)
+        #expect(snapshot.daily.isEmpty)
+        #expect(snapshot.sessionTokens == nil)
+    }
+
+    @Test
+    func `readable empty sessions publish established empty history`() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grok-session-readable-empty-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent("sessions", isDirectory: true),
+            withIntermediateDirectories: true)
+        let summary = GrokLocalSessionScanner.summarize(
+            env: ["GROK_HOME": root.path],
+            lookbackDays: 7,
+            now: Date())
+        #expect(summary.historyCoverageIsEstablished)
+        let snapshot = summary.toCostUsageTokenSnapshot(historyDays: 7)
+        #expect(snapshot.sessionTokens == 0)
+        #expect(snapshot.last30DaysTokens == 0)
+        #expect(snapshot.sessionRequests == nil)
+        #expect(snapshot.last30DaysRequests == nil)
+        #expect(snapshot.daily.isEmpty)
+        #expect(snapshot.historyCoverageIsEstablished)
     }
 
     @Test

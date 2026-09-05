@@ -115,15 +115,18 @@ struct CostHistoryChartMenuView: View {
         let showsHistoryRefreshing = Self.showsHistoryRefreshing(
             provider: self.provider,
             metric: activeMetric,
-            historyCoverageIsEstablished: self.historyCoverageIsEstablished)
+            historyCoverageIsEstablished: self.historyCoverageIsEstablished) ||
+            (self.daily.isEmpty && Self.showsEmptyHistoryRefreshing(
+                provider: self.provider,
+                historyCoverageIsEstablished: self.historyCoverageIsEstablished))
         let selectedDateKey = self.selectedDateKey.flatMap { model.pointsByDateKey[$0] == nil ? nil : $0 }
             ?? Self.defaultSelectedDateKey(model: model)
         VStack(alignment: .leading, spacing: Self.outerSpacing) {
             if model.points.isEmpty {
-                Text(L("No data available"))
+                Text(showsHistoryRefreshing ? L("Refreshing") : L("No data available"))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                    .accessibilityLabel(L("No data available"))
+                    .accessibilityLabel(showsHistoryRefreshing ? L("Refreshing") : L("No data available"))
             } else {
                 // Keep hoverable content below AppKit's native top auto-scroll gutter.
                 Color.clear
@@ -732,8 +735,15 @@ struct CostHistoryChartMenuView: View {
         metric: ChartMetric,
         historyCoverageIsEstablished: Bool) -> Bool
     {
-        // Provider-specific by design: only Codex exposes incremental local-history coverage for token scans.
-        provider == .codex && metric == .tokens && !historyCoverageIsEstablished
+        // Provider-specific by design: Codex and Grok expose incomplete local token-history coverage.
+        (provider == .codex || provider == .grok) && metric == .tokens && !historyCoverageIsEstablished
+    }
+
+    private static func showsEmptyHistoryRefreshing(
+        provider: UsageProvider,
+        historyCoverageIsEstablished: Bool) -> Bool
+    {
+        provider == .grok && !historyCoverageIsEstablished
     }
 
     private static func peakPoint(model: Model) -> Point? {
@@ -1219,6 +1229,15 @@ extension CostHistoryChartMenuView {
         self.showsHistoryRefreshing(
             provider: provider,
             metric: metric,
+            historyCoverageIsEstablished: historyCoverageIsEstablished)
+    }
+
+    static func _emptyHistoryShowsRefreshingForTesting(
+        provider: UsageProvider,
+        historyCoverageIsEstablished: Bool) -> Bool
+    {
+        self.showsEmptyHistoryRefreshing(
+            provider: provider,
             historyCoverageIsEstablished: historyCoverageIsEstablished)
     }
 
