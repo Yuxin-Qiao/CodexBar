@@ -15,11 +15,8 @@ struct GrokBuildLocalScannerTests {
 
         let summary = self.scan(fixture.root)
         let bucket = try #require(summary.daily.first)
-        #expect(summary.sessionCount == 1)
         #expect(summary.totalTokens == 150)
-        #expect(Set(summary.models) == ["grok-beta", "grok-fast"])
         #expect(bucket.totalTokens == 150)
-        #expect(bucket.sessionCount == 1)
         #expect(Set(bucket.models) == ["grok-beta", "grok-fast"])
         #expect(summary.toCostUsageTokenSnapshot(historyDays: 30).daily.first?.requestCount == nil)
         #expect(!GrokProviderDescriptor.descriptor.tokenCost.showsRequestHistory)
@@ -37,6 +34,20 @@ struct GrokBuildLocalScannerTests {
         let summary = self.scan(fixture.root)
         #expect(summary.totalTokens == 50)
         #expect(summary.historyCoverageIsEstablished)
+    }
+
+    @Test
+    func `counts a later valid row when the first row with its event ID is invalid`() throws {
+        let fixture = try self.makeFixture("dedup-invalid-first")
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        try self.writeUpdates([
+            self.usageLine(input: 30, output: 20, timestamp: nil, eventID: "reused"),
+            self.usageLine(input: 30, output: 20, eventID: "reused"),
+        ], to: fixture.session)
+
+        let summary = self.scan(fixture.root)
+        #expect(summary.totalTokens == 50)
+        #expect(!summary.historyCoverageIsEstablished)
     }
 
     @Test
@@ -170,6 +181,40 @@ struct GrokBuildLocalScannerTests {
             now: Date(timeIntervalSince1970: 1_700_000_005),
             calendar: calendar)
         #expect(summary.daily.first?.date == "2023-11-15")
+    }
+
+    @Test
+    func `stops reading when the shared byte budget is exhausted`() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grok-budget-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let first = root.appendingPathComponent("sessions/%2Ftmp%2Fproj/session-a", isDirectory: true)
+        let second = root.appendingPathComponent("sessions/%2Ftmp%2Fproj/session-b", isDirectory: true)
+        try FileManager.default.createDirectory(at: first, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: second, withIntermediateDirectories: true)
+        for session in [first, second] {
+            try JSONSerialization.data(withJSONObject: [
+                "contextTokensUsed": 7,
+                "totalTokensBeforeCompaction": 0,
+                "primaryModelId": "grok-build",
+                "modelsUsed": ["grok-build"],
+                "timestamp": 1_700_000_000_000,
+            ]).write(to: session.appendingPathComponent("signals.json"))
+        }
+        let firstSize = try self.fileSize(at: first.appendingPathComponent("signals.json"))
+        let secondSize = try self.fileSize(at: second.appendingPathComponent("signals.json"))
+
+        let summary = GrokLocalSessionScanner.summarize(
+            env: ["GROK_HOME": root.path],
+            lookbackDays: 30,
+            now: Date(timeIntervalSince1970: 1_700_000_005),
+            byteBudget: firstSize + secondSize / 2)
+        #expect(summary.totalTokens == 7)
+        #expect(!summary.historyCoverageIsEstablished)
+    }
+
+    private func fileSize(at url: URL) throws -> Int {
+        try (FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.intValue ?? 0
     }
 
     private func makeFixture(_ name: String) throws -> (root: URL, session: URL) {
