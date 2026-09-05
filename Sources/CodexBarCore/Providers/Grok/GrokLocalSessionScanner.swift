@@ -446,7 +446,7 @@ public enum GrokLocalSessionScanner {
     }
 
     private static func asInt(_ value: Any) -> Int? {
-        guard CFGetTypeID(value as CFTypeRef) != CFBooleanGetTypeID() else { return nil }
+        guard !self.isJSONBoolean(value) else { return nil }
         let parsed: Int? = if let number = value as? NSNumber {
             Int(number.stringValue)
         } else if let string = value as? String {
@@ -457,6 +457,15 @@ public enum GrokLocalSessionScanner {
         return parsed.flatMap { $0 >= 0 ? $0 : nil }
     }
 
+    /// JSON booleans bridge to NSNumber on every platform, so `is Bool` would
+    /// match all numbers. The ObjC type identifies real booleans ("c") instead.
+    private static func isJSONBoolean(_ value: Any) -> Bool {
+        guard let number = value as? NSNumber else {
+            return value is Bool
+        }
+        return String(cString: number.objCType) == "c"
+    }
+
     private static func nonEmptyString(_ value: Any?) -> String? {
         guard let string = value as? String else { return nil }
         let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -464,7 +473,7 @@ public enum GrokLocalSessionScanner {
     }
 
     private static func parseDate(_ value: Any?) -> Date? {
-        guard let value, CFGetTypeID(value as CFTypeRef) != CFBooleanGetTypeID() else { return nil }
+        guard let value, !self.isJSONBoolean(value) else { return nil }
         let numeric = (value as? NSNumber)?.doubleValue ?? (value as? String).flatMap(Double.init)
         if let numeric, numeric.isFinite, numeric > 0 {
             return Date(timeIntervalSince1970: numeric < 10_000_000_000 ? numeric : numeric / 1000)
