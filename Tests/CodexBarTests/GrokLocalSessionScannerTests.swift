@@ -31,10 +31,8 @@ struct GrokLocalSessionScannerTests {
             env: ["GROK_HOME": root.path],
             lookbackDays: 7,
             now: newer)
-        #expect(summary.sessionCount == 2)
         #expect(summary.totalTokens == 350)
         #expect(summary.daily.map(\.totalTokens) == [100, 250])
-        #expect(summary.daily.map(\.sessionCount) == [1, 1])
         #expect(Set(summary.daily.map(\.date)).count == 2)
 
         let snapshot = summary.toCostUsageTokenSnapshot(historyDays: 7)
@@ -111,15 +109,10 @@ struct GrokLocalSessionScannerTests {
         let localScanTime = try #require(calendar.date(byAdding: .day, value: 1, to: staleRemoteTime))
         let localDay = try #require(GrokLocalSessionScanner.dayKey(for: localScanTime, calendar: calendar))
         let summary = GrokLocalSessionSummary(
-            sessionCount: 1,
             totalTokens: 250,
-            lastSessionAt: localScanTime,
-            primaryModel: "grok-4.6",
-            models: ["grok-4.6"],
             daily: [GrokLocalDailyBucket(
                 date: localDay,
                 totalTokens: 250,
-                sessionCount: 1,
                 models: ["grok-4.6"])],
             scannedAt: localScanTime)
         let remote = GrokUsageSnapshot(

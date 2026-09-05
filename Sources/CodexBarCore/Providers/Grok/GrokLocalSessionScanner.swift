@@ -4,43 +4,29 @@ import Foundation
 public struct GrokLocalDailyBucket: Sendable, Equatable {
     public let date: String
     public let totalTokens: Int
-    public let sessionCount: Int
     public let models: [String]
 
-    public init(date: String, totalTokens: Int, sessionCount: Int, models: [String]) {
+    public init(date: String, totalTokens: Int, models: [String]) {
         self.date = date
         self.totalTokens = totalTokens
-        self.sessionCount = sessionCount
         self.models = models
     }
 }
 
 /// Aggregated stats from local Grok Build session history.
 public struct GrokLocalSessionSummary: Sendable {
-    public let sessionCount: Int
     public let totalTokens: Int
-    public let lastSessionAt: Date?
-    public let primaryModel: String?
-    public let models: [String]
     public let daily: [GrokLocalDailyBucket]
     public let scannedAt: Date
     public let historyCoverageIsEstablished: Bool
 
     public init(
-        sessionCount: Int,
         totalTokens: Int,
-        lastSessionAt: Date?,
-        primaryModel: String?,
-        models: [String],
         daily: [GrokLocalDailyBucket] = [],
         historyCoverageIsEstablished: Bool = true,
         scannedAt: Date = .init())
     {
-        self.sessionCount = sessionCount
         self.totalTokens = totalTokens
-        self.lastSessionAt = lastSessionAt
-        self.primaryModel = primaryModel
-        self.models = models
         self.daily = daily
         self.historyCoverageIsEstablished = historyCoverageIsEstablished
         self.scannedAt = scannedAt
@@ -85,18 +71,42 @@ private struct GrokScanOptions: Sendable {
     let cutoff: Date
     let calendar: Calendar
     let checkCancellation: @Sendable () throws -> Void
+    let readBudget: GrokReadBudget
 
     init(
         lookbackDays: Int,
         now: Date,
         calendar: Calendar,
-        checkCancellation: @escaping @Sendable () throws -> Void)
+        checkCancellation: @escaping @Sendable () throws -> Void,
+        byteBudget: Int = GrokLocalSessionScanner.defaultTotalReadBytes)
     {
         self.now = now
         self.calendar = calendar
         self.checkCancellation = checkCancellation
+        self.readBudget = GrokReadBudget(bytes: byteBudget)
         let today = calendar.startOfDay(for: now)
         self.cutoff = calendar.date(byAdding: .day, value: -(max(1, lookbackDays) - 1), to: today) ?? today
+    }
+}
+
+/// Shared cap on bytes read during one refresh. Touched serially by the scan loop.
+private final class GrokReadBudget: @unchecked Sendable {
+    private var remaining: Int
+    private(set) var isExhausted = false
+
+    init(bytes: Int) {
+        self.remaining = bytes
+    }
+
+    /// Consumes the bytes actually read. Returns false without consuming when the
+    /// read would exceed what remains, and latches `isExhausted` so later reads stop.
+    func consume(_ bytes: Int) -> Bool {
+        guard bytes <= self.remaining else {
+            self.isExhausted = true
+            return false
+        }
+        self.remaining -= bytes
+        return true
     }
 }
 
@@ -119,7 +129,6 @@ private struct GrokSignalsSnapshot {
 
 private struct GrokDayAccumulator {
     var totalTokens = 0
-    var sessionIDs = Set<String>()
     var models = Set<String>()
 }
 
@@ -127,12 +136,9 @@ private struct GrokAccumulator {
     let calendar: Calendar
     var days: [String: GrokDayAccumulator] = [:]
     var totalTokens = 0
-    var sessionIDs = Set<String>()
-    var modelCounts: [String: Int] = [:]
-    var lastSessionAt: Date?
     var isComplete = true
 
-    mutating func record(_ row: GrokUsageRow, sessionID: String) {
+    mutating func record(_ row: GrokUsageRow) {
         guard row.totalTokens > 0,
               let dayKey = GrokLocalSessionScanner.dayKey(for: row.date, calendar: self.calendar)
         else { return }
@@ -147,34 +153,20 @@ private struct GrokAccumulator {
 
         self.totalTokens = nextTotal
         day.totalTokens = nextDayTotal
-        day.sessionIDs.insert(sessionID)
         day.models.formUnion(row.models)
         self.days[dayKey] = day
-        self.sessionIDs.insert(sessionID)
-        for model in row.models {
-            self.modelCounts[model, default: 0] += 1
-        }
-        self.lastSessionAt = max(self.lastSessionAt ?? .distantPast, row.date)
     }
 
     func summary(scannedAt: Date) -> GrokLocalSessionSummary {
-        let models = self.modelCounts.sorted {
-            $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value
-        }.map(\.key)
         let daily = self.days.keys.sorted().compactMap { key -> GrokLocalDailyBucket? in
             guard let day = self.days[key] else { return nil }
             return GrokLocalDailyBucket(
                 date: key,
                 totalTokens: day.totalTokens,
-                sessionCount: day.sessionIDs.count,
                 models: day.models.sorted())
         }
         return GrokLocalSessionSummary(
-            sessionCount: self.sessionIDs.count,
             totalTokens: self.totalTokens,
-            lastSessionAt: self.lastSessionAt,
-            primaryModel: models.first,
-            models: models,
             daily: daily,
             historyCoverageIsEstablished: self.isComplete,
             scannedAt: scannedAt)
@@ -183,6 +175,7 @@ private struct GrokAccumulator {
 
 public enum GrokLocalSessionScanner {
     public static let defaultLookbackDays = 30
+    static let defaultTotalReadBytes = 64 * 1024 * 1024
     private static let maximumUpdatesFileBytes = 8 * 1024 * 1024
     private static let maximumSignalsFileBytes = 1024 * 1024
     private static let maximumDiscoveredEntries = 50000
@@ -199,6 +192,25 @@ public enum GrokLocalSessionScanner {
             now: now,
             calendar: calendar,
             checkCancellation: {})
+        return (try? self.scan(env: env, fileManager: fileManager, options: options))
+            ?? self.emptySummary(scannedAt: now)
+    }
+
+    /// Test seam: same scan with an injectable shared read budget.
+    static func summarize(
+        env: [String: String] = ProcessInfo.processInfo.environment,
+        fileManager: FileManager = .default,
+        lookbackDays: Int = defaultLookbackDays,
+        now: Date = .init(),
+        calendar: Calendar = .current,
+        byteBudget: Int) -> GrokLocalSessionSummary
+    {
+        let options = GrokScanOptions(
+            lookbackDays: lookbackDays,
+            now: now,
+            calendar: calendar,
+            checkCancellation: {},
+            byteBudget: byteBudget)
         return (try? self.scan(env: env, fileManager: fileManager, options: options))
             ?? self.emptySummary(scannedAt: now)
     }
@@ -255,9 +267,14 @@ public enum GrokLocalSessionScanner {
 
         for directory in directories.sorted(by: { $0.path < $1.path }) {
             try options.checkCancellation()
+            guard !options.readBudget.isExhausted else {
+                accumulator.isComplete = false
+                break
+            }
             let signals = self.readSignals(
                 at: directory.appendingPathComponent("signals.json"),
-                fileManager: fileManager)
+                fileManager: fileManager,
+                budget: options.readBudget)
             let updatesURL = directory.appendingPathComponent("updates.jsonl")
             let updates = fileManager.fileExists(atPath: updatesURL.path)
                 ? try self.readUpdates(
@@ -269,13 +286,13 @@ public enum GrokLocalSessionScanner {
 
             if updates.sawUsage {
                 for row in updates.rows {
-                    accumulator.record(row, sessionID: directory.lastPathComponent)
+                    accumulator.record(row)
                 }
             } else {
                 // signals.json is a lifetime rollup; file time cannot prove daily coverage.
                 accumulator.isComplete = false
                 if let row = signals.row, row.date >= options.cutoff, row.date <= options.now {
-                    accumulator.record(row, sessionID: directory.lastPathComponent)
+                    accumulator.record(row)
                 }
             }
         }
@@ -289,9 +306,11 @@ public enum GrokLocalSessionScanner {
         options: GrokScanOptions) throws -> GrokUpdatesResult
     {
         try options.checkCancellation()
-        guard let (data, isBounded) = self.readBoundedData(at: url, maximumBytes: self.maximumUpdatesFileBytes),
-              isBounded,
-              let content = String(data: data, encoding: .utf8)
+        guard let data = self.readBoundedData(
+            at: url,
+            maximumBytes: self.maximumUpdatesFileBytes,
+            budget: options.readBudget),
+            let content = String(data: data, encoding: .utf8)
         else {
             return GrokUpdatesResult(rows: [], sawUsage: false, isComplete: false)
         }
@@ -323,7 +342,6 @@ public enum GrokLocalSessionScanner {
             else { continue }
             sawUsage = true
             let eventID = self.nonEmptyString(meta["eventId"] ?? paramsMeta["eventId"])
-            guard seenRows.insert(eventID.map { "event:\($0)" } ?? "row:\(line)").inserted else { continue }
             guard let date = self.parseDate(
                 meta["agentTimestampMs"] ?? meta["timestamp"] ?? paramsMeta["agentTimestampMs"] ?? json["ts"]),
                 let totalTokens = self.validatedUsageTotal(usage)
@@ -331,6 +349,7 @@ public enum GrokLocalSessionScanner {
                 isComplete = false
                 continue
             }
+            guard seenRows.insert(eventID.map { "event:\($0)" } ?? "row:\(line)").inserted else { continue }
             guard date >= options.cutoff, date <= options.now else { continue }
 
             let usageModels = (usage["modelUsage"] as? [String: Any])?.keys
@@ -343,10 +362,11 @@ public enum GrokLocalSessionScanner {
         return GrokUpdatesResult(rows: rows, sawUsage: sawUsage, isComplete: isComplete)
     }
 
-    private static func readSignals(at url: URL, fileManager: FileManager) -> GrokSignalsSnapshot {
+    private static func readSignals(at url: URL, fileManager: FileManager, budget: GrokReadBudget)
+        -> GrokSignalsSnapshot
+    {
         guard fileManager.fileExists(atPath: url.path),
-              let (data, isBounded) = self.readBoundedData(at: url, maximumBytes: self.maximumSignalsFileBytes),
-              isBounded,
+              let data = self.readBoundedData(at: url, maximumBytes: self.maximumSignalsFileBytes, budget: budget),
               let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         else {
             return GrokSignalsSnapshot(row: nil, models: [])
@@ -387,20 +407,21 @@ public enum GrokLocalSessionScanner {
         return total
     }
 
-    private static func readBoundedData(at url: URL, maximumBytes: Int) -> (Data, Bool)? {
+    private static func readBoundedData(at url: URL, maximumBytes: Int, budget: GrokReadBudget) -> Data? {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
-        guard let data = try? handle.read(upToCount: maximumBytes + 1) else { return nil }
-        return (data, data.count <= maximumBytes)
+        guard let data = try? handle.read(upToCount: maximumBytes + 1),
+              budget.consume(data.count),
+              data.count <= maximumBytes
+        else {
+            return nil
+        }
+        return data
     }
 
     private static func emptySummary(scannedAt: Date) -> GrokLocalSessionSummary {
         GrokLocalSessionSummary(
-            sessionCount: 0,
             totalTokens: 0,
-            lastSessionAt: nil,
-            primaryModel: nil,
-            models: [],
             historyCoverageIsEstablished: false,
             scannedAt: scannedAt)
     }
