@@ -83,6 +83,106 @@ struct GrokBuildLocalScannerTests {
     }
 
     @Test
+    func `propagates structured usage incompleteness without losing known tokens`() throws {
+        for (value, expectedComplete) in [(true, false), (false, true)] {
+            let fixture = try self.makeFixture("usage-incomplete-\(value)")
+            defer { try? FileManager.default.removeItem(at: fixture.root) }
+            try self.writeUpdates([
+                self.usageLine(input: 100, output: 50, usageIsIncomplete: value),
+            ], to: fixture.session)
+
+            let summary = self.scan(fixture.root)
+            #expect(summary.totalTokens == 150)
+            #expect(summary.historyCoverageIsEstablished == expectedComplete)
+        }
+    }
+
+    @Test
+    func `rejects malformed usage completeness flags`() throws {
+        let fixture = try self.makeFixture("usage-incomplete-invalid")
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        try self.writeUpdates([
+            self.usageLine(input: 100, output: 50, usageIsIncomplete: "yes"),
+        ], to: fixture.session)
+
+        let summary = self.scan(fixture.root)
+        #expect(summary.totalTokens == 0)
+        #expect(!summary.historyCoverageIsEstablished)
+    }
+
+    @Test
+    func `ignores cost partiality for token completeness`() throws {
+        let fixture = try self.makeFixture("cost-partial")
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        try self.writeUpdates([
+            self.usageLine(input: 100, output: 50, costIsPartial: true),
+        ], to: fixture.session)
+
+        let summary = self.scan(fixture.root)
+        #expect(summary.totalTokens == 150)
+        #expect(summary.historyCoverageIsEstablished)
+    }
+
+    @Test
+    func `does not downgrade complete updates when optional signals are malformed`() throws {
+        let fixture = try self.makeFixture("malformed-optional-signals")
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        try self.writeUpdates([self.usageLine(input: 100, output: 50)], to: fixture.session)
+        try "not-json".write(
+            to: fixture.session.appendingPathComponent("signals.json"),
+            atomically: true,
+            encoding: .utf8)
+        let summary = self.scan(fixture.root)
+        #expect(summary.totalTokens == 150)
+        #expect(summary.historyCoverageIsEstablished)
+    }
+
+    @Test
+    func `does not downgrade complete updates when optional signals are non-regular`() throws {
+        let fixture = try self.makeFixture("non-regular-optional-signals")
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        try self.writeUpdates([self.usageLine(input: 100, output: 50)], to: fixture.session)
+        try FileManager.default.createDirectory(
+            at: fixture.session.appendingPathComponent("signals.json"),
+            withIntermediateDirectories: false)
+
+        let summary = self.scan(fixture.root)
+        #expect(summary.totalTokens == 150)
+        #expect(summary.historyCoverageIsEstablished)
+    }
+
+    @Test
+    func `does not replace a valid zero usage row with legacy signals`() throws {
+        let fixture = try self.makeFixture("zero-usage-with-signals")
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        try self.writeUpdates([self.usageLine(input: 0, output: 0)], to: fixture.session)
+        try self.writeSignals(tokens: 40, timestamp: self.timestampMs, to: fixture.session)
+
+        let summary = self.scan(fixture.root)
+        #expect(summary.totalTokens == 0)
+        #expect(summary.historyCoverageIsEstablished)
+    }
+
+    @Test
+    func `requires the supported turn completion shape when declared`() throws {
+        let accepted = try self.makeFixture("turn-completed")
+        defer { try? FileManager.default.removeItem(at: accepted.root) }
+        try self.writeUpdates([
+            self.usageLine(input: 100, output: 50, sessionUpdate: "turn_completed"),
+        ], to: accepted.session)
+        #expect(self.scan(accepted.root).totalTokens == 150)
+
+        let rejected = try self.makeFixture("unsupported-session-update")
+        defer { try? FileManager.default.removeItem(at: rejected.root) }
+        try self.writeUpdates([
+            self.usageLine(input: 100, output: 50, sessionUpdate: "tool_call"),
+        ], to: rejected.session)
+        let summary = self.scan(rejected.root)
+        #expect(summary.totalTokens == 0)
+        #expect(!summary.historyCoverageIsEstablished)
+    }
+
+    @Test
     func `retains valid usage before a damaged tail`() throws {
         let fixture = try self.makeFixture("damaged-tail")
         defer { try? FileManager.default.removeItem(at: fixture.root) }
@@ -170,6 +270,25 @@ struct GrokBuildLocalScannerTests {
         let summary = self.scan(fixture.root)
         #expect(summary.totalTokens == 0)
         #expect(!summary.historyCoverageIsEstablished)
+    }
+
+    @Test
+    func `does not open non-regular log paths`() throws {
+        let fixture = try self.makeFixture("non-regular")
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        try FileManager.default.createDirectory(
+            at: fixture.session.appendingPathComponent("updates.jsonl"),
+            withIntermediateDirectories: false)
+        let recording = RecordingGrokReader()
+        let summary = GrokLocalSessionScanner.summarize(
+            env: ["GROK_HOME": fixture.root.path],
+            lookbackDays: 30,
+            now: Date(timeIntervalSince1970: 1_700_000_005),
+            byteBudget: 1024,
+            boundedReader: recording.reader())
+        #expect(summary.totalTokens == 0)
+        #expect(!summary.historyCoverageIsEstablished)
+        #expect(recording.requests.isEmpty)
     }
 
     @Test
@@ -369,22 +488,51 @@ struct GrokBuildLocalScannerTests {
     }
 
     @Test
-    func `shares one budget between signals and updates in a directory`() throws {
+    func `reads structured updates before optional signal metadata`() throws {
         let fixture = try self.makeFixture("shared-budget")
         defer { try? FileManager.default.removeItem(at: fixture.root) }
         try self.writeUpdates([self.usageLine(input: 100, output: 50, eventID: "ev-1")], to: fixture.session)
-        try self.writeSignals(tokens: 40, timestamp: self.timestampMs, to: fixture.session)
-        let signalsSize = try self.fileSize(at: fixture.session.appendingPathComponent("signals.json"))
+        try self.writeSignals(tokens: 40, timestamp: self.timestampMs, padding: 2000, to: fixture.session)
+        let updatesSize = try self.fileSize(at: fixture.session.appendingPathComponent("updates.jsonl"))
         let recording = RecordingGrokReader()
         let summary = GrokLocalSessionScanner.summarize(
             env: ["GROK_HOME": fixture.root.path],
             lookbackDays: 30,
             now: Date(timeIntervalSince1970: 1_700_000_005),
-            byteBudget: signalsSize,
+            byteBudget: updatesSize,
             boundedReader: recording.reader())
-        #expect(summary.totalTokens == 40)
-        #expect(!summary.historyCoverageIsEstablished)
-        #expect(recording.requests.map(\.url.lastPathComponent) == ["signals.json"])
+        #expect(summary.totalTokens == 150)
+        #expect(summary.historyCoverageIsEstablished)
+        #expect(recording.requests.map(\.url.lastPathComponent) == ["updates.jsonl"])
+    }
+
+    @Test
+    func `reads all structured updates before optional signals across sessions`() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grok-shared-budget-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let first = root.appendingPathComponent("sessions/%2Ftmp%2Fproj/session-a", isDirectory: true)
+        let second = root.appendingPathComponent("sessions/%2Ftmp%2Fproj/session-b", isDirectory: true)
+        try FileManager.default.createDirectory(at: first, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: second, withIntermediateDirectories: true)
+        try self.writeUpdates([self.usageLine(input: 100, output: 50, eventID: "a")], to: first)
+        try self.writeUpdates([self.usageLine(input: 30, output: 20, eventID: "b")], to: second)
+        try self.writeSignals(tokens: 40, timestamp: self.timestampMs, padding: 2000, to: first)
+        try self.writeSignals(tokens: 40, timestamp: self.timestampMs, padding: 2000, to: second)
+        let firstSize = try self.fileSize(at: first.appendingPathComponent("updates.jsonl"))
+        let secondSize = try self.fileSize(at: second.appendingPathComponent("updates.jsonl"))
+        let recording = RecordingGrokReader()
+
+        let summary = GrokLocalSessionScanner.summarize(
+            env: ["GROK_HOME": root.path],
+            lookbackDays: 30,
+            now: Date(timeIntervalSince1970: 1_700_000_005),
+            byteBudget: firstSize + secondSize,
+            boundedReader: recording.reader())
+
+        #expect(summary.totalTokens == 200)
+        #expect(summary.historyCoverageIsEstablished)
+        #expect(recording.requests.map(\.url.lastPathComponent) == ["updates.jsonl", "updates.jsonl"])
     }
 
     @Test
@@ -459,7 +607,10 @@ struct GrokBuildLocalScannerTests {
         includeReportedTotal: Bool = true,
         timestamp: Any? = 1_700_000_000_000,
         models: [String] = [],
-        eventID: String = "event-1") throws -> String
+        eventID: String = "event-1",
+        usageIsIncomplete: Any? = nil,
+        costIsPartial: Any? = nil,
+        sessionUpdate: Any? = nil) throws -> String
     {
         var usage: [String: Any] = ["inputTokens": input, "outputTokens": output]
         if includeReportedTotal {
@@ -468,25 +619,36 @@ struct GrokBuildLocalScannerTests {
         if !models.isEmpty {
             usage["modelUsage"] = Dictionary(uniqueKeysWithValues: models.map { ($0, [:] as [String: Any]) })
         }
+        if let usageIsIncomplete {
+            usage["usageIsIncomplete"] = usageIsIncomplete
+        }
+        if let costIsPartial {
+            usage["costIsPartial"] = costIsPartial
+        }
         var meta: [String: Any] = ["eventId": eventID]
         if let timestamp {
             meta["agentTimestampMs"] = timestamp
         }
+        var update: [String: Any] = ["usage": usage]
+        if let sessionUpdate {
+            update["sessionUpdate"] = sessionUpdate
+        }
         let object: [String: Any] = [
-            "params": ["update": ["usage": usage]],
+            "params": ["update": update],
             "_meta": meta,
         ]
         let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
         return try #require(String(data: data, encoding: .utf8))
     }
 
-    private func writeSignals(tokens: Int, timestamp: Int64, to session: URL) throws {
+    private func writeSignals(tokens: Int, timestamp: Int64, padding: Int = 0, to session: URL) throws {
         let object: [String: Any] = [
             "contextTokensUsed": tokens,
             "totalTokensBeforeCompaction": 0,
             "primaryModelId": "grok-build",
             "modelsUsed": ["grok-build"],
             "timestamp": timestamp,
+            "padding": String(repeating: "x", count: padding),
         ]
         try JSONSerialization.data(withJSONObject: object).write(
             to: session.appendingPathComponent("signals.json"))

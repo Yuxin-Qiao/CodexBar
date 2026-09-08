@@ -132,8 +132,9 @@ The grok.com billing gRPC-web endpoint remains a best-effort fallback.
      `signals.json` retained for legacy signals-only sessions.
    - Aggregates timestamped structured usage totals. It does not infer request
      counts, prices, or token-category breakdowns.
-   - Legacy lifetime signals remain visible but mark history incomplete because
-     their file timestamp cannot establish when the tokens were consumed.
+   - Legacy lifetime signals remain visible only as a context/compaction-derived
+     approximation. They always mark history incomplete because their file
+     timestamp cannot establish when the tokens were consumed.
 
 ## OAuth credentials
 
@@ -238,8 +239,8 @@ may contain only a `signals.json` lifetime rollup with fields like:
 ```
 
 CodexBar aggregates trustworthy update rows into daily total-token buckets. A
-signals-only total is retained as partial history rather than presented as a
-complete daily ledger.
+signals-only context/compaction approximation is retained as partial history,
+never presented as a complete daily ledger.
 
 Those local daily token buckets also feed the shared Usage & Spend catalog so an
 enabled Grok subscription is counted instead of omitted. SuperGrok/X Premium+

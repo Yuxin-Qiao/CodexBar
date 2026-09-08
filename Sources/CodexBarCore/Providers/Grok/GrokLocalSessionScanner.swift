@@ -110,11 +110,11 @@ private final class GrokReadBudget: @unchecked Sendable {
 private struct GrokUsageRow {
     let date: Date
     let totalTokens: Int
-    let models: Set<String>
+    var models: Set<String>
 }
 
 private struct GrokUpdatesResult {
-    let rows: [GrokUsageRow]
+    var rows: [GrokUsageRow]
     let sawUsage: Bool
     let isComplete: Bool
 }
@@ -122,6 +122,12 @@ private struct GrokUpdatesResult {
 private struct GrokSignalsSnapshot {
     let row: GrokUsageRow?
     let models: Set<String>
+}
+
+private struct GrokDirectoryScan {
+    let directory: URL
+    var updates: GrokUpdatesResult
+    var signals: GrokSignalsSnapshot?
 }
 
 struct GrokDiscoveredSessions {
@@ -185,9 +191,17 @@ struct GrokSessionDirectoryEnumerator {
                 guard url.lastPathComponent == "updates.jsonl" || url.lastPathComponent == "signals.json" else {
                     continue
                 }
+                let resourceValues = try? url.resourceValues(
+                    forKeys: [.isRegularFileKey, .contentModificationDateKey])
+                guard resourceValues?.isRegularFile == true else {
+                    if url.lastPathComponent == "updates.jsonl" {
+                        enumerationFailed = true
+                    }
+                    directories.insert(url.deletingLastPathComponent())
+                    continue
+                }
                 let directory = url.deletingLastPathComponent()
                 directories.insert(directory)
-                let resourceValues = try? url.resourceValues(forKeys: [.contentModificationDateKey])
                 if let modifiedAt = resourceValues?.contentModificationDate {
                     latestMtimeByDirectory[directory] = max(
                         latestMtimeByDirectory[directory] ?? .distantPast,
@@ -354,37 +368,70 @@ public enum GrokLocalSessionScanner {
         let discovered = try enumerator.enumerate(root)
         accumulator.isComplete = accumulator.isComplete && !discovered.enumerationFailed && !discovered.discoveryCapped
 
+        // Read every structured usage file before spending the shared budget on
+        // optional/lifetime metadata. A signals file can never replace a
+        // structured update that was still readable in another directory.
+        var directoryScans: [GrokDirectoryScan] = []
         for directory in discovered.directories {
             try options.checkCancellation()
-            guard !options.readBudget.isExhausted else {
-                accumulator.isComplete = false
-                break
+            let updatesURL = directory.appendingPathComponent("updates.jsonl")
+            let updates: GrokUpdatesResult
+            if fileManager.fileExists(atPath: updatesURL.path) {
+                guard self.isRegularFile(at: updatesURL) else {
+                    updates = GrokUpdatesResult(rows: [], sawUsage: false, isComplete: false)
+                    accumulator.isComplete = false
+                    directoryScans.append(GrokDirectoryScan(directory: directory, updates: updates, signals: nil))
+                    continue
+                }
+                updates = try self.readUpdates(at: updatesURL, options: options, reader: reader)
+            } else {
+                updates = GrokUpdatesResult(rows: [], sawUsage: false, isComplete: true)
             }
+            accumulator.isComplete = accumulator.isComplete && updates.isComplete
+            directoryScans.append(GrokDirectoryScan(directory: directory, updates: updates, signals: nil))
+        }
+
+        // Legacy sessions are intentionally always incomplete. Their signals
+        // values are a lifetime context/compaction approximation, not a daily
+        // consumption ledger.
+        for index in directoryScans.indices where !directoryScans[index].updates.sawUsage {
+            try options.checkCancellation()
             let signals = self.readSignals(
-                at: directory.appendingPathComponent("signals.json"),
+                at: directoryScans[index].directory.appendingPathComponent("signals.json"),
                 fileManager: fileManager,
                 budget: options.readBudget,
                 reader: reader)
-            let updatesURL = directory.appendingPathComponent("updates.jsonl")
-            let updates = fileManager.fileExists(atPath: updatesURL.path)
-                ? try self.readUpdates(
-                    at: updatesURL,
-                    fallbackModels: signals.models,
-                    options: options,
-                    reader: reader)
-                : GrokUpdatesResult(rows: [], sawUsage: false, isComplete: true)
-            accumulator.isComplete = accumulator.isComplete && updates.isComplete
+            directoryScans[index].signals = signals
+            accumulator.isComplete = false
+            if let row = signals.row, row.date >= options.cutoff, row.date <= options.now {
+                accumulator.record(row)
+            }
+        }
 
-            if updates.sawUsage {
-                for row in updates.rows {
-                    accumulator.record(row)
-                }
-            } else {
-                // signals.json is a lifetime rollup; file time cannot prove daily coverage.
-                accumulator.isComplete = false
-                if let row = signals.row, row.date >= options.cutoff, row.date <= options.now {
-                    accumulator.record(row)
-                }
+        // Signals may provide a model label for a structured row that omitted
+        // one. This is optional metadata: failure, truncation, or no remaining
+        // budget must not invalidate otherwise complete token totals.
+        for index in directoryScans.indices where directoryScans[index].updates.sawUsage {
+            guard directoryScans[index].updates.rows.contains(where: \.models.isEmpty) else { continue }
+            try options.checkCancellation()
+            let signals = directoryScans[index].signals ?? self.readSignals(
+                at: directoryScans[index].directory.appendingPathComponent("signals.json"),
+                fileManager: fileManager,
+                budget: options.readBudget,
+                reader: reader)
+            directoryScans[index].signals = signals
+            guard !signals.models.isEmpty else { continue }
+            directoryScans[index].updates.rows = directoryScans[index].updates.rows.map { row in
+                guard row.models.isEmpty else { return row }
+                var enriched = row
+                enriched.models = signals.models
+                return enriched
+            }
+        }
+
+        for scan in directoryScans where scan.updates.sawUsage {
+            for row in scan.updates.rows {
+                accumulator.record(row)
             }
         }
         try options.checkCancellation()
@@ -393,7 +440,6 @@ public enum GrokLocalSessionScanner {
 
     private static func readUpdates(
         at url: URL,
-        fallbackModels: Set<String>,
         options: GrokScanOptions,
         reader: GrokBoundedReader) throws -> GrokUpdatesResult
     {
@@ -442,6 +488,25 @@ public enum GrokLocalSessionScanner {
                 continue
             }
             guard date >= options.cutoff, date <= options.now else { continue }
+            if let sessionUpdate = update["sessionUpdate"] {
+                guard let kind = self.nonEmptyString(sessionUpdate), kind == "turn_completed" else {
+                    isComplete = false
+                    continue
+                }
+            }
+            if let incompleteValue = self.firstValue(
+                in: usage,
+                keys: ["usageIsIncomplete", "usage_is_incomplete"])
+                ?? self.firstValue(in: update, keys: ["usageIsIncomplete", "usage_is_incomplete"])
+            {
+                guard let incomplete = self.strictBool(incompleteValue) else {
+                    isComplete = false
+                    continue
+                }
+                if incomplete {
+                    isComplete = false
+                }
+            }
             guard let totalTokens = self.validatedUsageTotal(usage) else {
                 isComplete = false
                 continue
@@ -451,7 +516,7 @@ public enum GrokLocalSessionScanner {
             let usageModels = (usage["modelUsage"] as? [String: Any])?.keys
                 .compactMap { self.nonEmptyString($0) } ?? []
             let models = usageModels.isEmpty
-                ? currentModel.map { Set([$0]) } ?? fallbackModels
+                ? currentModel.map { Set([$0]) } ?? []
                 : Set(usageModels)
             rows.append(GrokUsageRow(date: date, totalTokens: totalTokens, models: models))
         }
@@ -465,6 +530,7 @@ public enum GrokLocalSessionScanner {
         reader: GrokBoundedReader) -> GrokSignalsSnapshot
     {
         guard fileManager.fileExists(atPath: url.path),
+              self.isRegularFile(at: url),
               let data = self.readBoundedData(
                   at: url,
                   maximumBytes: self.maximumSignalsFileBytes,
@@ -566,6 +632,14 @@ public enum GrokLocalSessionScanner {
         return self.asInt(value)
     }
 
+    private static func strictBool(_ value: Any) -> Bool? {
+        guard let number = value as? NSNumber else {
+            return value as? Bool
+        }
+        guard String(cString: number.objCType) == "c" else { return nil }
+        return number.boolValue
+    }
+
     private static func asInt(_ value: Any) -> Int? {
         guard !self.isJSONBoolean(value) else { return nil }
         let parsed: Int? = if let number = value as? NSNumber {
@@ -591,6 +665,10 @@ public enum GrokLocalSessionScanner {
         guard let string = value as? String else { return nil }
         let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func isRegularFile(at url: URL) -> Bool {
+        (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true
     }
 
     private static func parseDate(_ value: Any?) -> Date? {
