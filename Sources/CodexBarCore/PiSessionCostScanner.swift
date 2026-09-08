@@ -117,6 +117,7 @@ enum PiSessionCostScanner {
     struct DailyReportResult {
         let report: CostUsageDailyReport
         let isComplete: Bool
+        let lastScanAt: Date?
     }
 
     static func loadDailyReportCancellable(
@@ -148,7 +149,8 @@ enum PiSessionCostScanner {
         guard provider == .codex || provider == .claude || provider == .pi else {
             return DailyReportResult(
                 report: CostUsageDailyReport(data: [], summary: nil),
-                isComplete: true)
+                isComplete: true,
+                lastScanAt: nil)
         }
 
         let range = CostUsageScanner.CostUsageDayRange(
@@ -254,6 +256,9 @@ enum PiSessionCostScanner {
         }
 
         // Provider-specific by design: the Pi provider aggregates its Codex and Claude-priced local sessions.
+        let lastScanAt = cache.lastScanUnixMs > 0
+            ? Date(timeIntervalSince1970: TimeInterval(cache.lastScanUnixMs) / 1000)
+            : nil
         if provider == .pi {
             let codexReport = self.buildReport(
                 provider: .codex,
@@ -267,7 +272,8 @@ enum PiSessionCostScanner {
                 pricingContext: pricingContext)
             return DailyReportResult(
                 report: CostUsageDailyReport.merged([codexReport, claudeReport]),
-                isComplete: scanIsComplete)
+                isComplete: scanIsComplete,
+                lastScanAt: lastScanAt)
         }
         return DailyReportResult(
             report: self.buildReport(
@@ -275,7 +281,8 @@ enum PiSessionCostScanner {
                 cache: cache,
                 range: range,
                 pricingContext: pricingContext),
-            isComplete: scanIsComplete)
+            isComplete: scanIsComplete,
+            lastScanAt: lastScanAt)
     }
 
     struct CachedDailyReportResult {

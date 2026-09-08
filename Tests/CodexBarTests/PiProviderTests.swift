@@ -256,6 +256,7 @@ struct PiProviderTests {
 
         #expect(refreshed.sessionTokens == 25)
         #expect(!refreshed.historyCoverageIsEstablished)
+        #expect(refreshed.updatedAt == initial.updatedAt)
     }
 
     @Test

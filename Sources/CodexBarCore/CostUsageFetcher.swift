@@ -561,7 +561,9 @@ public struct CostUsageFetcher: Sendable {
                 costProvenance: .listPriceEstimate,
                 projects: [],
                 sessions: [],
-                updatedAt: now)
+                // An incomplete Pi scan may be serving a retained cache report. Keep its
+                // original scan time so stale usage is not presented as freshly read.
+                updatedAt: piScanResult.isComplete ? now : piScanResult.lastScanAt ?? now)
         }
 
         var options = Self.resolvedScannerOptions(
