@@ -1577,12 +1577,14 @@ final class SpendDashboardController {
         else { return }
         let now = now ?? self.nowProvider()
         if let loadedAt = self.dashboardSnapshotLoadedAt,
+           self.failedSourceCount == 0,
+           configuration.bucketCalendar.isDate(self.loadedAt, inSameDayAs: now),
+           now.timeIntervalSince(loadedAt) >= 0,
            now.timeIntervalSince(loadedAt) < Self.dashboardSnapshotTTL
         {
             return
         }
-        let nextPhase: LoadPhase = self.phase.manualRefreshOutstanding ? .forcing : .ordinary
-        self.startLoad(configuration: configuration, phase: nextPhase)
+        self.startLoad(configuration: configuration, phase: .ordinary)
     }
 
     func selectDays(_ days: Int) {

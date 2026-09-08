@@ -6,6 +6,94 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct UsageStoreSpendDashboardCodexCostCatchUpTests {
+    @Test(arguments: [CodexCostCatchUpMode.automatic, .accelerated])
+    func `app low power preference reaches successive catch-up passes`(mode: CodexCostCatchUpMode) async throws {
+        let store = try Self.makeStore(suite: "app-low-power-worker")
+        store.settings.backgroundWorkLowPowerModePreference = .on
+        var sleeps: [TimeInterval] = []
+        store._test_spendDashboardCodexCostCatchUpResourceStateOverride = { (.ac, false, .nominal) }
+        store._test_spendDashboardCodexCostCatchUpStatusOverride = { _ in
+            CostUsageFetcher.CodexScanCatchUpStatus(pending: true, progressKey: "pending")
+        }
+        store._test_spendDashboardCodexCostCatchUpAdvanceOverride = { _, _, _ in
+            CostUsageFetcher.CodexScanCatchUpStatus(pending: true, progressKey: "progressed")
+        }
+        store._test_spendDashboardCodexCostCatchUpSleepOverride = { delay in
+            sleeps.append(delay)
+            if sleeps.count == 2 { throw CancellationError() }
+        }
+        store.startSpendDashboardCodexCostCatchUpIfNeeded(
+            accounts: [Self.account(id: "account", cacheIdentity: "cache-account")], mode: mode)
+        let task = try #require(store.spendDashboardCodexCostCatchUpTask)
+        await task.value
+        #expect(sleeps.count == 2)
+        if mode == .automatic {
+            #expect(sleeps.allSatisfy { $0 >= 1800 })
+        } else {
+            #expect(sleeps == [0, 0])
+        }
+    }
+
+    @Test
+    func `invalidated pass retires its orphaned indexing activity`() async throws {
+        let store = try Self.makeStore(suite: "invalidated-activity")
+        let gate = SpendDashboardPendingLoads<CostUsageFetcher.CodexScanCatchUpStatus>()
+        defer {
+            store.cancelSpendDashboardCodexCostCatchUp()
+            gate.close()
+        }
+        store._test_spendDashboardCodexCostCatchUpStatusOverride = { _ in
+            Self.status(pending: true, key: "pending", processedBytes: 100)
+        }
+        store._test_spendDashboardCodexCostCatchUpAdvanceOverride = { _, _, _ in try await gate.load() }
+        store._test_spendDashboardCodexCostCatchUpSleepOverride = { _ in await Task.yield() }
+        store._test_spendDashboardCodexCostCatchUpResourceStateOverride = { (.ac, false, .nominal) }
+
+        store.startSpendDashboardCodexCostCatchUpIfNeeded(
+            accounts: [Self.account(id: "account", cacheIdentity: "cache-account")], mode: .accelerated)
+        let task = try #require(store.spendDashboardCodexCostCatchUpTask)
+        try await gate.waitForPendingCount(1)
+        #expect(store.spendDashboardCodexCostCatchUpActivity?.phase == .indexing)
+        #expect(store.spendDashboardCodexCostCatchUpActivity?.fractionCompleted == 1)
+        let revision = store.settings.costUsageSettingsRevision
+        store.settings.costUsageHistoryDays = store.settings.costUsageHistoryDays == 7 ? 30 : 7
+        #expect(store.settings.costUsageSettingsRevision != revision)
+        gate.resume(returning: Self.status(pending: false, key: "complete", processedBytes: 100))
+        await task.value
+
+        #expect(store.spendDashboardCodexCostCatchUpTask == nil)
+        #expect(store.spendDashboardCodexCostCatchUpActivity == nil)
+    }
+
+    @Test
+    func `combined low power and thermal pressure publishes thermal pause without scanning`() async throws {
+        let store = try Self.makeStore(suite: "combined-thermal-pause")
+        var advanceCount = 0
+        var sleepDurations: [TimeInterval] = []
+        store._test_spendDashboardCodexCostCatchUpStatusOverride = { _ in
+            Self.status(pending: true, key: "pending", processedBytes: 25)
+        }
+        store._test_spendDashboardCodexCostCatchUpAdvanceOverride = { _, _, _ in
+            advanceCount += 1
+            return Self.status(pending: false, key: "complete", processedBytes: 100)
+        }
+        store._test_spendDashboardCodexCostCatchUpResourceStateOverride = { (.battery, true, .serious) }
+        store._test_spendDashboardCodexCostCatchUpSleepOverride = { duration in
+            sleepDurations.append(duration)
+            throw CancellationError()
+        }
+
+        store.startSpendDashboardCodexCostCatchUpIfNeeded(
+            accounts: [Self.account(id: "account", cacheIdentity: "cache-account")])
+        let task = try #require(store.spendDashboardCodexCostCatchUpTask)
+        await task.value
+
+        #expect(store.spendDashboardCodexCostCatchUpActivity?.phase == .paused)
+        #expect(store.spendDashboardCodexCostCatchUpActivity?.pauseReason == .thermal)
+        #expect(sleepDurations == [CodexCostCatchUpPolicy.constrainedRetryDelay])
+        #expect(advanceCount == 0)
+    }
+
     @Test
     func `dashboard catch-up advances every account cache and publishes a reload revision`() async throws {
         let store = try Self.makeStore(suite: "all-accounts")
@@ -557,7 +645,9 @@ struct UsageStoreSpendDashboardCodexCostCatchUpTests {
         store._test_spendDashboardCodexCostCatchUpAdvanceOverride = { account, _, _ in
             if account.id == "old" {
                 let result = try await oldGate.load()
-                if cancelled { throw CancellationError() }
+                if cancelled {
+                    throw CancellationError()
+                }
                 return result
             }
             return try await replacementGate.load()
@@ -581,6 +671,7 @@ struct UsageStoreSpendDashboardCodexCostCatchUpTests {
 
         #expect(store.spendDashboardCodexCostCatchUpToken == replacementToken)
         #expect(store.spendDashboardCodexCostCatchUpPassIsRunning)
+        #expect(store.spendDashboardCodexCostCatchUpActivity?.phase == .indexing)
         store.stopSpendDashboardCodexCostCatchUp()
         #expect(store.spendDashboardCodexCostCatchUpTask != nil)
         #expect(store.spendDashboardCodexCostCatchUpToken == replacementToken)
