@@ -23,11 +23,19 @@ struct OpenClawCostUsageFetcherTests {
     func `gateway totals map without inventing model data or partial cost`() throws {
         let report = try OpenClawCostUsageFetcher.parseDailyReport(Self.summaryJSON(daily: [
             Self.dayJSON(date: "2026-09-04", input: 10, output: 2, total: 12, cost: 0.02, missing: 1),
-            Self.dayJSON(date: "2026-09-03", input: 20, output: 4, cacheRead: 6, total: 30, cost: 0.04),
+            Self.dayJSON(
+                date: "2026-09-03",
+                input: 20,
+                output: 4,
+                cacheRead: 6,
+                cacheWrite: 3,
+                total: 24,
+                cost: 0.04),
         ]))
 
         #expect(report.data.map(\.date) == ["2026-09-03", "2026-09-04"])
         #expect(report.data[0].cacheReadTokens == 6)
+        #expect(report.data[0].cacheCreationTokens == 3)
         #expect(report.data[0].costUSD == 0.04)
         #expect(report.data[0].modelBreakdowns == nil)
         #expect(report.data[1].totalTokens == 12)
@@ -38,6 +46,43 @@ struct OpenClawCostUsageFetcherTests {
         let snapshot = CostUsageFetcher.tokenSnapshot(
             from: report, now: Self.now, historyDays: 2, calendar: Self.calendar)
         #expect(snapshot.last30DaysCostUSD == nil)
+    }
+
+    @Test
+    func `gateway preserves explicit producer total when components differ`() throws {
+        // OpenClaw v2026.8.2 uses usage.total when present, even when it differs from
+        // the component sum. CodexBar must preserve that producer-owned aggregate.
+        let report = try OpenClawCostUsageFetcher.parseDailyReport(Self.summaryJSON(daily: [
+            Self.dayJSON(
+                date: "2026-09-04",
+                input: 10,
+                output: 5,
+                cacheRead: 3,
+                cacheWrite: 2,
+                total: 17),
+        ]))
+
+        let entry = try #require(report.data.first)
+        #expect(entry.inputTokens == 10)
+        #expect(entry.outputTokens == 5)
+        #expect(entry.cacheReadTokens == 3)
+        #expect(entry.cacheCreationTokens == 2)
+        #expect(entry.totalTokens == 17)
+    }
+
+    @Test
+    func `gateway preserves explicit zero producer total`() throws {
+        let report = try OpenClawCostUsageFetcher.parseDailyReport(Self.summaryJSON(daily: [
+            Self.dayJSON(
+                date: "2026-09-04",
+                input: 10,
+                output: 5,
+                cacheRead: 3,
+                cacheWrite: 2,
+                total: 0),
+        ]))
+
+        #expect(report.data.first?.totalTokens == 0)
     }
 
     @Test(arguments: ["partial", "stale", "refreshing"])
@@ -79,7 +124,14 @@ struct OpenClawCostUsageFetcherTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let binary = directory.appendingPathComponent("openclaw")
         try Self.writeFakeCLI(at: binary, output: Self.summaryJSON(daily: [
-            Self.dayJSON(date: "2026-09-03", input: 20, output: 4, total: 24, cost: 0.04),
+            Self.dayJSON(
+                date: "2026-09-03",
+                input: 20,
+                output: 4,
+                cacheRead: 6,
+                cacheWrite: 3,
+                total: 24,
+                cost: 0.04),
             Self.dayJSON(date: "2026-09-04", input: 10, output: 2, total: 12, cost: 0.02),
         ]))
 
@@ -96,6 +148,8 @@ struct OpenClawCostUsageFetcherTests {
         #expect(snapshot.last30DaysTokens == 36)
         #expect(snapshot.last30DaysCostUSD == 0.06)
         #expect(snapshot.costProvenance == .listPriceEstimate)
+        #expect(snapshot.daily.first?.totalTokens == 24)
+        #expect(snapshot.daily.first?.cacheCreationTokens == 3)
     }
 
     @Test
@@ -134,13 +188,14 @@ struct OpenClawCostUsageFetcherTests {
         input: Int = 0,
         output: Int = 0,
         cacheRead: Int = 0,
+        cacheWrite: Int = 0,
         total: Int = 0,
         cost: Double = 0,
         missing: Int = 0) -> String
     {
         """
         {"date":"\(date)","input":\(input),"output":\(output),"cacheRead":\(cacheRead),
-        "cacheWrite":0,"totalTokens":\(total),"totalCost":\(cost),"missingCostEntries":\(missing)}
+        "cacheWrite":\(cacheWrite),"totalTokens":\(total),"totalCost":\(cost),"missingCostEntries":\(missing)}
         """
     }
 
