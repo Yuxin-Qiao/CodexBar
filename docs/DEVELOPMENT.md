@@ -131,7 +131,9 @@ See the canonical [provider authoring guide](provider.md#adding-a-new-provider) 
 
 Status-item creation checks the item's saved preferred position and its matching legacy key before assigning the
 autosave name. Malformed, non-finite, non-positive, and out-of-bounds positions are removed; unrelated items are
-untouched. When no display bound is available, finite positive positions are preserved. Isolated placement tests
+untouched. The bound is at least the widest connected display's width in points and retains any larger legacy global
+coordinate bound, plus the existing safety padding. This avoids newly deleting menu-manager parking positions while
+covering wide displays left of the primary screen. When no display bound is available, finite positive positions are preserved. Isolated placement tests
 cover this cleanup without creating status items or changing the user's saved preferences. Passing these tests does
 not establish the cause of a position that changes again after launch; that requires runtime placement evidence.
 
@@ -227,8 +229,9 @@ oracle independently useful. Full optimized scratch parity must copy the final p
 prototype results alone do not carry forward through formatting or edits. Scanner parity does not
 establish pipeline performance; signed optimized builds and synthetic pipeline timing are separate proof.
 
-The shared scanner remains a parser-hash input. Published `e0b0319de43e22d7` is the immediate tested
-compatible predecessor because LF-span scanning preserves persisted semantics, including the priority
+The shared scanner remains a parser-hash input. The warm-refresh cursor repair adopts `9ca89383b9957b07`
+without rebuilding native rows or checkpoints; it changes scheduling, not persisted parsing semantics.
+Published `e0b0319de43e22d7` is also a tested compatible predecessor because LF-span scanning preserves persisted semantics, including the priority
 cursor changes in #3318. The earlier `7e293e8fc9e25700` and existing predecessors remain supported.
 Native adoption retains rows and checkpoints while invalidating old connection receipts.
 Pi/OMP still reparses once when the hash changes,
@@ -266,8 +269,10 @@ Retention that rewrites identical metadata requires a fresh locked semantic comp
 without a receipt read a fresh baseline at save and cannot establish freshness back to an earlier load.
 
 `CostUsageStoreReadWorkTests` counts full load/save cycles: an uncontended unchanged receipt cycle reads
-one full snapshot and decodes each usage row once, with one freshness write and no aggregate grouping
-visits. Synthetic interleavings cover writer races, mutations, retention, replacement and receipt lifetime.
+one scanner snapshot and decodes each exact usage row once, without reading raw token snapshots, with
+one freshness write and no aggregate grouping visits. Changed files and fork ancestors hydrate token
+history through the original receipt, validating its stamp after the read transaction commits. Synthetic
+interleavings cover writer races, mutations, retention, replacement and receipt lifetime.
 Initial decoding, semantic equality, filesystem reconciliation, report generation and priority aggregation
 still cost work proportional to retained history. These counters do not measure installed-app idle CPU;
 refresh cadence, scan budgets, timestamp parsing and incremental-order validation are unchanged.

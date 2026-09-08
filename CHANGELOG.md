@@ -1,23 +1,125 @@
 # Changelog
 
-## Unreleased
+## 0.56.9 — Unreleased
+
+### Highlights
+- **Fresher spend charts and faster Claude startup:** refresh stale dashboards, resume interrupted Codex scans, and reuse compatible Claude cost reports across launches.
+- **Safer updates and more reliable usage:** refresh Sparkle's installer protections, preserve claude-swap measurement ages, and improve local history and account handling.
 
 ### Fixed
-- Codex: report thermal pressure as the catch-up pause reason when serious heat and Low Power Mode coincide, preserving the existing pause and scan budget (#3242). Thanks @Yuxin-Qiao!
-- Cost history: keep tall charts in a bounded scroll view so switching Token/Cost no longer jumps the native menu or undoes an immediate wheel scroll (#3380). Thanks @Yuxin-Qiao!
-- z.ai: abbreviate large model token totals with M/B while preserving exact hourly and daily chart values (#3308, #3310). Thanks @medpath1024 and @fantasy!
+- Codex local costs: accept valid JSON whitespace in usage events, retain next-day appended usage, and reparse older files once without deleting compatible stores (#3504).
+- Codex local costs: include reserve usage in fresh and cached GPT-5.6 Luna cost estimates while preserving compatible rows and scan progress (#3503, #3502). Thanks @BUKOWSKIREAL!
+- Usage parsing: reject out-of-range numeric counts in MiMo, Pi/OMP, OpenCodex, and Bedrock instead of trapping at rounded integer limits; preserve existing rounding and valid usage fields, and reparse OpenCodex caches created by the older parser (#3486).
+- Subprocesses: accept very large finite timeouts without overflowing nanosecond conversion.
+- AWS Bedrock: disclose monitoring charges in both authentication modes, link current Cost Explorer pricing, and explain the shared refresh controls and informational budget (#3496, related to #3387). Thanks @kyen99!
+- Claude: honor the segmented multi-account menu preference for claude-swap, preserve source-owned switching and unavailable-account diagnostics, and show stable slot numbers when personal information is hidden (#3498, #3382). Thanks @thatlev!
+- Antigravity: render each CLI quota bucket once, keep unknown or disabled usage unavailable in text and full/brief cards, retain reset context, and keep shared idle-family filtering out of raw JSON (#3489). Thanks @urda!
+- Usage & Spend: refresh expired charts on pane return or app activation, keep cached data visible during loading, and refresh across midnight (#3107). Thanks @Yuxin-Qiao!
+- Codex local costs: retain unfinished file work when a warm refresh reaches its time limit, so compatible history windows resume without reseeding completed files; preserve exact validation and existing caches (related to #3411). Thanks @kesslerio!
+- Updates: adopt Sparkle 2.9.6 installer hardening, including archive-moving and package-signature validation fixes.
+- Claude: preserve claude-swap's source measurement timestamps so repeated reads of cached usage do not show as freshly updated; retain the existing fallback for missing or malformed optional timestamps (#3485, extracted from #3452). Thanks @QuantIntellect!
+- CLI login: share Codex and Kiro process handling, stop cancelled logins and lingering children, and preserve bounded timeout output and device-flow progress.
+- Widgets: remove redundant outer padding from Usage, Switcher, History, and Metric views so WidgetKit alone controls their content margins (extracted from #3137). Thanks @iamenahs!
+- Menu bar: show balance-only providers’ money or points in the default layout and editor preview instead of a fake percentage or dash, while preserving real quota percentages and showing an identical balance reset fallback only once (#3492, #3494). Thanks @zkforge!
+- Overview: keep highlighted provider cards readable on macOS 15 by removing forced vibrancy from card wrappers, while retaining fast GPU selection and native submenu interactions (#3173).
+- Copilot: resolve Enterprise sign-in identities on the configured host, keep equal user IDs on different hosts distinct, and skip public GitHub budget enrichment for Enterprise accounts (#3341). Thanks @Fletcher-Alderton!
+- Local costs: avoid overflow traps in OpenCodex and combined cost reports, keeping unrepresentable token sums unavailable while retaining valid neighboring token classes.
+- Kiro: route existing overage enrichment to the CLI profile’s supported region instead of always using US East; reject invalid profile ARNs before sending credentials and retain CLI fallback (#3359). Thanks @zucram!
+- MiniMax: retain transport error codes so DNS, connection, and translated offline failures preserve cached usage and participate in normal connectivity retries.
+- Settings: observe rapid external config replacements and edits that restore earlier app-written contents, while keeping successful app writes out of the external-change sync path.
+- Accounts: retain matching cached usage and widget data through transient multi-account refresh failures without refreshing measurement timestamps or reusing changed credentials.
+- Local usage: honor the app’s Low Power Mode interval for automatic Codex catch-up passes in both usage and Spend Dashboard, while retaining manual acceleration and system thermal pauses.
+- z.ai: preserve required quota when optional model analytics exceed display bounds or overflow; retain valid Unicode labels with shared native validation and normalize token inputs once.
+- Claude: recover an expired default-profile cache from changed, fresh CLI credentials when existing read consent and policy permit, preserving explicit-file precedence and custom-profile isolation (related to #3390).
+- Claude local usage: discard stale cached rows when a transcript is atomically replaced, including across process restarts; retain incremental parsing for genuine appends and rebuild legacy cache entries without file identity once.
+- Antigravity local usage: tolerate bookkeeping steps without UUIDs while retaining duplicate bot-ID ambiguity checks, so valid history remains available without assigning uncertain dates (#3462). Thanks @urda!
+
+### Performance
+- Claude local costs: persist compatible reports across launches to avoid decoding unchanged transcript caches, and invalidate them when source, pricing, or report semantics change (#3284). Thanks @eggyrooch-blip!
+- Codex local costs: reuse model pricing resolution across daily, project, and session report rows without changing token accounting, tariffs, or refresh cadence (#3476). Thanks @brzvsk!
+
+### Added
+- CLI: add opt-in Claude `cost --breakdown` daily and model details with matching calendar/recorded periods and partial-attribution labels (#3244). Thanks @Yuxin-Qiao!
+
+### Maintenance
+- Update Commander to 0.2.4, swift-log to 1.15.0, swift-asn1 to 1.7.2, and the pinned checkout action to 7.0.1.
+
+## 0.56.8 — 2026-09-07
+
+### Highlights
+- **More reliable account handling**: preserve Codex permission errors, retain Claude quota-warning history across credential refreshes, and keep Copilot accounts distinct (#3466, #3453, #3460).
+- **Accurate provider history**: count Poe weekly usage over the last seven days and keep valid Poe, MiMo, and OpenRouter usage available when optional history contains malformed data (#3449, #3455, #3448, #3458).
+- **Better display support**: preserve menu-bar positions on monitors left of the primary display and translate Claude's model-specific weekly quota labels (#3463, #3459).
+
+### Fixed
+- Copilot: keep verified GitHub user IDs authoritative when matching legacy token accounts, preventing a matching login or display label from replacing a different resolved account.
+- OpenRouter: reject combined Activity token overflow before publishing history so malformed optional data cannot hide valid credits or key quota; share input/output total validation (extracted from #3272). Thanks @akshayprabhu200!
+- Poe: skip out-of-range history timestamps instead of letting date formatting hide a valid point balance; preserve supported timestamp formats and valid activity.
+- Menu bar: preserve valid saved positions on wide monitors placed left of the primary display while retaining the legacy accepted range for menu-manager compatibility (related to #3355).
+- Claude: retain quota-warning history for known accounts across credential refreshes, preventing repeat threshold alerts while preserving recovery crossings and separate account state (partial fix for #3450). Thanks @JonLaliberte!
+- Poe: calculate weekly points, requests, and spend from the last seven elapsed days, so older activity no longer inflates sparse or inactive weeks; share totals aggregation with Today and the 30-day window (#3449). Thanks @Lucenx9!
+- MiMo: skip malformed local session rows before deduplication so valid usage still refreshes the cache, preserving all token buckets and UTC daily/weekly totals with shared aggregation (#3448). Thanks @Lucenx9!
+- Codex: retain HTTP 403 permission failures instead of treating them as expired credentials and launching Auto recovery; share status/cancellation handling across OAuth and PAT requests (extracted from #3379). Thanks @Yuxin-Qiao!
+- Claude: label model-specific weekly quotas with a translated weekly duration while preserving model names and CLI titles; correct swapped Vietnamese Weekly and missing-version labels (#3447). Thanks @gianpaj!
+- Packaging: select the bundled iCloud provisioning profile only for its upstream signing team, preserving alternate-team app/widget groups without incompatible CloudKit entitlements (extracted from #3372). Thanks @krazybean!
+
+## 0.56.7 — 2026-09-06
+
+### Highlights
+- **Live widget freshness labels**: snapshot and stale token-history ages keep advancing between timeline reloads (#3445; partial fix for #3339).
+- **Reliable Linux caches**: preserve model pricing and Pi/OMP cost history across repeated refreshes (#3444, #3446).
+- **Clearer provider usage**: retain Command Code monthly usage during subscription timeouts, show Moonshot balances in the correct currency, and explain ElevenLabs API key failures (#3441, #3438, #3437).
+
+### Fixed
+- Widgets: keep snapshot and stale token-history age labels advancing between timeline reloads, so paused widgets no longer retain fresh-looking timestamps (#3445; partial fix for #3339). Thanks @zhulijin1991!
+- Usage & Spend: keep stacked daily and hourly chart segments flush at provider boundaries, rounding only the top of each bar (#3439). Thanks @elijahfriedman!
+- Command Code: retain the last confirmed plan for its billing period so subscription timeouts do not erase monthly usage; show the monthly row as unavailable when no plan is known, while preserving rolling five-hour and weekly usage (#3441). Thanks @enieuwy!
+- Moonshot: show China-region balances and deficits in CNY while retaining USD for international accounts (#3434, #3438). Thanks @SomSamantray and @doraemonke!
+- ElevenLabs: distinguish a missing API key from a rejected key, missing subscription-read permission, or access restrictions, including current and legacy API error formats (#3437). Thanks @benmillerat!
+- Pi and OMP cost history: preserve the session cache across repeated Linux refreshes, including saved scan state, provider totals, pricing metadata, and timezone information (#3446).
+- Model pricing: preserve cached catalogs across repeated Linux refreshes (#3444; extracted from #3412). Thanks @WeGoToMars!
+
+## 0.56.6 — 2026-09-05
+
+### Highlights
+- **Faster Codex cost-history refreshes**: skip raw token-history reads for unchanged sessions while preserving exact pricing, reasoning totals, and fork accounting (#3297).
+- **Cached custom menu-bar text**: reuse plain text layouts while preserving native highlighting, spacing, display scaling, and colored emoji (#3110).
+- **More reliable usage displays**: show exhausted automatic quotas correctly, accept Kiro plan summaries, and recover rejected Kimi web sessions (#3349, #3359, #3414).
+
+### Fixed
+- Codex cost: skip loading raw token histories for unchanged sessions while preserving exact request pricing, reasoning totals, and fork accounting; concurrent cache changes safely request a retry (#3297). Thanks @estevecastells!
+- Codex cost: fill missing model-pricing coverage, including cached tokens and long-context Fast usage, and reprice saved rows without rebuilding token history (#3423, #3425).
+- Menu bar: reuse cached template images for single-line text-only custom layouts, preserving native highlighting, display scaling, spacing, and vertical adjustments; colored emoji, rich, stale, and high-contrast content retain their existing rendering (#3110). Thanks @thatlev!
+- Menu bar: show an exhausted supported quota in automatic switcher progress instead of healthy weekly capacity, while preserving normal weekly progress and provider-specific quota pools (partial fix for #3349). Thanks @rwese!
+- Codex: recover subscription renewal and expiration dates through optional OpenAI web billing capture, without delaying app usage or allowing late results to replace newer dashboards or cross accounts (#3373). Thanks @emanuelst!
+- Kimi: show API membership and standalone CLI versions, retry rejected automatic web sessions, and preserve completed quotas when optional plan metadata stalls; cancelled refreshes stop before further browser reads (#3414). Thanks @xirong!
+- Kiro: accept CLI plan summaries without treating them as format errors, preserve unavailable credit metrics instead of showing false zero usage, and allow existing optional API enrichment to supply valid plan numbers (partial fix for #3359). Thanks @zucram!
+- Hooks: show only the configured threshold, executable, and arguments in Settings; keep examples inside empty fields instead of displaying them as duplicate labels (#3424). Thanks @kedryte!
+
+## 0.56.5 — 2026-09-04
+
+### Highlights
+- **More reliable Codex cost-history catch-up**: avoid repeatedly rediscovering completed work and clear abandoned Refreshing activity after account or settings changes (#3402, #3417, #3418).
+- **Clearer Codex extra-credit accounting**: keep spend, monthly limits, and purchased balances consistent, including confirmed zero balances (#3296).
+- **Stable cost-chart navigation**: switching between Token and Cost preserves menu position and scrolling, even with tall charts (#3380).
+- **Remote session discovery restored**: prevent repeated app-binary crashes on newer Tailscale installations by explicitly using CLI mode (#3401).
+
+### Fixed
 - Codex: preserve pending cost-scan discovery when same-day history requests alternate between narrower and wider windows, avoiding repeated requeueing of completed files and retaining compatible history caches on upgrade (partial fix for #3411). Thanks @kesslerio!
-- Settings: disable iCloud sync sub-options when the main sync switch is off, preserving their saved choices for the next time sync is enabled (#3406). Thanks @elijahfriedman!
-- Antigravity: match local token-history timestamps by per-turn IDs when auxiliary or reordered steps would otherwise assign usage to the wrong day, while withholding conflicting evidence and preserving legacy timestamp recovery (#3403). Thanks @WeGoToMars!
 - Codex: retain completed empty session fragments during cost-history scans instead of repeatedly dropping and rediscovering them, without suppressing usage-bearing duplicates or later appended usage (partial fix for #3316; #3402). Thanks @mauriciopolvora!
-- Agent sessions: explicitly force Tailscale CLI mode during remote-host discovery, preventing repeated app-binary crashes on newer Tailscale installations while preserving existing terminal settings (#3397). Thanks @tzioup!
 - Usage & Spend: clear abandoned Refreshing activity when an in-flight cost scan loses its account or settings scope, preserving paused work and replacement workers (follow-up for #3411). Thanks @kesslerio!
-- Kilo: point authentication recovery messages and provider documentation to the supported `kilo auth login` command (#3408). Thanks @Chevalicious!
-- Claude: stop labeling restored quota history as CLI usage, while retaining the limited-detail warning, original percentages, and stale-data guidance.
-- Claude: offer Switch Account after a successful CLI quota read without identity fields, while preserving recovery actions for failed refreshes and restored history (partial fix for #3395). Thanks @PoroGramr!
-- Usage & Spend: prefer heatmap tooltips above hovered cells and keep them within narrow grids; retain daily keyboard selection without the extra system focus rectangle (#3407). Thanks @elijahfriedman!
 - Codex: show extra-credit spend and limits with a distinct purchased balance; reconcile cap and balance freshness independently so confirmed zero balances stay cleared and monthly bars agree with their totals (#3296). Thanks @sf-jin-ku!
+- Cost history: keep tall charts in a bounded scroll view so switching Token/Cost no longer jumps the native menu or undoes an immediate wheel scroll (#3380). Thanks @Yuxin-Qiao!
+- Agent sessions: explicitly force Tailscale CLI mode during remote-host discovery, preventing repeated app-binary crashes on newer Tailscale installations while preserving existing terminal settings (#3397). Thanks @tzioup!
+- Antigravity: match local token-history timestamps by per-turn IDs when auxiliary or reordered steps would otherwise assign usage to the wrong day, while withholding conflicting evidence and preserving legacy timestamp recovery (#3403). Thanks @WeGoToMars!
+- Claude: offer Switch Account after a successful CLI quota read without identity fields, while preserving recovery actions for failed refreshes and restored history (partial fix for #3395). Thanks @PoroGramr!
+- Claude: stop labeling restored quota history as CLI usage, while retaining the limited-detail warning, original percentages, and stale-data guidance (#3405).
 - z.ai: omit impossible five-hour Coding Plan reset timestamps and prevent cached resets from restoring them, retaining quota percentages and valid weekly/MCP dates (partial mitigation for #2871). Thanks @carolitascl!
+- Kilo: point authentication recovery messages and provider documentation to the supported `kilo auth login` command (#3408). Thanks @Chevalicious!
+- Usage & Spend: prefer heatmap tooltips above hovered cells and keep them within narrow grids; retain daily keyboard selection without the extra system focus rectangle (#3407). Thanks @elijahfriedman!
+- z.ai: abbreviate large model token totals with M/B while preserving exact hourly and daily chart values (#3308, #3310). Thanks @medpath1024 and @fantasy!
+- Settings: disable iCloud sync sub-options when the main sync switch is off, preserving their saved choices for the next time sync is enabled (#3406). Thanks @elijahfriedman!
+- Codex: report thermal pressure as the catch-up pause reason when serious heat and Low Power Mode coincide, preserving the existing pause and scan budget (#3242). Thanks @Yuxin-Qiao!
 
 ## 0.56.4 — 2026-09-03
 

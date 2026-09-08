@@ -9,6 +9,7 @@ read_when:
 # Configuration
 
 CodexBar reads a single JSON config file for CLI and app provider settings.
+The running app observes external in-place edits and atomic replacements, including rapid replacements and restoring older contents. Successful app writes update the observed baseline without being reported as external edits.
 API keys, manual cookie headers, source selection, ordering, and token accounts live here. Keychain is still used for runtime cookie caches, browser Safe Storage access, and provider OAuth/device-flow credentials where those flows require it.
 
 ## Location
@@ -46,7 +47,8 @@ API keys, manual cookie headers, source selection, ordering, and token accounts 
 
 Hooks are local, explicit opt-in automation. Configure them in Settings > Hooks or in this local config file; no
 HTTP or remote-config endpoint can create or enable hook rules. The top-level `hooks.enabled` switch defaults to
-`false`, and each rule also has its own `enabled` switch.
+`false`, and each rule also has its own `enabled` switch. The editor shows thresholds as percentages; example
+values and command paths appear only as prompts in empty fields.
 
 ```json
 {

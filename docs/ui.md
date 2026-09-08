@@ -15,10 +15,14 @@ read_when:
 ## Menu bar
 - LSUIElement app: no Dock icon; status item uses custom NSImage.
 - Merge Icons toggle combines providers into one status item with a switcher.
+- With the automatic metric selected, switcher progress honors a provider's exhausted-quota selection before
+  showing normal weekly progress. Healthy allowances, explicit metric choices, and separate provider pools
+  retain their existing selection rules.
 - Provider status items use stable autosave names and are reused across provider toggles so macOS can preserve icon
   positions.
 - When Overview has selected providers, the switcher includes an Overview tab that renders up to 6 provider rows.
 - Overview row order follows provider order; selecting a row jumps to that provider detail card.
+- Menu-card wrappers use standard non-vibrant view behavior so white GPU-tinted Overview content remains visible on macOS 15. Overview selection stays outside the SwiftUI graph, with native submenu click and drag tracking retained.
 - The global open-menu keyboard shortcut toggles the currently tracked menu closed before opening a new one.
 - Display → Menu Bar → Layout provides presets plus a token editor. Tokens can be clicked to append, dragged from the
   palette, reordered between one or two lines, dragged out, or removed with Delete. Layouts can be global or overridden
@@ -49,7 +53,10 @@ unavailable, including the first 3% of a window. The weekly menu-bar pace token 
 window has elapsed; session, automatic, and Runs out tokens keep the 3% threshold. See [Pace tracking](#pace-tracking).
 
 Balance is available only for OpenRouter and renders the same remaining-credit value shown in its menu card. Auto %
-uses the same provider-aware automatic-window resolution as the legacy menu bar metric setting. If a snapshot
+uses the same provider-aware automatic-window resolution as the legacy menu bar metric setting. For balance-only
+providers, Auto % shows the available money, points, or API spend instead of inventing a quota percentage. Both the
+status item and editor preview preserve real quota percentages when a usable limit exists. When a reset token
+falls back to that same balance, a visible Auto % token shows it once; reset-only layouts keep the balance fallback. If a snapshot
 does not provide a token's data, that token renders an en dash while its siblings remain visible. Existing installs
 derive their first layout from the prior style, display mode, metric, and reset settings; those legacy keys remain
 untouched for downgrade safety, while a saved token layout takes precedence.
@@ -64,8 +71,11 @@ model-generic token label while the rendered menu-bar prefix and accessibility l
 - Renderer/critter icons dim when last refresh failed and can render incident indicators; brand display mode uses provider branding plus title text.
 - Loading animation runs at a bounded frame rate and has a hard continuous-duration ceiling so provider hangs cannot keep
   the menu bar redrawing forever.
-- The token renderer composes provider branding and text through the same attributed-title path used for high-contrast
-  status items. Critter and bar styles keep their existing renderers.
+- Ordinary, fresh single-line text-only token layouts use cached template images so AppKit can reuse them across
+  status-item redraws while retaining native highlighting and display-scale handling. The existing bounded renderer
+  cache includes the content and appearance; memory-pressure cleanup clears it. Stale data, high-contrast mode,
+  provider icons, attachments, colored glyphs such as emoji, and multiline text keep their attributed-title rendering. Critter and bar styles
+  keep their existing renderers.
 
 ## Menu card
 - Provider-specific rows with resets (countdown by default; optional absolute clock display). Primary, secondary,

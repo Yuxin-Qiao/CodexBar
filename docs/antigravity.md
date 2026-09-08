@@ -255,11 +255,12 @@ shared OAuth file can still be used as a fallback credential source.
   Claude/GPT pair pinned at 0%. Menu cards and widgets hide a family once every lane in it reports known zero usage.
   A family with unknown usage stays visible, and every family remains visible when all are untouched, for example
   right after a weekly reset. Provider details is the diagnostic surface and always lists every family, the same
-  principle it already applies to cost data. The filter is display-only: the snapshot, CLI output, and menu-bar
+  principle it already applies to cost data. The filter is display-only: the snapshot, raw CLI JSON, and menu-bar
   ranking still see every window, and menu-bar selection ranks by highest used, so an untouched family never wins.
 - The dashboard-v1 payload keeps every family for its script clients and marks the lanes of an untouched family with
   `idle` instead. The `codexbar serve` web UI skips those rows, so the web card matches the menu without repeating
   the family rule in JavaScript. See `docs/dashboard-api.md`.
+- CLI text and `cards` render quota-summary buckets once, using the same idle-family visibility rule. Missing or disabled quota stays unavailable, including in brief cards, while reset context remains visible. Raw JSON retains every bucket.
 
 ## Local token history
 
@@ -296,13 +297,17 @@ Inspection uses `sqlite_master` and `table_xinfo`; SQLite builds without that pr
 Supported SQLite event time is `chatModel.#9.#4` containing protobuf seconds/nanos. When it is absent, the reader can
 recover the standard seconds/nanos timestamp from `steps.metadata.#1`, joining the generation's root step UUID (`#4`)
 to `steps.metadata.#12`. A unique generation usage `bot_id` (`chatModel.#4.#7`) first selects the matching
-`steps.metadata.#9.#7` within that UUID, so auxiliary or reordered steps do not shift a turn's date. Conflicting,
-cross-UUID, or timestamp-less duplicate step IDs cannot supply exact or positional evidence. Embedded timestamps
-in a UUID needing recovery must agree with available generation-unique exact matches; unrelated UUIDs retain their
-embedded timestamps. Missing or malformed auxiliary IDs retain the guarded legacy positional fallback, as do repeated
-generation IDs: ordered step timestamps must agree with embedded generation timestamps, and ambiguous positions are
-never removed or compressed. Malformed auxiliary IDs do not discard otherwise valid embedded usage or relax token-counter
-and protobuf framing validation. Session creation, file modification, and refresh time are never substitutes.
+`steps.metadata.#9.#7` within that UUID, so auxiliary or reordered steps do not shift a turn's date. A row with no
+`steps.metadata.#12` (field 12 absent, or blank per the reader's whitespace-only-is-absent rule) supplies no UUID position:
+it is skipped rather than invalidating the scan, since it belongs to no UUID's occurrence list and cannot supply or
+shift positional evidence. While any such row is present, a single step timestamp no longer stands in for every reused
+generation occurrence of its UUID; a UUID used by only one generation is unaffected. A bot ID on an unidentified row still makes that bot ambiguous for exact and positional recovery, even if another row supplies the same timestamp. Conflicting, cross-UUID, or
+timestamp-less duplicate step IDs cannot supply exact or positional evidence. Embedded timestamps in a UUID needing
+recovery must agree with available generation-unique exact matches; unrelated UUIDs retain their embedded timestamps.
+Missing or malformed auxiliary IDs retain the guarded legacy positional fallback, as do repeated generation IDs:
+ordered step timestamps must agree with embedded generation timestamps, and ambiguous positions are never removed or
+compressed. Malformed auxiliary IDs do not discard otherwise valid embedded usage or relax token-counter and protobuf
+framing validation. Session creation, file modification, and refresh time are never substitutes.
 The opaque agy 1.1.18 timestamp layout remains unsupported: the pinned parser
 explicitly labels its newer interpretation an inference. See [the session-start misattribution report](https://github.com/junhoyeo/tokscale/issues/1184).
 
