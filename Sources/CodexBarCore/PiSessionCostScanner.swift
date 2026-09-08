@@ -68,6 +68,7 @@ enum PiSessionCostScanner {
     private struct SessionRoot {
         let url: URL
         let missingIsKnownEmpty: Bool
+        let resolutionIsComplete: Bool
     }
 
     private struct AssistantIdentity {
@@ -161,22 +162,26 @@ enum PiSessionCostScanner {
         let nowMs = Int64(now.timeIntervalSince1970 * 1000)
         let refreshMs = Int64(max(0, options.refreshMinIntervalSeconds) * 1000)
         let pricingContext = self.pricingContext(now: now, cacheRoot: options.cacheRoot)
+        let roots = self.defaultSessionRoots(options: options)
+        let sessionRootsFingerprint = self.sessionRootsFingerprint(roots)
         let windowExpanded = self.requestedWindowExpandsCache(range: range, cache: cache)
         let pricingChanged = cache.pricingKey != pricingContext.pricingKey
+        let sessionRootsChanged = cache.sessionRootsFingerprint != sessionRootsFingerprint
         let shouldRefresh = options.forceRescan
             || windowExpanded
             || pricingChanged
+            || sessionRootsChanged
             || refreshMs == 0
             || cache.lastScanUnixMs == 0
             || nowMs - cache.lastScanUnixMs > refreshMs
-        var scanIsComplete = true
+        var scanIsComplete = roots.allSatisfy(\.resolutionIsComplete)
 
         if shouldRefresh {
             try checkCancellation?()
-            let roots = self.defaultSessionRoots(options: options)
             let startCutoff = self.dateFromDayKey(range.scanSinceKey, calendar: range.calendar) ?? since
             var files: [SessionFileCandidate] = []
             for (rootIndex, root) in roots.enumerated() {
+                guard root.resolutionIsComplete else { continue }
                 let result = self.listPiSessionFiles(
                     root: root.url,
                     startCutoffLocal: startCutoff,
@@ -238,6 +243,7 @@ enum PiSessionCostScanner {
                 cache.scanSinceKey = range.scanSinceKey
                 cache.scanUntilKey = range.scanUntilKey
                 cache.pricingKey = pricingContext.pricingKey
+                cache.sessionRootsFingerprint = sessionRootsFingerprint
                 cache.lastScanUnixMs = nowMs
                 try checkCancellation?()
                 PiSessionCostCacheIO.save(
@@ -380,7 +386,12 @@ enum PiSessionCostScanner {
         if options.piSessionsRoot != nil || options.ompSessionsRoot != nil {
             return [options.piSessionsRoot, options.ompSessionsRoot]
                 .compactMap(\.self)
-                .map { SessionRoot(url: $0, missingIsKnownEmpty: false) }
+                .map {
+                    SessionRoot(
+                        url: $0,
+                        missingIsKnownEmpty: false,
+                        resolutionIsComplete: true)
+                }
         }
 
         let resolved = PiFamilySessionScanner.costSessionRoots(
@@ -388,7 +399,10 @@ enum PiSessionCostScanner {
             baseDirectory: options.workingDirectory)
         if !resolved.isEmpty {
             return resolved.map { root in
-                SessionRoot(url: root.url, missingIsKnownEmpty: root.missingIsKnownEmpty)
+                SessionRoot(
+                    url: root.url,
+                    missingIsKnownEmpty: root.missingIsKnownEmpty,
+                    resolutionIsComplete: root.resolutionIsComplete)
             }
         }
 
@@ -400,8 +414,21 @@ enum PiSessionCostScanner {
                     .appendingPathComponent(directory, isDirectory: true)
                     .appendingPathComponent("agent", isDirectory: true)
                     .appendingPathComponent("sessions", isDirectory: true),
-                missingIsKnownEmpty: true)
+                missingIsKnownEmpty: true,
+                resolutionIsComplete: true)
         }
+    }
+
+    private static func sessionRootsFingerprint(_ roots: [SessionRoot]) -> String {
+        roots
+            .map { root in
+                [
+                    root.url.path,
+                    root.missingIsKnownEmpty ? "known-empty" : "required",
+                    root.resolutionIsComplete ? "resolved" : "unresolved",
+                ].joined(separator: "\u{1F}")
+            }
+            .joined(separator: "\u{1E}")
     }
 
     private struct SessionFileListResult {
@@ -670,8 +697,14 @@ enum PiSessionCostScanner {
                         return
                     }
                     autoreleasepool {
-                        guard let object = (try? JSONSerialization.jsonObject(with: line.bytes)) as? [String: Any]
-                        else { return }
+                        guard let objectValue = try? JSONSerialization.jsonObject(with: line.bytes),
+                              let object = objectValue as? [String: Any]
+                        else {
+                            // A terminated but malformed/non-object record means the file was not
+                            // fully interpreted; keep the prior cache snapshot and retry later.
+                            isComplete = false
+                            return
+                        }
                         guard let type = object["type"] as? String else { return }
 
                         if type == "session" {

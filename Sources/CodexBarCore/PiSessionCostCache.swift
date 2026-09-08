@@ -51,6 +51,7 @@ struct PiSessionCostCache: Codable {
     var scanUntilKey: String?
     var timeZoneIdentifier: String?
     var pricingKey: String?
+    var sessionRootsFingerprint: String?
     var daysByProvider: [String: [String: [String: PiPackedUsage]]] = [:]
     var files: [String: PiSessionFileUsage] = [:]
 

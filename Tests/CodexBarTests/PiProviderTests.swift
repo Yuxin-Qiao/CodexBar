@@ -259,6 +259,70 @@ struct PiProviderTests {
     }
 
     @Test
+    func `pi provider keeps cached usage when an explicit omp root cannot resolve`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2026, month: 4, day: 2)
+        let defaultPiRoot = env.root
+            .appendingPathComponent(".pi", isDirectory: true)
+            .appendingPathComponent("agent", isDirectory: true)
+            .appendingPathComponent("sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: defaultPiRoot, withIntermediateDirectories: true)
+        let entry: [String: Any] = [
+            "type": "message",
+            "timestamp": env.isoString(for: day),
+            "message": [
+                "role": "assistant",
+                "provider": "openai-codex",
+                "model": "gpt-5.4",
+                "timestamp": Int(day.timeIntervalSince1970 * 1000),
+                "usage": ["input": 20, "output": 5, "totalTokens": 25],
+            ],
+        ]
+        try env.jsonl([entry]).write(
+            to: defaultPiRoot.appendingPathComponent(
+                "2026-04-02T10-00-00-000Z_default.jsonl",
+                isDirectory: false),
+            atomically: true,
+            encoding: .utf8)
+
+        let baseEnvironment = ["HOME": env.root.path]
+        let initial = try PiSessionCostScanner.loadDailyReportResultCancellable(
+            provider: .codex,
+            since: day,
+            until: day,
+            now: day,
+            options: PiSessionCostScanner.Options(
+                cacheRoot: env.cacheRoot,
+                refreshMinIntervalSeconds: 3600,
+                environment: baseEnvironment,
+                workingDirectory: env.root),
+            checkCancellation: nil)
+        #expect(initial.isComplete)
+        #expect(initial.report.data.first?.totalTokens == 25)
+
+        for selection in [
+            ["HOME": env.root.path, "OMP_PROFILE": "bad/profile"],
+            ["HOME": env.root.path, "PI_CONFIG_DIR": "/outside"],
+        ] {
+            let refreshed = try PiSessionCostScanner.loadDailyReportResultCancellable(
+                provider: .codex,
+                since: day,
+                until: day,
+                now: day.addingTimeInterval(1),
+                options: PiSessionCostScanner.Options(
+                    cacheRoot: env.cacheRoot,
+                    refreshMinIntervalSeconds: 3600,
+                    environment: selection,
+                    workingDirectory: env.root),
+                checkCancellation: nil)
+            #expect(!refreshed.isComplete)
+            #expect(refreshed.report.data.first?.totalTokens == 25)
+        }
+    }
+
+    @Test
     func `pi provider marks a session read failure incomplete and keeps cached usage`() throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }

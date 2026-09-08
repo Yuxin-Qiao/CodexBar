@@ -508,6 +508,13 @@ struct PiFamilySessionScanner: Sendable {
     struct CostSessionRoot: Hashable, Sendable {
         let url: URL
         let missingIsKnownEmpty: Bool
+        let resolutionIsComplete: Bool
+
+        init(url: URL, missingIsKnownEmpty: Bool, resolutionIsComplete: Bool = true) {
+            self.url = url
+            self.missingIsKnownEmpty = missingIsKnownEmpty
+            self.resolutionIsComplete = resolutionIsComplete
+        }
     }
 
     static func scan(
@@ -687,19 +694,34 @@ struct PiFamilySessionScanner: Sendable {
                 dialect: dialect,
                 cwd: cwdURL.path,
                 environment: environment)
+            let hasExplicitSelection = Self.hasExplicitCostRootSelection(
+                dialect: dialect,
+                environment: environment)
+            if roots.isEmpty, hasExplicitSelection {
+                output.append(CostSessionRoot(
+                    url: Self.unresolvedCostSessionRoot(for: dialect),
+                    missingIsKnownEmpty: false,
+                    resolutionIsComplete: false))
+                continue
+            }
             for root in roots {
                 let canonical = Self.canonicalURL(root.url)
                 guard seen.insert(canonical.path).inserted else { continue }
                 let defaultRoot = Self.defaultCostSessionRoot(for: dialect, environment: environment)
-                let hasExplicitSelection = Self.hasExplicitCostRootSelection(
-                    dialect: dialect,
-                    environment: environment)
                 output.append(CostSessionRoot(
                     url: canonical,
-                    missingIsKnownEmpty: !hasExplicitSelection && defaultRoot.map { $0 == canonical } == true))
+                    missingIsKnownEmpty: !hasExplicitSelection && defaultRoot.map { $0 == canonical } == true,
+                    resolutionIsComplete: true))
             }
         }
         return output
+    }
+
+    private static func unresolvedCostSessionRoot(for dialect: AgentSession.Dialect) -> URL {
+        // Keep an unresolved selection visible to the cost scanner without ever enumerating a
+        // real directory. The completion flag is the source of truth; this path is only a stable
+        // cache-key component and a defensive placeholder.
+        URL(fileURLWithPath: "/.codexbar-unresolved-\(dialect.rawValue)", isDirectory: true)
     }
 
     private static func defaultCostSessionRoot(
