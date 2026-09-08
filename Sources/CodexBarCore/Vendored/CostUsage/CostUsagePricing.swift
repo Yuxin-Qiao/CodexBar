@@ -174,6 +174,19 @@ enum CostUsagePricing {
             outputCostPerToken: 1.8e-4,
             cacheReadInputCostPerToken: nil,
             displayLabel: nil),
+        // https://developers.openai.com/api/docs/models/gpt-6-astra and /api/docs/pricing.
+        // The full request switches to long-context rates above 272K input tokens, including Fast mode.
+        "gpt-6-astra": CodexPricing(
+            inputCostPerToken: 1e-5,
+            outputCostPerToken: 5e-5,
+            cacheReadInputCostPerToken: 1e-6,
+            displayLabel: nil,
+            cacheWriteInputCostPerToken: 1.25e-5,
+            thresholdTokens: 272_000,
+            inputCostPerTokenAboveThreshold: 2e-5,
+            outputCostPerTokenAboveThreshold: 7.5e-5,
+            cacheReadInputCostPerTokenAboveThreshold: 2e-6,
+            cacheWriteInputCostPerTokenAboveThreshold: 2.5e-5),
         // GPT-5.6 Sol/Terra/Luna (OpenAI pricing page + model cards).
         // Long context: prompts with >272K input tokens are 2x input / 1.5x output for the full
         // request. Cache writes: 1.25x uncached input. API Fast support and multipliers are applied
@@ -233,6 +246,7 @@ enum CostUsagePricing {
                 self.optionalPricingFingerprint(pricing.cacheReadInputCostPerTokenAboveThreshold),
                 self.optionalPricingFingerprint(pricing.cacheWriteInputCostPerTokenAboveThreshold),
                 self.optionalPricingFingerprint(self.codexAPIFastMultiplier(model: model)),
+                "fastLongContext=\(self.codexAPIFastAllowsLongContext(model: model))",
             ].joined(separator: "|"))
         }
         return parts.joined(separator: "\n")
@@ -576,9 +590,10 @@ enum CostUsagePricing {
         model: String,
         pricingDate: Date? = nil,
         modelsDevCatalog: ModelsDevCatalog?,
-        modelsDevCacheRoot: URL?) -> CodexPricing?
+        modelsDevCacheRoot: URL?,
+        pricingResolver: CodexResolver? = nil) -> CodexPricing?
     {
-        let key = self.normalizeCodexModel(model)
+        let key = pricingResolver?.normalize(model) ?? self.normalizeCodexModel(model)
         guard key != self.codexUnattributedModel else { return nil }
         // Use historical bundled rates when the usage predates a known pricing change and
         // no custom overlay or models.dev catalog entry overrides the lookup.
@@ -588,10 +603,11 @@ enum CostUsagePricing {
         {
             return historical
         }
-        let modelsDevLookup = self.codexModelsDevLookup(
-            model: model,
-            catalog: modelsDevCatalog,
-            cacheRoot: modelsDevCacheRoot)
+        let modelsDevLookup = if let pricingResolver {
+            pricingResolver.lookup(model)
+        } else {
+            self.codexModelsDevLookup(model: model, catalog: modelsDevCatalog, cacheRoot: modelsDevCacheRoot)
+        }
         if let lookup = modelsDevLookup {
             let bundled = lookup.pricing.providerID == self.codexModelsDevProviderID ? self.codex[key] : nil
             // A missing catalog context block means models.dev has no long-context opinion, so use
@@ -634,11 +650,14 @@ enum CostUsagePricing {
     /// Resolves the provider-qualified model IDs written by Codex-compatible clients without
     /// falling back to OpenAI pricing for an unrelated route. Unqualified model IDs retain the
     /// historical OpenAI behavior, including the gpt-5.6 alias lookup.
-    private static func codexModelsDevLookup(
+    static func codexModelsDevLookup(
         model rawModel: String,
         catalog: ModelsDevCatalog?,
         cacheRoot: URL?) -> ModelsDevPricingLookup?
     {
+        #if DEBUG
+        self.codexPricingWorkRecorder?.recordCatalogLookup()
+        #endif
         for target in self.codexModelsDevPricingTargets(for: rawModel) {
             if let lookup = self.modelsDevLookup(
                 providerID: target.providerID,
@@ -661,12 +680,14 @@ enum CostUsagePricing {
         pricingDate: Date? = nil,
         modelsDevCatalog: ModelsDevCatalog? = nil,
         modelsDevCacheRoot: URL? = nil,
-        customPricing: CostUsageCustomPricing? = nil) -> Double?
+        customPricing: CostUsageCustomPricing? = nil,
+        pricingResolver: CodexResolver? = nil) -> Double?
     {
         guard let multiplier = self.codexAPIFastMultiplier(model: model) else { return nil }
-        // OpenAI does not support API Fast processing for long-context requests. Do not combine
-        // the independent Standard long-context and Fast short-context rate tables.
-        if max(0, inputTokens) > self.codexPriorityInputTokenLimit {
+        // Keep older models' established cutoff; Astra explicitly publishes long-context Fast rates.
+        if max(0, inputTokens) > self.codexPriorityInputTokenLimit,
+           !self.codexAPIFastAllowsLongContext(model: model)
+        {
             return nil
         }
 
@@ -679,7 +700,8 @@ enum CostUsagePricing {
             pricingDate: pricingDate,
             modelsDevCatalog: modelsDevCatalog,
             modelsDevCacheRoot: modelsDevCacheRoot,
-            customPricing: customPricing)
+            customPricing: customPricing,
+            pricingResolver: pricingResolver)
             .map { $0 * multiplier }
     }
 
@@ -687,10 +709,14 @@ enum CostUsagePricing {
     /// distinct from ChatGPT/Codex Fast credit multipliers, which do not represent a USD charge.
     static func codexAPIFastMultiplier(model: String) -> Double? {
         switch self.normalizeCodexModel(model) {
-        case "gpt-5.4", "gpt-5.4-mini", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna": 2
+        case "gpt-5.4", "gpt-5.4-mini", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-6-astra": 2
         case "gpt-5.5": 2.5
         default: nil
         }
+    }
+
+    private static func codexAPIFastAllowsLongContext(model: String) -> Bool {
+        self.normalizeCodexModel(model) == "gpt-6-astra"
     }
 
     static func codexCostUSD(

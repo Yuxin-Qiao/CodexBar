@@ -11,7 +11,11 @@ struct CLICostClaudeDetailTests {
             sessionCostUSD: 0.1,
             last30DaysTokens: 10,
             last30DaysCostUSD: 0.1,
-            daily: [Self.entry(date: "2026-08-27", tokens: 10, cost: 0.1, model: "claude-sonnet-4")],
+            daily: [Self.entry(
+                date: "2026-08-27",
+                tokens: 10,
+                cost: 0.1,
+                model: "claude-sonnet-4")],
             updatedAt: Date(timeIntervalSince1970: 1_777_000_000))
 
         let output = CodexBarCLI.renderCostText(provider: .claude, snapshot: snapshot, useColor: false)
@@ -31,6 +35,7 @@ struct CLICostClaudeDetailTests {
             last30DaysTokens: 20,
             last30DaysCostUSD: 0.2,
             historyDays: 30,
+            historyLabel: "Custom full-history label",
             daily: [
                 Self.entry(date: "2026-08-21", tokens: 10, cost: 0.1, model: "claude-sonnet-4-20250514"),
                 Self.entry(date: "2026-08-27", tokens: 10, cost: 0.1, model: "claude-sonnet-4-20250514"),
@@ -48,6 +53,8 @@ struct CLICostClaudeDetailTests {
         #expect(output.contains("2026-08-21:"))
         #expect(output.contains("2026-08-27:"))
         #expect(!output.contains("last 2 days"))
+        #expect(output.contains("Top models (last 7 calendar days):"))
+        #expect(!output.contains("Top models (Custom"))
     }
 
     @Test
@@ -57,10 +64,18 @@ struct CLICostClaudeDetailTests {
             sessionCostUSD: 0.1,
             last30DaysTokens: 10,
             last30DaysCostUSD: 0.1,
-            daily: [Self.entry(date: "2026-08-27", tokens: 10, cost: 0.1, model: "gpt-5.4")],
+            daily: [Self.entry(
+                date: "2026-08-27",
+                tokens: 10,
+                cost: 0.1,
+                model: "gpt-5.4")],
             updatedAt: Date(timeIntervalSince1970: 1_777_000_000))
 
-        let output = CodexBarCLI.renderCostText(provider: .codex, snapshot: snapshot, useColor: false)
+        let output = CodexBarCLI.renderCostText(
+            provider: .codex,
+            snapshot: snapshot,
+            useColor: false,
+            includeBreakdown: true)
 
         #expect(!output.contains("Daily breakdown"))
         #expect(!output.contains("Top models"))
@@ -96,7 +111,7 @@ struct CLICostClaudeDetailTests {
             calendar: Self.utcCalendar,
             includeBreakdown: true)
 
-        #expect(output.contains("Top models (Last 30 days — partial):"))
+        #expect(output.contains("Top models (last 7 calendar days — partial):"))
         #expect(output.contains("Ranking is partial"))
     }
 
@@ -141,9 +156,9 @@ struct CLICostClaudeDetailTests {
             calendar: Self.utcCalendar,
             includeBreakdown: true)
 
-        #expect(partial.contains("Top models (Last 30 days — partial):"))
+        #expect(partial.contains("Top models (last 7 calendar days — partial):"))
         #expect(partial.contains("Ranking is partial"))
-        #expect(complete.contains("Top models (Last 30 days):"))
+        #expect(complete.contains("Top models (last 7 calendar days):"))
         #expect(!complete.contains("Ranking is partial"))
     }
 
@@ -175,7 +190,101 @@ struct CLICostClaudeDetailTests {
         #expect(output.contains("2020-01-03:"))
         #expect(!output.contains("2020-01-02:"))
         #expect(!output.contains("calendar day"))
-        #expect(output.contains("Top models ("))
+        #expect(output.contains("Top models (last 1 recorded day):"))
+    }
+
+    @Test
+    func `single day detail uses a singular shared period label`() throws {
+        let updatedAt = try #require(ISO8601DateFormatter().date(from: "2026-08-27T12:00:00Z"))
+        let snapshot = CostUsageTokenSnapshot(
+            sessionTokens: 10,
+            sessionCostUSD: 0.1,
+            last30DaysTokens: 10,
+            last30DaysCostUSD: 0.1,
+            historyDays: 1,
+            daily: [Self.entry(
+                date: "2026-08-27",
+                tokens: 10,
+                cost: 0.1,
+                model: "fixture-model")],
+            updatedAt: updatedAt)
+        let output = CodexBarCLI.renderCostText(
+            provider: .claude,
+            snapshot: snapshot,
+            useColor: false,
+            calendar: Self.utcCalendar,
+            includeBreakdown: true)
+        #expect(output.contains("Daily breakdown (last 1 calendar day):"))
+        #expect(output.contains("Top models (last 1 calendar day):"))
+    }
+
+    @Test
+    func `detail uses calendar days across daylight saving and excludes older models`() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try #require(TimeZone(identifier: "America/Los_Angeles"))
+        let updatedAt = try #require(ISO8601DateFormatter().date(from: "2026-03-08T10:30:00Z"))
+        let snapshot = CostUsageTokenSnapshot(
+            sessionTokens: 10,
+            sessionCostUSD: 0.1,
+            last30DaysTokens: 30,
+            last30DaysCostUSD: 0.3,
+            daily: [
+                Self.entry(date: "2026-03-01", tokens: 10, cost: 0.1, model: "fixture-old"),
+                Self.entry(date: "2026-03-02", tokens: 10, cost: 0.1, model: "fixture-recent"),
+                Self.entry(date: "2026-03-08", tokens: 10, cost: 0.1, model: "fixture-recent"),
+            ],
+            updatedAt: updatedAt)
+        let output = CodexBarCLI.renderCostText(
+            provider: .claude,
+            snapshot: snapshot,
+            useColor: false,
+            calendar: calendar,
+            includeBreakdown: true)
+        #expect(output.contains("Top models (last 7 calendar days):"))
+        #expect(output.contains("2026-03-02:"))
+        #expect(output.contains("2026-03-08:"))
+        #expect(!output.contains("2026-03-01:"))
+        #expect(!output.contains("fixture-old"))
+    }
+
+    @Test
+    func `merged priced subtotals retain unpriced coverage in detail`() throws {
+        let updatedAt = try #require(ISO8601DateFormatter().date(from: "2026-08-27T12:00:00Z"))
+        let priced = Self.entry(date: "2026-08-27", tokens: 10, cost: 0.1, model: "fixture-model")
+        let unpriced = CostUsageDailyReport.Entry(
+            date: "2026-08-27",
+            inputTokens: nil,
+            outputTokens: nil,
+            totalTokens: 5,
+            costUSD: nil,
+            modelsUsed: ["fixture-model"],
+            modelBreakdowns: [.init(
+                modelName: "fixture-model",
+                costUSD: nil,
+                totalTokens: 5)])
+        let report = CostUsageDailyReport.merged([
+            CostUsageDailyReport(data: [priced], summary: nil),
+            CostUsageDailyReport(data: [unpriced], summary: nil),
+        ])
+        let entry = try #require(report.data.first)
+        #expect(entry.unpricedRequestCount == 1)
+        #expect(entry.modelBreakdowns?.first?.costUSD == 0.1)
+        let snapshot = CostUsageTokenSnapshot(
+            sessionTokens: 15,
+            sessionCostUSD: 0.1,
+            last30DaysTokens: 15,
+            last30DaysCostUSD: 0.1,
+            daily: report.data,
+            updatedAt: updatedAt)
+        let output = CodexBarCLI.renderCostText(
+            provider: .claude,
+            snapshot: snapshot,
+            useColor: false,
+            calendar: Self.utcCalendar,
+            includeBreakdown: true)
+        #expect(output.contains("2026-08-27: —"))
+        #expect(output.contains("Top models (last 7 calendar days — partial):"))
+        #expect(output.contains("Ranking is partial"))
     }
 
     private static var utcCalendar: Calendar {

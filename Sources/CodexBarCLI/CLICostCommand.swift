@@ -232,20 +232,21 @@ extension CodexBarCLI {
         out.append(contentsOf: Self.claudeDailyLines(
             entries: selection.entries,
             snapshot: snapshot,
-            recorded: selection.recorded,
+            periodLabel: selection.periodLabel,
             useColor: useColor))
         out.append(contentsOf: Self.claudeTopModelsLines(
             entries: selection.entries,
             snapshot: snapshot,
+            periodLabel: selection.periodLabel,
             useColor: useColor))
         return out
     }
 
     private static func claudeRecentEntries(
         snapshot: CostUsageTokenSnapshot,
-        calendar: Calendar) -> (entries: [CostUsageDailyReport.Entry], recorded: Bool)
+        calendar: Calendar) -> (entries: [CostUsageDailyReport.Entry], periodLabel: String)
     {
-        guard !snapshot.daily.isEmpty else { return ([], false) }
+        guard !snapshot.daily.isEmpty else { return ([], "") }
         let today = calendar.startOfDay(for: snapshot.updatedAt)
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -260,30 +261,29 @@ extension CodexBarCLI {
         let recent = snapshot.daily.filter { recentDayKeys.contains($0.date) }
             .sorted { $0.date > $1.date }
         if !recent.isEmpty {
-            return (Array(recent.prefix(intervalDays)), false)
+            let label = "last \(intervalDays) calendar day\(intervalDays == 1 ? "" : "s")"
+            return (Array(recent.prefix(intervalDays)), label)
         }
         // Stale snapshot: fall back to the latest recorded days, capped at the
         // requested interval and labeled as recorded (never as calendar days).
         let recorded = snapshot.daily.sorted { $0.date > $1.date }.prefix(intervalDays)
-        return (Array(recorded), true)
+        let label = "last \(recorded.count) recorded day\(recorded.count == 1 ? "" : "s")"
+        return (Array(recorded), label)
     }
 
     private static func claudeDailyLines(
         entries: [CostUsageDailyReport.Entry],
         snapshot: CostUsageTokenSnapshot,
-        recorded: Bool,
+        periodLabel: String,
         useColor: Bool) -> [String]
     {
-        let intervalDays = min(7, max(1, snapshot.historyDays))
-        let title = recorded
-            ? "Daily breakdown (last \(entries.count) recorded day\(entries.count == 1 ? "" : "s")):"
-            : "Daily breakdown (last \(intervalDays) calendar day\(intervalDays == 1 ? "" : "s")):"
+        let title = "Daily breakdown (\(periodLabel)):"
         var out: [String] = ["", useColor ? "\u{001B}[1m\(title)\u{001B}[0m" : title]
         for entry in entries.reversed() {
             // A priced subtotal beside an unpriced model row is not the exact day cost.
-            let hasUnpricedUsage = entry.modelBreakdowns?.contains {
+            let hasUnpricedUsage = (entry.unpricedRequestCount ?? 0) > 0 || (entry.modelBreakdowns?.contains {
                 $0.costUSD == nil && ($0.totalTokens ?? 0) > 0
-            } ?? false
+            } ?? false)
             let cost = (hasUnpricedUsage ? nil : entry.costUSD)
                 .map { UsageFormatter.currencyString($0, currencyCode: snapshot.currencyCode) }
                 ?? "\u{2014}"
@@ -311,11 +311,13 @@ extension CodexBarCLI {
     private static func claudeTopModelsLines(
         entries: [CostUsageDailyReport.Entry],
         snapshot: CostUsageTokenSnapshot,
+        periodLabel: String,
         useColor: Bool) -> [String]
     {
         var hasUnattributedDay = false
         var modelAgg: [String: (cost: Double?, tokens: Int?, days: Set<String>)] = [:]
         for entry in entries {
+            if (entry.unpricedRequestCount ?? 0) > 0 { hasUnattributedDay = true }
             guard let breakdowns = entry.modelBreakdowns, !breakdowns.isEmpty else {
                 let hasUsage = (entry.costUSD ?? 0) != 0 || (entry.totalTokens ?? 0) > 0
                 if hasUsage { hasUnattributedDay = true }
@@ -356,10 +358,9 @@ extension CodexBarCLI {
             return lhs.key < rhs.key
         }
         var out = [""]
-        let baseLabel = snapshot.historyLabel ?? "Last \(snapshot.historyDays) days"
         let title = isPartial
-            ? "Top models (\(baseLabel) \u{2014} partial):"
-            : "Top models (\(baseLabel)):"
+            ? "Top models (\(periodLabel) \u{2014} partial):"
+            : "Top models (\(periodLabel)):"
         out.append(useColor ? "\u{001B}[1m\(title)\u{001B}[0m" : title)
         for (idx, item) in sorted.prefix(5).enumerated() {
             let costStr = item.value.cost
