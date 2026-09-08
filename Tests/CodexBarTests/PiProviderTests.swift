@@ -4,6 +4,91 @@ import Testing
 
 struct PiProviderTests {
     @Test
+    func `pi provider honors the configured session directory`() async throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2026, month: 4, day: 5)
+        let configuredRoot = env.root.appendingPathComponent("configured-pi-sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: configuredRoot, withIntermediateDirectories: true)
+        let entry: [String: Any] = [
+            "type": "message",
+            "timestamp": env.isoString(for: day),
+            "message": [
+                "role": "assistant",
+                "provider": "openai-codex",
+                "model": "openai/gpt-5.4",
+                "timestamp": Int(day.timeIntervalSince1970 * 1000),
+                "usage": ["input": 7, "output": 5, "totalTokens": 12],
+            ],
+        ]
+        let fileURL = configuredRoot.appendingPathComponent(
+            "2026-04-05T10-00-00-000Z_configured.jsonl",
+            isDirectory: false)
+        try env.jsonl([entry]).write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let snapshot = try await CostUsageFetcher.loadTokenSnapshot(
+            provider: .pi,
+            environment: [
+                "HOME": env.root.path,
+                "PI_CODING_AGENT_SESSION_DIR": configuredRoot.path,
+            ],
+            now: day,
+            forceRefresh: true,
+            historyDays: 1,
+            allowPricingRefresh: false,
+            scannerOptions: CostUsageScanner.Options(cacheRoot: env.cacheRoot))
+
+        #expect(snapshot.sessionTokens == 12)
+        #expect(snapshot.historyCoverageIsEstablished)
+    }
+
+    @Test
+    func `pi provider honors the selected omp profile root`() async throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2026, month: 4, day: 6)
+        let configuredRoot = env.root
+            .appendingPathComponent(".omp", isDirectory: true)
+            .appendingPathComponent("profiles", isDirectory: true)
+            .appendingPathComponent("work", isDirectory: true)
+            .appendingPathComponent("agent", isDirectory: true)
+            .appendingPathComponent("sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: configuredRoot, withIntermediateDirectories: true)
+        let entry: [String: Any] = [
+            "type": "message",
+            "timestamp": env.isoString(for: day),
+            "message": [
+                "role": "assistant",
+                "provider": "anthropic",
+                "model": "claude-sonnet-4-6",
+                "timestamp": Int(day.timeIntervalSince1970 * 1000),
+                "usage": ["input": 8, "output": 4, "totalTokens": 12],
+            ],
+        ]
+        let fileURL = configuredRoot.appendingPathComponent(
+            "2026-04-06T10-00-00-000Z_omp.jsonl",
+            isDirectory: false)
+        try env.jsonl([entry]).write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let snapshot = try await CostUsageFetcher.loadTokenSnapshot(
+            provider: .pi,
+            environment: [
+                "HOME": env.root.path,
+                "OMP_PROFILE": "work",
+            ],
+            now: day,
+            forceRefresh: true,
+            historyDays: 1,
+            allowPricingRefresh: false,
+            scannerOptions: CostUsageScanner.Options(cacheRoot: env.cacheRoot))
+
+        #expect(snapshot.sessionTokens == 12)
+        #expect(snapshot.historyCoverageIsEstablished)
+    }
+
+    @Test
     func `pi provider exposes an independent aggregate token snapshot`() async throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }

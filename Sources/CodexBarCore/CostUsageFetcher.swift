@@ -482,6 +482,9 @@ public struct CostUsageFetcher: Sendable {
             if piOptionsOnly.cacheRoot == nil {
                 piOptionsOnly.cacheRoot = overrideScannerOptions?.cacheRoot
             }
+            if piOptionsOnly.piSessionsRoot == nil, piOptionsOnly.ompSessionsRoot == nil {
+                piOptionsOnly.environment = environment
+            }
             if overrideScannerOptions != nil {
                 piOptionsOnly.calendar = Self.resolvedScannerOptions(
                     overrideScannerOptions,
@@ -589,6 +592,9 @@ public struct CostUsageFetcher: Sendable {
         var resolvedPiOptions = overridePiScannerOptions ?? PiSessionCostScanner.Options()
         if resolvedPiOptions.cacheRoot == nil {
             resolvedPiOptions.cacheRoot = options.cacheRoot
+        }
+        if resolvedPiOptions.piSessionsRoot == nil, resolvedPiOptions.ompSessionsRoot == nil {
+            resolvedPiOptions.environment = environment
         }
         resolvedPiOptions.calendar = options.calendar
         if forceRefresh || bypassScannerDebounce {
@@ -1716,6 +1722,7 @@ extension CostUsageFetcher {
         for (path, usage) in scopedFiles.sorted(by: { $0.key < $1.key }) {
             progressHasher.combine(path)
             progressHasher.combine(usage.codexScanFileId)
+            progressHasher.combine(usage.codexScanTargetSize)
             progressHasher.combine(usage.codexScanComplete)
             if usage.codexScanComplete == false {
                 progressHasher.combine(usage.parsedBytes)

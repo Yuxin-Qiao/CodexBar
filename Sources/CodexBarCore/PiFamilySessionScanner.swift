@@ -505,6 +505,11 @@ struct PiFamilySessionScanner: Sendable {
         let layout: RootLayout
     }
 
+    struct CostSessionRoot: Hashable, Sendable {
+        let url: URL
+        let missingIsKnownEmpty: Bool
+    }
+
     static func scan(
         input: ScanInput,
         directoryBudget: inout DirectoryMetadataScanBudget) -> [AgentSession]
@@ -657,6 +662,82 @@ struct PiFamilySessionScanner: Sendable {
                 layout: .projectDirectories)]
         case .omp:
             return Self.ompSessionRoots(process: process, cwd: cwd, environment: environment)
+        }
+    }
+
+    /// Resolves the same Pi-family roots used by live-session discovery for historical cost scans.
+    /// Keeping this in one resolver prevents the menu and cost surfaces from silently reading different stores.
+    static func costSessionRoots(
+        environment: [String: String],
+        baseDirectory: URL? = nil) -> [CostSessionRoot]
+    {
+        let cwdURL = baseDirectory ?? URL(
+            fileURLWithPath: FileManager.default.currentDirectoryPath,
+            isDirectory: true)
+        let process = AgentProcessRecord(pid: 0, ppid: 0, startedAt: nil, command: "")
+        // Provider-specific by design: historical cost scans must resolve both Pi dialects through the shared root
+        // resolver.
+        let dialects: [AgentSession.Dialect] = [.pi, .omp]
+        var output: [CostSessionRoot] = []
+        var seen = Set<String>()
+
+        for dialect in dialects {
+            let roots = Self.sessionRoots(
+                for: process,
+                dialect: dialect,
+                cwd: cwdURL.path,
+                environment: environment)
+            for root in roots {
+                let canonical = Self.canonicalURL(root.url)
+                guard seen.insert(canonical.path).inserted else { continue }
+                let defaultRoot = Self.defaultCostSessionRoot(for: dialect, environment: environment)
+                let hasExplicitSelection = Self.hasExplicitCostRootSelection(
+                    dialect: dialect,
+                    environment: environment)
+                output.append(CostSessionRoot(
+                    url: canonical,
+                    missingIsKnownEmpty: !hasExplicitSelection && defaultRoot.map { $0 == canonical } == true))
+            }
+        }
+        return output
+    }
+
+    private static func defaultCostSessionRoot(
+        for dialect: AgentSession.Dialect,
+        environment: [String: String]) -> URL?
+    {
+        guard let home = homeURL(environment) else { return nil }
+        // Provider-specific by design: Pi and OMP keep their default histories under distinct home directories.
+        let directory = dialect == .pi ? ".pi" : ".omp"
+        return Self.canonicalURL(
+            home
+                .appendingPathComponent(directory, isDirectory: true)
+                .appendingPathComponent("agent", isDirectory: true)
+                .appendingPathComponent("sessions", isDirectory: true))
+    }
+
+    private static func hasExplicitCostRootSelection(
+        dialect: AgentSession.Dialect,
+        environment: [String: String]) -> Bool
+    {
+        // Provider-specific by design: these environment keys select Pi-family history roots rather than generic
+        // policy.
+        let keys: [String] = switch dialect {
+        case .pi:
+            ["PI_CODING_AGENT_SESSION_DIR", "PI_CODING_AGENT_DIR"]
+        case .omp:
+            [
+                "PI_CODING_AGENT_SESSION_DIR",
+                "PI_CONFIG_DIR",
+                "PI_CODING_AGENT_DIR",
+                "OMP_PROFILE",
+                "PI_PROFILE",
+                "XDG_DATA_HOME",
+            ]
+        }
+        return keys.contains { key in
+            guard let value = environment[key] else { return false }
+            return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
     }
 

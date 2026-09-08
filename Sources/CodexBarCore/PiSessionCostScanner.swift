@@ -26,6 +26,8 @@ enum PiSessionCostScanner {
         var calendar: Calendar
         var refreshMinIntervalSeconds: TimeInterval = 60
         var forceRescan: Bool = false
+        var environment: [String: String]
+        var workingDirectory: URL?
 
         init(
             piSessionsRoot: URL? = nil,
@@ -33,7 +35,9 @@ enum PiSessionCostScanner {
             cacheRoot: URL? = nil,
             calendar: Calendar = .current,
             refreshMinIntervalSeconds: TimeInterval = 60,
-            forceRescan: Bool = false)
+            forceRescan: Bool = false,
+            environment: [String: String] = ProcessInfo.processInfo.environment,
+            workingDirectory: URL? = nil)
         {
             self.piSessionsRoot = piSessionsRoot
             self.ompSessionsRoot = ompSessionsRoot
@@ -41,6 +45,8 @@ enum PiSessionCostScanner {
             self.calendar = calendar
             self.refreshMinIntervalSeconds = refreshMinIntervalSeconds
             self.forceRescan = forceRescan
+            self.environment = environment
+            self.workingDirectory = workingDirectory
         }
     }
 
@@ -86,7 +92,6 @@ enum PiSessionCostScanner {
     /// Bump for Pi-only cost formula changes not represented by the parser or pricing fingerprints.
     private static let costFormulaVersion = 2
     private static let maxLineBytes = 16 * 1024 * 1024
-    private static let maxSafeRoundedInt = Double(Int.max) - 1
     private static let sessionStartFilenameRegex = try? NSRegularExpression(
         pattern: "^(\\d{4}-\\d{2}-\\d{2})T(\\d{2})-(\\d{2})-(\\d{2})-(\\d{3})Z_")
     private static let isoFormatterBox = PiSessionISO8601FormatterBox()
@@ -376,6 +381,15 @@ enum PiSessionCostScanner {
             return [options.piSessionsRoot, options.ompSessionsRoot]
                 .compactMap(\.self)
                 .map { SessionRoot(url: $0, missingIsKnownEmpty: false) }
+        }
+
+        let resolved = PiFamilySessionScanner.costSessionRoots(
+            environment: options.environment,
+            baseDirectory: options.workingDirectory)
+        if !resolved.isEmpty {
+            return resolved.map { root in
+                SessionRoot(url: root.url, missingIsKnownEmpty: root.missingIsKnownEmpty)
+            }
         }
 
         let home = FileManager.default.homeDirectoryForCurrentUser
@@ -1005,20 +1019,9 @@ enum PiSessionCostScanner {
     }
 
     private static func readNonNegativeInt(_ value: Any?) -> Int {
-        if let number = value as? NSNumber {
-            let numeric = number.doubleValue
-            guard numeric.isFinite, numeric >= 0, numeric <= self.maxSafeRoundedInt else { return 0 }
-            return Int(numeric.rounded())
-        }
-        if let string = value as? String,
-           let numeric = Double(string),
-           numeric.isFinite,
-           numeric >= 0,
-           numeric <= self.maxSafeRoundedInt
-        {
-            return Int(numeric.rounded())
-        }
-        return 0
+        let numeric = (value as? NSNumber)?.doubleValue ?? (value as? String).flatMap { Double($0) }
+        guard let numeric, numeric >= 0 else { return 0 }
+        return Int(exactly: numeric.rounded()) ?? 0
     }
 }
 

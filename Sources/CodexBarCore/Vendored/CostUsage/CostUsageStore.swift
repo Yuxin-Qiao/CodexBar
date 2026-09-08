@@ -80,6 +80,13 @@ actor CostUsageStore {
         parserHash: CodexParserHash.value)
     static let cacheGeneration = "sqlite:\(CostUsageStore.schemaVersion)"
     static let compatiblePredecessorParserHashes: Set<String> = [
+        "9ca89383b9957b07", // Warm refresh cursor retention preserves native rows, checkpoints, and reports.
+        "9547dc9d7b7675f6", // Report lookup memos preserve native usage rows and checkpoints.
+        "ba2eca901de4c53d", // Shared report accumulation preserves native usage rows and checkpoints.
+        "2590d36e1cc4a2ea", // Lazy token history reads preserve persisted rows and scan checkpoints.
+        "edd0a6ad56c0e4e7", // Astra pricing changes report costs without changing native rows or scan checkpoints.
+        "f043ae98075c8e4d", // Retained scan-range scheduling preserves native rows, checkpoints, and reports.
+        "e3fca1e6d81137d6", // Empty-fragment retention preserves native rows, checkpoints, and retained reports.
         "e0b0319de43e22d7", // LF-span scanning preserves exact bytes, persisted checkpoints, rows, and reports.
         "7e293e8fc9e25700", // Optional priority validation metadata preserves native usage rows.
         "494eee446bb2e5f9", // Removing unused Claude parser days leaves native Codex semantics unchanged.
@@ -120,6 +127,8 @@ actor CostUsageStore {
 
     /// Test-only traversal proof for persisted Codex catch-up reconciliation. Never set in production.
     nonisolated(unsafe) static var codexCatchUpReconciliationVisitForTesting: (() -> Void)?
+    /// Test-only read failures scoped by database and path. Never set in production.
+    nonisolated(unsafe) static var codexTokenSnapshotReadFailureForTesting: ((URL, String) -> Bool)?
 
     /// Process-wide serialization keeps every writable store connection on the same queue.
     /// This matches the scan pipeline's single-writer contract without multiplying executor
@@ -203,6 +212,45 @@ extension CostUsageStore {
         }
     }
 
+    nonisolated func syncLoadCodexTokenSnapshotsIfAvailable(
+        paths: Set<String>,
+        receipt: CodexBaselineReceipt) -> [String: [CostUsageStoreTokenSnapshot]]?
+    {
+        self.syncWithStoreIsolation { store in
+            guard let stamp = store.codexBaselineStamp(for: receipt),
+                  store.currentDatabaseStamp() == stamp,
+                  let database = store.connection?.handle
+            else { return nil }
+            do {
+                // Reuse the loaded connection: reopening could rebuild a concurrent replacement.
+                let snapshots = try Self.inReadTransaction(database) {
+                    var snapshots: [String: [CostUsageStoreTokenSnapshot]] = [:]
+                    for path in paths.sorted() {
+                        if Self.codexTokenSnapshotReadFailureForTesting?(store.databaseURL, path) == true {
+                            throw StoreError.sqlite(SQLITE_IOERR)
+                        }
+                        snapshots[path] = try Self.readTokenSnapshots(
+                            database, path: path, recorder: store.scopedReadWorkRecorderForTesting)
+                        #if DEBUG
+                        if let checkpoint = Self.codexTokenHydrationCheckpointForTesting,
+                           checkpoint.databaseURL == store.databaseURL
+                        {
+                            try checkpoint.checkpoint()
+                        }
+                        #endif
+                    }
+                    return snapshots
+                }
+                // A read transaction pins data_version; validate again only after COMMIT.
+                guard store.currentDatabaseStamp() == stamp else { return nil }
+                return snapshots
+            } catch {
+                store.recoverConnectionAfterFailure()
+                return nil
+            }
+        }
+    }
+
     nonisolated func syncLoadCodexReadView(
         calendar: Calendar,
         purpose: CostUsageStoreReadPurpose) -> CostUsageStoreReadView
@@ -219,6 +267,7 @@ extension CostUsageStore {
         reportWindow: (sinceKey: String, untilKey: String)? = nil,
         rowBudget: Int = CostUsageStore.defaultRowBudget,
         fileBudgetBytes: Int64 = CostUsageStore.defaultFileBudgetBytes,
+        unloadedTokenSnapshotPaths: Set<String> = [],
         skipIdenticalContent: Bool = false,
         receipt: CodexBaselineReceipt? = nil) -> CostUsageStoreBudgetResult
     {
@@ -230,6 +279,7 @@ extension CostUsageStore {
                 reportWindow: reportWindow,
                 rowBudget: rowBudget,
                 fileBudgetBytes: fileBudgetBytes,
+                unloadedTokenSnapshotPaths: unloadedTokenSnapshotPaths,
                 skipIdenticalContent: skipIdenticalContent,
                 receipt: receipt)
         }
