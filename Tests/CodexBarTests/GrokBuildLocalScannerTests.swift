@@ -98,6 +98,22 @@ struct GrokBuildLocalScannerTests {
     }
 
     @Test
+    func `accepts fractional ISO 8601 usage timestamps`() throws {
+        let fixture = try self.makeFixture("fractional-iso-timestamp")
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        try self.writeUpdates([
+            self.usageLine(
+                input: 100,
+                output: 50,
+                timestamp: "2023-11-14T22:13:20.123Z"),
+        ], to: fixture.session)
+
+        let summary = self.scan(fixture.root)
+        #expect(summary.totalTokens == 150)
+        #expect(summary.historyCoverageIsEstablished)
+    }
+
+    @Test
     func `rejects malformed usage completeness flags`() throws {
         let fixture = try self.makeFixture("usage-incomplete-invalid")
         defer { try? FileManager.default.removeItem(at: fixture.root) }

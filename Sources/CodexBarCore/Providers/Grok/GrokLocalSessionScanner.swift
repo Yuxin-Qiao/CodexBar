@@ -678,6 +678,11 @@ public enum GrokLocalSessionScanner {
             return Date(timeIntervalSince1970: numeric < 10_000_000_000 ? numeric : numeric / 1000)
         }
         guard let string = value as? String else { return nil }
-        return ISO8601DateFormatter().date(from: string)
+        let formatter = ISO8601DateFormatter()
+        if let date = formatter.date(from: string) {
+            return date
+        }
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: string)
     }
 }
