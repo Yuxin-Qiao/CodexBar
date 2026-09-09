@@ -89,6 +89,39 @@ struct PiProviderTests {
     }
 
     @Test
+    func `pi profile selection does not discover unrelated omp profiles`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let selectedRoot = env.root
+            .appendingPathComponent(".omp", isDirectory: true)
+            .appendingPathComponent("profiles", isDirectory: true)
+            .appendingPathComponent("work", isDirectory: true)
+            .appendingPathComponent("agent", isDirectory: true)
+            .appendingPathComponent("sessions", isDirectory: true)
+        let unrelatedRoot = env.root
+            .appendingPathComponent(".omp", isDirectory: true)
+            .appendingPathComponent("profiles", isDirectory: true)
+            .appendingPathComponent("personal", isDirectory: true)
+            .appendingPathComponent("agent", isDirectory: true)
+            .appendingPathComponent("sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: selectedRoot, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: unrelatedRoot, withIntermediateDirectories: true)
+
+        let roots = PiFamilySessionScanner.costSessionRoots(
+            environment: [
+                "HOME": env.root.path,
+                "PI_PROFILE": "work",
+            ],
+            baseDirectory: env.root)
+        let selectedURL = selectedRoot.standardizedFileURL
+        let unrelatedURL = unrelatedRoot.standardizedFileURL
+
+        #expect(roots.contains { $0.url == selectedURL })
+        #expect(!roots.contains { $0.url == unrelatedURL })
+    }
+
+    @Test
     func `xdg data home fallback keeps default omp root known empty`() throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }

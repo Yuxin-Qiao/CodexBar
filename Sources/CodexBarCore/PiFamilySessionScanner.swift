@@ -787,7 +787,9 @@ struct PiFamilySessionScanner: Sendable {
             environment: safeEnvironment,
             baseDirectory: baseDirectory)
 
-        if safeEnvironment["OMP_PROFILE"] == nil {
+        if safeEnvironment["OMP_PROFILE"] == nil,
+           safeEnvironment["PI_PROFILE"] == nil
+        {
             let profileParents = [
                 home
                     .appendingPathComponent(".omp", isDirectory: true)
