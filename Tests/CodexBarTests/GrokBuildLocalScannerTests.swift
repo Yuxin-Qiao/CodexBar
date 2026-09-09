@@ -320,6 +320,30 @@ struct GrokBuildLocalScannerTests {
     }
 
     @Test
+    func `keeps empty modern updates complete without a legacy rollup`() throws {
+        let variants: [(String, String?, Bool)] = [
+            ("missing-signals", nil, true),
+            ("metadata-only-signals", #"{"primaryModelId":"grok-build"}"#, true),
+            ("malformed-signals", "not-json", false),
+        ]
+        for (name, signals, expectedComplete) in variants {
+            let fixture = try self.makeFixture("empty-modern-\(name)")
+            defer { try? FileManager.default.removeItem(at: fixture.root) }
+            try self.writeUpdates([#"{"params":{"update":{"status":"ready"}}}"#], to: fixture.session)
+            if let signals {
+                try signals.write(
+                    to: fixture.session.appendingPathComponent("signals.json"),
+                    atomically: true,
+                    encoding: .utf8)
+            }
+
+            let summary = self.scan(fixture.root)
+            #expect(summary.totalTokens == 0)
+            #expect(summary.historyCoverageIsEstablished == expectedComplete)
+        }
+    }
+
+    @Test
     func `filters legacy signals by producer timestamp`() throws {
         let fixture = try self.makeFixture("signals-window")
         defer { try? FileManager.default.removeItem(at: fixture.root) }

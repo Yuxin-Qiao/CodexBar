@@ -221,6 +221,36 @@ struct GrokAuthTests {
     }
 
     @Test
+    func `local summary is loaded only for billing success or terminal team fallback`() throws {
+        let teamJSON = #"{"https://auth.x.ai::client":{"key":"team-token","principal_type":"Team"}}"#
+        let teamCredentials = try GrokCredentialsStore.parse(data: Data(teamJSON.utf8))
+        let personalCredentials = GrokCredentials.pasted(accessToken: "personal-token")
+        let methodNotFound = GrokRPCError.requestFailed("Method not found")
+        let billing = try JSONDecoder().decode(GrokBillingResponse.self, from: Data(#"{}"#.utf8))
+
+        #expect(GrokStatusProbe.shouldLoadLocalSummary(
+            billing: billing,
+            credentials: nil,
+            billingAttempted: true,
+            error: nil))
+        #expect(GrokStatusProbe.shouldLoadLocalSummary(
+            billing: nil,
+            credentials: teamCredentials,
+            billingAttempted: true,
+            error: methodNotFound))
+        #expect(!GrokStatusProbe.shouldLoadLocalSummary(
+            billing: nil,
+            credentials: personalCredentials,
+            billingAttempted: true,
+            error: methodNotFound))
+        #expect(!GrokStatusProbe.shouldLoadLocalSummary(
+            billing: nil,
+            credentials: teamCredentials,
+            billingAttempted: false,
+            error: methodNotFound))
+    }
+
+    @Test
     func `principal type matching is case and whitespace insensitive`() throws {
         let json = #"{"https://auth.x.ai::client":{"key":"token","principal_type":" team "}}"#
         let credentials = try GrokCredentialsStore.parse(data: Data(json.utf8))

@@ -122,6 +122,7 @@ private struct GrokUpdatesResult {
 private struct GrokSignalsSnapshot {
     let row: GrokUsageRow?
     let models: Set<String>
+    let isComplete: Bool
 }
 
 private struct GrokDirectoryScan {
@@ -414,18 +415,25 @@ public enum GrokLocalSessionScanner {
             directoryScans.append(GrokDirectoryScan(directory: directory, updates: updates, signals: nil))
         }
 
-        // Legacy sessions are intentionally always incomplete. Their signals
-        // values are a lifetime context/compaction approximation, not a daily
-        // consumption ledger.
+        // A directory with no structured usage may be a legacy session, but a
+        // readable modern updates file can also be empty before its first turn.
+        // Only an actual legacy rollup or a signals read/parse failure should
+        // downgrade coverage. Legacy values remain a lifetime context/compaction
+        // approximation, not a daily consumption ledger.
         for index in directoryScans.indices where !directoryScans[index].updates.sawUsage {
             try options.checkCancellation()
+            let updatesURL = directoryScans[index].directory.appendingPathComponent("updates.jsonl")
+            let hasReadableUpdates = fileManager.fileExists(atPath: updatesURL.path)
+                && self.isRegularFile(at: updatesURL)
             let signals = self.readSignals(
                 at: directoryScans[index].directory.appendingPathComponent("signals.json"),
                 fileManager: fileManager,
                 budget: options.readBudget,
                 reader: reader)
             directoryScans[index].signals = signals
-            accumulator.isComplete = false
+            if !hasReadableUpdates || !signals.isComplete || signals.row != nil {
+                accumulator.isComplete = false
+            }
             if let row = signals.row, row.date >= options.cutoff, row.date <= options.now {
                 accumulator.record(row)
             }
@@ -561,7 +569,8 @@ public enum GrokLocalSessionScanner {
                   reader: reader),
               let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         else {
-            return GrokSignalsSnapshot(row: nil, models: [])
+            let exists = fileManager.fileExists(atPath: url.path)
+            return GrokSignalsSnapshot(row: nil, models: [], isComplete: !exists)
         }
 
         var models = Set<String>()
@@ -571,20 +580,26 @@ public enum GrokLocalSessionScanner {
         if let values = json["modelsUsed"] as? [String] {
             models.formUnion(values.compactMap { self.nonEmptyString($0) })
         }
+        let hasTokenFields = json["totalTokensBeforeCompaction"] != nil
+            || json["contextTokensUsed"] != nil
+            || json["totalTokens"] != nil
         guard let beforeCompaction = self.optionalInteger(json["totalTokensBeforeCompaction"]),
               let contextUsed = self.optionalInteger(json["contextTokensUsed"] ?? json["totalTokens"])
         else {
-            return GrokSignalsSnapshot(row: nil, models: models)
+            return GrokSignalsSnapshot(row: nil, models: models, isComplete: !hasTokenFields)
         }
         let (totalTokens, overflow) = beforeCompaction.addingReportingOverflow(contextUsed)
-        guard !overflow, totalTokens > 0 else {
-            return GrokSignalsSnapshot(row: nil, models: models)
+        guard !overflow else {
+            return GrokSignalsSnapshot(row: nil, models: models, isComplete: false)
+        }
+        guard totalTokens > 0 else {
+            return GrokSignalsSnapshot(row: nil, models: models, isComplete: true)
         }
 
         let modifiedAt = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
         let date = self.parseDate(json["timestamp"] ?? json["ts"]) ?? modifiedAt
         let row = date.map { GrokUsageRow(date: $0, totalTokens: totalTokens, models: models) }
-        return GrokSignalsSnapshot(row: row, models: models)
+        return GrokSignalsSnapshot(row: row, models: models, isComplete: row != nil)
     }
 
     private static func validatedUsageTotal(_ usage: [String: Any]) -> Int? {

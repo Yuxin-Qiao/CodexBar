@@ -129,17 +129,27 @@ public struct GrokStatusProbe: Sendable {
             rpcError = error
         }
 
-        // Local fallback summary always succeeds (empty if no sessions yet).
-        let localSummary = try await GrokLocalSessionScanner.summarizeOffMainThread(
-            env: env,
-            lookbackDays: lookbackDays,
-            calendar: calendar)
         let cliVersion = Self.detectVersion(env: env)
 
         // `localSummary` is *not* currently projected into a visible RateWindow or
         // identity field, so a stale `~/.grok/sessions/` directory must not
         // suppress the auth-required hint. CLI-only fetches need a billing
-        // response; the provider pipeline owns the separate web fallback.
+        // response; the provider pipeline owns the separate web fallback. Defer
+        // the local scan until billing succeeds or the team identity-only path
+        // is known to be the terminal result, avoiding duplicate scans when the
+        // CLI strategy falls through to OAuth/web.
+        guard Self.shouldLoadLocalSummary(
+            billing: billing,
+            credentials: credentials,
+            billingAttempted: billingAttempted,
+            error: rpcError)
+        else {
+            throw rpcError ?? GrokRPCError.notAuthenticated
+        }
+        let localSummary = try await GrokLocalSessionScanner.summarizeOffMainThread(
+            env: env,
+            lookbackDays: lookbackDays,
+            calendar: calendar)
         if billing == nil,
            let credentials,
            Self.shouldUseIdentityOnlyFallback(
@@ -244,6 +254,18 @@ public struct GrokStatusProbe: Sendable {
             return false
         }
         return Self.isBillingMethodUnavailable(error)
+    }
+
+    static func shouldLoadLocalSummary(
+        billing: GrokBillingResponse?,
+        credentials: GrokCredentials?,
+        billingAttempted: Bool,
+        error: Error?) -> Bool
+    {
+        billing != nil || self.shouldUseIdentityOnlyFallback(
+            credentials: credentials,
+            billingAttempted: billingAttempted,
+            error: error)
     }
 
     static func credentialsForSnapshot(
