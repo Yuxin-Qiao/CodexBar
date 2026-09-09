@@ -112,6 +112,36 @@ struct PiProviderTests {
     }
 
     @Test
+    func `empty auto discovered omp profiles do not make cost roots incomplete`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let emptyProfile = env.root
+            .appendingPathComponent(".omp", isDirectory: true)
+            .appendingPathComponent("profiles", isDirectory: true)
+            .appendingPathComponent("empty", isDirectory: true)
+        try FileManager.default.createDirectory(at: emptyProfile, withIntermediateDirectories: true)
+
+        let roots = PiFamilySessionScanner.costSessionRoots(
+            environment: ["HOME": env.root.path],
+            baseDirectory: env.root)
+        let emptyProfileSessions = emptyProfile
+            .appendingPathComponent("agent", isDirectory: true)
+            .appendingPathComponent("sessions", isDirectory: true)
+            .standardizedFileURL
+
+        #expect(!roots.contains { $0.url == emptyProfileSessions })
+        let defaultOMPRoot = env.root
+            .appendingPathComponent(".omp", isDirectory: true)
+            .appendingPathComponent("agent", isDirectory: true)
+            .appendingPathComponent("sessions", isDirectory: true)
+            .standardizedFileURL
+        let ompRoot = try #require(roots.first { $0.url == defaultOMPRoot })
+        #expect(ompRoot.missingIsKnownEmpty)
+        #expect(ompRoot.resolutionIsComplete)
+    }
+
+    @Test
     func `pi provider exposes an independent aggregate token snapshot`() async throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }

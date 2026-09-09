@@ -830,9 +830,11 @@ struct PiFamilySessionScanner: Sendable {
                 roots.append(xdgLayout)
                 continue
             }
-            roots.append(canonicalProfile
+            let agentLayout = canonicalProfile
                 .appendingPathComponent("agent", isDirectory: true)
-                .appendingPathComponent("sessions", isDirectory: true))
+                .appendingPathComponent("sessions", isDirectory: true)
+            guard Self.isDirectory(agentLayout) else { continue }
+            roots.append(agentLayout)
         }
         return roots.sorted { $0.path < $1.path }
     }
