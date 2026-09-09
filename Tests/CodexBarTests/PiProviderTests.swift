@@ -260,6 +260,137 @@ struct PiProviderTests {
     }
 
     @Test
+    func `inclusive pi usage propagates incomplete coverage and cache freshness`() async throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2026, month: 4, day: 9)
+        let entry: [String: Any] = [
+            "type": "message",
+            "timestamp": env.isoString(for: day),
+            "message": [
+                "role": "assistant",
+                "provider": "anthropic",
+                "model": "claude-sonnet-4-6",
+                "timestamp": Int(day.timeIntervalSince1970 * 1000),
+                "usage": ["input": 20, "output": 5, "totalTokens": 25],
+            ],
+        ]
+        _ = try env.writePiSessionFile(
+            relativePath: "2026-04-09T10-00-00-000Z_inclusive.jsonl",
+            contents: env.jsonl([entry]))
+
+        let scannerOptions = CostUsageScanner.Options(
+            claudeProjectsRoots: [env.claudeProjectsRoot],
+            cacheRoot: env.cacheRoot)
+        let piOptions = PiSessionCostScanner.Options(
+            piSessionsRoot: env.piSessionsRoot,
+            cacheRoot: env.cacheRoot,
+            refreshMinIntervalSeconds: 0)
+        let initial = try await CostUsageFetcher.loadTokenSnapshot(
+            provider: .claude,
+            now: day,
+            forceRefresh: true,
+            historyDays: 1,
+            allowPricingRefresh: false,
+            includePiSessions: true,
+            scannerOptions: scannerOptions,
+            piScannerOptions: piOptions)
+        #expect(initial.last30DaysTokens == 25)
+        #expect(initial.historyCoverageIsEstablished)
+
+        try FileManager.default.removeItem(at: env.piSessionsRoot)
+        try Data("temporarily unavailable".utf8).write(to: env.piSessionsRoot)
+        let refreshed = try await CostUsageFetcher.loadTokenSnapshot(
+            provider: .claude,
+            now: day.addingTimeInterval(1),
+            forceRefresh: true,
+            historyDays: 1,
+            allowPricingRefresh: false,
+            includePiSessions: true,
+            scannerOptions: scannerOptions,
+            piScannerOptions: piOptions)
+
+        #expect(refreshed.last30DaysTokens == 25)
+        #expect(!refreshed.historyCoverageIsEstablished)
+        #expect(refreshed.updatedAt == initial.updatedAt)
+    }
+
+    @Test
+    func `pi scanner does not combine old and new roots after an incomplete refresh`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2026, month: 4, day: 10)
+        let firstRoot = env.root.appendingPathComponent("first-pi-root", isDirectory: true)
+        let secondRoot = env.root.appendingPathComponent("second-pi-root", isDirectory: true)
+        try FileManager.default.createDirectory(at: firstRoot, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: secondRoot, withIntermediateDirectories: true)
+
+        let firstEntry: [String: Any] = [
+            "type": "message",
+            "timestamp": env.isoString(for: day),
+            "message": [
+                "role": "assistant",
+                "provider": "openai-codex",
+                "model": "openai/gpt-5.4",
+                "timestamp": Int(day.timeIntervalSince1970 * 1000),
+                "usage": ["input": 20, "output": 5, "totalTokens": 25],
+            ],
+        ]
+        try env.jsonl([firstEntry]).write(
+            to: firstRoot.appendingPathComponent("2026-04-10T10-00-00-000Z_first.jsonl"),
+            atomically: true,
+            encoding: .utf8)
+        let initial = try PiSessionCostScanner.loadDailyReportResultCancellable(
+            provider: .codex,
+            since: day,
+            until: day,
+            now: day,
+            options: PiSessionCostScanner.Options(
+                piSessionsRoot: firstRoot,
+                cacheRoot: env.cacheRoot,
+                refreshMinIntervalSeconds: 0),
+            checkCancellation: nil)
+        #expect(initial.isComplete)
+        #expect(initial.report.summary?.totalTokens == 25)
+
+        let secondEntry: [String: Any] = [
+            "type": "message",
+            "timestamp": env.isoString(for: day),
+            "message": [
+                "role": "assistant",
+                "provider": "openai-codex",
+                "model": "openai/gpt-5.4",
+                "timestamp": Int(day.timeIntervalSince1970 * 1000),
+                "usage": ["input": 7, "output": 3, "totalTokens": 10],
+            ],
+        ]
+        try env.jsonl([secondEntry]).write(
+            to: secondRoot.appendingPathComponent("2026-04-10T10-00-00-000Z_a-valid.jsonl"),
+            atomically: true,
+            encoding: .utf8)
+        try "{malformed}\n".write(
+            to: secondRoot.appendingPathComponent("2026-04-10T10-00-00-000Z_z-malformed.jsonl"),
+            atomically: true,
+            encoding: .utf8)
+
+        let refreshed = try PiSessionCostScanner.loadDailyReportResultCancellable(
+            provider: .codex,
+            since: day,
+            until: day,
+            now: day.addingTimeInterval(1),
+            options: PiSessionCostScanner.Options(
+                piSessionsRoot: secondRoot,
+                cacheRoot: env.cacheRoot,
+                refreshMinIntervalSeconds: 0),
+            checkCancellation: nil)
+
+        #expect(!refreshed.isComplete)
+        #expect(refreshed.report.summary?.totalTokens == 25)
+    }
+
+    @Test
     func `pi provider keeps cached usage when an explicit omp root cannot resolve`() throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }

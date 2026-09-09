@@ -169,6 +169,7 @@ enum PiSessionCostScanner {
         let windowExpanded = self.requestedWindowExpandsCache(range: range, cache: cache)
         let pricingChanged = cache.pricingKey != pricingContext.pricingKey
         let sessionRootsChanged = cache.sessionRootsFingerprint != sessionRootsFingerprint
+        let cacheBeforeScan = cache
         let shouldRefresh = options.forceRescan
             || windowExpanded
             || pricingChanged
@@ -228,6 +229,11 @@ enum PiSessionCostScanner {
 
             if scanIsComplete {
                 try self.rebuildDailyUsage(cache: &cache, files: files, checkCancellation: checkCancellation)
+            } else if sessionRootsChanged {
+                // A changed root fingerprint is a new dataset. If that scope cannot be fully
+                // inspected, discard provisional files from it and retain the previous report
+                // wholesale instead of combining usage from unrelated root sets.
+                cache = cacheBeforeScan
             } else {
                 // Keep cached files from roots that could not be inspected. Rebuilding from only the
                 // visible roots would silently discard their usage and turn an I/O failure into zero.

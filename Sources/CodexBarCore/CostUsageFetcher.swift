@@ -714,6 +714,7 @@ public struct CostUsageFetcher: Sendable {
             var projects: [CostUsageProjectBreakdown] = []
             var sessions: [CostUsageSessionBreakdown] = []
             var piDaily: CostUsageDailyReport?
+            var piScanIsComplete = true
             var staleSnapshotUpdatedAt: Date?
             if provider == .codex {
                 let roots = CostUsageScanner.codexSessionsRoots(options: options.scanOptions)
@@ -741,7 +742,7 @@ public struct CostUsageFetcher: Sendable {
             if options.includePiSessions,
                provider == .claude || (provider == .codex && options.shouldMergePiUsage)
             {
-                let piReport = try PiSessionCostScanner.loadDailyReportCancellable(
+                let piScanResult = try PiSessionCostScanner.loadDailyReportResultCancellable(
                     provider: provider,
                     since: since,
                     until: now,
@@ -749,10 +750,18 @@ public struct CostUsageFetcher: Sendable {
                     options: options.piOptions,
                     checkCancellation: checkCancellation)
                 try checkCancellation()
-                if provider == .codex {
-                    piDaily = piReport
+                piScanIsComplete = piScanResult.isComplete
+                if !piScanResult.isComplete,
+                   let piLastScanAt = piScanResult.lastScanAt
+                {
+                    staleSnapshotUpdatedAt = [staleSnapshotUpdatedAt, piLastScanAt]
+                        .compactMap(\.self)
+                        .min()
                 }
-                daily = CostUsageDailyReport.merged([daily, piReport])
+                if provider == .codex {
+                    piDaily = piScanResult.report
+                }
+                daily = CostUsageDailyReport.merged([daily, piScanResult.report])
             }
             if provider == .codex {
                 projects = Self.mergedProjectBreakdowns(
@@ -766,8 +775,9 @@ public struct CostUsageFetcher: Sendable {
                 projects: projects,
                 sessions: sessions,
                 staleSnapshotUpdatedAt: staleSnapshotUpdatedAt,
-                historyCoverageIsEstablished: provider != .codex
+                historyCoverageIsEstablished: (provider != .codex
                     || Self.codexHistoryCoverageIsEstablished(options: options.scanOptions))
+                    && piScanIsComplete)
         }
     }
 
