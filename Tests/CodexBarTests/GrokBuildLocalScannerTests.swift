@@ -438,6 +438,44 @@ struct GrokBuildLocalScannerTests {
     }
 
     @Test
+    func `ranks directories by structured update mtime instead of newer signals`() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grok-recency-structured-mtime-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let stale = root.appendingPathComponent("sessions/%2Ftmp%2Fproj/a-stale", isDirectory: true)
+        let fresh = root.appendingPathComponent("sessions/%2Ftmp%2Fproj/z-fresh", isDirectory: true)
+        try FileManager.default.createDirectory(at: stale, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: fresh, withIntermediateDirectories: true)
+        try self.writeUpdates(
+            [self.usageLine(input: 10, output: 10, eventID: "stale"), String(repeating: "x", count: 4000)],
+            to: stale)
+        try self.writeUpdates([self.usageLine(input: 100, output: 50, eventID: "fresh")], to: fresh)
+        try self.writeSignals(tokens: 40, timestamp: self.timestampMs, to: stale)
+        try self.writeSignals(tokens: 40, timestamp: self.timestampMs, to: fresh)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSince1970: 1_600_000_000)],
+            ofItemAtPath: stale.appendingPathComponent("updates.jsonl").path)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSince1970: 1_700_000_004)],
+            ofItemAtPath: fresh.appendingPathComponent("updates.jsonl").path)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSince1970: 1_700_000_005)],
+            ofItemAtPath: stale.appendingPathComponent("signals.json").path)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSince1970: 1_600_000_001)],
+            ofItemAtPath: fresh.appendingPathComponent("signals.json").path)
+        let freshSize = try self.fileSize(at: fresh.appendingPathComponent("updates.jsonl"))
+
+        let summary = GrokLocalSessionScanner.summarize(
+            env: ["GROK_HOME": root.path],
+            lookbackDays: 30,
+            now: Date(timeIntervalSince1970: 1_700_000_005),
+            byteBudget: freshSize + 20)
+        #expect(summary.totalTokens == 150)
+        #expect(!summary.historyCoverageIsEstablished)
+    }
+
+    @Test
     func `orders equal recency deterministically by path`() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("grok-recency-tie-\(UUID().uuidString)", isDirectory: true)

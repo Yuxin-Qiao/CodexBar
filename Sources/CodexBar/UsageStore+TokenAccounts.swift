@@ -1014,7 +1014,7 @@ extension UsageStore {
                         generation: publicationGeneration)
                 }
             },
-            costUsageHistoryDays: self.settings.costUsageHistoryDays,
+            costUsageHistoryDays: ProviderRegistry.costUsageHistoryDays(for: provider, settings: self.settings),
             claudeOwnerCLIRecoveryOnly: claudeOwnerCLIRecoveryOnly,
             persistsCLISessions: true,
             persistentCLISessionIdleWindow: ProviderRegistry.persistentCLISessionIdleWindow(

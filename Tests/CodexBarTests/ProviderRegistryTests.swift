@@ -3,6 +3,27 @@ import Testing
 @testable import CodexBar
 
 struct ProviderRegistryTests {
+    @MainActor
+    @Test
+    func `app Grok fetch contexts cover the spend dashboard window`() {
+        let settings = testSettingsStore(suiteName: "ProviderRegistryTests-grok-history")
+        settings.costUsageEnabled = true
+        settings.costUsageHistoryDays = 30
+        let store = UsageStore(
+            fetcher: UsageFetcher(),
+            browserDetection: BrowserDetection(cacheTTL: 0),
+            settings: settings,
+            startupBehavior: .testing,
+            environmentBase: [:])
+
+        #expect(store.providerSpecs[.grok]?.makeFetchContext().costUsageHistoryDays == SpendDashboardSource.scanDays)
+        #expect(store.makeFetchContext(provider: .grok, override: nil).costUsageHistoryDays == SpendDashboardSource
+            .scanDays)
+
+        settings.costUsageEnabled = false
+        #expect(store.makeFetchContext(provider: .grok, override: nil).costUsageHistoryDays == 30)
+    }
+
     @Test
     func `descriptor registry is complete and deterministic`() {
         let descriptors = ProviderDescriptorRegistry.all

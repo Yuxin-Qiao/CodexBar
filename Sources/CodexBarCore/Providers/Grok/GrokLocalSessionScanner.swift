@@ -163,7 +163,9 @@ struct GrokSessionDirectoryEnumerator {
     {
         Self { root in
             var directories = Set<URL>()
-            var latestMtimeByDirectory: [URL: Date] = [:]
+            var directoriesWithUpdates = Set<URL>()
+            var latestUpdatesMtimeByDirectory: [URL: Date] = [:]
+            var latestSignalsMtimeByDirectory: [URL: Date] = [:]
             var enumerationFailed = false
             var discoveryCapped = false
             guard let enumerator = fileManager.enumerator(
@@ -191,29 +193,50 @@ struct GrokSessionDirectoryEnumerator {
                 guard url.lastPathComponent == "updates.jsonl" || url.lastPathComponent == "signals.json" else {
                     continue
                 }
+                let directory = url.deletingLastPathComponent()
+                directories.insert(directory)
+                let isUpdates = url.lastPathComponent == "updates.jsonl"
+                if isUpdates {
+                    directoriesWithUpdates.insert(directory)
+                }
                 let resourceValues = try? url.resourceValues(
                     forKeys: [.isRegularFileKey, .contentModificationDateKey])
                 guard resourceValues?.isRegularFile == true else {
                     if url.lastPathComponent == "updates.jsonl" {
                         enumerationFailed = true
                     }
-                    directories.insert(url.deletingLastPathComponent())
                     continue
                 }
-                let directory = url.deletingLastPathComponent()
-                directories.insert(directory)
                 if let modifiedAt = resourceValues?.contentModificationDate {
-                    latestMtimeByDirectory[directory] = max(
-                        latestMtimeByDirectory[directory] ?? .distantPast,
-                        modifiedAt)
+                    if isUpdates {
+                        latestUpdatesMtimeByDirectory[directory] = max(
+                            latestUpdatesMtimeByDirectory[directory] ?? .distantPast,
+                            modifiedAt)
+                    } else {
+                        latestSignalsMtimeByDirectory[directory] = max(
+                            latestSignalsMtimeByDirectory[directory] ?? .distantPast,
+                            modifiedAt)
+                    }
                 }
             }
-            // Modification times only order reads; whether a row counts is still
+            // Structured update mtimes order directories that contain updates. A
+            // signals mtime must not make an old, large updates file outrank a
+            // newer structured file; signals-only directories use their own mtime
+            // after every structured candidate. Whether a row counts is still
             // decided by its production timestamp. Candidates without metadata
             // sort after recent ones, deterministically by path.
             let ordered = directories.sorted { lhs, rhs in
-                let leftMtime = latestMtimeByDirectory[lhs]
-                let rightMtime = latestMtimeByDirectory[rhs]
+                let leftHasUpdates = directoriesWithUpdates.contains(lhs)
+                let rightHasUpdates = directoriesWithUpdates.contains(rhs)
+                if leftHasUpdates != rightHasUpdates {
+                    return leftHasUpdates
+                }
+                let leftMtime = leftHasUpdates
+                    ? latestUpdatesMtimeByDirectory[lhs]
+                    : latestSignalsMtimeByDirectory[lhs]
+                let rightMtime = rightHasUpdates
+                    ? latestUpdatesMtimeByDirectory[rhs]
+                    : latestSignalsMtimeByDirectory[rhs]
                 if let leftMtime, let rightMtime {
                     if leftMtime != rightMtime {
                         return leftMtime > rightMtime

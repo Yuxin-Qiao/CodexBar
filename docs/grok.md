@@ -130,6 +130,9 @@ The grok.com billing gRPC-web endpoint remains a best-effort fallback.
 5) **Local token history (Grok Build)**
    - Walks `~/.grok/sessions/<encoded-cwd>/<session-id>/updates.jsonl`, with
      `signals.json` retained for legacy signals-only sessions.
+   - When cost usage is enabled, the app fetch context reads at least the
+     Spend Dashboard's fixed 365-day window; menu history projects that
+     snapshot back to the configured display range.
    - Aggregates timestamped structured usage totals. It does not infer request
      counts, prices, or token-category breakdowns.
    - Legacy lifetime signals remain visible only as a context/compaction-derived

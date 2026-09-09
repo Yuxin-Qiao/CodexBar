@@ -13,6 +13,18 @@ struct ProviderRegistry {
 
     static let shared: ProviderRegistry = .init()
 
+    /// Grok's local token snapshot is also the spend dashboard's source. Keep
+    /// the provider snapshot wide enough for the dashboard's fixed 365-day
+    /// window; menu consumers project it back to the configured range.
+    @MainActor
+    static func costUsageHistoryDays(for provider: UsageProvider, settings: SettingsStore) -> Int {
+        // Provider-specific by design: Grok local history also feeds the fixed Spend Dashboard window.
+        guard provider == .grok, settings.costUsageEnabled else {
+            return settings.costUsageHistoryDays
+        }
+        return max(settings.costUsageHistoryDays, SpendDashboardSource.scanDays)
+    }
+
     init(metadata: [UsageProvider: ProviderMetadata] = ProviderDescriptorRegistry.metadata) {
         self.metadata = metadata
     }
@@ -88,7 +100,7 @@ struct ProviderRegistry {
                                 }
                             }
                         },
-                        costUsageHistoryDays: settings.costUsageHistoryDays,
+                        costUsageHistoryDays: Self.costUsageHistoryDays(for: provider, settings: settings),
                         persistsCLISessions: true,
                         persistentCLISessionIdleWindow: Self.persistentCLISessionIdleWindow(
                             refreshInterval: Self.nominalRefreshInterval(
