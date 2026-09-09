@@ -89,6 +89,29 @@ struct PiProviderTests {
     }
 
     @Test
+    func `xdg data home fallback keeps default omp root known empty`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let xdgDataHome = env.root.appendingPathComponent("xdg", isDirectory: true)
+        try FileManager.default.createDirectory(at: xdgDataHome, withIntermediateDirectories: true)
+        let roots = PiFamilySessionScanner.costSessionRoots(
+            environment: [
+                "HOME": env.root.path,
+                "XDG_DATA_HOME": xdgDataHome.path,
+            ],
+            baseDirectory: env.root)
+        let defaultOMPRoot = env.root
+            .appendingPathComponent(".omp", isDirectory: true)
+            .appendingPathComponent("agent", isDirectory: true)
+            .appendingPathComponent("sessions", isDirectory: true)
+            .standardizedFileURL
+        let ompRoot = try #require(roots.first { $0.url.path == defaultOMPRoot.path })
+        #expect(ompRoot.missingIsKnownEmpty)
+        #expect(ompRoot.resolutionIsComplete)
+    }
+
+    @Test
     func `pi provider exposes an independent aggregate token snapshot`() async throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }

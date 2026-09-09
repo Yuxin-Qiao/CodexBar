@@ -754,7 +754,6 @@ struct PiFamilySessionScanner: Sendable {
                 "PI_CODING_AGENT_DIR",
                 "OMP_PROFILE",
                 "PI_PROFILE",
-                "XDG_DATA_HOME",
             ]
         }
         return keys.contains { key in
