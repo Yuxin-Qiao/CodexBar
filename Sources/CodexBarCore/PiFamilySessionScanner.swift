@@ -505,6 +505,16 @@ struct PiFamilySessionScanner: Sendable {
         let layout: RootLayout
     }
 
+    private struct ProfileSessionRootResolution {
+        let roots: [URL]
+        let isComplete: Bool
+    }
+
+    private struct OMPSessionRootResolution {
+        let roots: [SessionRoot]
+        let profileDiscoveryIsComplete: Bool
+    }
+
     struct CostSessionRoot: Hashable, Sendable {
         let url: URL
         let missingIsKnownEmpty: Bool
@@ -689,11 +699,22 @@ struct PiFamilySessionScanner: Sendable {
         var seen = Set<String>()
 
         for dialect in dialects {
-            let roots = Self.sessionRoots(
-                for: process,
-                dialect: dialect,
-                cwd: cwdURL.path,
-                environment: environment)
+            let roots: [SessionRoot]
+            var rootResolutionIsComplete = true
+            if dialect == .omp {
+                let resolution = Self.ompSessionRootResolution(
+                    process: process,
+                    cwd: cwdURL.path,
+                    environment: environment)
+                roots = resolution.roots
+                rootResolutionIsComplete = resolution.profileDiscoveryIsComplete
+            } else {
+                roots = Self.sessionRoots(
+                    for: process,
+                    dialect: dialect,
+                    cwd: cwdURL.path,
+                    environment: environment)
+            }
             let hasExplicitSelection = Self.hasExplicitCostRootSelection(
                 dialect: dialect,
                 environment: environment)
@@ -712,6 +733,14 @@ struct PiFamilySessionScanner: Sendable {
                     url: canonical,
                     missingIsKnownEmpty: !hasExplicitSelection && defaultRoot.map { $0 == canonical } == true,
                     resolutionIsComplete: true))
+            }
+            if !rootResolutionIsComplete {
+                let unresolved = Self.unresolvedCostSessionRoot(for: dialect)
+                guard seen.insert(unresolved.path).inserted else { continue }
+                output.append(CostSessionRoot(
+                    url: unresolved,
+                    missingIsKnownEmpty: false,
+                    resolutionIsComplete: false))
             }
         }
         return output
@@ -767,7 +796,32 @@ struct PiFamilySessionScanner: Sendable {
         cwd: String,
         environment: [String: String]) -> [SessionRoot]
     {
-        guard let home = homeURL(environment) else { return [] }
+        self.ompSessionRootResolution(process: process, cwd: cwd, environment: environment).roots
+    }
+
+    private static func ompSessionRootResolution(
+        process: AgentProcessRecord,
+        cwd: String,
+        environment: [String: String]) -> OMPSessionRootResolution
+    {
+        if let explicit = commandLineValue("--session-dir", in: process.command),
+           let url = pathURL(explicit, cwd: cwd, home: environment["HOME"])
+        {
+            return OMPSessionRootResolution(
+                roots: [SessionRoot(url: url, layout: .direct)],
+                profileDiscoveryIsComplete: true)
+        }
+        if let configured = environment["PI_CODING_AGENT_SESSION_DIR"],
+           let url = pathURL(configured, cwd: cwd, home: environment["HOME"])
+        {
+            return OMPSessionRootResolution(
+                roots: [SessionRoot(url: url, layout: .direct)],
+                profileDiscoveryIsComplete: true)
+        }
+
+        guard let home = homeURL(environment) else {
+            return OMPSessionRootResolution(roots: [], profileDiscoveryIsComplete: false)
+        }
         var safeEnvironment = ["HOME": home.path]
         for key in [
             "PI_CONFIG_DIR",
@@ -786,6 +840,7 @@ struct PiFamilySessionScanner: Sendable {
         var urls = OMPSessionRootResolver.sessionRoots(
             environment: safeEnvironment,
             baseDirectory: baseDirectory)
+        var profileDiscoveryIsComplete = true
 
         if safeEnvironment["OMP_PROFILE"] == nil,
            safeEnvironment["PI_PROFILE"] == nil
@@ -799,46 +854,108 @@ struct PiFamilySessionScanner: Sendable {
                     .appendingPathComponent("profiles", isDirectory: true),
             ]
             for parent in profileParents {
-                urls.append(contentsOf: Self.profileSessionRoots(in: parent))
+                let resolution = Self.profileSessionRoots(in: parent)
+                urls.append(contentsOf: resolution.roots)
+                profileDiscoveryIsComplete = profileDiscoveryIsComplete && resolution.isComplete
             }
         }
 
         var seen = Set<String>()
-        return urls.compactMap { url in
+        let roots: [SessionRoot] = urls.compactMap { url in
             let canonical = Self.canonicalURL(url)
             guard seen.insert(canonical.path).inserted else { return nil }
             return SessionRoot(url: canonical, layout: .projectDirectories)
         }
+        return OMPSessionRootResolution(
+            roots: roots,
+            profileDiscoveryIsComplete: profileDiscoveryIsComplete)
     }
 
-    private static func profileSessionRoots(in profilesDirectory: URL) -> [URL] {
-        guard let enumerator = FileManager.default.enumerator(
-            at: profilesDirectory,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants])
-        else { return [] }
+    private enum ProfileDirectoryInspection {
+        case missing
+        case readableDirectory
+        case unavailable
+    }
+
+    private static func profileDirectoryInspection(_ url: URL) -> ProfileDirectoryInspection {
+        let fileManager = FileManager.default
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
+            return .missing
+        }
+        guard isDirectory.boolValue,
+              fileManager.isReadableFile(atPath: url.path)
+        else {
+            return .unavailable
+        }
+        return .readableDirectory
+    }
+
+    private static func profileSessionRoots(in profilesDirectory: URL) -> ProfileSessionRootResolution {
+        switch self.profileDirectoryInspection(profilesDirectory) {
+        case .missing:
+            return ProfileSessionRootResolution(roots: [], isComplete: true)
+        case .unavailable:
+            return ProfileSessionRootResolution(roots: [], isComplete: false)
+        case .readableDirectory:
+            break
+        }
+
+        let profiles: [URL]
+        do {
+            profiles = try FileManager.default.contentsOfDirectory(
+                at: profilesDirectory,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles])
+        } catch {
+            return ProfileSessionRootResolution(roots: [], isComplete: false)
+        }
 
         var roots: [URL] = []
+        var isComplete = true
         let canonicalProfilesDirectory = Self.canonicalURL(profilesDirectory)
-        while roots.count < 64, let profile = enumerator.nextObject() as? URL {
+        for profile in profiles {
+            guard roots.count < 64 else {
+                isComplete = false
+                break
+            }
             let canonicalProfile = Self.canonicalURL(profile)
-            guard (try? canonicalProfile.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true,
-                  OMPSessionRootResolver.isWithin(
-                      root: canonicalProfilesDirectory,
-                      candidate: canonicalProfile)
+            guard OMPSessionRootResolver.isWithin(
+                root: canonicalProfilesDirectory,
+                candidate: canonicalProfile)
             else { continue }
+            switch Self.profileDirectoryInspection(canonicalProfile) {
+            case .missing, .unavailable:
+                isComplete = false
+                continue
+            case .readableDirectory:
+                break
+            }
             let xdgLayout = canonicalProfile.appendingPathComponent("sessions", isDirectory: true)
-            if Self.isDirectory(xdgLayout) {
+            switch Self.profileDirectoryInspection(xdgLayout) {
+            case .readableDirectory:
                 roots.append(xdgLayout)
                 continue
+            case .unavailable:
+                isComplete = false
+            case .missing:
+                break
             }
             let agentLayout = canonicalProfile
                 .appendingPathComponent("agent", isDirectory: true)
                 .appendingPathComponent("sessions", isDirectory: true)
-            guard Self.isDirectory(agentLayout) else { continue }
-            roots.append(agentLayout)
+            switch Self.profileDirectoryInspection(agentLayout) {
+            case .readableDirectory:
+                roots.append(agentLayout)
+            case .unavailable:
+                isComplete = false
+            case .missing:
+                break
+            }
         }
-        return roots.sorted { $0.path < $1.path }
+        return ProfileSessionRootResolution(
+            roots: roots.sorted { $0.path < $1.path },
+            isComplete: isComplete)
     }
 
     private static func piSettingsSessionDirectory(cwd: String, environment: [String: String]) -> URL? {

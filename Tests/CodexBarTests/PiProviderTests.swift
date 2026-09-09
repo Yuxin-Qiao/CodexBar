@@ -175,6 +175,30 @@ struct PiProviderTests {
     }
 
     @Test
+    func `failed omp profile discovery keeps cost roots incomplete`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let profilesDirectory = env.root
+            .appendingPathComponent(".omp", isDirectory: true)
+            .appendingPathComponent("profiles", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: profilesDirectory.deletingLastPathComponent(),
+            withIntermediateDirectories: true)
+        try Data("temporarily unavailable".utf8).write(to: profilesDirectory)
+
+        let roots = PiFamilySessionScanner.costSessionRoots(
+            environment: ["HOME": env.root.path],
+            baseDirectory: env.root)
+        let unresolvedOMPRoot = try #require(roots.first {
+            $0.url.path == "/.codexbar-unresolved-omp"
+        })
+
+        #expect(!unresolvedOMPRoot.missingIsKnownEmpty)
+        #expect(!unresolvedOMPRoot.resolutionIsComplete)
+    }
+
+    @Test
     func `pi provider exposes an independent aggregate token snapshot`() async throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }

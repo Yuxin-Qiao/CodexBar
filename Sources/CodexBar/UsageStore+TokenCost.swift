@@ -59,13 +59,30 @@ extension UsageStore {
         return .proceed(header)
     }
 
+    /// Provider-specific by design: visible Pi owns its Claude-priced rows in the spend dashboard;
+    /// Claude only falls back to those rows while Pi is not an active cost source.
+    func shouldIncludePiSessionsInTokenSnapshot(for provider: UsageProvider) -> Bool {
+        guard provider == .claude else { return true }
+        let piIsCostSource = self.settings.isProviderEnabledCached(
+            provider: .pi,
+            metadataByProvider: self.providerMetadata) &&
+            self.settings.isCostUsageEffectivelyEnabled(for: .pi)
+        return !piIsCostSource
+    }
+
+    func piRowsScopeSignature(for provider: UsageProvider) -> String? {
+        guard provider == .claude else { return nil }
+        return self.shouldIncludePiSessionsInTokenSnapshot(for: provider) ? "fallback" : "owned"
+    }
+
     func loadTokenUsageSnapshot(
         provider: UsageProvider,
         force: Bool,
         now: Date,
         codexHomePath: String?,
         historyDays: Int,
-        cursorCookieHeaderOverride: String? = nil) async throws -> CostUsageTokenSnapshot
+        cursorCookieHeaderOverride: String? = nil,
+        includePiSessions: Bool = true) async throws -> CostUsageTokenSnapshot
     {
         if let override = self._test_tokenUsageSnapshotLoaderOverride {
             return try await override(provider, force, now, codexHomePath, historyDays)
@@ -73,6 +90,8 @@ extension UsageStore {
 
         let fetcher = self.costUsageFetcher
         let timeoutSeconds = self.tokenFetchTimeout
+        let effectiveIncludePiSessions = includePiSessions &&
+            self.shouldIncludePiSessionsInTokenSnapshot(for: provider)
         // Provider-specific by design: the Codex ledger owns pricing refresh while Bedrock resolves AWS environment.
         let allowPricingRefresh = provider != .codex || !self.settings.codexLocalSessionCostLedgerEnabled
         let environment = provider == .bedrock
@@ -94,6 +113,7 @@ extension UsageStore {
                     historyDays: historyDays,
                     cursorCookieHeaderOverride: cursorCookieHeaderOverride,
                     allowPricingRefresh: allowPricingRefresh,
+                    includePiSessions: effectiveIncludePiSessions,
                     bypassScannerDebounce: true,
                     calendar: self.settings.costUsageBucketCalendar)
             }
@@ -390,6 +410,9 @@ extension UsageStore {
     {
         let scope = self.tokenCostScope(for: provider)
         var base = "\(scope.signature)|historyDays=\(historyDays)"
+        if let piRowsScope = self.piRowsScopeSignature(for: provider) {
+            base += "|piRows=\(piRowsScope)"
+        }
         if includeSettingsRevision {
             base += "|settingsRevision=\(self.settings.costUsageSettingsRevision)"
         }

@@ -128,7 +128,8 @@ extension UsageStore {
                 now: now,
                 codexHomePath: costScope.codexHomePath,
                 historyDays: historyDays,
-                cursorCookieHeaderOverride: cursorCookieHeaderOverride)
+                cursorCookieHeaderOverride: cursorCookieHeaderOverride,
+                includePiSessions: self.shouldIncludePiSessionsInTokenSnapshot(for: provider))
             try Task.checkCancellation()
             let completedCostScopeSignature = self.completedTokenCostScopeSignature(
                 provider: provider,
