@@ -124,6 +124,32 @@ struct PiSessionProcessContextTests {
             .appendingPathComponent("agent", isDirectory: true)
             .appendingPathComponent("sessions", isDirectory: true)
             .standardizedFileURL
-        #expect(roots.contains { $0.url == defaultPiRoot })
+        #expect(roots.contains { $0.url == defaultPiRoot && $0.missingIsKnownEmpty })
+    }
+
+    @Test
+    func `pi cost roots preserve whitespace in live session selectors`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let project = env.root.appendingPathComponent("pi-project", isDirectory: true)
+        let explicitRoot = env.root.appendingPathComponent("pi sessions", isDirectory: true)
+        try [project, explicitRoot].forEach {
+            try FileManager.default.createDirectory(at: $0, withIntermediateDirectories: true)
+        }
+
+        let roots = PiFamilySessionScanner.costSessionRoots(
+            environment: ["HOME": env.root.path],
+            baseDirectories: [project],
+            processContexts: [
+                PiSessionProcessContext(
+                    command: "/usr/local/bin/pi --session-dir \(explicitRoot.path)",
+                    arguments: ["/usr/local/bin/pi", "--session-dir", explicitRoot.path],
+                    workingDirectory: project),
+            ])
+
+        #expect(roots.contains { $0.url == explicitRoot.standardizedFileURL && $0.resolutionIsComplete })
+        #expect(!roots
+            .contains { $0.url.path == explicitRoot.deletingLastPathComponent().appendingPathComponent("pi").path })
     }
 }

@@ -230,8 +230,9 @@ public struct LocalAgentSessionScanner: Sendable {
             guard let cwd = cwdByPID[process.pid], !cwd.isEmpty else { return nil }
             let context = PiSessionProcessContext(
                 command: process.command,
+                arguments: process.arguments,
                 workingDirectory: URL(fileURLWithPath: cwd, isDirectory: true))
-            let key = "\(context.workingDirectory.path)\u{1F}\(context.command)"
+            let key = "\(context.workingDirectory.path)\u{1F}\(context.arguments ?? [])\u{1F}\(context.command)"
             guard seen.insert(key).inserted else { return nil }
             return context
         }
@@ -411,12 +412,14 @@ public struct LocalAgentSessionScanner: Sendable {
             guard let bsdInfo = DarwinProcessEnumerator.bsdInfo(pid: pid),
                   let executablePath = DarwinProcessEnumerator.executablePath(pid: pid)
             else { return nil }
-            let command = DarwinProcessEnumerator.commandLine(pid: pid) ?? executablePath
+            let arguments = DarwinProcessEnumerator.arguments(pid: pid)
+            let command = arguments?.joined(separator: " ") ?? executablePath
             return AgentProcessRecord(
                 pid: pid,
                 ppid: bsdInfo.ppid,
                 startedAt: bsdInfo.startTime,
-                command: command)
+                command: command,
+                arguments: arguments)
         }
         #else
         return await AgentPSOutputParser.parse(self.processOutput(environment: environment))

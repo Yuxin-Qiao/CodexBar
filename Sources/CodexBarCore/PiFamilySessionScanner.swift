@@ -3,10 +3,13 @@ import Foundation
 /// The process command and working directory needed to resolve a live Pi-family session store.
 public struct PiSessionProcessContext: Equatable, Sendable {
     public let command: String
+    /// Original argv when available; this preserves whitespace inside flag values.
+    public let arguments: [String]?
     public let workingDirectory: URL
 
-    public init(command: String, workingDirectory: URL) {
+    public init(command: String, arguments: [String]? = nil, workingDirectory: URL) {
         self.command = command
+        self.arguments = arguments
         self.workingDirectory = workingDirectory.standardizedFileURL
     }
 }
@@ -514,6 +517,13 @@ struct PiFamilySessionScanner: Sendable {
     private struct SessionRoot: Hashable, Sendable {
         let url: URL
         let layout: RootLayout
+        let missingIsKnownEmpty: Bool
+
+        init(url: URL, layout: RootLayout, missingIsKnownEmpty: Bool = false) {
+            self.url = url
+            self.layout = layout
+            self.missingIsKnownEmpty = missingIsKnownEmpty
+        }
     }
 
     private struct ProfileSessionRootResolution {
@@ -724,7 +734,8 @@ struct PiFamilySessionScanner: Sendable {
                     pid: 0,
                     ppid: 0,
                     startedAt: nil,
-                    command: context.command)
+                    command: context.command,
+                    arguments: context.arguments)
                 guard AgentPSOutputParser.piDialect(for: process) == dialect else { continue }
                 let resolution: (roots: [SessionRoot], isComplete: Bool)
                 switch dialect {
@@ -779,10 +790,9 @@ struct PiFamilySessionScanner: Sendable {
                 let canonical = Self.canonicalURL(root.url)
                 guard seenDialectRoots.insert(canonical.path).inserted else { continue }
                 guard seen.insert(canonical.path).inserted else { continue }
-                let defaultRoot = Self.defaultCostSessionRoot(for: dialect, environment: environment)
                 output.append(CostSessionRoot(
                     url: canonical,
-                    missingIsKnownEmpty: !hasExplicitSelection && defaultRoot.map { $0 == canonical } == true,
+                    missingIsKnownEmpty: root.missingIsKnownEmpty,
                     resolutionIsComplete: true))
             }
             if !rootResolutionIsComplete {
@@ -847,14 +857,28 @@ struct PiFamilySessionScanner: Sendable {
         processContexts: [PiSessionProcessContext]) -> Bool
     {
         processContexts.contains { context in
-            let process = AgentProcessRecord(pid: 0, ppid: 0, startedAt: nil, command: context.command)
+            let process = AgentProcessRecord(
+                pid: 0,
+                ppid: 0,
+                startedAt: nil,
+                command: context.command,
+                arguments: context.arguments)
             guard AgentPSOutputParser.piDialect(for: process) == dialect else { return false }
             return switch dialect {
             case .pi:
-                Self.commandLineValue("--session-dir", in: context.command) != nil
+                Self.commandLineValue(
+                    "--session-dir",
+                    in: context.command,
+                    arguments: context.arguments) != nil
             case .omp:
-                Self.commandLineValue("--session-dir", in: context.command) != nil
-                    || Self.commandLineValue("--profile", in: context.command) != nil
+                Self.commandLineValue(
+                    "--session-dir",
+                    in: context.command,
+                    arguments: context.arguments) != nil ||
+                    Self.commandLineValue(
+                        "--profile",
+                        in: context.command,
+                        arguments: context.arguments) != nil
             }
         }
     }
@@ -872,8 +896,18 @@ struct PiFamilySessionScanner: Sendable {
         cwd: String,
         environment: [String: String]) -> OMPSessionRootResolution
     {
-        if let explicit = commandLineValue("--session-dir", in: process.command),
-           let url = pathURL(explicit, cwd: cwd, home: environment["HOME"])
+        let processHasExplicitSelection = Self.commandLineValue(
+            "--session-dir",
+            in: process.command,
+            arguments: process.arguments) != nil || Self.commandLineValue(
+            "--profile",
+            in: process.command,
+            arguments: process.arguments) != nil
+        if let explicit = commandLineValue(
+            "--session-dir",
+            in: process.command,
+            arguments: process.arguments),
+            let url = pathURL(explicit, cwd: cwd, home: environment["HOME"])
         {
             return OMPSessionRootResolution(
                 roots: [SessionRoot(url: url, layout: .direct)],
@@ -900,7 +934,11 @@ struct PiFamilySessionScanner: Sendable {
         ] {
             safeEnvironment[key] = environment[key]
         }
-        if let profile = Self.commandLineValue("--profile", in: process.command) {
+        if let profile = Self.commandLineValue(
+            "--profile",
+            in: process.command,
+            arguments: process.arguments)
+        {
             safeEnvironment["OMP_PROFILE"] = profile
         }
 
@@ -932,7 +970,13 @@ struct PiFamilySessionScanner: Sendable {
         let roots: [SessionRoot] = urls.compactMap { url in
             let canonical = Self.canonicalURL(url)
             guard seen.insert(canonical.path).inserted else { return nil }
-            return SessionRoot(url: canonical, layout: .projectDirectories)
+            let defaultRootIsKnownEmpty = !processHasExplicitSelection &&
+                !Self.hasExplicitCostRootSelection(dialect: .omp, environment: environment) &&
+                Self.defaultCostSessionRoot(for: .omp, environment: environment) == canonical
+            return SessionRoot(
+                url: canonical,
+                layout: .projectDirectories,
+                missingIsKnownEmpty: defaultRootIsKnownEmpty)
         }
         return OMPSessionRootResolution(
             roots: roots,
@@ -944,7 +988,11 @@ struct PiFamilySessionScanner: Sendable {
         cwd: String,
         environment: [String: String]) -> PiSessionRootResolution
     {
-        if let explicit = commandLineValue("--session-dir", in: process.command) {
+        if let explicit = commandLineValue(
+            "--session-dir",
+            in: process.command,
+            arguments: process.arguments)
+        {
             guard let url = pathURL(explicit, cwd: cwd, home: environment["HOME"]) else {
                 return PiSessionRootResolution(roots: [], isComplete: false)
             }
@@ -1020,7 +1068,8 @@ struct PiFamilySessionScanner: Sendable {
                     .appendingPathComponent(".pi", isDirectory: true)
                     .appendingPathComponent("agent", isDirectory: true)
                     .appendingPathComponent("sessions", isDirectory: true),
-                layout: .projectDirectories)],
+                layout: .projectDirectories,
+                missingIsKnownEmpty: true)],
             isComplete: true)
     }
 
@@ -1144,8 +1193,12 @@ struct PiFamilySessionScanner: Sendable {
         return .configured(sessionDir)
     }
 
-    private static func commandLineValue(_ flag: String, in command: String) -> String? {
-        let tokens = command.split(whereSeparator: \ .isWhitespace).map(String.init)
+    private static func commandLineValue(
+        _ flag: String,
+        in command: String,
+        arguments: [String]? = nil) -> String?
+    {
+        let tokens = arguments ?? command.split(whereSeparator: \ .isWhitespace).map(String.init)
         for index in tokens.indices {
             if tokens[index] == flag, index + 1 < tokens.count {
                 let value = tokens[index + 1]
