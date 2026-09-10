@@ -194,6 +194,20 @@ public struct LocalAgentSessionScanner: Sendable {
     public func piWorkingDirectories(
         environment: [String: String] = ProcessInfo.processInfo.environment) async -> [URL]
     {
+        let contexts = await self.piSessionProcessContexts(environment: environment)
+        var seen = Set<String>()
+        return contexts.compactMap { context in
+            guard seen.insert(context.workingDirectory.path).inserted else { return nil }
+            return context.workingDirectory
+        }
+    }
+
+    /// Returns the command selectors and project directories of live Pi-family processes so cost scans can
+    /// resolve process-owned `--session-dir` and `--profile` choices alongside project settings.
+    @concurrent
+    public func piSessionProcessContexts(
+        environment: [String: String] = ProcessInfo.processInfo.environment) async -> [PiSessionProcessContext]
+    {
         let allProcesses = if let processOutputProvider = self.processOutputProvider {
             await AgentPSOutputParser.parse(processOutputProvider(environment))
         } else {
@@ -214,11 +228,18 @@ public struct LocalAgentSessionScanner: Sendable {
         var seen = Set<String>()
         return processes.compactMap { process in
             guard let cwd = cwdByPID[process.pid], !cwd.isEmpty else { return nil }
-            let url = URL(fileURLWithPath: cwd, isDirectory: true).standardizedFileURL
-            guard seen.insert(url.path).inserted else { return nil }
-            return url
+            let context = PiSessionProcessContext(
+                command: process.command,
+                workingDirectory: URL(fileURLWithPath: cwd, isDirectory: true))
+            let key = "\(context.workingDirectory.path)\u{1F}\(context.command)"
+            guard seen.insert(key).inserted else { return nil }
+            return context
         }
-        .sorted { $0.path < $1.path }
+        .sorted {
+            $0.workingDirectory.path == $1.workingDirectory.path
+                ? $0.command < $1.command
+                : $0.workingDirectory.path < $1.workingDirectory.path
+        }
     }
 
     public static func shouldScanSessionMetadata(

@@ -1,5 +1,16 @@
 import Foundation
 
+/// The process command and working directory needed to resolve a live Pi-family session store.
+public struct PiSessionProcessContext: Equatable, Sendable {
+    public let command: String
+    public let workingDirectory: URL
+
+    public init(command: String, workingDirectory: URL) {
+        self.command = command
+        self.workingDirectory = workingDirectory.standardizedFileURL
+    }
+}
+
 struct PiFamilySessionRecord: Equatable, Sendable {
     let id: String
     let cwd: String?
@@ -678,17 +689,27 @@ struct PiFamilySessionScanner: Sendable {
     /// when several Pi processes are active in different projects.
     static func costSessionRoots(
         environment: [String: String],
-        baseDirectories: [URL]? = nil) -> [CostSessionRoot]
+        baseDirectories: [URL]? = nil,
+        processContexts: [PiSessionProcessContext] = []) -> [CostSessionRoot]
     {
-        let cwdURLs = (baseDirectories?.isEmpty == false ? baseDirectories! : [URL(
+        var configuredCWDs = baseDirectories ?? []
+        if !processContexts.isEmpty {
+            // Live process roots augment the scanner's normal working directory so default and project history
+            // remain visible after a process starts or exits.
+            configuredCWDs.insert(
+                URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true),
+                at: 0)
+            configuredCWDs.append(contentsOf: processContexts.map(\.workingDirectory))
+        }
+        let cwdURLs = (configuredCWDs.isEmpty ? [URL(
             fileURLWithPath: FileManager.default.currentDirectoryPath,
-            isDirectory: true)])
+            isDirectory: true)] : configuredCWDs)
             .map(Self.canonicalURL)
         let uniqueCWDs = cwdURLs.reduce(into: [URL]()) { result, url in
             guard !result.contains(where: { $0.path == url.path }) else { return }
             result.append(url)
         }
-        let process = AgentProcessRecord(pid: 0, ppid: 0, startedAt: nil, command: "")
+        let defaultProcess = AgentProcessRecord(pid: 0, ppid: 0, startedAt: nil, command: "")
         // Provider-specific by design: historical cost scans must resolve both Pi dialects through the shared root
         // resolver.
         let dialects: [AgentSession.Dialect] = [.pi, .omp]
@@ -698,18 +719,43 @@ struct PiFamilySessionScanner: Sendable {
         for dialect in dialects {
             var roots: [SessionRoot] = []
             var rootResolutionIsComplete = true
+            for context in processContexts {
+                let process = AgentProcessRecord(
+                    pid: 0,
+                    ppid: 0,
+                    startedAt: nil,
+                    command: context.command)
+                guard AgentPSOutputParser.piDialect(for: process) == dialect else { continue }
+                let resolution: (roots: [SessionRoot], isComplete: Bool)
+                switch dialect {
+                case .pi:
+                    let result = Self.piSessionRootResolution(
+                        process: process,
+                        cwd: context.workingDirectory.path,
+                        environment: environment)
+                    resolution = (result.roots, result.isComplete)
+                case .omp:
+                    let result = Self.ompSessionRootResolution(
+                        process: process,
+                        cwd: context.workingDirectory.path,
+                        environment: environment)
+                    resolution = (result.roots, result.profileDiscoveryIsComplete)
+                }
+                roots.append(contentsOf: resolution.roots)
+                rootResolutionIsComplete = rootResolutionIsComplete && resolution.isComplete
+            }
             for cwdURL in uniqueCWDs {
                 switch dialect {
                 case .pi:
                     let resolution = Self.piSessionRootResolution(
-                        process: process,
+                        process: defaultProcess,
                         cwd: cwdURL.path,
                         environment: environment)
                     roots.append(contentsOf: resolution.roots)
                     rootResolutionIsComplete = rootResolutionIsComplete && resolution.isComplete
                 case .omp:
                     let resolution = Self.ompSessionRootResolution(
-                        process: process,
+                        process: defaultProcess,
                         cwd: cwdURL.path,
                         environment: environment)
                     roots.append(contentsOf: resolution.roots)
@@ -718,7 +764,9 @@ struct PiFamilySessionScanner: Sendable {
             }
             let hasExplicitSelection = Self.hasExplicitCostRootSelection(
                 dialect: dialect,
-                environment: environment)
+                environment: environment) || Self.hasExplicitProcessRootSelection(
+                dialect: dialect,
+                processContexts: processContexts)
             if roots.isEmpty, hasExplicitSelection {
                 output.append(CostSessionRoot(
                     url: Self.unresolvedCostSessionRoot(for: dialect),
@@ -791,6 +839,23 @@ struct PiFamilySessionScanner: Sendable {
         return keys.contains { key in
             guard let value = environment[key] else { return false }
             return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
+
+    private static func hasExplicitProcessRootSelection(
+        dialect: AgentSession.Dialect,
+        processContexts: [PiSessionProcessContext]) -> Bool
+    {
+        processContexts.contains { context in
+            let process = AgentProcessRecord(pid: 0, ppid: 0, startedAt: nil, command: context.command)
+            guard AgentPSOutputParser.piDialect(for: process) == dialect else { return false }
+            return switch dialect {
+            case .pi:
+                Self.commandLineValue("--session-dir", in: context.command) != nil
+            case .omp:
+                Self.commandLineValue("--session-dir", in: context.command) != nil
+                    || Self.commandLineValue("--profile", in: context.command) != nil
+            }
         }
     }
 

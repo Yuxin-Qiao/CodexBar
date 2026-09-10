@@ -30,6 +30,7 @@ enum PiSessionCostScanner {
         var environment: [String: String]
         var workingDirectory: URL?
         var workingDirectories: [URL]
+        var processContexts: [PiSessionProcessContext]
 
         init(
             piSessionsRoot: URL? = nil,
@@ -40,7 +41,8 @@ enum PiSessionCostScanner {
             forceRescan: Bool = false,
             environment: [String: String] = ProcessInfo.processInfo.environment,
             workingDirectory: URL? = nil,
-            workingDirectories: [URL] = [])
+            workingDirectories: [URL] = [],
+            processContexts: [PiSessionProcessContext] = [])
         {
             self.piSessionsRoot = piSessionsRoot
             self.ompSessionsRoot = ompSessionsRoot
@@ -51,6 +53,7 @@ enum PiSessionCostScanner {
             self.environment = environment
             self.workingDirectory = workingDirectory
             self.workingDirectories = workingDirectories
+            self.processContexts = processContexts
         }
     }
 
@@ -168,7 +171,9 @@ enum PiSessionCostScanner {
         let nowMs = Int64(now.timeIntervalSince1970 * 1000)
         let refreshMs = Int64(max(0, options.refreshMinIntervalSeconds) * 1000)
         let pricingContext = self.pricingContext(now: now, cacheRoot: options.cacheRoot)
-        let roots = self.defaultSessionRoots(options: options)
+        let roots = self.defaultSessionRoots(
+            options: options,
+            previousSessionRootsFingerprint: cache.sessionRootsFingerprint)
         let sessionRootsFingerprint = self.sessionRootsFingerprint(roots)
         let windowExpanded = self.requestedWindowExpandsCache(range: range, cache: cache)
         let pricingChanged = cache.pricingKey != pricingContext.pricingKey
@@ -399,7 +404,10 @@ enum PiSessionCostScanner {
         return false
     }
 
-    private static func defaultSessionRoots(options: Options) -> [SessionRoot] {
+    private static func defaultSessionRoots(
+        options: Options,
+        previousSessionRootsFingerprint: String?) -> [SessionRoot]
+    {
         if options.piSessionsRoot != nil || options.ompSessionsRoot != nil {
             return [options.piSessionsRoot, options.ompSessionsRoot]
                 .compactMap(\.self)
@@ -415,19 +423,23 @@ enum PiSessionCostScanner {
             environment: options.environment,
             baseDirectories: options.workingDirectories.isEmpty
                 ? options.workingDirectory.map { [$0] }
-                : options.workingDirectories)
+                : options.workingDirectories,
+            processContexts: options.processContexts)
         if !resolved.isEmpty {
-            return resolved.map { root in
+            let resolvedRoots = resolved.map { root in
                 SessionRoot(
                     url: root.url,
                     missingIsKnownEmpty: root.missingIsKnownEmpty,
                     resolutionIsComplete: root.resolutionIsComplete)
             }
+            return self.appendingPreviousSessionRoots(
+                resolvedRoots,
+                fingerprint: previousSessionRootsFingerprint)
         }
 
         let home = FileManager.default.homeDirectoryForCurrentUser
         // Provider-specific by design: Pi-family stores use the fixed .pi and .omp home directories.
-        return [".pi", ".omp"].map { directory in
+        let fallbackRoots = [".pi", ".omp"].map { directory in
             SessionRoot(
                 url: home
                     .appendingPathComponent(directory, isDirectory: true)
@@ -436,6 +448,31 @@ enum PiSessionCostScanner {
                 missingIsKnownEmpty: true,
                 resolutionIsComplete: true)
         }
+        return self.appendingPreviousSessionRoots(
+            fallbackRoots,
+            fingerprint: previousSessionRootsFingerprint)
+    }
+
+    private static func appendingPreviousSessionRoots(
+        _ roots: [SessionRoot],
+        fingerprint: String?) -> [SessionRoot]
+    {
+        guard let fingerprint, !fingerprint.isEmpty else { return roots }
+        var output = roots
+        var seen = Set(roots.map(\.url.standardizedFileURL.path))
+        for component in fingerprint.split(separator: "\u{1E}", omittingEmptySubsequences: true) {
+            let fields = component.split(separator: "\u{1F}", omittingEmptySubsequences: false)
+            guard fields.count == 3 else { continue }
+            let path = String(fields[0])
+            guard !path.isEmpty, !path.hasPrefix("/.codexbar-unresolved-") else { continue }
+            let url = URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
+            guard seen.insert(url.path).inserted else { continue }
+            output.append(SessionRoot(
+                url: url,
+                missingIsKnownEmpty: fields[1] == "known-empty",
+                resolutionIsComplete: fields[2] == "resolved"))
+        }
+        return output
     }
 
     private static func sessionRootsFingerprint(_ roots: [SessionRoot]) -> String {

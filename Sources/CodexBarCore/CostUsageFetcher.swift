@@ -207,7 +207,8 @@ public struct CostUsageFetcher: Sendable {
         allowPricingRefresh: Bool = true,
         refreshPricingInBackground: Bool = true,
         includePiSessions: Bool = true,
-        piWorkingDirectories: [URL] = []) async throws -> CostUsageTokenSnapshot
+        piWorkingDirectories: [URL] = [],
+        piSessionProcessContexts: [PiSessionProcessContext] = []) async throws -> CostUsageTokenSnapshot
     {
         try await Self.loadTokenSnapshot(
             provider: provider,
@@ -223,6 +224,7 @@ public struct CostUsageFetcher: Sendable {
             includePiSessions: includePiSessions,
             bypassScannerDebounce: false,
             piWorkingDirectories: piWorkingDirectories,
+            piSessionProcessContexts: piSessionProcessContexts,
             scannerOptions: self.scannerOptionsOverride())
     }
 
@@ -239,6 +241,7 @@ public struct CostUsageFetcher: Sendable {
         refreshPricingInBackground: Bool = true,
         includePiSessions: Bool = true,
         piWorkingDirectories: [URL] = [],
+        piSessionProcessContexts: [PiSessionProcessContext] = [],
         bypassScannerDebounce: Bool,
         calendar: Calendar? = nil) async throws -> CostUsageTokenSnapshot
     {
@@ -260,6 +263,7 @@ public struct CostUsageFetcher: Sendable {
             includePiSessions: includePiSessions,
             bypassScannerDebounce: bypassScannerDebounce,
             piWorkingDirectories: piWorkingDirectories,
+            piSessionProcessContexts: piSessionProcessContexts,
             scannerOptions: options)
     }
 
@@ -404,6 +408,7 @@ public struct CostUsageFetcher: Sendable {
         includePiSessions: Bool = true,
         bypassScannerDebounce: Bool = false,
         piWorkingDirectories: [URL] = [],
+        piSessionProcessContexts: [PiSessionProcessContext] = [],
         scannerOptions overrideScannerOptions: CostUsageScanner.Options? = nil,
         piScannerOptions overridePiScannerOptions: PiSessionCostScanner
             .Options? = nil,
@@ -494,6 +499,9 @@ public struct CostUsageFetcher: Sendable {
             if piOptionsOnly.workingDirectories.isEmpty, !piWorkingDirectories.isEmpty {
                 piOptionsOnly.workingDirectories = piWorkingDirectories
             }
+            if piOptionsOnly.processContexts.isEmpty, !piSessionProcessContexts.isEmpty {
+                piOptionsOnly.processContexts = piSessionProcessContexts
+            }
             if overrideScannerOptions != nil {
                 piOptionsOnly.calendar = Self.resolvedScannerOptions(
                     overrideScannerOptions,
@@ -556,6 +564,7 @@ public struct CostUsageFetcher: Sendable {
                         refreshPricingInBackground: false,
                         includePiSessions: includePiSessions,
                         piWorkingDirectories: piWorkingDirectories,
+                        piSessionProcessContexts: piSessionProcessContexts,
                         scannerOptions: overrideScannerOptions,
                         piScannerOptions: piOptionsOnly,
                         modelsDevClient: modelsDevClient,
@@ -611,6 +620,9 @@ public struct CostUsageFetcher: Sendable {
         if resolvedPiOptions.workingDirectories.isEmpty, !piWorkingDirectories.isEmpty {
             resolvedPiOptions.workingDirectories = piWorkingDirectories
         }
+        if resolvedPiOptions.processContexts.isEmpty, !piSessionProcessContexts.isEmpty {
+            resolvedPiOptions.processContexts = piSessionProcessContexts
+        }
         resolvedPiOptions.calendar = options.calendar
         if forceRefresh || bypassScannerDebounce {
             resolvedPiOptions.refreshMinIntervalSeconds = 0
@@ -653,6 +665,7 @@ public struct CostUsageFetcher: Sendable {
                 refreshPricingInBackground: false,
                 includePiSessions: includePiSessions,
                 piWorkingDirectories: piWorkingDirectories,
+                piSessionProcessContexts: piSessionProcessContexts,
                 scannerOptions: options,
                 piScannerOptions: piOptions,
                 modelsDevClient: modelsDevClient,
