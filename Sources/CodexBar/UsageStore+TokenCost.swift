@@ -59,10 +59,10 @@ extension UsageStore {
         return .proceed(header)
     }
 
-    /// Provider-specific by design: visible Pi owns its Claude-priced rows in the spend dashboard;
-    /// Claude only falls back to those rows while Pi is not an active cost source.
+    /// Provider-specific by design: visible Pi owns its Claude- and Codex-priced rows in the spend dashboard;
+    /// Claude and Codex only fall back to those rows while Pi is not an active cost source.
     func shouldIncludePiSessionsInTokenSnapshot(for provider: UsageProvider) -> Bool {
-        guard provider == .claude else { return true }
+        guard provider == .claude || provider == .codex else { return true }
         let piIsCostSource = self.settings.isProviderEnabledCached(
             provider: .pi,
             metadataByProvider: self.providerMetadata) &&
@@ -71,7 +71,7 @@ extension UsageStore {
     }
 
     func piRowsScopeSignature(for provider: UsageProvider) -> String? {
-        guard provider == .claude else { return nil }
+        guard provider == .claude || provider == .codex else { return nil }
         return self.shouldIncludePiSessionsInTokenSnapshot(for: provider) ? "fallback" : "owned"
     }
 

@@ -77,7 +77,7 @@ struct UsageStoreCoverageTests {
     }
 
     @Test
-    func `claude token ownership follows visible pi cost source`() throws {
+    func `claude and codex token ownership follows visible pi cost source`() throws {
         let settings = Self.makeSettingsStore(suite: "UsageStoreCoverageTests-claude-pi-ownership")
         settings.costUsageEnabled = true
         let store = Self.makeUsageStore(settings: settings)
@@ -93,6 +93,10 @@ struct UsageStoreCoverageTests {
 
         let fallbackSignature = store.tokenSnapshotScopeSignature(for: .claude)
         #expect(store.shouldIncludePiSessionsInTokenSnapshot(for: .claude))
+        #expect(store.shouldIncludePiSessionsInTokenSnapshot(for: .codex))
+        #expect(fallbackSignature.contains("|piRows=fallback"))
+        let codexFallbackSignature = store.tokenSnapshotScopeSignature(for: .codex)
+        #expect(codexFallbackSignature.contains("|piRows=fallback"))
 
         try settings.setProviderEnabled(
             provider: .pi,
@@ -101,6 +105,9 @@ struct UsageStoreCoverageTests {
 
         #expect(!store.shouldIncludePiSessionsInTokenSnapshot(for: .claude))
         #expect(fallbackSignature != store.tokenSnapshotScopeSignature(for: .claude))
+        #expect(!store.shouldIncludePiSessionsInTokenSnapshot(for: .codex))
+        #expect(codexFallbackSignature != store.tokenSnapshotScopeSignature(for: .codex))
+        #expect(store.tokenSnapshotScopeSignature(for: .codex).contains("|piRows=owned"))
         #expect(store.shouldIncludePiSessionsInTokenSnapshot(for: .pi))
     }
 
