@@ -532,9 +532,9 @@ extension CodexBarCLI {
         format: OutputFormat,
         includePiSessions: Bool) -> Bool
     {
-        // Provider-specific by design: Pi owns its rows when it is selected alongside Claude,
-        // so the two provider snapshots cannot publish the same local usage twice.
-        if provider == .claude, selectedProviders.contains(.pi) {
+        // Provider-specific by design: Pi owns its rows when it is selected alongside native
+        // local providers, so the two provider snapshots cannot publish the same usage twice.
+        if provider == .claude || provider == .codex, selectedProviders.contains(.pi) {
             return false
         }
         // Provider-specific by design: only Codex local session text bypasses Pi/OMP merging.
