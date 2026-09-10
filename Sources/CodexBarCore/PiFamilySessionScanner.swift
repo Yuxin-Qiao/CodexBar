@@ -1026,6 +1026,7 @@ struct PiFamilySessionScanner: Sendable {
 
     private enum ProfileDirectoryInspection {
         case missing
+        case notDirectory
         case readableDirectory
         case unavailable
     }
@@ -1036,9 +1037,8 @@ struct PiFamilySessionScanner: Sendable {
         guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
             return .missing
         }
-        guard isDirectory.boolValue,
-              fileManager.isReadableFile(atPath: url.path)
-        else {
+        guard isDirectory.boolValue else { return .notDirectory }
+        guard fileManager.isReadableFile(atPath: url.path) else {
             return .unavailable
         }
         return .readableDirectory
@@ -1048,7 +1048,7 @@ struct PiFamilySessionScanner: Sendable {
         switch self.profileDirectoryInspection(profilesDirectory) {
         case .missing:
             return ProfileSessionRootResolution(roots: [], isComplete: true)
-        case .unavailable:
+        case .notDirectory, .unavailable:
             return ProfileSessionRootResolution(roots: [], isComplete: false)
         case .readableDirectory:
             break
@@ -1078,7 +1078,9 @@ struct PiFamilySessionScanner: Sendable {
                 candidate: canonicalProfile)
             else { continue }
             switch Self.profileDirectoryInspection(canonicalProfile) {
-            case .missing, .unavailable:
+            case .missing, .notDirectory:
+                continue
+            case .unavailable:
                 isComplete = false
                 continue
             case .readableDirectory:
@@ -1091,7 +1093,7 @@ struct PiFamilySessionScanner: Sendable {
                 continue
             case .unavailable:
                 isComplete = false
-            case .missing:
+            case .missing, .notDirectory:
                 break
             }
             let agentLayout = canonicalProfile
@@ -1102,7 +1104,7 @@ struct PiFamilySessionScanner: Sendable {
                 roots.append(agentLayout)
             case .unavailable:
                 isComplete = false
-            case .missing:
+            case .missing, .notDirectory:
                 break
             }
         }

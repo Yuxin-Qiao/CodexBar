@@ -230,6 +230,31 @@ struct PiProviderTests {
     }
 
     @Test
+    func `omp profile discovery ignores non-directory entries`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let profilesDirectory = env.root
+            .appendingPathComponent(".omp", isDirectory: true)
+            .appendingPathComponent("profiles", isDirectory: true)
+        try FileManager.default.createDirectory(at: profilesDirectory, withIntermediateDirectories: true)
+        try Data("profile metadata".utf8).write(
+            to: profilesDirectory.appendingPathComponent("README", isDirectory: false))
+
+        let roots = PiFamilySessionScanner.costSessionRoots(
+            environment: ["HOME": env.root.path],
+            baseDirectory: env.root)
+        let defaultOMPRoot = env.root
+            .appendingPathComponent(".omp", isDirectory: true)
+            .appendingPathComponent("agent", isDirectory: true)
+            .appendingPathComponent("sessions", isDirectory: true)
+            .standardizedFileURL
+        let ompRoot = try #require(roots.first { $0.url == defaultOMPRoot })
+        #expect(ompRoot.resolutionIsComplete)
+        #expect(!roots.contains { $0.url.path == "/.codexbar-unresolved-omp" })
+    }
+
+    @Test
     func `failed omp profile discovery keeps cost roots incomplete`() throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }
