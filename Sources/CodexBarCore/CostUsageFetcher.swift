@@ -206,7 +206,8 @@ public struct CostUsageFetcher: Sendable {
         cursorCookieHeaderOverride: String? = nil,
         allowPricingRefresh: Bool = true,
         refreshPricingInBackground: Bool = true,
-        includePiSessions: Bool = true) async throws -> CostUsageTokenSnapshot
+        includePiSessions: Bool = true,
+        piWorkingDirectories: [URL] = []) async throws -> CostUsageTokenSnapshot
     {
         try await Self.loadTokenSnapshot(
             provider: provider,
@@ -221,6 +222,7 @@ public struct CostUsageFetcher: Sendable {
             refreshPricingInBackground: refreshPricingInBackground,
             includePiSessions: includePiSessions,
             bypassScannerDebounce: false,
+            piWorkingDirectories: piWorkingDirectories,
             scannerOptions: self.scannerOptionsOverride())
     }
 
@@ -236,6 +238,7 @@ public struct CostUsageFetcher: Sendable {
         allowPricingRefresh: Bool = true,
         refreshPricingInBackground: Bool = true,
         includePiSessions: Bool = true,
+        piWorkingDirectories: [URL] = [],
         bypassScannerDebounce: Bool,
         calendar: Calendar? = nil) async throws -> CostUsageTokenSnapshot
     {
@@ -256,6 +259,7 @@ public struct CostUsageFetcher: Sendable {
             refreshPricingInBackground: refreshPricingInBackground,
             includePiSessions: includePiSessions,
             bypassScannerDebounce: bypassScannerDebounce,
+            piWorkingDirectories: piWorkingDirectories,
             scannerOptions: options)
     }
 
@@ -399,6 +403,7 @@ public struct CostUsageFetcher: Sendable {
         refreshPricingInBackground: Bool = true,
         includePiSessions: Bool = true,
         bypassScannerDebounce: Bool = false,
+        piWorkingDirectories: [URL] = [],
         scannerOptions overrideScannerOptions: CostUsageScanner.Options? = nil,
         piScannerOptions overridePiScannerOptions: PiSessionCostScanner
             .Options? = nil,
@@ -485,6 +490,10 @@ public struct CostUsageFetcher: Sendable {
             if piOptionsOnly.piSessionsRoot == nil, piOptionsOnly.ompSessionsRoot == nil {
                 piOptionsOnly.environment = environment
             }
+            // Provider-specific by design: Pi scans receive live process project roots for project-level settings.
+            if piOptionsOnly.workingDirectories.isEmpty, !piWorkingDirectories.isEmpty {
+                piOptionsOnly.workingDirectories = piWorkingDirectories
+            }
             if overrideScannerOptions != nil {
                 piOptionsOnly.calendar = Self.resolvedScannerOptions(
                     overrideScannerOptions,
@@ -546,6 +555,7 @@ public struct CostUsageFetcher: Sendable {
                         allowPricingRefresh: allowPricingRefresh,
                         refreshPricingInBackground: false,
                         includePiSessions: includePiSessions,
+                        piWorkingDirectories: piWorkingDirectories,
                         scannerOptions: overrideScannerOptions,
                         piScannerOptions: piOptionsOnly,
                         modelsDevClient: modelsDevClient,
@@ -598,6 +608,9 @@ public struct CostUsageFetcher: Sendable {
         if resolvedPiOptions.piSessionsRoot == nil, resolvedPiOptions.ompSessionsRoot == nil {
             resolvedPiOptions.environment = environment
         }
+        if resolvedPiOptions.workingDirectories.isEmpty, !piWorkingDirectories.isEmpty {
+            resolvedPiOptions.workingDirectories = piWorkingDirectories
+        }
         resolvedPiOptions.calendar = options.calendar
         if forceRefresh || bypassScannerDebounce {
             resolvedPiOptions.refreshMinIntervalSeconds = 0
@@ -639,6 +652,7 @@ public struct CostUsageFetcher: Sendable {
                 allowPricingRefresh: allowPricingRefresh,
                 refreshPricingInBackground: false,
                 includePiSessions: includePiSessions,
+                piWorkingDirectories: piWorkingDirectories,
                 scannerOptions: options,
                 piScannerOptions: piOptions,
                 modelsDevClient: modelsDevClient,

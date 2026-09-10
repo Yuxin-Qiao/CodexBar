@@ -1481,7 +1481,13 @@ extension CodexBarCLI {
                     provider: provider,
                     forceRefresh: false,
                     cursorCookieHeaderOverride: cursorCookieHeaderOverride,
-                    refreshPricingInBackground: Self.serveCostRefreshesPricingInBackground)
+                    refreshPricingInBackground: Self.serveCostRefreshesPricingInBackground,
+                    includePiSessions: Self.costIncludePiSessions(
+                        provider: provider,
+                        selectedProviders: providers,
+                        groupBy: .none,
+                        format: .json,
+                        includePiSessions: true))
                 return Self.makeCostPayload(provider: provider, snapshot: snapshot, error: nil)
             } catch {
                 return Self.makeCostPayload(provider: provider, snapshot: nil, error: error)

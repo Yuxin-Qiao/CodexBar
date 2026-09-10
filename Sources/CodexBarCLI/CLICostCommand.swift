@@ -94,6 +94,7 @@ extension CodexBarCLI {
                     refreshPricingInBackground: false,
                     includePiSessions: Self.costIncludePiSessions(
                         provider: provider,
+                        selectedProviders: providers,
                         groupBy: groupBy,
                         format: format,
                         includePiSessions: includePiSessions))
@@ -526,10 +527,16 @@ extension CodexBarCLI {
     /// Session text reports need native Codex rows, so keep Pi/OMP aggregate merging out of that path.
     static func costIncludePiSessions(
         provider: UsageProvider,
+        selectedProviders: [UsageProvider] = [],
         groupBy: CostGroupBy,
         format: OutputFormat,
         includePiSessions: Bool) -> Bool
     {
+        // Provider-specific by design: Pi owns its rows when it is selected alongside Claude,
+        // so the two provider snapshots cannot publish the same local usage twice.
+        if provider == .claude, selectedProviders.contains(.pi) {
+            return false
+        }
         // Provider-specific by design: only Codex local session text bypasses Pi/OMP merging.
         guard provider == .codex, groupBy == .session, format == .text else { return includePiSessions }
         return false

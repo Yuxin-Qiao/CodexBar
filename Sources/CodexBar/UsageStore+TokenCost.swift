@@ -101,6 +101,12 @@ extension UsageStore {
                 settings: self.settings,
                 tokenOverride: nil)
             : self.environmentBase
+        // Provider-specific by design: only Pi-owned or Pi-inclusive scans need live Pi process project roots.
+        let piWorkingDirectories: [URL] = if provider == .pi || effectiveIncludePiSessions {
+            await LocalAgentSessionScanner().piWorkingDirectories(environment: environment)
+        } else {
+            []
+        }
         return try await withThrowingTaskGroup(of: CostUsageTokenSnapshot.self) { group in
             group.addTask(priority: .utility) {
                 try await fetcher.loadTokenSnapshot(
@@ -114,6 +120,7 @@ extension UsageStore {
                     cursorCookieHeaderOverride: cursorCookieHeaderOverride,
                     allowPricingRefresh: allowPricingRefresh,
                     includePiSessions: effectiveIncludePiSessions,
+                    piWorkingDirectories: piWorkingDirectories,
                     bypassScannerDebounce: true,
                     calendar: self.settings.costUsageBucketCalendar)
             }

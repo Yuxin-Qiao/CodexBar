@@ -120,7 +120,13 @@ struct DashboardSnapshotProducer: Sendable {
                             provider: provider,
                             forceRefresh: false,
                             cursorCookieHeaderOverride: cursorCookieHeaderOverride,
-                            refreshPricingInBackground: context.costRefreshesPricingInBackground)
+                            refreshPricingInBackground: context.costRefreshesPricingInBackground,
+                            includePiSessions: CodexBarCLI.costIncludePiSessions(
+                                provider: provider,
+                                selectedProviders: providers,
+                                groupBy: .none,
+                                format: .json,
+                                includePiSessions: true))
                         return CodexBarCLI.makeCostPayload(provider: provider, snapshot: snapshot, error: nil)
                     } catch {
                         return CodexBarCLI.makeCostPayload(provider: provider, snapshot: nil, error: error)

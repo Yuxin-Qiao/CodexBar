@@ -668,9 +668,26 @@ struct PiFamilySessionScanner: Sendable {
         environment: [String: String],
         baseDirectory: URL? = nil) -> [CostSessionRoot]
     {
-        let cwdURL = baseDirectory ?? URL(
+        self.costSessionRoots(
+            environment: environment,
+            baseDirectories: baseDirectory.map { [$0] })
+    }
+
+    /// Resolves historical roots for every known Pi project directory. Project-level Pi settings are
+    /// relative to the process working directory, so a single app-wide current directory is not enough
+    /// when several Pi processes are active in different projects.
+    static func costSessionRoots(
+        environment: [String: String],
+        baseDirectories: [URL]? = nil) -> [CostSessionRoot]
+    {
+        let cwdURLs = (baseDirectories?.isEmpty == false ? baseDirectories! : [URL(
             fileURLWithPath: FileManager.default.currentDirectoryPath,
-            isDirectory: true)
+            isDirectory: true)])
+            .map(Self.canonicalURL)
+        let uniqueCWDs = cwdURLs.reduce(into: [URL]()) { result, url in
+            guard !result.contains(where: { $0.path == url.path }) else { return }
+            result.append(url)
+        }
         let process = AgentProcessRecord(pid: 0, ppid: 0, startedAt: nil, command: "")
         // Provider-specific by design: historical cost scans must resolve both Pi dialects through the shared root
         // resolver.
@@ -679,23 +696,25 @@ struct PiFamilySessionScanner: Sendable {
         var seen = Set<String>()
 
         for dialect in dialects {
-            let roots: [SessionRoot]
+            var roots: [SessionRoot] = []
             var rootResolutionIsComplete = true
-            switch dialect {
-            case .pi:
-                let resolution = Self.piSessionRootResolution(
-                    process: process,
-                    cwd: cwdURL.path,
-                    environment: environment)
-                roots = resolution.roots
-                rootResolutionIsComplete = resolution.isComplete
-            case .omp:
-                let resolution = Self.ompSessionRootResolution(
-                    process: process,
-                    cwd: cwdURL.path,
-                    environment: environment)
-                roots = resolution.roots
-                rootResolutionIsComplete = resolution.profileDiscoveryIsComplete
+            for cwdURL in uniqueCWDs {
+                switch dialect {
+                case .pi:
+                    let resolution = Self.piSessionRootResolution(
+                        process: process,
+                        cwd: cwdURL.path,
+                        environment: environment)
+                    roots.append(contentsOf: resolution.roots)
+                    rootResolutionIsComplete = rootResolutionIsComplete && resolution.isComplete
+                case .omp:
+                    let resolution = Self.ompSessionRootResolution(
+                        process: process,
+                        cwd: cwdURL.path,
+                        environment: environment)
+                    roots.append(contentsOf: resolution.roots)
+                    rootResolutionIsComplete = rootResolutionIsComplete && resolution.profileDiscoveryIsComplete
+                }
             }
             let hasExplicitSelection = Self.hasExplicitCostRootSelection(
                 dialect: dialect,
@@ -707,8 +726,10 @@ struct PiFamilySessionScanner: Sendable {
                     resolutionIsComplete: false))
                 continue
             }
+            var seenDialectRoots = Set<String>()
             for root in roots {
                 let canonical = Self.canonicalURL(root.url)
+                guard seenDialectRoots.insert(canonical.path).inserted else { continue }
                 guard seen.insert(canonical.path).inserted else { continue }
                 let defaultRoot = Self.defaultCostSessionRoot(for: dialect, environment: environment)
                 output.append(CostSessionRoot(

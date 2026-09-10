@@ -89,6 +89,18 @@ struct CLICostTests {
             groupBy: .session,
             format: .text,
             includePiSessions: true))
+        #expect(!CodexBarCLI.costIncludePiSessions(
+            provider: .claude,
+            selectedProviders: [.claude, .pi],
+            groupBy: .none,
+            format: .json,
+            includePiSessions: true))
+        #expect(CodexBarCLI.costIncludePiSessions(
+            provider: .claude,
+            selectedProviders: [.claude],
+            groupBy: .none,
+            format: .json,
+            includePiSessions: true))
     }
 
     @Test

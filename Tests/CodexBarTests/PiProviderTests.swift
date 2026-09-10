@@ -122,6 +122,61 @@ struct PiProviderTests {
     }
 
     @Test
+    func `pi cost roots resolve project settings for every correlated working directory`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let firstProject = env.root.appendingPathComponent("first-project", isDirectory: true)
+        let secondProject = env.root.appendingPathComponent("second-project", isDirectory: true)
+        let firstRoot = env.root.appendingPathComponent("first-sessions", isDirectory: true)
+        let secondRoot = env.root.appendingPathComponent("second-sessions", isDirectory: true)
+        for directory in [firstProject, secondProject, firstRoot, secondRoot] {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+        for (project, sessionRoot) in [(firstProject, firstRoot), (secondProject, secondRoot)] {
+            let settings = project.appendingPathComponent(".pi", isDirectory: true)
+                .appendingPathComponent("settings.json")
+            try FileManager.default.createDirectory(
+                at: settings.deletingLastPathComponent(),
+                withIntermediateDirectories: true)
+            let value = "{\"sessionDir\":\"\(sessionRoot.path)\"}"
+            try Data(value.utf8).write(to: settings)
+        }
+
+        let roots = PiFamilySessionScanner.costSessionRoots(
+            environment: ["HOME": env.root.path],
+            baseDirectories: [firstProject, secondProject])
+
+        #expect(roots.contains { $0.url == firstRoot.standardizedFileURL && $0.resolutionIsComplete })
+        #expect(roots.contains { $0.url == secondRoot.standardizedFileURL && $0.resolutionIsComplete })
+    }
+
+    @Test
+    func `pi working directories follow live pi processes`() async {
+        let scanner = LocalAgentSessionScanner(
+            processOutputProvider: { _ in
+                """
+                201 1 Mon Jul 6 09:03:00 2026 /usr/local/bin/pi --project alpha
+                202 1 Tue Jul 7 09:03:00 2026 /usr/local/bin/pi --project beta
+                203 1 Wed Jul 8 09:03:00 2026 /usr/local/bin/claude
+                """
+            },
+            cwdProvider: { pids, _ in
+                Dictionary(uniqueKeysWithValues: pids.compactMap { pid in
+                    switch pid {
+                    case 201: (pid, "/projects/alpha")
+                    case 202: (pid, "/projects/beta")
+                    default: nil
+                    }
+                })
+            })
+
+        let directories = await scanner.piWorkingDirectories(environment: [:])
+
+        #expect(directories.map(\.path) == ["/projects/alpha", "/projects/beta"])
+    }
+
+    @Test
     func `xdg data home fallback keeps default omp root known empty`() throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }

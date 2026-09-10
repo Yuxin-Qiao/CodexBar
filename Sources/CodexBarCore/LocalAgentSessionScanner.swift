@@ -188,6 +188,39 @@ public struct LocalAgentSessionScanner: Sendable {
             directoryBudget: &directoryBudget)
     }
 
+    /// Returns the project directories of live Pi processes so historical cost scans can resolve
+    /// project-level `.pi/settings.json` without assuming the app's own current directory.
+    @concurrent
+    public func piWorkingDirectories(
+        environment: [String: String] = ProcessInfo.processInfo.environment) async -> [URL]
+    {
+        let allProcesses = if let processOutputProvider = self.processOutputProvider {
+            await AgentPSOutputParser.parse(processOutputProvider(environment))
+        } else {
+            await self.processRecords(environment: environment)
+        }
+        let processes = Array(AgentSessionCorrelation.newestProcessesFirst(
+            // Provider-specific by design: only Pi processes provide project roots for Pi history resolution.
+            AgentPSOutputParser.agentProcesses(from: allProcesses)
+                .filter { AgentPSOutputParser.provider(for: $0) == .pi })
+            .prefix(max(0, self.config.maxProcessCount)))
+        guard !processes.isEmpty else { return [] }
+
+        let cwdByPID = if let cwdProvider = self.cwdProvider {
+            await cwdProvider(processes.map(\.pid), environment)
+        } else {
+            await self.cwdByPID(processes.map(\.pid), environment: environment)
+        }
+        var seen = Set<String>()
+        return processes.compactMap { process in
+            guard let cwd = cwdByPID[process.pid], !cwd.isEmpty else { return nil }
+            let url = URL(fileURLWithPath: cwd, isDirectory: true).standardizedFileURL
+            guard seen.insert(url.path).inserted else { return nil }
+            return url
+        }
+        .sorted { $0.path < $1.path }
+    }
+
     public static func shouldScanSessionMetadata(
         hasAgentProcesses: Bool,
         includeFileOnlySessions: Bool,

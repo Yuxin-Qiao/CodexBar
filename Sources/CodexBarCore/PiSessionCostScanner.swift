@@ -29,6 +29,7 @@ enum PiSessionCostScanner {
         var forceRescan: Bool = false
         var environment: [String: String]
         var workingDirectory: URL?
+        var workingDirectories: [URL]
 
         init(
             piSessionsRoot: URL? = nil,
@@ -38,7 +39,8 @@ enum PiSessionCostScanner {
             refreshMinIntervalSeconds: TimeInterval = 60,
             forceRescan: Bool = false,
             environment: [String: String] = ProcessInfo.processInfo.environment,
-            workingDirectory: URL? = nil)
+            workingDirectory: URL? = nil,
+            workingDirectories: [URL] = [])
         {
             self.piSessionsRoot = piSessionsRoot
             self.ompSessionsRoot = ompSessionsRoot
@@ -48,6 +50,7 @@ enum PiSessionCostScanner {
             self.forceRescan = forceRescan
             self.environment = environment
             self.workingDirectory = workingDirectory
+            self.workingDirectories = workingDirectories
         }
     }
 
@@ -410,7 +413,9 @@ enum PiSessionCostScanner {
 
         let resolved = PiFamilySessionScanner.costSessionRoots(
             environment: options.environment,
-            baseDirectory: options.workingDirectory)
+            baseDirectories: options.workingDirectories.isEmpty
+                ? options.workingDirectory.map { [$0] }
+                : options.workingDirectories)
         if !resolved.isEmpty {
             return resolved.map { root in
                 SessionRoot(
