@@ -38,7 +38,7 @@ extension SettingsStore {
         homeDirectory: URL? = nil,
         workingDirectory: URL? = nil) -> Bool
     {
-        // Provider-specific by design: only Codex and Claude have local JSONL scanners that can auto-enable token cost.
+        // Provider-specific by design: Codex, Claude, and Pi-family stores can auto-enable token cost.
         let home = homeDirectory ?? fileManager.homeDirectoryForCurrentUser
 
         func hasAnyJsonl(in root: URL) -> Bool {
@@ -76,6 +76,20 @@ extension SettingsStore {
             return true
         }
         if let archivedCodexRoot, hasAnyJsonl(in: archivedCodexRoot) {
+            return true
+        }
+
+        var piEnvironment = env
+        if piEnvironment["HOME"]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true {
+            piEnvironment["HOME"] = home.path
+        }
+        let piBaseDirectory = workingDirectory ?? URL(
+            fileURLWithPath: fileManager.currentDirectoryPath,
+            isDirectory: true)
+        let piRoots = PiFamilySessionRootResolver.costSessionRootURLs(
+            environment: piEnvironment,
+            baseDirectory: piBaseDirectory)
+        if piRoots.contains(where: hasAnyJsonl(in:)) {
             return true
         }
 

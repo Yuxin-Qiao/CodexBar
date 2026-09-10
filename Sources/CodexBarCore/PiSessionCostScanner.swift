@@ -193,6 +193,7 @@ enum PiSessionCostScanner {
             try checkCancellation?()
             let startCutoff = self.dateFromDayKey(range.scanSinceKey, calendar: range.calendar) ?? since
             var files: [SessionFileCandidate] = []
+            var seenFilePaths = Set<String>()
             for (rootIndex, root) in roots.enumerated() {
                 guard root.resolutionIsComplete else { continue }
                 let result = self.listPiSessionFiles(
@@ -202,7 +203,9 @@ enum PiSessionCostScanner {
                     missingIsKnownEmpty: root.missingIsKnownEmpty)
                 scanIsComplete = scanIsComplete && result.isComplete
                 for url in result.files {
-                    files.append(SessionFileCandidate(url: url, rootIndex: rootIndex))
+                    let canonicalURL = self.canonicalSessionFileURL(url)
+                    guard seenFilePaths.insert(canonicalURL.path).inserted else { continue }
+                    files.append(SessionFileCandidate(url: canonicalURL, rootIndex: rootIndex))
                 }
             }
             files.sort { lhs, rhs in
@@ -1338,6 +1341,10 @@ extension PiSessionCostScanner {
         let calendar = CostUsageScanner.CostUsageDayRange.localGregorianCalendar(matching: calendar)
         let components = calendar.dateComponents([.year, .month, .day], from: date)
         return calendar.date(from: components) ?? date
+    }
+
+    private static func canonicalSessionFileURL(_ url: URL) -> URL {
+        url.standardizedFileURL.resolvingSymlinksInPath().standardizedFileURL
     }
 
     private static func dateFromDayKey(_ key: String, calendar: Calendar) -> Date? {
