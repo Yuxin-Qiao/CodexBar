@@ -811,6 +811,15 @@ enum PiSessionCostScanner {
                             entryID: self.entryIdentifier(from: object))
                     }
                 })
+            // A scan can stop at the last complete newline while an active writer leaves a
+            // partial JSON object at EOF. The committed offset then trails the file size, so
+            // keep the cache incomplete and retry the tail on a later refresh.
+            let observedFileSize = (try? FileManager.default
+                .attributesOfItem(atPath: fileURL.path)[.size] as? NSNumber)?
+                            .int64Value
+            if observedFileSize != parsedBytes {
+                isComplete = false
+            }
         } catch is CancellationError {
             throw CancellationError()
         } catch {

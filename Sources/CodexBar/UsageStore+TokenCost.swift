@@ -292,6 +292,7 @@ extension UsageStore {
         let costUsageSettingsRevision = self.settings.costUsageSettingsRevision
         let tokenSnapshotScopeSignature = self.tokenSnapshotScopeSignature(for: .codex)
         let tokenSnapshotPublicationRevision = self.tokenSnapshotPublicationRevision(for: .codex)
+        let includePiSessions = self.shouldIncludePiSessionsInTokenSnapshot(for: .codex)
         return Task { @MainActor [weak self] in
             guard let self else { return }
             guard self.tokenSnapshotPublicationForCurrentProviderConfig(for: .codex) == nil else { return }
@@ -306,6 +307,7 @@ extension UsageStore {
                     now: now,
                     codexHomePath: scope.codexHomePath,
                     historyDays: historyDays,
+                    includePiSessions: includePiSessions,
                     calendar: self.settings.costUsageBucketCalendar)
                     .map {
                         (

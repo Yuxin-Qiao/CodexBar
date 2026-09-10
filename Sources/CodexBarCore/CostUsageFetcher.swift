@@ -114,12 +114,14 @@ public struct CostUsageFetcher: Sendable {
         now: Date = Date(),
         codexHomePath: String? = nil,
         historyDays: Int = 30,
+        includePiSessions: Bool = true,
         calendar: Calendar? = nil) async -> CachedCodexTokenSnapshotResult?
     {
         await Self.loadCachedCodexTokenSnapshotResult(
             now: now,
             codexHomePath: codexHomePath,
             historyDays: historyDays,
+            includePiSessions: includePiSessions,
             scannerOptions: self.scannerOptions(calendar: calendar))
     }
 

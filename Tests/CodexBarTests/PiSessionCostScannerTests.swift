@@ -936,7 +936,7 @@ extension PiSessionCostScannerTests {
     }
 
     @Test
-    func `pi scanner marks malformed jsonl records incomplete and preserves cached usage`() throws {
+    func `pi scanner marks malformed records and unfinished tails incomplete`() throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }
 
