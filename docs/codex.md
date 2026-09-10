@@ -210,13 +210,22 @@ is limited, using additional rows when needed.
     - `~/.pi/agent/sessions/**/*.jsonl`
     - `~/.omp/agent/sessions/**/*.jsonl`
 - Scanner:
+  - Codex reserve telemetry uses the bundled GPT-5.6 Luna list-price estimate, including existing cached token rows.
+    This estimates API-equivalent cost; it is not a charge for using a subscription reserve allowance.
   - Bundled `gpt-6-astra` pricing covers input, cache reads/writes, output, and the full-request long-context
     threshold above 272K input tokens. Astra Fast pricing is twice the applicable Standard rates when
     existing priority-request evidence selects that mode. Stored token rows are repriced without a history rebuild.
     Rates follow the [OpenAI model card](https://developers.openai.com/api/docs/models/gpt-6-astra) and
     [pricing table](https://developers.openai.com/api/docs/pricing).
+  - Valid JSON whitespace between event fields is accepted during initial scans and appended-session refreshes.
+    Older cached files are reparsed once through the normal scan budget; compatible stores retain their rows and
+    checkpoints until each file is refreshed.
   - Native Codex logs parse `event_msg` token_count entries and `turn_context` model markers; when both are present,
     `turn_context` is authoritative for the model bucket.
+  - A subagent's `subagent_history_start_ordinal` is authoritative: earlier records are inherited context, even if
+    they contain delivery markers or the file ends before child-owned history arrives. Later appends count only
+    the child's own deltas. Older per-file parser revisions refresh through the normal scan budget while stored
+    history and checkpoints remain available.
   - pi and OMP sessions count assistant-message usage rows and attribute `openai-codex` assistant usage to Codex.
   - pi-compatible assistant usage is bucketed by assistant-turn timestamp, so mixed-model sessions can contribute to
     multiple days/models correctly.
@@ -227,7 +236,9 @@ is limited, using additional rows when needed.
   - Native session store: `~/Library/Caches/CodexBar/cost-usage/cost-usage.sqlite`
   - pi-compatible session cache: `~/Library/Caches/CodexBar/cost-usage/pi-sessions-v8.json`
     is replaced atomically on macOS and Linux, retaining complete cached scan state across refreshes.
-  - Catch-up status reads progress metadata without loading historical usage JSON or replay bodies. Cached reports
+  - Catch-up status reads progress metadata without loading historical usage JSON or replay bodies. Cached token
+    activity reads scoped daily aggregates without decoding individual usage events, retaining account, time zone,
+    coverage, and incomplete-scan checks. Cached reports
     retain row-level pricing evidence and project/session details, but omit raw token snapshots, accumulator state,
     and replay bodies. File cursor metadata, including JSONL resume state, remains available for progress tracking.
     A native scan loads exact usage rows once, deferring raw token history and checkpoints until a file changes
