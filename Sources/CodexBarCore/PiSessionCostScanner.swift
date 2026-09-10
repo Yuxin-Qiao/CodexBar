@@ -76,6 +76,7 @@ enum PiSessionCostScanner {
         let url: URL
         let missingIsKnownEmpty: Bool
         let resolutionIsComplete: Bool
+        let preserveAfterProcessExit: Bool
     }
 
     private struct AssistantIdentity {
@@ -415,7 +416,8 @@ enum PiSessionCostScanner {
                     SessionRoot(
                         url: $0,
                         missingIsKnownEmpty: false,
-                        resolutionIsComplete: true)
+                        resolutionIsComplete: true,
+                        preserveAfterProcessExit: false)
                 }
         }
 
@@ -430,7 +432,8 @@ enum PiSessionCostScanner {
                 SessionRoot(
                     url: root.url,
                     missingIsKnownEmpty: root.missingIsKnownEmpty,
-                    resolutionIsComplete: root.resolutionIsComplete)
+                    resolutionIsComplete: root.resolutionIsComplete,
+                    preserveAfterProcessExit: root.preserveAfterProcessExit)
             }
             return self.appendingPreviousSessionRoots(
                 resolvedRoots,
@@ -446,7 +449,8 @@ enum PiSessionCostScanner {
                     .appendingPathComponent("agent", isDirectory: true)
                     .appendingPathComponent("sessions", isDirectory: true),
                 missingIsKnownEmpty: true,
-                resolutionIsComplete: true)
+                resolutionIsComplete: true,
+                preserveAfterProcessExit: false)
         }
         return self.appendingPreviousSessionRoots(
             fallbackRoots,
@@ -462,7 +466,7 @@ enum PiSessionCostScanner {
         var seen = Set(roots.map(\.url.standardizedFileURL.path))
         for component in fingerprint.split(separator: "\u{1E}", omittingEmptySubsequences: true) {
             let fields = component.split(separator: "\u{1F}", omittingEmptySubsequences: false)
-            guard fields.count == 3 else { continue }
+            guard fields.count == 4, fields[3] == "live" else { continue }
             let path = String(fields[0])
             guard !path.isEmpty, !path.hasPrefix("/.codexbar-unresolved-") else { continue }
             let url = URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
@@ -470,7 +474,8 @@ enum PiSessionCostScanner {
             output.append(SessionRoot(
                 url: url,
                 missingIsKnownEmpty: fields[1] == "known-empty",
-                resolutionIsComplete: fields[2] == "resolved"))
+                resolutionIsComplete: fields[2] == "resolved",
+                preserveAfterProcessExit: true))
         }
         return output
     }
@@ -482,6 +487,7 @@ enum PiSessionCostScanner {
                     root.url.path,
                     root.missingIsKnownEmpty ? "known-empty" : "required",
                     root.resolutionIsComplete ? "resolved" : "unresolved",
+                    root.preserveAfterProcessExit ? "live" : "configured",
                 ].joined(separator: "\u{1F}")
             }
             .joined(separator: "\u{1E}")

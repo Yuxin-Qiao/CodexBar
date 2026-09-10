@@ -1471,6 +1471,9 @@ extension CodexBarCLI {
         }
 
         let fetcher = CostUsageFetcher()
+        let piSessionProcessContexts = await Self.piSessionProcessContextsForCost(
+            providers: providers,
+            includePiSessions: true)
         let payload = await Self.collectConfiguredCostPayloads(
             providers: providers,
             config: context.config,
@@ -1487,7 +1490,8 @@ extension CodexBarCLI {
                         selectedProviders: providers,
                         groupBy: .none,
                         format: .json,
-                        includePiSessions: true))
+                        includePiSessions: true),
+                    piSessionProcessContexts: piSessionProcessContexts)
                 return Self.makeCostPayload(provider: provider, snapshot: snapshot, error: nil)
             } catch {
                 return Self.makeCostPayload(provider: provider, snapshot: nil, error: error)

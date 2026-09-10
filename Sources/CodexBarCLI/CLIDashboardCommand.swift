@@ -110,6 +110,9 @@ struct DashboardSnapshotProducer: Sendable {
             },
             collectCost: { providers, config in
                 let costFetcher = CostUsageFetcher()
+                let piSessionProcessContexts = await CodexBarCLI.piSessionProcessContextsForCost(
+                    providers: providers,
+                    includePiSessions: true)
                 return await CodexBarCLI.collectConfiguredCostPayloads(
                     providers: providers,
                     config: config,
@@ -126,7 +129,8 @@ struct DashboardSnapshotProducer: Sendable {
                                 selectedProviders: providers,
                                 groupBy: .none,
                                 format: .json,
-                                includePiSessions: true))
+                                includePiSessions: true),
+                            piSessionProcessContexts: piSessionProcessContexts)
                         return CodexBarCLI.makeCostPayload(provider: provider, snapshot: snapshot, error: nil)
                     } catch {
                         return CodexBarCLI.makeCostPayload(provider: provider, snapshot: nil, error: error)

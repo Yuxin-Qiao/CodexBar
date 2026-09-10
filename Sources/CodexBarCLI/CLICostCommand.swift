@@ -64,6 +64,9 @@ extension CodexBarCLI {
         let bucketCalendar = CostUsageBucketTimeZone.calendar(
             identifier: Self.stringFromAppDefaults("tokenCostUsageBucketTimeZone"))
         let fetcher = CostUsageFetcher(calendar: bucketCalendar)
+        let piSessionProcessContexts = await Self.piSessionProcessContextsForCost(
+            providers: providers,
+            includePiSessions: includePiSessions)
         var sections: [String] = []
         var payload: [CostPayload] = []
         var exitCode: ExitCode = .success
@@ -97,7 +100,8 @@ extension CodexBarCLI {
                         selectedProviders: providers,
                         groupBy: groupBy,
                         format: format,
-                        includePiSessions: includePiSessions))
+                        includePiSessions: includePiSessions),
+                    piSessionProcessContexts: piSessionProcessContexts)
                 switch format {
                 case .text:
                     sections.append(Self.renderCostText(
@@ -511,6 +515,16 @@ extension CodexBarCLI {
 
     static func costProviders(from selection: ProviderSelection) -> [UsageProvider] {
         selection.asList.filter { Self.costSupportedProviders.contains($0) }
+    }
+
+    /// Provider-specific by design: historical Pi/OMP cost roots must include the working directories and
+    /// selectors of live Pi-family processes, even when the CLI itself runs from another directory.
+    static func piSessionProcessContextsForCost(
+        providers: [UsageProvider],
+        includePiSessions: Bool) async -> [PiSessionProcessContext]
+    {
+        guard includePiSessions || providers.contains(.pi) else { return [] }
+        return await LocalAgentSessionScanner().piSessionProcessContexts()
     }
 
     /// Providers participating in a cost run: text-mode project/session grouping is Codex-only,

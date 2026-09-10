@@ -518,11 +518,18 @@ struct PiFamilySessionScanner: Sendable {
         let url: URL
         let layout: RootLayout
         let missingIsKnownEmpty: Bool
+        let preserveAfterProcessExit: Bool
 
-        init(url: URL, layout: RootLayout, missingIsKnownEmpty: Bool = false) {
+        init(
+            url: URL,
+            layout: RootLayout,
+            missingIsKnownEmpty: Bool = false,
+            preserveAfterProcessExit: Bool = false)
+        {
             self.url = url
             self.layout = layout
             self.missingIsKnownEmpty = missingIsKnownEmpty
+            self.preserveAfterProcessExit = preserveAfterProcessExit
         }
     }
 
@@ -545,11 +552,18 @@ struct PiFamilySessionScanner: Sendable {
         let url: URL
         let missingIsKnownEmpty: Bool
         let resolutionIsComplete: Bool
+        let preserveAfterProcessExit: Bool
 
-        init(url: URL, missingIsKnownEmpty: Bool, resolutionIsComplete: Bool = true) {
+        init(
+            url: URL,
+            missingIsKnownEmpty: Bool,
+            resolutionIsComplete: Bool = true,
+            preserveAfterProcessExit: Bool = false)
+        {
             self.url = url
             self.missingIsKnownEmpty = missingIsKnownEmpty
             self.resolutionIsComplete = resolutionIsComplete
+            self.preserveAfterProcessExit = preserveAfterProcessExit
         }
     }
 
@@ -752,7 +766,13 @@ struct PiFamilySessionScanner: Sendable {
                         environment: environment)
                     resolution = (result.roots, result.profileDiscoveryIsComplete)
                 }
-                roots.append(contentsOf: resolution.roots)
+                roots.append(contentsOf: resolution.roots.map { root in
+                    SessionRoot(
+                        url: root.url,
+                        layout: root.layout,
+                        missingIsKnownEmpty: root.missingIsKnownEmpty,
+                        preserveAfterProcessExit: true)
+                })
                 rootResolutionIsComplete = rootResolutionIsComplete && resolution.isComplete
             }
             for cwdURL in uniqueCWDs {
@@ -793,7 +813,8 @@ struct PiFamilySessionScanner: Sendable {
                 output.append(CostSessionRoot(
                     url: canonical,
                     missingIsKnownEmpty: root.missingIsKnownEmpty,
-                    resolutionIsComplete: true))
+                    resolutionIsComplete: true,
+                    preserveAfterProcessExit: root.preserveAfterProcessExit))
             }
             if !rootResolutionIsComplete {
                 let unresolved = Self.unresolvedCostSessionRoot(for: dialect)
