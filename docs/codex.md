@@ -53,8 +53,8 @@ Usage source picker:
 - `additional_rate_limits[]` (model-specific limits such as GPT-5.3-Codex-Spark) map to named
   `UsageSnapshot.extraRateWindows` entries. Spark uses stable `codex-spark` / `codex-spark-weekly` ids and
   `Codex Spark 5-hour` / `Codex Spark Weekly` titles. When the field is absent, the snapshot is unchanged.
-- Preferences → Providers → Codex → Show Codex Spark usage hides only the Spark rows in menus and the provider
-  preview. It does not change fetching, history, notifications, widgets, credits, or other extra limits.
+- Preferences → Providers → Codex → Visible usage items lets you hide individual Spark rows in menus, the Settings
+  preview, and Overview. It does not change fetching, history, notifications, widgets, credits, or other extra limits.
 
 ### Optional external OAuth sources (off by default)
 - **External Codex OAuth sources** is a provider setting that must be enabled explicitly before CodexBar reads
@@ -68,6 +68,9 @@ Usage source picker:
   Automatic mode also suppresses unscoped CLI fallback whenever a managed workspace is selected. Explicit
   managed-account workspace selection is stored in CodexBar's private managed-account metadata; it never edits the
   source `auth.json` or publishes an `account_id` change back to another application's credential file.
+- If native credentials need renewal, use **Reauthenticate** for the affected account in Settings → Providers → Codex.
+  For CLI recovery, run `codex login` with that account's existing `CODEX_HOME` and select the intended workspace.
+  The refresh error describes this manual recovery without promising automatic CLI fallback for managed workspaces.
 - Stacked account refreshes retain each managed account's selected workspace through usage publication and menu
   matching, even when its auth file names a different default workspace. Changing the selected workspace while a
   refresh is running discards the old workspace's result.

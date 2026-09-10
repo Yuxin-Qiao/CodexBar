@@ -159,6 +159,7 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
     var mergedMenu: NSMenu?
     var providerMenus: [ProviderInstanceID: NSMenu] = [:]
     var fallbackMenu: NSMenu?
+    var menuAppearanceObserver: StatusMenuAppearanceObserver?
     var openMenus: [ObjectIdentifier: NSMenu] = [:]
     var menuRefreshTasks: [ObjectIdentifier: Task<Void, Never>] = [:]
     /// Manual refreshes tracked per scope so refreshing one provider neither greys out nor blocks
@@ -912,10 +913,6 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
     func isVisible(_ provider: UsageProvider) -> Bool {
         self.store.debugForceAnimation || self.isEnabled(provider)
             || self.fallbackProvider == provider
-    }
-
-    var shouldMergeIcons: Bool {
-        self.settings.mergeIcons && self.store.enabledProvidersForDisplay().count > 1
     }
 
     func switchAccountSubtitle(for target: UsageProvider) -> String? {
