@@ -682,7 +682,7 @@ public struct CostUsageFetcher: Sendable {
                 updatedAt: piScanResult.isComplete ? now : piScanResult.lastScanAt ?? now)
             return CostUsageTokenResult(
                 snapshot: snapshot,
-                accounting: .piOnly(scope: PiSessionCostScanner.scopeFingerprint(options: piOptionsOnly)))
+                accounting: piScanResult.scopeFingerprint.map { .piOnly(scope: $0) })
         }
 
         var options = Self.resolvedScannerOptions(
@@ -923,7 +923,9 @@ public struct CostUsageFetcher: Sendable {
                 if provider == .codex {
                     piDaily = piScanResult.report
                 }
-                piScope = PiSessionCostScanner.scopeFingerprint(options: options.piOptions)
+                // The scanner can restore a previous cache scope after an incomplete root
+                // transition; carry the scope that the returned report actually represents.
+                piScope = piScanResult.scopeFingerprint
                 daily = CostUsageDailyReport.merged([daily, piScanResult.report])
             }
             if provider == .codex {
@@ -1288,9 +1290,9 @@ public struct CostUsageFetcher: Sendable {
                 // Missing or incompatible mirror history is not zero usage.
                 guard !requireCompleteHistory || piResult != nil else { return nil }
                 if let piResult {
-                    if let nativeSnapshot {
+                    if let nativeSnapshot, let scope = piResult.scopeFingerprint {
                         accounting = .includesPi(
-                            scope: PiSessionCostScanner.scopeFingerprint(options: piOptions),
+                            scope: scope,
                             native: nativeSnapshot)
                     }
                     reports.append(piResult.report)

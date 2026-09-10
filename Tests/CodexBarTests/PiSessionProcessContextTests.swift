@@ -161,6 +161,40 @@ struct PiSessionProcessContextTests {
     }
 
     @Test
+    func `pi cost roots retain project settings after process exit`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let project = env.root.appendingPathComponent("pi-project-settings", isDirectory: true)
+        let configuredRoot = env.root.appendingPathComponent("project-session-root", isDirectory: true)
+        let settingsDirectory = project.appendingPathComponent(".pi", isDirectory: true)
+        try [project, configuredRoot, settingsDirectory].forEach {
+            try FileManager.default.createDirectory(at: $0, withIntermediateDirectories: true)
+        }
+        try Data("{\"sessionDir\":\"\(configuredRoot.path)\"}".utf8).write(
+            to: settingsDirectory.appendingPathComponent("settings.json"),
+            options: .atomic)
+
+        let liveContext = PiSessionProcessContext(
+            command: "/usr/local/bin/pi",
+            workingDirectory: project)
+        let liveRoots = PiFamilySessionScanner.costSessionRoots(
+            environment: ["HOME": env.root.path],
+            baseDirectories: [project],
+            processContexts: [liveContext])
+        let afterExitRoots = PiFamilySessionScanner.costSessionRoots(
+            environment: ["HOME": env.root.path],
+            baseDirectories: [project])
+
+        #expect(liveRoots.contains {
+            $0.url == configuredRoot.standardizedFileURL && $0.preserveAfterProcessExit
+        })
+        #expect(afterExitRoots.contains {
+            $0.url == configuredRoot.standardizedFileURL && $0.preserveAfterProcessExit
+        })
+    }
+
+    @Test
     func `pi cost roots preserve whitespace in live session selectors`() throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }

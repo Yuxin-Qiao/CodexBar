@@ -147,8 +147,12 @@ extension UsageStore {
                 settings: self.settings,
                 tokenOverride: nil)
             : self.environmentBase
-        // Provider-specific by design: only Pi-owned or Pi-inclusive scans need live Pi process project roots.
-        let piSessionProcessContexts: [PiSessionProcessContext] = if provider == .pi || effectiveIncludePiSessions {
+        let scopedCodexHomePath = codexHomePath?.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Provider-specific by design: only Pi-owned, Claude-inclusive, or unscoped Codex scans consume Pi roots.
+        let shouldDiscoverPiSessionProcessContexts = provider == .pi ||
+            (effectiveIncludePiSessions &&
+                (provider == .claude || (provider == .codex && scopedCodexHomePath?.isEmpty != false)))
+        let piSessionProcessContexts: [PiSessionProcessContext] = if shouldDiscoverPiSessionProcessContexts {
             await LocalAgentSessionScanner().piSessionProcessContexts(environment: environment)
         } else {
             []

@@ -216,15 +216,16 @@ extension UsageStore {
     #if DEBUG
     func _setSpendDashboardTokenSnapshotForTesting(
         _ snapshot: CostUsageTokenSnapshot?,
-        for provider: UsageProvider)
+        for provider: UsageProvider,
+        accounting: PiSnapshotAccounting? = nil)
     {
         self.spendDashboardTokenIncorporatedTriggers[provider.instanceID] = self.spendDashboardTokenRefreshTrigger(
             for: provider)
         self.spendDashboardTokenFailedTriggers.removeValue(forKey: provider.instanceID)
         if let snapshot {
-            self.publishSpendDashboardTokenSnapshot(snapshot, for: provider)
+            self.publishSpendDashboardTokenSnapshot(snapshot, for: provider, accounting: accounting)
         } else {
-            self.publishSpendDashboardConfirmedEmptyTokenSnapshot(for: provider)
+            self.publishSpendDashboardConfirmedEmptyTokenSnapshot(for: provider, accounting: accounting)
         }
     }
     #endif

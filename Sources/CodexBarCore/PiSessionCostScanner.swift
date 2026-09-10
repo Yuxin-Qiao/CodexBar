@@ -126,6 +126,9 @@ enum PiSessionCostScanner {
         let report: CostUsageDailyReport
         let isComplete: Bool
         let lastScanAt: Date?
+        /// The scope represented by `report`, which may be the prior cache scope when a
+        /// newly requested root set could not be inspected completely.
+        let scopeFingerprint: String?
     }
 
     static func loadDailyReportCancellable(
@@ -158,7 +161,8 @@ enum PiSessionCostScanner {
             return DailyReportResult(
                 report: CostUsageDailyReport(data: [], summary: nil),
                 isComplete: true,
-                lastScanAt: nil)
+                lastScanAt: nil,
+                scopeFingerprint: nil)
         }
 
         let range = CostUsageScanner.CostUsageDayRange(
@@ -292,7 +296,8 @@ enum PiSessionCostScanner {
             return DailyReportResult(
                 report: CostUsageDailyReport.merged([codexReport, claudeReport]),
                 isComplete: scanIsComplete,
-                lastScanAt: lastScanAt)
+                lastScanAt: lastScanAt,
+                scopeFingerprint: cache.sessionRootsFingerprint)
         }
         return DailyReportResult(
             report: self.buildReport(
@@ -301,12 +306,14 @@ enum PiSessionCostScanner {
                 range: range,
                 pricingContext: pricingContext),
             isComplete: scanIsComplete,
-            lastScanAt: lastScanAt)
+            lastScanAt: lastScanAt,
+            scopeFingerprint: cache.sessionRootsFingerprint)
     }
 
     struct CachedDailyReportResult {
         let report: CostUsageDailyReport
         let lastScanAt: Date?
+        let scopeFingerprint: String?
     }
 
     static func loadCachedDailyReport(
@@ -379,7 +386,10 @@ enum PiSessionCostScanner {
         let lastScanAt = cache.lastScanUnixMs > 0
             ? Date(timeIntervalSince1970: TimeInterval(cache.lastScanUnixMs) / 1000)
             : nil
-        return CachedDailyReportResult(report: report, lastScanAt: lastScanAt)
+        return CachedDailyReportResult(
+            report: report,
+            lastScanAt: lastScanAt,
+            scopeFingerprint: cache.sessionRootsFingerprint)
     }
 
     private static func pricingContext(now: Date, cacheRoot: URL?) -> ModelsDevPricingContext {

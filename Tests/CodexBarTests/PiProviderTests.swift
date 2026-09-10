@@ -672,6 +672,7 @@ struct PiProviderTests {
             checkCancellation: nil)
         #expect(initial.isComplete)
         #expect(initial.report.summary?.totalTokens == 25)
+        let firstScope = try #require(initial.scopeFingerprint)
 
         let secondEntry: [String: Any] = [
             "type": "message",
@@ -706,6 +707,12 @@ struct PiProviderTests {
 
         #expect(!refreshed.isComplete)
         #expect(refreshed.report.summary?.totalTokens == 25)
+        #expect(refreshed.scopeFingerprint == firstScope)
+        #expect(refreshed.scopeFingerprint != PiSessionCostScanner
+            .scopeFingerprint(options: PiSessionCostScanner.Options(
+                piSessionsRoot: secondRoot,
+                cacheRoot: env.cacheRoot,
+                refreshMinIntervalSeconds: 0)))
     }
 
     @Test

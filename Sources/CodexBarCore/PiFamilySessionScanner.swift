@@ -795,7 +795,7 @@ struct PiFamilySessionScanner: Sendable {
                         url: root.url,
                         layout: root.layout,
                         missingIsKnownEmpty: root.missingIsKnownEmpty,
-                        preserveAfterProcessExit: processRootIsRetained)
+                        preserveAfterProcessExit: root.preserveAfterProcessExit || processRootIsRetained)
                 })
                 rootResolutionIsComplete = rootResolutionIsComplete && resolution.isComplete
             }
@@ -1102,7 +1102,9 @@ struct PiFamilySessionScanner: Sendable {
                 return PiSessionRootResolution(roots: [], isComplete: false)
             }
             return PiSessionRootResolution(
-                roots: [SessionRoot(url: url, layout: .direct)],
+                // Project settings are durable configuration. Keep this root in the cache
+                // scope after the process exits so its history remains attributable.
+                roots: [SessionRoot(url: url, layout: .direct, preserveAfterProcessExit: true)],
                 isComplete: true)
         }
 

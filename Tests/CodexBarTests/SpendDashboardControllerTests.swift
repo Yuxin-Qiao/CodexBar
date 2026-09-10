@@ -886,6 +886,41 @@ struct SpendDashboardControllerTests {
 }
 
 @MainActor
+extension SpendDashboardControllerTests {
+    @Test
+    func `capture keeps inclusive claude totals when pi source is absent`() async throws {
+        let settings = testSettingsStore(suiteName: "SpendDashboardControllerTests-pi-absent-projection")
+        settings.costUsageEnabled = true
+        for provider in UsageProvider.allCases {
+            guard let metadata = ProviderRegistry.shared.metadata[provider] else { continue }
+            settings.setProviderEnabled(provider: provider, metadata: metadata, enabled: provider == .claude)
+        }
+        let store = UsageStore(
+            fetcher: UsageFetcher(environment: [:]),
+            browserDetection: BrowserDetection(cacheTTL: 0),
+            settings: settings,
+            startupBehavior: .testing,
+            environmentBase: [:])
+        let inclusive = Self.input(provider: .claude, cost: 9).snapshot
+        let native = Self.input(provider: .claude, cost: 4).snapshot
+        store._setSpendDashboardTokenSnapshotForTesting(
+            inclusive,
+            for: .claude,
+            accounting: .includesPi(scope: "pi-scope", native: native))
+
+        let request = await SpendDashboardSource.makeRequest(
+            settings: settings,
+            store: store,
+            mode: .captureOnly)
+
+        let captured = try #require(request.capturedInputs.first)
+        #expect(request.capturedInputs.count == 1)
+        #expect(captured.provider == .claude)
+        #expect(captured.snapshot.last30DaysCostUSD == inclusive.last30DaysCostUSD)
+    }
+}
+
+@MainActor
 struct SpendDashboardRequestTimeTests {
     @Test
     func `default request time resolves after provider refresh boundary`() async throws {
