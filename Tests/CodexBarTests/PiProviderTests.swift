@@ -199,6 +199,51 @@ struct PiProviderTests {
     }
 
     @Test
+    func `failed pi settings resolution keeps cost roots incomplete`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let projectSettings = env.root
+            .appendingPathComponent(".pi", isDirectory: true)
+            .appendingPathComponent("settings.json")
+        let globalSettings = env.root
+            .appendingPathComponent(".pi", isDirectory: true)
+            .appendingPathComponent("agent", isDirectory: true)
+            .appendingPathComponent("settings.json")
+        try FileManager.default.createDirectory(
+            at: projectSettings.deletingLastPathComponent(),
+            withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: globalSettings.deletingLastPathComponent(),
+            withIntermediateDirectories: true)
+        try Data("not json".utf8).write(to: projectSettings)
+        try Data(#"{"sessionDir":"custom-pi-sessions"}"#.utf8).write(to: globalSettings)
+
+        let rootsWithMalformedProjectSettings = PiFamilySessionScanner.costSessionRoots(
+            environment: ["HOME": env.root.path],
+            baseDirectory: env.root)
+        let unresolvedPiRoot = try #require(rootsWithMalformedProjectSettings.first {
+            $0.url.path == "/.codexbar-unresolved-pi"
+        })
+        #expect(!unresolvedPiRoot.missingIsKnownEmpty)
+        #expect(!unresolvedPiRoot.resolutionIsComplete)
+        #expect(!rootsWithMalformedProjectSettings.contains {
+            $0.url.path.hasSuffix("custom-pi-sessions")
+        })
+
+        try FileManager.default.removeItem(at: projectSettings)
+        try Data("not json".utf8).write(to: globalSettings)
+        let rootsWithMalformedGlobalSettings = PiFamilySessionScanner.costSessionRoots(
+            environment: ["HOME": env.root.path],
+            baseDirectory: env.root)
+        let unresolvedGlobalPiRoot = try #require(rootsWithMalformedGlobalSettings.first {
+            $0.url.path == "/.codexbar-unresolved-pi"
+        })
+        #expect(!unresolvedGlobalPiRoot.missingIsKnownEmpty)
+        #expect(!unresolvedGlobalPiRoot.resolutionIsComplete)
+    }
+
+    @Test
     func `pi provider exposes an independent aggregate token snapshot`() async throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }
@@ -256,6 +301,89 @@ struct PiProviderTests {
             now: day,
             cacheRoot: env.cacheRoot)
         #expect(cached?.summary?.totalTokens == 30)
+    }
+
+    @Test
+    func `pi provider keeps recognized assistant rows incomplete without valid timestamps`() async throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2026, month: 4, day: 3)
+        let entries: [[String: Any]] = [
+            [
+                "type": "message",
+                "message": [
+                    "role": "assistant",
+                    "provider": "openai-codex",
+                    "model": "openai/gpt-5.4",
+                    "usage": ["input": 20, "output": 5, "totalTokens": 25],
+                ],
+            ],
+            [
+                "type": "message",
+                "timestamp": true,
+                "message": [
+                    "role": "assistant",
+                    "provider": "openai-codex",
+                    "model": "openai/gpt-5.4",
+                    "usage": ["input": 4, "output": 1, "totalTokens": 5],
+                ],
+            ],
+        ]
+        _ = try env.writePiSessionFile(
+            relativePath: "2026-04-03T10-00-00-000Z-invalid-timestamps.jsonl",
+            contents: env.jsonl(entries))
+
+        let snapshot = try await CostUsageFetcher.loadTokenSnapshot(
+            provider: .pi,
+            now: day,
+            forceRefresh: true,
+            historyDays: 1,
+            allowPricingRefresh: false,
+            scannerOptions: CostUsageScanner.Options(cacheRoot: env.cacheRoot),
+            piScannerOptions: PiSessionCostScanner.Options(
+                piSessionsRoot: env.piSessionsRoot,
+                cacheRoot: env.cacheRoot,
+                refreshMinIntervalSeconds: 0))
+
+        #expect((snapshot.sessionTokens ?? 0) == 0)
+        #expect(!snapshot.historyCoverageIsEstablished)
+    }
+
+    @Test
+    func `pi provider accepts numeric assistant timestamps`() async throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2026, month: 4, day: 4)
+        let entry: [String: Any] = [
+            "type": "message",
+            "message": [
+                "role": "assistant",
+                "provider": "openai-codex",
+                "model": "openai/gpt-5.4",
+                "timestamp": Int(day.timeIntervalSince1970 * 1000),
+                "usage": ["input": 7, "output": 5, "totalTokens": 12],
+            ],
+        ]
+        _ = try env.writePiSessionFile(
+            relativePath: "2026-04-04T10-00-00-000Z-numeric-timestamp.jsonl",
+            contents: env.jsonl([entry]))
+
+        let snapshot = try await CostUsageFetcher.loadTokenSnapshot(
+            provider: .pi,
+            now: day,
+            forceRefresh: true,
+            historyDays: 1,
+            allowPricingRefresh: false,
+            scannerOptions: CostUsageScanner.Options(cacheRoot: env.cacheRoot),
+            piScannerOptions: PiSessionCostScanner.Options(
+                piSessionsRoot: env.piSessionsRoot,
+                cacheRoot: env.cacheRoot,
+                refreshMinIntervalSeconds: 0))
+
+        #expect(snapshot.sessionTokens == 12)
+        #expect(snapshot.historyCoverageIsEstablished)
     }
 
     @Test

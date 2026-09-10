@@ -510,6 +510,11 @@ struct PiFamilySessionScanner: Sendable {
         let isComplete: Bool
     }
 
+    private struct PiSessionRootResolution {
+        let roots: [SessionRoot]
+        let isComplete: Bool
+    }
+
     private struct OMPSessionRootResolution {
         let roots: [SessionRoot]
         let profileDiscoveryIsComplete: Bool
@@ -645,40 +650,15 @@ struct PiFamilySessionScanner: Sendable {
         cwd: String,
         environment: [String: String]) -> [SessionRoot]
     {
-        if let explicit = commandLineValue("--session-dir", in: process.command),
-           let url = pathURL(explicit, cwd: cwd, home: environment["HOME"])
-        {
-            return [SessionRoot(url: url, layout: .direct)]
-        }
-        if let configured = environment["PI_CODING_AGENT_SESSION_DIR"],
-           let url = pathURL(configured, cwd: cwd, home: environment["HOME"])
-        {
-            return [SessionRoot(url: url, layout: .direct)]
-        }
-
         // Provider-specific by design: Pi and OMP use different on-disk session-root contracts.
         switch dialect {
         case .pi:
-            if let agentDirectory = environment["PI_CODING_AGENT_DIR"],
-               let agentRoot = pathURL(agentDirectory, cwd: cwd, home: environment["HOME"])
-            {
-                return [SessionRoot(
-                    url: agentRoot.appendingPathComponent("sessions", isDirectory: true),
-                    layout: .projectDirectories)]
-            }
-            if let configured = Self.piSettingsSessionDirectory(cwd: cwd, environment: environment) {
-                return [SessionRoot(url: configured, layout: .direct)]
-            }
-            guard let home = Self.homeURL(environment) else { return [] }
-            // Provider-specific by design: this path is Pi's default project session directory.
-            return [SessionRoot(
-                url: home
-                    .appendingPathComponent(".pi", isDirectory: true)
-                    .appendingPathComponent("agent", isDirectory: true)
-                    .appendingPathComponent("sessions", isDirectory: true),
-                layout: .projectDirectories)]
+            self.piSessionRootResolution(
+                process: process,
+                cwd: cwd,
+                environment: environment).roots
         case .omp:
-            return Self.ompSessionRoots(process: process, cwd: cwd, environment: environment)
+            self.ompSessionRoots(process: process, cwd: cwd, environment: environment)
         }
     }
 
@@ -701,19 +681,21 @@ struct PiFamilySessionScanner: Sendable {
         for dialect in dialects {
             let roots: [SessionRoot]
             var rootResolutionIsComplete = true
-            if dialect == .omp {
+            switch dialect {
+            case .pi:
+                let resolution = Self.piSessionRootResolution(
+                    process: process,
+                    cwd: cwdURL.path,
+                    environment: environment)
+                roots = resolution.roots
+                rootResolutionIsComplete = resolution.isComplete
+            case .omp:
                 let resolution = Self.ompSessionRootResolution(
                     process: process,
                     cwd: cwdURL.path,
                     environment: environment)
                 roots = resolution.roots
                 rootResolutionIsComplete = resolution.profileDiscoveryIsComplete
-            } else {
-                roots = Self.sessionRoots(
-                    for: process,
-                    dialect: dialect,
-                    cwd: cwdURL.path,
-                    environment: environment)
             }
             let hasExplicitSelection = Self.hasExplicitCostRootSelection(
                 dialect: dialect,
@@ -871,6 +853,91 @@ struct PiFamilySessionScanner: Sendable {
             profileDiscoveryIsComplete: profileDiscoveryIsComplete)
     }
 
+    private static func piSessionRootResolution(
+        process: AgentProcessRecord,
+        cwd: String,
+        environment: [String: String]) -> PiSessionRootResolution
+    {
+        if let explicit = commandLineValue("--session-dir", in: process.command) {
+            guard let url = pathURL(explicit, cwd: cwd, home: environment["HOME"]) else {
+                return PiSessionRootResolution(roots: [], isComplete: false)
+            }
+            return PiSessionRootResolution(
+                roots: [SessionRoot(url: url, layout: .direct)],
+                isComplete: true)
+        }
+        if let configured = environment["PI_CODING_AGENT_SESSION_DIR"],
+           !configured.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
+            guard let url = pathURL(configured, cwd: cwd, home: environment["HOME"]) else {
+                return PiSessionRootResolution(roots: [], isComplete: false)
+            }
+            return PiSessionRootResolution(
+                roots: [SessionRoot(url: url, layout: .direct)],
+                isComplete: true)
+        }
+        if let agentDirectory = environment["PI_CODING_AGENT_DIR"],
+           !agentDirectory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
+            guard let agentRoot = pathURL(agentDirectory, cwd: cwd, home: environment["HOME"]) else {
+                return PiSessionRootResolution(roots: [], isComplete: false)
+            }
+            return PiSessionRootResolution(
+                roots: [SessionRoot(
+                    url: agentRoot.appendingPathComponent("sessions", isDirectory: true),
+                    layout: .projectDirectories)],
+                isComplete: true)
+        }
+
+        guard let home = Self.homeURL(environment) else {
+            return PiSessionRootResolution(roots: [], isComplete: false)
+        }
+        // Provider-specific by design: Pi's settings paths are distinct from OMP's profile roots.
+        let globalSettings = home
+            .appendingPathComponent(".pi", isDirectory: true)
+            .appendingPathComponent("agent", isDirectory: true)
+            .appendingPathComponent("settings.json")
+        let projectSettings = URL(fileURLWithPath: cwd, isDirectory: true)
+            .appendingPathComponent(".pi", isDirectory: true)
+            .appendingPathComponent("settings.json")
+
+        let configured: String?
+        switch Self.sessionDirectoryResolution(in: projectSettings) {
+        case let .configured(value):
+            configured = value
+        case .unavailable:
+            return PiSessionRootResolution(roots: [], isComplete: false)
+        case .missing, .noSessionDirectory:
+            switch Self.sessionDirectoryResolution(in: globalSettings) {
+            case let .configured(value):
+                configured = value
+            case .unavailable:
+                return PiSessionRootResolution(roots: [], isComplete: false)
+            case .missing, .noSessionDirectory:
+                configured = nil
+            }
+        }
+
+        if let configured {
+            guard let url = Self.pathURL(configured, cwd: cwd, home: home.path) else {
+                return PiSessionRootResolution(roots: [], isComplete: false)
+            }
+            return PiSessionRootResolution(
+                roots: [SessionRoot(url: url, layout: .direct)],
+                isComplete: true)
+        }
+
+        // Provider-specific by design: this path is Pi's default project session directory.
+        return PiSessionRootResolution(
+            roots: [SessionRoot(
+                url: home
+                    .appendingPathComponent(".pi", isDirectory: true)
+                    .appendingPathComponent("agent", isDirectory: true)
+                    .appendingPathComponent("sessions", isDirectory: true),
+                layout: .projectDirectories)],
+            isComplete: true)
+    }
+
     private enum ProfileDirectoryInspection {
         case missing
         case readableDirectory
@@ -958,32 +1025,35 @@ struct PiFamilySessionScanner: Sendable {
             isComplete: isComplete)
     }
 
-    private static func piSettingsSessionDirectory(cwd: String, environment: [String: String]) -> URL? {
-        guard let home = homeURL(environment) else { return nil }
-        // Provider-specific by design: Pi reads its global and project settings from the upstream .pi locations.
-        let globalSettings = home
-            .appendingPathComponent(".pi", isDirectory: true)
-            .appendingPathComponent("agent", isDirectory: true)
-            .appendingPathComponent("settings.json")
-        let projectSettings = URL(fileURLWithPath: cwd, isDirectory: true)
-            .appendingPathComponent(".pi", isDirectory: true)
-            .appendingPathComponent("settings.json")
-
-        let configured = Self.sessionDirectory(in: projectSettings) ?? Self.sessionDirectory(in: globalSettings)
-        return configured.flatMap { Self.pathURL($0, cwd: cwd, home: home.path) }
+    private enum PiSettingsSessionDirectoryResolution {
+        case missing
+        case noSessionDirectory
+        case configured(String)
+        case unavailable
     }
 
-    private static func sessionDirectory(in settingsURL: URL) -> String? {
-        guard let values = try? settingsURL.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey]),
+    private static func sessionDirectoryResolution(in settingsURL: URL) -> PiSettingsSessionDirectoryResolution {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: settingsURL.path, isDirectory: &isDirectory) else {
+            return .missing
+        }
+        guard !isDirectory.boolValue,
+              let values = try? settingsURL.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey]),
               values.isRegularFile == true,
               let fileSize = values.fileSize,
               fileSize <= 1024 * 1024,
               let data = try? Data(contentsOf: settingsURL, options: [.mappedIfSafe]),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let sessionDir = object["sessionDir"] as? String,
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            return .unavailable
+        }
+        guard let rawValue = object["sessionDir"] else { return .noSessionDirectory }
+        guard let sessionDir = rawValue as? String,
               !sessionDir.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        else { return nil }
-        return sessionDir
+        else {
+            return .unavailable
+        }
+        return .configured(sessionDir)
     }
 
     private static func commandLineValue(_ flag: String, in command: String) -> String? {

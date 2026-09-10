@@ -1,3 +1,4 @@
+import CoreFoundation
 import Foundation
 
 private final class PiSessionISO8601FormatterBox: @unchecked Sendable {
@@ -738,7 +739,13 @@ enum PiSessionCostScanner {
                             message: message,
                             fallback: currentModelContext)
                         guard let identity else { return }
-                        guard let date = self.timestampDate(entry: object, message: message) else { return }
+                        guard let date = self.timestampDate(entry: object, message: message) else {
+                            // A recognized assistant row without a usable timestamp cannot be
+                            // assigned to a day. Keep the scan incomplete so cache advancement
+                            // never permanently hides its usage.
+                            isComplete = false
+                            return
+                        }
                         let dayKey = CostUsageScanner.CostUsageDayRange.dayKey(
                             from: date,
                             calendar: range.calendar)
@@ -933,6 +940,8 @@ enum PiSessionCostScanner {
 
     private static func parseTimestampValue(_ value: Any?) -> Date? {
         if let number = value as? NSNumber {
+            // JSON booleans bridge to NSNumber on Darwin; they are not timestamps.
+            guard CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
             let raw = number.doubleValue
             guard raw.isFinite else { return nil }
             if raw > 1_000_000_000_000 {
