@@ -77,6 +77,7 @@ enum PiSessionCostScanner {
         let missingIsKnownEmpty: Bool
         let resolutionIsComplete: Bool
         let preserveAfterProcessExit: Bool
+        let retentionKey: String?
     }
 
     private struct AssistantIdentity {
@@ -438,7 +439,8 @@ enum PiSessionCostScanner {
                         url: $0,
                         missingIsKnownEmpty: false,
                         resolutionIsComplete: true,
-                        preserveAfterProcessExit: false)
+                        preserveAfterProcessExit: false,
+                        retentionKey: nil)
                 }
         }
 
@@ -454,7 +456,8 @@ enum PiSessionCostScanner {
                     url: root.url,
                     missingIsKnownEmpty: root.missingIsKnownEmpty,
                     resolutionIsComplete: root.resolutionIsComplete,
-                    preserveAfterProcessExit: root.preserveAfterProcessExit)
+                    preserveAfterProcessExit: root.preserveAfterProcessExit,
+                    retentionKey: root.retentionKey)
             }
             return self.appendingPreviousSessionRoots(
                 resolvedRoots,
@@ -471,7 +474,8 @@ enum PiSessionCostScanner {
                     .appendingPathComponent("sessions", isDirectory: true),
                 missingIsKnownEmpty: true,
                 resolutionIsComplete: true,
-                preserveAfterProcessExit: false)
+                preserveAfterProcessExit: false,
+                retentionKey: nil)
         }
         return self.appendingPreviousSessionRoots(
             fallbackRoots,
@@ -485,18 +489,30 @@ enum PiSessionCostScanner {
         guard let fingerprint, !fingerprint.isEmpty else { return roots }
         var output = roots
         var seen = Set(roots.map(\.url.standardizedFileURL.path))
+        let currentRetentionKeys = Set(roots.compactMap(\.retentionKey))
+        let currentSettingsRetentionKeys = Set(roots.compactMap { root in
+            root.retentionKey?.hasPrefix("settings:") == true ? root.retentionKey : nil
+        })
         for component in fingerprint.split(separator: "\u{1E}", omittingEmptySubsequences: true) {
             let fields = component.split(separator: "\u{1F}", omittingEmptySubsequences: false)
-            guard fields.count == 4, fields[3] == "live" else { continue }
+            guard fields.count >= 4, fields[3] == "live" else { continue }
             let path = String(fields[0])
             guard !path.isEmpty, !path.hasPrefix("/.codexbar-unresolved-") else { continue }
+            let retentionKey = fields.count >= 5 && !fields[4].isEmpty ? String(fields[4]) : nil
+            // A settings file is a replacement point: if it now resolves to another root, the
+            // prior root belonged to the superseded selector and must not be carried forward.
+            if let retentionKey, currentRetentionKeys.contains(retentionKey) { continue }
+            // Legacy fingerprints did not record provenance. If the current scope has a settings
+            // selector, prefer its current value over an ambiguous retained settings root.
+            if retentionKey == nil, !currentSettingsRetentionKeys.isEmpty { continue }
             let url = URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
             guard seen.insert(url.path).inserted else { continue }
             output.append(SessionRoot(
                 url: url,
                 missingIsKnownEmpty: fields[1] == "known-empty",
                 resolutionIsComplete: fields[2] == "resolved",
-                preserveAfterProcessExit: true))
+                preserveAfterProcessExit: true,
+                retentionKey: retentionKey))
         }
         return output
     }
@@ -509,6 +525,7 @@ enum PiSessionCostScanner {
                     root.missingIsKnownEmpty ? "known-empty" : "required",
                     root.resolutionIsComplete ? "resolved" : "unresolved",
                     root.preserveAfterProcessExit ? "live" : "configured",
+                    root.retentionKey ?? "",
                 ].joined(separator: "\u{1F}")
             }
             .joined(separator: "\u{1E}")
@@ -518,9 +535,10 @@ enum PiSessionCostScanner {
     /// reads use this to reject a report produced for a different live or
     /// configured project root before publishing it.
     package static func scopeFingerprint(options: Options) -> String {
-        self.sessionRootsFingerprint(self.defaultSessionRoots(
+        let cache = PiSessionCostCacheIO.load(cacheRoot: options.cacheRoot)
+        return self.sessionRootsFingerprint(self.defaultSessionRoots(
             options: options,
-            previousSessionRootsFingerprint: nil))
+            previousSessionRootsFingerprint: cache.sessionRootsFingerprint))
     }
 
     private struct SessionFileListResult {

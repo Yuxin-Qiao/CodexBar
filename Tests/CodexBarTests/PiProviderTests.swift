@@ -177,6 +177,32 @@ struct PiProviderTests {
     }
 
     @Test
+    func `pi process contexts keep an absolute session selector when cwd is unavailable`() async throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let sessionRoot = env.root.appendingPathComponent("absolute-sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: sessionRoot, withIntermediateDirectories: true)
+        let scanner = LocalAgentSessionScanner(
+            processOutputProvider: { _ in
+                "201 1 Mon Jul 6 09:03:00 2026 /usr/local/bin/pi --session-dir \(sessionRoot.path)"
+            },
+            cwdProvider: { _, _ in [:] })
+
+        let contexts = await scanner.piSessionProcessContexts(environment: ["HOME": env.root.path])
+        let context = try #require(contexts.first)
+        #expect(context.workingDirectory == nil)
+        let roots = PiFamilySessionScanner.costSessionRoots(
+            environment: ["HOME": env.root.path],
+            processContexts: contexts)
+        #expect(roots.contains {
+            $0.url == sessionRoot.standardizedFileURL &&
+                $0.resolutionIsComplete &&
+                $0.preserveAfterProcessExit
+        })
+    }
+
+    @Test
     func `xdg data home fallback keeps default omp root known empty`() throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }

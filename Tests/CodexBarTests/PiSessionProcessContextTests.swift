@@ -85,6 +85,22 @@ struct PiSessionProcessContextTests {
                 workingDirectories: [project]))
         #expect(afterExit.sessionTokens == 12)
         #expect(afterExit.historyCoverageIsEstablished)
+        let afterExitResult = try PiSessionCostScanner.loadDailyReportResultCancellable(
+            provider: .pi,
+            since: day,
+            until: day,
+            now: day,
+            options: PiSessionCostScanner.Options(
+                cacheRoot: env.cacheRoot,
+                refreshMinIntervalSeconds: 0,
+                environment: environment,
+                workingDirectories: [project]),
+            checkCancellation: nil)
+        #expect(afterExitResult.scopeFingerprint == PiSessionCostScanner.scopeFingerprint(options: .init(
+            cacheRoot: env.cacheRoot,
+            refreshMinIntervalSeconds: 0,
+            environment: environment,
+            workingDirectories: [project])))
     }
 
     @Test
@@ -161,7 +177,7 @@ struct PiSessionProcessContextTests {
     }
 
     @Test
-    func `pi cost roots retain project settings after process exit`() throws {
+    func `pi cost roots keep current project settings after process exit`() throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }
 
@@ -190,8 +206,80 @@ struct PiSessionProcessContextTests {
             $0.url == configuredRoot.standardizedFileURL && $0.preserveAfterProcessExit
         })
         #expect(afterExitRoots.contains {
-            $0.url == configuredRoot.standardizedFileURL && $0.preserveAfterProcessExit
+            $0.url == configuredRoot.standardizedFileURL && !$0.preserveAfterProcessExit
         })
+    }
+
+    @Test
+    func `pi cost roots replace a retained project settings selector`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let project = env.root.appendingPathComponent("pi-project-settings-switch", isDirectory: true)
+        let firstRoot = env.root.appendingPathComponent("project-session-first", isDirectory: true)
+        let secondRoot = env.root.appendingPathComponent("project-session-second", isDirectory: true)
+        let settingsDirectory = project.appendingPathComponent(".pi", isDirectory: true)
+        try [project, firstRoot, secondRoot, settingsDirectory].forEach {
+            try FileManager.default.createDirectory(at: $0, withIntermediateDirectories: true)
+        }
+        let day = try env.makeLocalNoon(year: 2026, month: 4, day: 13)
+
+        func writeUsage(to root: URL, totalTokens: Int, name: String) throws {
+            let entry: [String: Any] = [
+                "type": "message",
+                "timestamp": env.isoString(for: day),
+                "message": [
+                    "role": "assistant",
+                    "provider": "openai-codex",
+                    "model": "gpt-5.4",
+                    "timestamp": Int(day.timeIntervalSince1970 * 1000),
+                    "usage": ["input": totalTokens - 1, "output": 1, "totalTokens": totalTokens],
+                ],
+            ]
+            try env.jsonl([entry]).write(
+                to: root.appendingPathComponent("2026-04-13T10-00-00-000Z_" + name + ".jsonl"),
+                atomically: true,
+                encoding: .utf8)
+        }
+
+        try Data(("{\"sessionDir\":\"" + firstRoot.path + "\"}").utf8).write(
+            to: settingsDirectory.appendingPathComponent("settings.json"),
+            options: .atomic)
+        try writeUsage(to: firstRoot, totalTokens: 15, name: "first")
+        let first = try PiSessionCostScanner.loadDailyReportResultCancellable(
+            provider: .codex,
+            since: day,
+            until: day,
+            now: day,
+            options: PiSessionCostScanner.Options(
+                cacheRoot: env.cacheRoot,
+                refreshMinIntervalSeconds: 0,
+                workingDirectory: project,
+                processContexts: [PiSessionProcessContext(
+                    command: "/usr/local/bin/pi",
+                    workingDirectory: project)]),
+            checkCancellation: nil)
+        #expect(first.report.summary?.totalTokens == 15)
+
+        try Data(("{\"sessionDir\":\"" + secondRoot.path + "\"}").utf8).write(
+            to: settingsDirectory.appendingPathComponent("settings.json"),
+            options: .atomic)
+        try writeUsage(to: secondRoot, totalTokens: 30, name: "second")
+        let second = try PiSessionCostScanner.loadDailyReportResultCancellable(
+            provider: .codex,
+            since: day,
+            until: day,
+            now: day.addingTimeInterval(1),
+            options: PiSessionCostScanner.Options(
+                cacheRoot: env.cacheRoot,
+                refreshMinIntervalSeconds: 0,
+                workingDirectory: project),
+            checkCancellation: nil)
+
+        #expect(second.isComplete)
+        #expect(second.report.summary?.totalTokens == 30)
+        #expect(second.scopeFingerprint?.contains(firstRoot.path) == false)
+        #expect(second.scopeFingerprint?.contains(secondRoot.path) == true)
     }
 
     @Test

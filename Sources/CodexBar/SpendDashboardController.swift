@@ -285,12 +285,11 @@ enum SpendDashboardSource {
                 force: mode.forcesLoader)
         }
 
-        // A native projection is disjoint from the inclusive Claude/Codex publication only
-        // while a visible Pi input is guaranteed to be emitted in this same capture.
+        // A native projection is disjoint from the inclusive Claude/Codex publication while
+        // Pi owns the same rows, even when the Pi input is hidden from the chart.
         let piBaseline = providerBaselines.first { $0.provider == .pi }
         let piCurrent = self.capturedTokenPublication(store: store, provider: .pi)
-        let piOwnsVisibleSource = providers.contains(.pi)
-            && !configuration.hiddenSourceIDs.contains(UsageProvider.pi.rawValue)
+        let piOwnsSource = providers.contains(.pi)
             && piBaseline != nil
             && piCurrent.publication?.snapshot != nil
             && !(piBaseline?.shouldRefresh == true && piBaseline?.publicationRevision == piCurrent.revision)
@@ -334,7 +333,7 @@ enum SpendDashboardSource {
                 store: store,
                 provider: provider,
                 publication: currentPublication,
-                piOwnsVisibleSource: piOwnsVisibleSource)
+                piOwnsSource: piOwnsSource)
             else {
                 confirmedEmptySourceIDs.insert(provider.rawValue)
                 continue
@@ -880,7 +879,7 @@ enum SpendDashboardSource {
         store: UsageStore,
         provider: UsageProvider,
         publication: CurrentProviderConfigTokenPublication,
-        piOwnsVisibleSource: Bool) -> CostUsageTokenSnapshot?
+        piOwnsSource: Bool) -> CostUsageTokenSnapshot?
     {
         // Provider-specific by design: Grok's catalog input is the local session scan, even when
         // the remote billing snapshot is missing.
@@ -904,7 +903,7 @@ enum SpendDashboardSource {
         // display only the native portion here to keep the rows disjoint.
         // Provider-specific by design: Claude and Codex publications expose a native projection when Pi is
         // accounted for separately in the combined dashboard.
-        if piOwnsVisibleSource,
+        if piOwnsSource,
            provider == .claude || provider == .codex,
            case let .includesPi(_, native) = publication.accounting
         {

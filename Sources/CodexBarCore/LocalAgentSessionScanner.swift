@@ -197,8 +197,10 @@ public struct LocalAgentSessionScanner: Sendable {
         let contexts = await self.piSessionProcessContexts(environment: environment)
         var seen = Set<String>()
         return contexts.compactMap { context in
-            guard seen.insert(context.workingDirectory.path).inserted else { return nil }
-            return context.workingDirectory
+            guard let workingDirectory = context.workingDirectory,
+                  seen.insert(workingDirectory.path).inserted
+            else { return nil }
+            return workingDirectory
         }
     }
 
@@ -227,19 +229,29 @@ public struct LocalAgentSessionScanner: Sendable {
         }
         var seen = Set<String>()
         return processes.compactMap { process in
-            guard let cwd = cwdByPID[process.pid], !cwd.isEmpty else { return nil }
+            let workingDirectory = cwdByPID[process.pid]
+                .flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0, isDirectory: true) }
+            guard workingDirectory != nil ||
+                PiFamilySessionScanner.hasAbsoluteSessionDirectorySelector(
+                    in: process,
+                    environment: environment)
+            else { return nil }
             let context = PiSessionProcessContext(
                 command: process.command,
                 arguments: process.arguments,
-                workingDirectory: URL(fileURLWithPath: cwd, isDirectory: true))
-            let key = "\(context.workingDirectory.path)\u{1F}\(context.arguments ?? [])\u{1F}\(context.command)"
+                workingDirectory: workingDirectory)
+            let key = [
+                context.workingDirectory?.path ?? "<unresolved-cwd>",
+                "\(context.arguments ?? [])",
+                context.command,
+            ].joined(separator: "\u{1F}")
             guard seen.insert(key).inserted else { return nil }
             return context
         }
         .sorted {
-            $0.workingDirectory.path == $1.workingDirectory.path
+            $0.workingDirectory?.path == $1.workingDirectory?.path
                 ? $0.command < $1.command
-                : $0.workingDirectory.path < $1.workingDirectory.path
+                : ($0.workingDirectory?.path ?? "<unresolved-cwd>") < ($1.workingDirectory?.path ?? "<unresolved-cwd>")
         }
     }
 

@@ -5,12 +5,13 @@ public struct PiSessionProcessContext: Equatable, Sendable {
     public let command: String
     /// Original argv when available; this preserves whitespace inside flag values.
     public let arguments: [String]?
-    public let workingDirectory: URL
+    /// The process CWD, when it could be read. An absolute `--session-dir` remains resolvable when this is nil.
+    public let workingDirectory: URL?
 
-    public init(command: String, arguments: [String]? = nil, workingDirectory: URL) {
+    public init(command: String, arguments: [String]? = nil, workingDirectory: URL?) {
         self.command = command
         self.arguments = arguments
-        self.workingDirectory = workingDirectory.standardizedFileURL
+        self.workingDirectory = workingDirectory?.standardizedFileURL
     }
 }
 
@@ -516,6 +517,7 @@ public enum PiFamilySessionRootResolver {
     }
 }
 
+// swiftlint:disable:next type_body_length
 struct PiFamilySessionScanner: Sendable {
     struct ScanInput: Sendable {
         let processes: [AgentProcessRecord]
@@ -536,17 +538,21 @@ struct PiFamilySessionScanner: Sendable {
         let layout: RootLayout
         let missingIsKnownEmpty: Bool
         let preserveAfterProcessExit: Bool
+        /// Identifies a durable selector that can replace an older retained root.
+        let retentionKey: String?
 
         init(
             url: URL,
             layout: RootLayout,
             missingIsKnownEmpty: Bool = false,
-            preserveAfterProcessExit: Bool = false)
+            preserveAfterProcessExit: Bool = false,
+            retentionKey: String? = nil)
         {
             self.url = url
             self.layout = layout
             self.missingIsKnownEmpty = missingIsKnownEmpty
             self.preserveAfterProcessExit = preserveAfterProcessExit
+            self.retentionKey = retentionKey
         }
     }
 
@@ -570,17 +576,20 @@ struct PiFamilySessionScanner: Sendable {
         let missingIsKnownEmpty: Bool
         let resolutionIsComplete: Bool
         let preserveAfterProcessExit: Bool
+        let retentionKey: String?
 
         init(
             url: URL,
             missingIsKnownEmpty: Bool,
             resolutionIsComplete: Bool = true,
-            preserveAfterProcessExit: Bool = false)
+            preserveAfterProcessExit: Bool = false,
+            retentionKey: String? = nil)
         {
             self.url = url
             self.missingIsKnownEmpty = missingIsKnownEmpty
             self.resolutionIsComplete = resolutionIsComplete
             self.preserveAfterProcessExit = preserveAfterProcessExit
+            self.retentionKey = retentionKey
         }
     }
 
@@ -740,7 +749,7 @@ struct PiFamilySessionScanner: Sendable {
             configuredCWDs.insert(
                 URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true),
                 at: 0)
-            configuredCWDs.append(contentsOf: processContexts.map(\.workingDirectory))
+            configuredCWDs.append(contentsOf: processContexts.compactMap(\.workingDirectory))
         }
         let cwdURLs = (configuredCWDs.isEmpty ? [URL(
             fileURLWithPath: FileManager.default.currentDirectoryPath,
@@ -768,18 +777,34 @@ struct PiFamilySessionScanner: Sendable {
                     command: context.command,
                     arguments: context.arguments)
                 guard AgentPSOutputParser.piDialect(for: process) == dialect else { continue }
+                let contextCWD: String
+                if let workingDirectory = context.workingDirectory {
+                    contextCWD = workingDirectory.path
+                } else {
+                    // An absolute selector is independent of CWD. Relative selectors cannot be
+                    // resolved safely after CWD discovery failed, so leave that process incomplete.
+                    guard Self.hasAbsoluteSessionDirectorySelector(
+                        in: process,
+                        environment: environment)
+                    else {
+                        rootResolutionIsComplete = false
+                        continue
+                    }
+                    contextCWD = "/"
+                }
                 let resolution: (roots: [SessionRoot], isComplete: Bool)
                 switch dialect {
                 case .pi:
                     let result = Self.piSessionRootResolution(
                         process: process,
-                        cwd: context.workingDirectory.path,
-                        environment: environment)
+                        cwd: contextCWD,
+                        environment: environment,
+                        preserveSettingsRoot: context.workingDirectory != nil)
                     resolution = (result.roots, result.isComplete)
                 case .omp:
                     let result = Self.ompSessionRootResolution(
                         process: process,
-                        cwd: context.workingDirectory.path,
+                        cwd: contextCWD,
                         environment: environment)
                     resolution = (result.roots, result.profileDiscoveryIsComplete)
                 }
@@ -795,7 +820,12 @@ struct PiFamilySessionScanner: Sendable {
                         url: root.url,
                         layout: root.layout,
                         missingIsKnownEmpty: root.missingIsKnownEmpty,
-                        preserveAfterProcessExit: root.preserveAfterProcessExit || processRootIsRetained)
+                        preserveAfterProcessExit: root.preserveAfterProcessExit || processRootIsRetained,
+                        retentionKey: root.retentionKey ?? Self.processRetentionKey(
+                            dialect: dialect,
+                            process: process,
+                            cwd: contextCWD,
+                            environment: environment))
                 })
                 rootResolutionIsComplete = rootResolutionIsComplete && resolution.isComplete
             }
@@ -805,7 +835,8 @@ struct PiFamilySessionScanner: Sendable {
                     let resolution = Self.piSessionRootResolution(
                         process: defaultProcess,
                         cwd: cwdURL.path,
-                        environment: environment)
+                        environment: environment,
+                        preserveSettingsRoot: false)
                     roots.append(contentsOf: resolution.roots)
                     rootResolutionIsComplete = rootResolutionIsComplete && resolution.isComplete
                 case .omp:
@@ -838,7 +869,8 @@ struct PiFamilySessionScanner: Sendable {
                     url: canonical,
                     missingIsKnownEmpty: root.missingIsKnownEmpty,
                     resolutionIsComplete: true,
-                    preserveAfterProcessExit: root.preserveAfterProcessExit))
+                    preserveAfterProcessExit: root.preserveAfterProcessExit,
+                    retentionKey: root.retentionKey))
             }
             if !rootResolutionIsComplete {
                 let unresolved = Self.unresolvedCostSessionRoot(for: dialect)
@@ -926,6 +958,51 @@ struct PiFamilySessionScanner: Sendable {
                         arguments: context.arguments) != nil
             }
         }
+    }
+
+    /// Returns whether a process can resolve its session store without a working directory.
+    /// Only an absolute (or home-relative) `--session-dir` has that property.
+    static func hasAbsoluteSessionDirectorySelector(
+        in process: AgentProcessRecord,
+        environment: [String: String]) -> Bool
+    {
+        guard let value = commandLineValue(
+            "--session-dir",
+            in: process.command,
+            arguments: process.arguments)
+        else { return false }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("/") || trimmed == "~" || trimmed.hasPrefix("~/") else { return false }
+        return Self.pathURL(value, cwd: "/", home: environment["HOME"]) != nil
+    }
+
+    private static func processRetentionKey(
+        dialect: AgentSession.Dialect,
+        process: AgentProcessRecord,
+        cwd: String,
+        environment: [String: String]) -> String?
+    {
+        if let selector = commandLineValue(
+            "--session-dir",
+            in: process.command,
+            arguments: process.arguments),
+            let url = pathURL(selector, cwd: cwd, home: environment["HOME"])
+        {
+            return "process:" + dialect.rawValue + ":session-dir:" + url.path
+        }
+        if dialect == .omp,
+           let profile = Self.commandLineValue(
+               "--profile",
+               in: process.command,
+               arguments: process.arguments)
+        {
+            return "process:omp:profile:" + profile
+        }
+        return nil
+    }
+
+    private static func settingsRetentionKey(_ settingsURL: URL) -> String {
+        "settings:" + self.canonicalURL(settingsURL).path
     }
 
     private static func ompSessionRoots(
@@ -1031,7 +1108,8 @@ struct PiFamilySessionScanner: Sendable {
     private static func piSessionRootResolution(
         process: AgentProcessRecord,
         cwd: String,
-        environment: [String: String]) -> PiSessionRootResolution
+        environment: [String: String],
+        preserveSettingsRoot: Bool = false) -> PiSessionRootResolution
     {
         if let explicit = commandLineValue(
             "--session-dir",
@@ -1080,16 +1158,16 @@ struct PiFamilySessionScanner: Sendable {
             .appendingPathComponent(".pi", isDirectory: true)
             .appendingPathComponent("settings.json")
 
-        let configured: String?
+        let configured: (value: String, retentionKey: String)?
         switch Self.sessionDirectoryResolution(in: projectSettings) {
         case let .configured(value):
-            configured = value
+            configured = (value, Self.settingsRetentionKey(projectSettings))
         case .unavailable:
             return PiSessionRootResolution(roots: [], isComplete: false)
         case .missing, .noSessionDirectory:
             switch Self.sessionDirectoryResolution(in: globalSettings) {
             case let .configured(value):
-                configured = value
+                configured = (value, Self.settingsRetentionKey(globalSettings))
             case .unavailable:
                 return PiSessionRootResolution(roots: [], isComplete: false)
             case .missing, .noSessionDirectory:
@@ -1098,13 +1176,15 @@ struct PiFamilySessionScanner: Sendable {
         }
 
         if let configured {
-            guard let url = Self.pathURL(configured, cwd: cwd, home: home.path) else {
+            guard let url = Self.pathURL(configured.value, cwd: cwd, home: home.path) else {
                 return PiSessionRootResolution(roots: [], isComplete: false)
             }
             return PiSessionRootResolution(
-                // Project settings are durable configuration. Keep this root in the cache
-                // scope after the process exits so its history remains attributable.
-                roots: [SessionRoot(url: url, layout: .direct, preserveAfterProcessExit: true)],
+                roots: [SessionRoot(
+                    url: url,
+                    layout: .direct,
+                    preserveAfterProcessExit: preserveSettingsRoot,
+                    retentionKey: configured.retentionKey)],
                 isComplete: true)
         }
 
