@@ -131,7 +131,12 @@ struct CostUsageCompletedSnapshotTests {
             now: day.addingTimeInterval(-60),
             options: piOptions)
 
-        let completed = await fetcher.loadCompletedCodexTokenSnapshotResult(now: day)
+        let completed = await CostUsageFetcher.loadCachedCodexTokenSnapshotResult(
+            now: day,
+            allowScopedCodexHome: true,
+            requireCompleteHistory: true,
+            scannerOptions: options,
+            piScannerOptions: piOptions)
         #expect(completed?.snapshot.last30DaysTokens == 100 + piTokens)
         #expect(completed?.snapshot.updatedAt == day.addingTimeInterval(-60))
         #expect(completed?.lastRefreshAt == nil)
@@ -149,10 +154,20 @@ struct CostUsageCompletedSnapshotTests {
             default: cache.scanSinceKey = "2026-04-08"
             }
             PiSessionCostCacheIO.save(cache: cache, cacheRoot: env.cacheRoot, calendar: storedCalendar)
-            #expect(await fetcher.loadCompletedCodexTokenSnapshotResult(now: day) == nil)
+            #expect(await CostUsageFetcher.loadCachedCodexTokenSnapshotResult(
+                now: day,
+                allowScopedCodexHome: true,
+                requireCompleteHistory: true,
+                scannerOptions: options,
+                piScannerOptions: piOptions) == nil)
         }
         try Data("invalid JSON".utf8).write(to: PiSessionCostCacheIO.cacheFileURL(cacheRoot: env.cacheRoot))
-        #expect(await fetcher.loadCompletedCodexTokenSnapshotResult(now: day) == nil)
+        #expect(await CostUsageFetcher.loadCachedCodexTokenSnapshotResult(
+            now: day,
+            allowScopedCodexHome: true,
+            requireCompleteHistory: true,
+            scannerOptions: options,
+            piScannerOptions: piOptions) == nil)
     }
 
     @Test

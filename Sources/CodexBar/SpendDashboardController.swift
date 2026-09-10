@@ -332,7 +332,8 @@ enum SpendDashboardSource {
             inputs.append(SpendDashboardModel.ProviderInput(
                 provider: provider,
                 displayName: store.metadata(for: provider).displayName,
-                snapshot: snapshot))
+                snapshot: snapshot,
+                accounting: currentPublication.accounting))
         }
         return SpendDashboardLoadRequest(
             configuration: configuration,
@@ -886,6 +887,16 @@ enum SpendDashboardSource {
                historyDays: scanDays)
         {
             return derived
+        }
+        // The regular Claude/Codex publication is inclusive so standalone
+        // totals remain complete. When Pi is a separate dashboard source,
+        // display only the native portion here to keep the rows disjoint.
+        // Provider-specific by design: Claude and Codex publications expose a native projection when Pi is
+        // accounted for separately in the combined dashboard.
+        if provider == .claude || provider == .codex,
+           case let .includesPi(_, native) = publication.accounting
+        {
+            return native
         }
         return publication.snapshot
     }
@@ -1742,6 +1753,7 @@ final class SpendDashboardController {
     {
         var ids: [String] = []
         for providerID in self.configuration?.providerIDs ?? [] {
+            // Provider-specific by design: source ordering expands the fixed Codex account namespace.
             if providerID == UsageProvider.codex.rawValue {
                 ids.append(contentsOf: (self.configuration?.codexAccountIdentities ?? []).compactMap { identity in
                     guard let separator = identity.lastIndex(of: "|") else { return nil }
@@ -1759,6 +1771,7 @@ final class SpendDashboardController {
     }
 
     private func provider(for sourceID: String) -> UsageProvider? {
+        // Provider-specific by design: account source IDs map to Codex.
         if sourceID.hasPrefix("codex:") { return .codex }
         return UsageProvider(rawValue: sourceID)
     }
@@ -1797,7 +1810,8 @@ final class SpendDashboardController {
             modelProviderName: input.modelProviderName,
             snapshot: input.snapshot,
             tokenActivityCache: input.tokenActivityCache,
-            sourceKind: input.sourceKind)
+            sourceKind: input.sourceKind,
+            accounting: input.accounting)
     }
 
     private static func sameSourceOwnership(

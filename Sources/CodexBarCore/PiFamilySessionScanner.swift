@@ -783,12 +783,19 @@ struct PiFamilySessionScanner: Sendable {
                         environment: environment)
                     resolution = (result.roots, result.profileDiscoveryIsComplete)
                 }
+                // A process-selected root is safe to retain after exit because the
+                // selector is explicit. Roots reached only through the process's
+                // working directory or inherited environment must be re-resolved on
+                // the next scan, otherwise a stale project can remain attributed.
+                let processRootIsRetained = Self.hasExplicitProcessRootSelection(
+                    dialect: dialect,
+                    processContexts: [context])
                 roots.append(contentsOf: resolution.roots.map { root in
                     SessionRoot(
                         url: root.url,
                         layout: root.layout,
                         missingIsKnownEmpty: root.missingIsKnownEmpty,
-                        preserveAfterProcessExit: true)
+                        preserveAfterProcessExit: processRootIsRetained)
                 })
                 rootResolutionIsComplete = rootResolutionIsComplete && resolution.isComplete
             }

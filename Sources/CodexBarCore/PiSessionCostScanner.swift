@@ -333,6 +333,7 @@ enum PiSessionCostScanner {
         now: Date = Date(),
         cacheRoot: URL? = nil,
         calendar: Calendar = .current,
+        options: Options? = nil,
         allowEstablishedEmpty: Bool = false) -> CachedDailyReportResult?
     {
         // Provider-specific by design: cached Pi history is the merged Codex/Claude report above.
@@ -341,12 +342,19 @@ enum PiSessionCostScanner {
         let range = CostUsageScanner.CostUsageDayRange(since: since, until: until, calendar: calendar)
         let cache = PiSessionCostCacheIO.load(cacheRoot: cacheRoot)
         guard cache.timeZoneIdentifier == range.calendar.timeZone.identifier else { return nil }
+        if let options {
+            let expectedRoots = self.defaultSessionRoots(
+                options: options,
+                previousSessionRootsFingerprint: cache.sessionRootsFingerprint)
+            guard self.sessionRootsFingerprint(expectedRoots) == cache.sessionRootsFingerprint else { return nil }
+        }
         guard !allowEstablishedEmpty || cache.lastScanUnixMs > 0 else { return nil }
         guard allowEstablishedEmpty || !cache.daysByProvider.isEmpty else { return nil }
         guard !self.requestedWindowExpandsCache(range: range, cache: cache) else { return nil }
 
         let pricingContext = self.pricingContext(now: now, cacheRoot: cacheRoot)
         guard cache.pricingKey == pricingContext.pricingKey else { return nil }
+        // Provider-specific by design: the Pi cache's aggregate view merges its fixed Codex and Claude tariffs.
         let report = if provider == .pi {
             CostUsageDailyReport.merged([
                 self.buildReport(
@@ -494,6 +502,15 @@ enum PiSessionCostScanner {
                 ].joined(separator: "\u{1F}")
             }
             .joined(separator: "\u{1E}")
+    }
+
+    /// Returns the root scope represented by a Pi scanner configuration. Cached
+    /// reads use this to reject a report produced for a different live or
+    /// configured project root before publishing it.
+    package static func scopeFingerprint(options: Options) -> String {
+        self.sessionRootsFingerprint(self.defaultSessionRoots(
+            options: options,
+            previousSessionRootsFingerprint: nil))
     }
 
     private struct SessionFileListResult {

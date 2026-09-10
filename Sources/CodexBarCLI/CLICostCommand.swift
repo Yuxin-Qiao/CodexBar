@@ -64,15 +64,16 @@ extension CodexBarCLI {
         let bucketCalendar = CostUsageBucketTimeZone.calendar(
             identifier: Self.stringFromAppDefaults("tokenCostUsageBucketTimeZone"))
         let fetcher = CostUsageFetcher(calendar: bucketCalendar)
+        let outputProviders = Self.costProviders(providers, groupBy: groupBy, format: format)
         let piSessionProcessContexts = await Self.piSessionProcessContextsForCost(
-            providers: providers,
+            providers: outputProviders,
             includePiSessions: includePiSessions)
         var sections: [String] = []
         var payload: [CostPayload] = []
         var exitCode: ExitCode = .success
 
         // Provider-specific by design: project/session grouping is available only for Codex local session data.
-        for provider in Self.costProviders(providers, groupBy: groupBy, format: format) {
+        for provider in outputProviders {
             if let error = Self.cursorCostAvailabilityError(
                 provider,
                 settings: cursorCookieSettings,
@@ -97,7 +98,7 @@ extension CodexBarCLI {
                     refreshPricingInBackground: false,
                     includePiSessions: Self.costIncludePiSessions(
                         provider: provider,
-                        selectedProviders: providers,
+                        selectedProviders: outputProviders,
                         groupBy: groupBy,
                         format: format,
                         includePiSessions: includePiSessions),
@@ -523,7 +524,9 @@ extension CodexBarCLI {
         providers: [UsageProvider],
         includePiSessions: Bool) async -> [PiSessionProcessContext]
     {
-        guard includePiSessions || providers.contains(.pi) else { return [] }
+        let hasPiConsumer = providers.contains(.pi) ||
+            (includePiSessions && providers.contains { $0 == .claude || $0 == .codex })
+        guard hasPiConsumer else { return [] }
         return await LocalAgentSessionScanner().piSessionProcessContexts()
     }
 

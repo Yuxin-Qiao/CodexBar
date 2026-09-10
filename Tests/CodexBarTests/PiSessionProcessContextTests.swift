@@ -132,6 +132,35 @@ struct PiSessionProcessContextTests {
     }
 
     @Test
+    func `pi cost roots do not retain environment-only process roots`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let project = env.root.appendingPathComponent("pi-project", isDirectory: true)
+        let selectedRoot = env.root.appendingPathComponent("environment-selected", isDirectory: true)
+        try [project, selectedRoot].forEach {
+            try FileManager.default.createDirectory(at: $0, withIntermediateDirectories: true)
+        }
+
+        let roots = PiFamilySessionScanner.costSessionRoots(
+            environment: [
+                "HOME": env.root.path,
+                "PI_CODING_AGENT_SESSION_DIR": selectedRoot.path,
+            ],
+            baseDirectories: [project],
+            processContexts: [
+                PiSessionProcessContext(
+                    command: "/usr/local/bin/pi",
+                    workingDirectory: project),
+            ])
+
+        #expect(roots.contains { $0.url == selectedRoot.standardizedFileURL && $0.resolutionIsComplete })
+        #expect(roots.contains {
+            $0.url == selectedRoot.standardizedFileURL && !$0.preserveAfterProcessExit
+        })
+    }
+
+    @Test
     func `pi cost roots preserve whitespace in live session selectors`() throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }
