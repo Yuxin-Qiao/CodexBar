@@ -1466,10 +1466,7 @@ extension PiSessionCostScanner {
     }
 
     private static func scopeFingerprint(options: Options, cache originalCache: PiSessionCostCache) -> String {
-        var cache = originalCache
-        if cache.timeZoneIdentifier != options.calendar.timeZone.identifier {
-            cache = PiSessionCostCache()
-        }
+        let cache = originalCache
         let roots = self.defaultSessionRoots(
             options: options,
             previousSessionRootsFingerprint: cache.sessionRootsFingerprint)
