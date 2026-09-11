@@ -274,8 +274,9 @@ struct OMPSessionRootResolver: Sendable {
 
         #if os(macOS) || os(Linux)
         if customAgentRoot == nil,
-           let xdgDataHome = Self.environmentURL(
-               environment["XDG_DATA_HOME"],
+           let xdgDataHome = Self.xdgDataHome(
+               environment: environment,
+               home: home,
                baseDirectory: baseDirectory,
                fileManager: fileManager)
         {
@@ -337,8 +338,9 @@ struct OMPSessionRootResolver: Sendable {
         // profile migration cannot silently hide part of its history.
         appendExistingLayouts(in: profileRoot)
         #if os(macOS) || os(Linux)
-        if let xdgDataHome = Self.environmentURL(
-            environment["XDG_DATA_HOME"],
+        if let xdgDataHome = Self.xdgDataHome(
+            environment: environment,
+            home: home,
             baseDirectory: baseDirectory,
             fileManager: fileManager)
         {
@@ -378,8 +380,9 @@ struct OMPSessionRootResolver: Sendable {
             environment: environment,
             baseDirectory: baseDirectory,
             fileManager: fileManager) == nil,
-            let xdgDataHome = Self.environmentURL(
-                environment["XDG_DATA_HOME"],
+            let xdgDataHome = Self.xdgDataHome(
+                environment: environment,
+                home: home,
                 baseDirectory: baseDirectory,
                 fileManager: fileManager)
         {
@@ -529,6 +532,25 @@ struct OMPSessionRootResolver: Sendable {
             url = baseDirectory.appendingPathComponent(path, isDirectory: true)
         }
         return Self.canonicalURL(url)
+    }
+
+    private static func xdgDataHome(
+        environment: [String: String],
+        home: URL,
+        baseDirectory: URL?,
+        fileManager: FileManager) -> URL?
+    {
+        if let configured = environment["XDG_DATA_HOME"],
+           !configured.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
+            return self.environmentURL(
+                configured,
+                baseDirectory: baseDirectory,
+                fileManager: fileManager)
+        }
+        return home
+            .appendingPathComponent(".local", isDirectory: true)
+            .appendingPathComponent("share", isDirectory: true)
     }
 
     private static func sanitizedDefaultEnvironment(_ environment: [String: String]) -> [String: String] {
@@ -1550,15 +1572,6 @@ struct PiFamilySessionScanner: Sendable {
     private static func homeURL(_ environment: [String: String]) -> URL? {
         guard let home = environment["HOME"], !home.isEmpty else { return nil }
         return URL(fileURLWithPath: home, isDirectory: true).standardizedFileURL
-    }
-
-    private static func xdgDataHome(_ environment: [String: String], home: URL) -> URL {
-        if let configured = environment["XDG_DATA_HOME"], !configured.isEmpty {
-            return URL(fileURLWithPath: configured, isDirectory: true).standardizedFileURL
-        }
-        return home
-            .appendingPathComponent(".local", isDirectory: true)
-            .appendingPathComponent("share", isDirectory: true)
     }
 
     private static func isDirectory(_ url: URL) -> Bool {
