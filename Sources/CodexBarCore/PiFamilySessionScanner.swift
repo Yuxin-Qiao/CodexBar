@@ -1,20 +1,5 @@
 import Foundation
 
-/// The process command and working directory needed to resolve a live Pi-family session store.
-public struct PiSessionProcessContext: Equatable, Sendable {
-    public let command: String
-    /// Original argv when available; this preserves whitespace inside flag values.
-    public let arguments: [String]?
-    /// The process CWD, when it could be read. An absolute `--session-dir` remains resolvable when this is nil.
-    public let workingDirectory: URL?
-
-    public init(command: String, arguments: [String]? = nil, workingDirectory: URL?) {
-        self.command = command
-        self.arguments = arguments
-        self.workingDirectory = workingDirectory?.standardizedFileURL
-    }
-}
-
 struct PiFamilySessionRecord: Equatable, Sendable {
     let id: String
     let cwd: String?
@@ -601,25 +586,6 @@ struct OMPSessionRootResolver: Sendable {
     }
 }
 
-/// Resolves the historical Pi-family roots used by cost and usage discovery.
-public enum PiFamilySessionRootResolver {
-    /// Returns resolved roots for Pi and OMP historical session stores.
-    ///
-    /// Unresolved placeholders are omitted so callers can use the result for read-only source detection.
-    public static func costSessionRootURLs(
-        environment: [String: String],
-        baseDirectory: URL? = nil,
-        processContexts: [PiSessionProcessContext] = []) -> [URL]
-    {
-        PiFamilySessionScanner.costSessionRoots(
-            environment: environment,
-            baseDirectories: baseDirectory.map { [$0] },
-            processContexts: processContexts)
-            .filter(\.resolutionIsComplete)
-            .map(\.url)
-    }
-}
-
 // swiftlint:disable:next type_body_length
 struct PiFamilySessionScanner: Sendable {
     struct ScanInput: Sendable {
@@ -869,6 +835,7 @@ struct PiFamilySessionScanner: Sendable {
             result.append(url)
         }
         let defaultProcess = AgentProcessRecord(pid: 0, ppid: 0, startedAt: nil, command: "")
+        let hasExplicitProcessProfile = Self.hasExplicitProcessProfile(in: processContexts)
         // Provider-specific by design: historical cost scans must resolve both Pi dialects through the shared root
         // resolver.
         let dialects: [AgentSession.Dialect] = [.pi, .omp]
@@ -940,7 +907,8 @@ struct PiFamilySessionScanner: Sendable {
                     let result = Self.ompSessionRootResolution(
                         process: process,
                         cwd: contextCWD,
-                        environment: environment)
+                        environment: environment,
+                        suppressProfileDiscovery: hasExplicitProcessProfile)
                     resolution = (result.roots, result.profileDiscoveryIsComplete)
                 }
                 // A process-selected root is safe to retain after exit because the
@@ -979,7 +947,8 @@ struct PiFamilySessionScanner: Sendable {
                     let resolution = Self.ompSessionRootResolution(
                         process: defaultProcess,
                         cwd: cwdURL.path,
-                        environment: environment)
+                        environment: environment,
+                        suppressProfileDiscovery: hasExplicitProcessProfile)
                     roots.append(contentsOf: resolution.roots)
                     rootResolutionIsComplete = rootResolutionIsComplete && resolution.profileDiscoveryIsComplete
                 }
@@ -1014,6 +983,22 @@ struct PiFamilySessionScanner: Sendable {
             }
         }
         return output
+    }
+
+    private static func hasExplicitProcessProfile(in contexts: [PiSessionProcessContext]) -> Bool {
+        contexts.contains { context in
+            let process = AgentProcessRecord(
+                pid: 0,
+                ppid: 0,
+                startedAt: nil,
+                command: context.command,
+                arguments: context.arguments)
+            return AgentPSOutputParser.piDialect(for: process) == .omp &&
+                Self.commandLineValue(
+                    "--profile",
+                    in: process.command,
+                    arguments: process.arguments) != nil
+        }
     }
 
     private static func unresolvedCostSessionRoot(for dialect: AgentSession.Dialect) -> URL {
@@ -1249,7 +1234,8 @@ struct PiFamilySessionScanner: Sendable {
     private static func ompSessionRootResolution(
         process: AgentProcessRecord,
         cwd: String,
-        environment: [String: String]) -> OMPSessionRootResolution
+        environment: [String: String],
+        suppressProfileDiscovery: Bool = false) -> OMPSessionRootResolution
     {
         let processHasExplicitSelection = Self.commandLineValue(
             "--session-dir",
@@ -1288,6 +1274,14 @@ struct PiFamilySessionScanner: Sendable {
             "PI_PROFILE",
         ] {
             safeEnvironment[key] = environment[key]
+        }
+        if suppressProfileDiscovery,
+           safeEnvironment["OMP_PROFILE"] == nil,
+           safeEnvironment["PI_PROFILE"] == nil
+        {
+            // A live named profile is authoritative for this scan. Keep the ambient default root,
+            // but do not broaden it to unrelated profiles discovered on disk.
+            safeEnvironment["OMP_PROFILE"] = "default"
         }
         if let profile = Self.commandLineValue(
             "--profile",
