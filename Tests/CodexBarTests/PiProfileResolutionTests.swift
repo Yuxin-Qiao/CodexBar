@@ -63,4 +63,28 @@ struct PiProfileResolutionTests {
         #expect(roots.contains { $0.url == selectedRoot.standardizedFileURL })
         #expect(!roots.contains { $0.url == unrelatedRoot.standardizedFileURL })
     }
+
+    @Test
+    func `pi provider discovery keeps both profile session layouts during migration`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let profileRoot = env.root
+            .appendingPathComponent(".omp", isDirectory: true)
+            .appendingPathComponent("profiles", isDirectory: true)
+            .appendingPathComponent("work", isDirectory: true)
+        let directRoot = profileRoot.appendingPathComponent("sessions", isDirectory: true)
+        let legacyRoot = profileRoot
+            .appendingPathComponent("agent", isDirectory: true)
+            .appendingPathComponent("sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: directRoot, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: legacyRoot, withIntermediateDirectories: true)
+
+        let roots = PiFamilySessionScanner.costSessionRoots(
+            environment: ["HOME": env.root.path],
+            baseDirectory: env.root)
+
+        #expect(roots.contains { $0.url == directRoot.standardizedFileURL && $0.resolutionIsComplete })
+        #expect(roots.contains { $0.url == legacyRoot.standardizedFileURL && $0.resolutionIsComplete })
+    }
 }

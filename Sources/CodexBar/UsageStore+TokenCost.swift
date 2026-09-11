@@ -362,7 +362,7 @@ extension UsageStore {
         let costUsageSettingsRevision = self.settings.costUsageSettingsRevision
         let tokenSnapshotScopeSignature = self.tokenSnapshotScopeSignature(for: .codex)
         let tokenSnapshotPublicationRevision = self.tokenSnapshotPublicationRevision(for: .codex)
-        let includePiSessions = true
+        let includePiSessions = self.shouldIncludePiSessionsInTokenSnapshot(for: .codex)
         return Task { @MainActor [weak self] in
             guard let self else { return }
             guard await self.refreshPiHistoryScope(for: .codex) else { return }

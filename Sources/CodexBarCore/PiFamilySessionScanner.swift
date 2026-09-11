@@ -1456,7 +1456,6 @@ struct PiFamilySessionScanner: Sendable {
             switch Self.profileDirectoryInspection(xdgLayout) {
             case .readableDirectory:
                 roots.append(xdgLayout)
-                continue
             case .unavailable:
                 isComplete = false
             case .missing, .notDirectory:

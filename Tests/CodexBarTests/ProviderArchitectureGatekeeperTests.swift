@@ -1314,6 +1314,12 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "The Codex-only cache hydration path passes its fixed provider identity to shared state helpers."),
         SuppressedProviderReference(
             path: "Sources/CodexBar/UsageStore+TokenCost.swift",
+            line: 365,
+            anchor: "let includePiSessions = self.shouldIncludePiSessionsInTokenSnapshot(for: .codex)",
+            expectedProviderIDs: ["codex"],
+            reason: "The Codex-only cache hydration path passes its fixed provider identity to shared state helpers."),
+        SuppressedProviderReference(
+            path: "Sources/CodexBar/UsageStore+TokenCost.swift",
             line: 406,
             anchor: "self.settings.isCostUsageEffectivelyEnabled(for: .codex),",
             expectedProviderIDs: ["codex"],

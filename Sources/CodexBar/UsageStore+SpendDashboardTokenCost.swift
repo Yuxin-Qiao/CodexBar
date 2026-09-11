@@ -132,7 +132,7 @@ extension UsageStore {
                 codexHomePath: costScope.codexHomePath,
                 historyDays: historyDays,
                 cursorCookieHeaderOverride: cursorCookieHeaderOverride,
-                includePiSessions: true)
+                includePiSessions: self.shouldIncludePiSessionsInTokenSnapshot(for: provider))
             let snapshot = result.snapshot
             try Task.checkCancellation()
             guard self.tokenAccountingScopeIsCurrent(result.accounting, for: provider) else { return }
