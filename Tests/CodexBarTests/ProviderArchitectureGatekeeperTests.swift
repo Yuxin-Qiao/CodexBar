@@ -1422,7 +1422,7 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This provider-owned integration passes its fixed identity to a shared helper."),
         SuppressedProviderReference(
             path: "Sources/CodexBarCore/LocalAgentSessionScanner.swift",
-            line: 365,
+            line: 369,
             anchor: "provider: .codex,",
             expectedProviderIDs: ["codex"],
             reason: "This provider-specific core branch passes its already-selected identity to a shared helper."),
@@ -3587,7 +3587,7 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This exact host integration maps a provider-owned process, path, or window contract."),
         AllowedProviderConstruct(
             path: "Sources/CodexBarCore/LocalAgentSessionScanner.swift",
-            line: 312,
+            line: 316,
             anchor: "let claudeProcesses = processes.filter { AgentPSOutputParser.provider(for: $0) == .claude }",
             expectedProviderIDs: ["claude"],
             expectedReferenceCount: 1,
@@ -3595,7 +3595,7 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This exact host integration maps a provider-owned process, path, or window contract."),
         AllowedProviderConstruct(
             path: "Sources/CodexBarCore/LocalAgentSessionScanner.swift",
-            line: 328,
+            line: 332,
             anchor: "let codexProcesses = processes.filter { AgentPSOutputParser.provider(for: $0) == .codex }",
             expectedProviderIDs: ["claude", "codex"],
             expectedReferenceCount: 3,
@@ -3603,7 +3603,7 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This exact host integration maps a provider-owned process, path, or window contract."),
         AllowedProviderConstruct(
             path: "Sources/CodexBarCore/LocalAgentSessionScanner.swift",
-            line: 354,
+            line: 358,
             anchor: "case .codex:",
             expectedProviderIDs: ["codex"],
             expectedReferenceCount: 1,

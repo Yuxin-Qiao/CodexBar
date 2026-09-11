@@ -437,6 +437,34 @@ struct PiSessionProcessContextTests {
     }
 
     @Test
+    func `pi process context cap preserves a distinct older session root`() async throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let sessionRoot = env.root.appendingPathComponent("older-session-root", isDirectory: true)
+        try FileManager.default.createDirectory(at: sessionRoot, withIntermediateDirectories: true)
+        let scanner = LocalAgentSessionScanner(
+            config: SessionScanConfig(maxProcessCount: 2),
+            processOutputProvider: { _ in
+                """
+                204 1 Mon Jul 6 09:06:00 2026 /usr/local/bin/pi
+                203 1 Mon Jul 6 09:05:00 2026 /usr/local/bin/pi
+                202 1 Mon Jul 6 09:04:00 2026 /usr/local/bin/pi
+                201 1 Sun Jul 5 09:03:00 2026 /usr/local/bin/pi --session-dir \(sessionRoot.path)
+                """
+            },
+            cwdProvider: { pids, _ in
+                Dictionary(uniqueKeysWithValues: pids.map { ($0, env.root.path) })
+            })
+
+        let contexts = await scanner.piSessionProcessContexts(environment: ["HOME": env.root.path])
+
+        #expect(contexts.count == 2)
+        #expect(contexts.contains { $0.command == "/usr/local/bin/pi" })
+        #expect(contexts.contains { $0.command.contains("--session-dir \(sessionRoot.path)") })
+    }
+
+    @Test
     func `global relative settings keep CWD-specific retention provenance`() throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }

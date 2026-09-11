@@ -215,12 +215,13 @@ public struct LocalAgentSessionScanner: Sendable {
         } else {
             await self.processRecords(environment: environment)
         }
-        let processes = Array(AgentSessionCorrelation.newestProcessesFirst(
-            // Provider-specific by design: only Pi processes provide project roots for Pi history resolution.
+        // Provider-specific by design: only Pi processes provide project roots for Pi history resolution.
+        // Keep every process through context resolution first so duplicate processes do not consume the
+        // process budget before an older process with a distinct session root is considered.
+        let processes = AgentSessionCorrelation.newestProcessesFirst(
             AgentPSOutputParser.agentProcesses(from: allProcesses)
                 .filter { AgentPSOutputParser.provider(for: $0) == .pi })
-            .prefix(max(0, self.config.maxProcessCount)))
-        guard !processes.isEmpty else { return [] }
+        guard !processes.isEmpty, self.config.maxProcessCount > 0 else { return [] }
 
         let cwdByPID = if let cwdProvider = self.cwdProvider {
             await cwdProvider(processes.map(\.pid), environment)
@@ -228,7 +229,7 @@ public struct LocalAgentSessionScanner: Sendable {
             await self.cwdByPID(processes.map(\.pid), environment: environment)
         }
         var seen = Set<String>()
-        return processes.compactMap { process in
+        let distinctContexts: [PiSessionProcessContext] = processes.compactMap { process in
             let workingDirectory = cwdByPID[process.pid]
                 .flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0, isDirectory: true) }
             guard workingDirectory != nil ||
@@ -248,11 +249,14 @@ public struct LocalAgentSessionScanner: Sendable {
             guard seen.insert(key).inserted else { return nil }
             return context
         }
-        .sorted {
-            $0.workingDirectory?.path == $1.workingDirectory?.path
-                ? $0.command < $1.command
-                : ($0.workingDirectory?.path ?? "<unresolved-cwd>") < ($1.workingDirectory?.path ?? "<unresolved-cwd>")
-        }
+        return distinctContexts
+            .prefix(max(0, self.config.maxProcessCount))
+            .sorted {
+                $0.workingDirectory?.path == $1.workingDirectory?.path
+                    ? $0.command < $1.command
+                    : ($0.workingDirectory?.path ?? "<unresolved-cwd>") <
+                    ($1.workingDirectory?.path ?? "<unresolved-cwd>")
+            }
     }
 
     public static func shouldScanSessionMetadata(
