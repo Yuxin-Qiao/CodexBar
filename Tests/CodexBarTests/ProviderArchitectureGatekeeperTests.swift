@@ -1031,7 +1031,7 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This OpenCodex enrichment descriptor maps the canonical source back to the Codex family."),
         SuppressedProviderReference(
             path: "Sources/CodexBar/StatusItemController+CodexStackedMenu.swift",
-            line: 26,
+            line: 27,
             anchor: "for: .codex,",
             expectedProviderIDs: ["codex"],
             reason: "This provider-owned integration passes its fixed identity to a shared helper."),
@@ -1061,7 +1061,7 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "The memory-pressure debug fixture installs its synthetic entry in the Codex cache slot."),
         SuppressedProviderReference(
             path: "Sources/CodexBar/StatusItemController+Menu.swift",
-            line: 1129,
+            line: 1123,
             anchor: "controller.refreshOpenMenuIfStillVisible(menu, provider: .codex)",
             expectedProviderIDs: ["codex"],
             reason: "This provider-specific app branch passes its already-selected identity to a shared helper."),
@@ -2585,7 +2585,7 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This exact app-runtime bridge coordinates provider-owned state through the shared controller."),
         AllowedProviderConstruct(
             path: "Sources/CodexBar/StatusItemController+Menu.swift",
-            line: 1159,
+            line: 1153,
             anchor: "return self.store.enabledFirstPartyProvidersForDisplay().first ?? .codex",
             expectedProviderIDs: ["codex"],
             expectedReferenceCount: 1,
