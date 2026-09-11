@@ -87,4 +87,29 @@ struct PiProfileResolutionTests {
         #expect(roots.contains { $0.url == directRoot.standardizedFileURL && $0.resolutionIsComplete })
         #expect(roots.contains { $0.url == legacyRoot.standardizedFileURL && $0.resolutionIsComplete })
     }
+
+    @Test
+    func `pi provider keeps default and xdg omp stores during migration`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let defaultRoot = env.root
+            .appendingPathComponent(".omp", isDirectory: true)
+            .appendingPathComponent("agent", isDirectory: true)
+            .appendingPathComponent("sessions", isDirectory: true)
+        let xdgRoot = env.root
+            .appendingPathComponent(".local", isDirectory: true)
+            .appendingPathComponent("share", isDirectory: true)
+            .appendingPathComponent("omp", isDirectory: true)
+            .appendingPathComponent("sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: defaultRoot, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: xdgRoot, withIntermediateDirectories: true)
+
+        let roots = PiFamilySessionScanner.costSessionRoots(
+            environment: ["HOME": env.root.path],
+            baseDirectory: env.root)
+
+        #expect(roots.contains { $0.url == defaultRoot.standardizedFileURL && $0.resolutionIsComplete })
+        #expect(roots.contains { $0.url == xdgRoot.standardizedFileURL && $0.resolutionIsComplete })
+    }
 }

@@ -116,6 +116,7 @@ struct OMPSessionRootResolver: Sendable {
 
         guard let root = Self.sessionRoot(agentRoot: agentRoot, fileManager: fileManager) else { return [] }
 
+        var roots = [root]
         #if os(macOS) || os(Linux)
         if customAgentRoot == nil,
            let xdgDataHome = Self.xdgDataHome(
@@ -128,16 +129,17 @@ struct OMPSessionRootResolver: Sendable {
                 .appendingPathComponent("omp", isDirectory: true)
                 .appendingPathComponent("sessions", isDirectory: true)
             if Self.isDirectory(xdgSessions, fileManager: fileManager),
-               let root = Self.sessionRoot(
+               let xdgRoot = Self.sessionRoot(
                    agentRoot: xdgDataHome.appendingPathComponent("omp", isDirectory: true),
                    fileManager: fileManager)
             {
-                return [root]
+                roots.append(xdgRoot)
             }
         }
         #endif
 
-        return [root]
+        var seen = Set<String>()
+        return roots.filter { seen.insert(Self.canonicalURL($0).path).inserted }
     }
 
     private static func namedProfileRoots(
