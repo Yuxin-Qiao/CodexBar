@@ -5,6 +5,42 @@ import Testing
 
 struct SettingsStoreTokenCostSourceTests {
     @Test
+    func `token cost source detection includes live pi process roots`() throws {
+        let fileManager = FileManager.default
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let project = env.root.appendingPathComponent("pi-project", isDirectory: true)
+        let projectSettings = project
+            .appendingPathComponent(".pi", isDirectory: true)
+            .appendingPathComponent("settings.json")
+        let projectSessions = project.appendingPathComponent("sessions", isDirectory: true)
+        let explicitSessions = env.root.appendingPathComponent("explicit-sessions", isDirectory: true)
+        try [projectSettings.deletingLastPathComponent(), projectSessions, explicitSessions].forEach {
+            try fileManager.createDirectory(at: $0, withIntermediateDirectories: true)
+        }
+        try Data(#"{"sessionDir":"sessions"}"#.utf8).write(to: projectSettings, options: .atomic)
+        fileManager.createFile(
+            atPath: projectSessions.appendingPathComponent("project.jsonl").path,
+            contents: Data("{}".utf8))
+        fileManager.createFile(
+            atPath: explicitSessions.appendingPathComponent("explicit.jsonl").path,
+            contents: Data("{}".utf8))
+
+        #expect(SettingsStore.hasAnyTokenCostUsageSources(
+            env: ["HOME": env.root.path],
+            fileManager: fileManager,
+            homeDirectory: env.root,
+            workingDirectory: env.root,
+            processContexts: [
+                PiSessionProcessContext(command: "pi", workingDirectory: project),
+                PiSessionProcessContext(
+                    command: "pi --session-dir \(explicitSessions.path)",
+                    workingDirectory: nil),
+            ]))
+    }
+
+    @Test
     func `token cost source detection includes pi and omp roots`() throws {
         let fileManager = FileManager.default
 

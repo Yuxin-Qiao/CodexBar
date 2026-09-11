@@ -608,11 +608,13 @@ public enum PiFamilySessionRootResolver {
     /// Unresolved placeholders are omitted so callers can use the result for read-only source detection.
     public static func costSessionRootURLs(
         environment: [String: String],
-        baseDirectory: URL? = nil) -> [URL]
+        baseDirectory: URL? = nil,
+        processContexts: [PiSessionProcessContext] = []) -> [URL]
     {
         PiFamilySessionScanner.costSessionRoots(
             environment: environment,
-            baseDirectory: baseDirectory)
+            baseDirectories: baseDirectory.map { [$0] },
+            processContexts: processContexts)
             .filter(\.resolutionIsComplete)
             .map(\.url)
     }
@@ -994,10 +996,8 @@ struct PiFamilySessionScanner: Sendable {
                     resolutionIsComplete: false))
                 continue
             }
-            var seenDialectRoots = Set<String>()
             for root in roots {
                 let canonical = Self.canonicalURL(root.url)
-                guard seenDialectRoots.insert(canonical.path).inserted else { continue }
                 appendCostRoot(CostSessionRoot(
                     url: canonical,
                     missingIsKnownEmpty: root.missingIsKnownEmpty,

@@ -4,6 +4,31 @@ import Testing
 
 struct PiSharedRootMergeTests {
     @Test
+    func `same pi dialect root keeps required process provenance`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let sharedRoot = env.root
+            .appendingPathComponent(".pi", isDirectory: true)
+            .appendingPathComponent("agent", isDirectory: true)
+            .appendingPathComponent("sessions", isDirectory: true)
+        let roots = PiFamilySessionScanner.costSessionRoots(
+            environment: ["HOME": env.root.path],
+            baseDirectories: [env.root],
+            processContexts: [
+                PiSessionProcessContext(command: "pi", workingDirectory: env.root),
+                PiSessionProcessContext(
+                    command: "pi --session-dir \(sharedRoot.path)",
+                    workingDirectory: env.root),
+            ])
+
+        let root = try #require(roots.first { $0.url == sharedRoot.standardizedFileURL })
+        #expect(!root.missingIsKnownEmpty)
+        #expect(root.preserveAfterProcessExit)
+        #expect(root.retentionKey == "process:pi:session-dir:\(sharedRoot.standardizedFileURL.path)")
+    }
+
+    @Test
     func `shared pi and omp root keeps required process provenance`() throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }

@@ -23,8 +23,13 @@ extension SettingsStore {
 
         Task { @MainActor [weak self] in
             guard let self else { return }
+            let environment = ProcessInfo.processInfo.environment
             let hasSources = await Task.detached(priority: .utility) {
-                Self.hasAnyTokenCostUsageSources()
+                let processContexts = await LocalAgentSessionScanner().piSessionProcessContexts(
+                    environment: environment)
+                return Self.hasAnyTokenCostUsageSources(
+                    env: environment,
+                    processContexts: processContexts)
             }.value
             guard hasSources else { return }
             guard UserDefaults.standard.object(forKey: "tokenCostUsageEnabled") == nil else { return }
@@ -36,7 +41,8 @@ extension SettingsStore {
         env: [String: String] = ProcessInfo.processInfo.environment,
         fileManager: FileManager = .default,
         homeDirectory: URL? = nil,
-        workingDirectory: URL? = nil) -> Bool
+        workingDirectory: URL? = nil,
+        processContexts: [PiSessionProcessContext] = []) -> Bool
     {
         // Provider-specific by design: Codex, Claude, and Pi-family stores can auto-enable token cost.
         let home = homeDirectory ?? fileManager.homeDirectoryForCurrentUser
@@ -88,7 +94,8 @@ extension SettingsStore {
             isDirectory: true)
         let piRoots = PiFamilySessionRootResolver.costSessionRootURLs(
             environment: piEnvironment,
-            baseDirectory: piBaseDirectory)
+            baseDirectory: piBaseDirectory,
+            processContexts: processContexts)
         if piRoots.contains(where: hasAnyJsonl(in:)) {
             return true
         }
