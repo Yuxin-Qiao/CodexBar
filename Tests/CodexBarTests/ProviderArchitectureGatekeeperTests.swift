@@ -851,19 +851,19 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This is the mathematical constant π used for an animation angle, not a provider selection."),
         SuppressedProviderReference(
             path: "Sources/CodexBarCore/PiFamilySessionScanner.swift",
-            line: 904,
+            line: 930,
             anchor: "case .pi:",
             expectedProviderIDs: ["pi"],
             reason: "This branch dispatches the Pi-family root resolver for the fixed Pi dialect."),
         SuppressedProviderReference(
             path: "Sources/CodexBarCore/PiFamilySessionScanner.swift",
-            line: 941,
+            line: 968,
             anchor: "case .pi:",
             expectedProviderIDs: ["pi"],
             reason: "This branch dispatches the Pi-family root resolver for the fixed Pi dialect."),
         SuppressedProviderReference(
             path: "Sources/CodexBarCore/PiFamilySessionScanner.swift",
-            line: 1052,
+            line: 1078,
             anchor: "case .pi:",
             expectedProviderIDs: ["pi"],
             reason: "This branch checks command selectors for the fixed Pi dialect."),

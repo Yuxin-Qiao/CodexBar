@@ -150,7 +150,8 @@ extension StatusItemController {
                   settings: self.settings,
                   store: self.store)
         else {
-            return providerScope.count
+            // Provider-specific by design: Pi contributes local history, not subscription coverage.
+            return providerScope.count { $0 != .pi }
         }
         return publication.subscriptionCount(
             providerScope: providerScope,

@@ -871,7 +871,32 @@ struct PiFamilySessionScanner: Sendable {
         // resolver.
         let dialects: [AgentSession.Dialect] = [.pi, .omp]
         var output: [CostSessionRoot] = []
-        var seen = Set<String>()
+        var outputIndexByPath: [String: Int] = [:]
+
+        func appendCostRoot(_ root: CostSessionRoot) {
+            let canonical = Self.canonicalURL(root.url)
+            let candidate = CostSessionRoot(
+                url: canonical,
+                missingIsKnownEmpty: root.missingIsKnownEmpty,
+                resolutionIsComplete: root.resolutionIsComplete,
+                preserveAfterProcessExit: root.preserveAfterProcessExit,
+                retentionKey: root.retentionKey)
+            guard let index = outputIndexByPath[canonical.path] else {
+                outputIndexByPath[canonical.path] = output.count
+                output.append(candidate)
+                return
+            }
+
+            // A shared root can be discovered through both dialects. Preserve the strictest
+            // availability contract and all durable provenance when those discoveries converge.
+            let existing = output[index]
+            output[index] = CostSessionRoot(
+                url: canonical,
+                missingIsKnownEmpty: existing.missingIsKnownEmpty && candidate.missingIsKnownEmpty,
+                resolutionIsComplete: existing.resolutionIsComplete && candidate.resolutionIsComplete,
+                preserveAfterProcessExit: existing.preserveAfterProcessExit || candidate.preserveAfterProcessExit,
+                retentionKey: existing.retentionKey ?? candidate.retentionKey)
+        }
 
         for dialect in dialects {
             var roots: [SessionRoot] = []
@@ -901,6 +926,7 @@ struct PiFamilySessionScanner: Sendable {
                 }
                 let resolution: (roots: [SessionRoot], isComplete: Bool)
                 switch dialect {
+                // Provider-specific by design: this branch resolves the Pi dialect's session roots.
                 case .pi:
                     let result = Self.piSessionRootResolution(
                         process: process,
@@ -938,6 +964,7 @@ struct PiFamilySessionScanner: Sendable {
             }
             for cwdURL in uniqueCWDs {
                 switch dialect {
+                // Provider-specific by design: this branch resolves the Pi dialect's session roots.
                 case .pi:
                     let resolution = Self.piSessionRootResolution(
                         process: defaultProcess,
@@ -961,7 +988,7 @@ struct PiFamilySessionScanner: Sendable {
                 dialect: dialect,
                 processContexts: processContexts)
             if roots.isEmpty, hasExplicitSelection {
-                output.append(CostSessionRoot(
+                appendCostRoot(CostSessionRoot(
                     url: Self.unresolvedCostSessionRoot(for: dialect),
                     missingIsKnownEmpty: false,
                     resolutionIsComplete: false))
@@ -971,8 +998,7 @@ struct PiFamilySessionScanner: Sendable {
             for root in roots {
                 let canonical = Self.canonicalURL(root.url)
                 guard seenDialectRoots.insert(canonical.path).inserted else { continue }
-                guard seen.insert(canonical.path).inserted else { continue }
-                output.append(CostSessionRoot(
+                appendCostRoot(CostSessionRoot(
                     url: canonical,
                     missingIsKnownEmpty: root.missingIsKnownEmpty,
                     resolutionIsComplete: true,
@@ -981,8 +1007,7 @@ struct PiFamilySessionScanner: Sendable {
             }
             if !rootResolutionIsComplete {
                 let unresolved = Self.unresolvedCostSessionRoot(for: dialect)
-                guard seen.insert(unresolved.path).inserted else { continue }
-                output.append(CostSessionRoot(
+                appendCostRoot(CostSessionRoot(
                     url: unresolved,
                     missingIsKnownEmpty: false,
                     resolutionIsComplete: false))
@@ -1049,6 +1074,7 @@ struct PiFamilySessionScanner: Sendable {
                 arguments: context.arguments)
             guard AgentPSOutputParser.piDialect(for: process) == dialect else { return false }
             return switch dialect {
+            // Provider-specific by design: this branch checks selectors for the Pi dialect.
             case .pi:
                 Self.commandLineValue(
                     "--session-dir",
