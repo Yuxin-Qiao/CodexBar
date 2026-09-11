@@ -502,6 +502,15 @@ enum PiSessionCostScanner {
             // A settings file is a replacement point: if it now resolves to another root, the
             // prior root belonged to the superseded selector and must not be carried forward.
             if let retentionKey, currentRetentionKeys.contains(retentionKey) { continue }
+            // If the settings file is no longer present or no longer contains a selector, its
+            // previously retained root is obsolete. Keep this check scoped to settings keys so
+            // explicit process selectors can remain durable after the process exits.
+            if let retentionKey,
+               retentionKey.hasPrefix("settings:"),
+               !currentSettingsRetentionKeys.contains(retentionKey)
+            {
+                continue
+            }
             // Legacy fingerprints did not record provenance. If the current scope has a settings
             // selector, prefer its current value over an ambiguous retained settings root.
             if retentionKey == nil, !currentSettingsRetentionKeys.isEmpty { continue }

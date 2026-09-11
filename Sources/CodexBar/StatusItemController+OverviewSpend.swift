@@ -18,9 +18,10 @@ struct OverviewSpendSummary: Equatable {
         knownTokenProviderCount: Int? = nil)
     {
         let includedProviders = model.groups.flatMap(\.providers)
-        let providerCount = max(max(0, providerCount), includedProviders.count)
-        let pricedProviderCount = includedProviders.count { $0.totalCost != nil }
-        let tokenProviderCount = includedProviders.count { $0.totalTokens != nil }
+        let subscriptionProviders = includedProviders.filter { $0.sourceKind != .localHistory }
+        let providerCount = max(max(0, providerCount), subscriptionProviders.count)
+        let pricedProviderCount = subscriptionProviders.count { $0.totalCost != nil }
+        let tokenProviderCount = subscriptionProviders.count { $0.totalTokens != nil }
         let resolvedKnownCostProviderCount = knownCostProviderCount.map {
             min(providerCount, max(pricedProviderCount, $0))
         }

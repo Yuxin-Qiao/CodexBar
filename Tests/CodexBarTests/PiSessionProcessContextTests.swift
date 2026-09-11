@@ -211,6 +211,120 @@ struct PiSessionProcessContextTests {
     }
 
     @Test
+    func `pi cost roots drop a retained project setting after the setting is removed`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let project = env.root.appendingPathComponent("pi-project-settings-removed", isDirectory: true)
+        let configuredRoot = env.root.appendingPathComponent("project-session-removed", isDirectory: true)
+        let defaultRoot = env.root
+            .appendingPathComponent(".pi", isDirectory: true)
+            .appendingPathComponent("agent", isDirectory: true)
+            .appendingPathComponent("sessions", isDirectory: true)
+        let settingsURL = project
+            .appendingPathComponent(".pi", isDirectory: true)
+            .appendingPathComponent("settings.json")
+        try [project, configuredRoot, defaultRoot, settingsURL.deletingLastPathComponent()].forEach {
+            try FileManager.default.createDirectory(at: $0, withIntermediateDirectories: true)
+        }
+        try Data(("{\"sessionDir\":\"" + configuredRoot.path + "\"}").utf8).write(
+            to: settingsURL,
+            options: .atomic)
+
+        let environment = ["HOME": env.root.path]
+        let liveOptions = PiSessionCostScanner.Options(
+            cacheRoot: env.cacheRoot,
+            refreshMinIntervalSeconds: 0,
+            environment: environment,
+            workingDirectory: project,
+            processContexts: [PiSessionProcessContext(command: "/usr/local/bin/pi", workingDirectory: project)])
+        let first = try PiSessionCostScanner.loadDailyReportResultCancellable(
+            provider: .codex,
+            since: Date(timeIntervalSince1970: 1_776_000_000),
+            until: Date(timeIntervalSince1970: 1_776_000_000),
+            now: Date(timeIntervalSince1970: 1_776_000_000),
+            options: liveOptions,
+            checkCancellation: nil)
+        #expect(first.scopeFingerprint?.contains(configuredRoot.path) == true)
+
+        try FileManager.default.removeItem(at: settingsURL)
+        let afterRemoval = try PiSessionCostScanner.loadDailyReportResultCancellable(
+            provider: .codex,
+            since: Date(timeIntervalSince1970: 1_776_000_000),
+            until: Date(timeIntervalSince1970: 1_776_000_000),
+            now: Date(timeIntervalSince1970: 1_776_000_001),
+            options: PiSessionCostScanner.Options(
+                cacheRoot: env.cacheRoot,
+                refreshMinIntervalSeconds: 0,
+                environment: environment,
+                workingDirectory: project),
+            checkCancellation: nil)
+
+        #expect(afterRemoval.scopeFingerprint?.contains(configuredRoot.path) == false)
+        #expect(afterRemoval.scopeFingerprint?.contains(defaultRoot.path) == true)
+    }
+
+    @Test
+    func `omp profile process context survives missing cwd`() async throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let profileRoot = env.root
+            .appendingPathComponent(".omp", isDirectory: true)
+            .appendingPathComponent("profiles", isDirectory: true)
+            .appendingPathComponent("work", isDirectory: true)
+            .appendingPathComponent("sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: profileRoot, withIntermediateDirectories: true)
+
+        let scanner = LocalAgentSessionScanner(
+            processOutputProvider: { _ in
+                "201 1 Mon Jul 6 09:03:00 2026 /usr/local/bin/omp --profile work"
+            },
+            cwdProvider: { _, _ in [:] })
+        let contexts = await scanner.piSessionProcessContexts(environment: ["HOME": env.root.path])
+        let context = try #require(contexts.first)
+        #expect(context.workingDirectory == nil)
+
+        let roots = PiFamilySessionScanner.costSessionRoots(
+            environment: ["HOME": env.root.path],
+            processContexts: contexts)
+        #expect(roots.contains {
+            $0.url == profileRoot.standardizedFileURL &&
+                $0.resolutionIsComplete &&
+                $0.preserveAfterProcessExit
+        })
+    }
+
+    @Test
+    func `global relative settings keep CWD-specific retention provenance`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let firstProject = env.root.appendingPathComponent("relative-first", isDirectory: true)
+        let secondProject = env.root.appendingPathComponent("relative-second", isDirectory: true)
+        let globalSettings = env.root
+            .appendingPathComponent(".pi", isDirectory: true)
+            .appendingPathComponent("agent", isDirectory: true)
+            .appendingPathComponent("settings.json")
+        let firstRoot = firstProject.appendingPathComponent("sessions", isDirectory: true)
+        let secondRoot = secondProject.appendingPathComponent("sessions", isDirectory: true)
+        try [firstProject, secondProject, firstRoot, secondRoot, globalSettings.deletingLastPathComponent()].forEach {
+            try FileManager.default.createDirectory(at: $0, withIntermediateDirectories: true)
+        }
+        try Data(#"{"sessionDir":"sessions"}"#.utf8).write(to: globalSettings, options: .atomic)
+
+        let roots = PiFamilySessionScanner.costSessionRoots(
+            environment: ["HOME": env.root.path],
+            baseDirectories: [firstProject, secondProject])
+        let firstResolved = try #require(roots.first { $0.url == firstRoot.standardizedFileURL })
+        let secondResolved = try #require(roots.first { $0.url == secondRoot.standardizedFileURL })
+
+        #expect(firstResolved.retentionKey != nil)
+        #expect(secondResolved.retentionKey != nil)
+        #expect(firstResolved.retentionKey != secondResolved.retentionKey)
+    }
+
+    @Test
     func `pi cost roots replace a retained project settings selector`() throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }

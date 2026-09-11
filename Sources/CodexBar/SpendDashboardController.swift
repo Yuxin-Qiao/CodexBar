@@ -342,6 +342,8 @@ enum SpendDashboardSource {
                 provider: provider,
                 displayName: store.metadata(for: provider).displayName,
                 snapshot: snapshot,
+                // Provider-specific by design: Pi reports local history rather than a subscription feed.
+                sourceKind: provider == .pi ? .localHistory : .native,
                 accounting: currentPublication.accounting))
         }
         return SpendDashboardLoadRequest(
@@ -1712,11 +1714,16 @@ final class SpendDashboardController {
             } else {
                 .unavailable
             }
+            let role: SpendSourcePublication.Role = switch input?.sourceKind {
+            case .openCodex: .enrichment
+            case .localHistory: .localHistory
+            case .native, nil: .subscription
+            }
             return SpendSourcePublication(
                 id: sourceID,
                 provider: provider,
                 displayName: input?.displayName ?? self.displayName(for: sourceID, provider: provider),
-                role: input?.sourceKind == .openCodex ? .enrichment : .subscription,
+                role: role,
                 state: state)
         }
         if self.configuration?.openCodexUsageLogsEnabled == true,

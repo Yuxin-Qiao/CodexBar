@@ -232,7 +232,7 @@ public struct LocalAgentSessionScanner: Sendable {
             let workingDirectory = cwdByPID[process.pid]
                 .flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0, isDirectory: true) }
             guard workingDirectory != nil ||
-                PiFamilySessionScanner.hasAbsoluteSessionDirectorySelector(
+                PiFamilySessionScanner.hasCWDIndependentRootSelection(
                     in: process,
                     environment: environment)
             else { return nil }
