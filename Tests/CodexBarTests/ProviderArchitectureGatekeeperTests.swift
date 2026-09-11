@@ -851,19 +851,19 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This is the mathematical constant π used for an animation angle, not a provider selection."),
         SuppressedProviderReference(
             path: "Sources/CodexBarCore/PiFamilySessionScanner.swift",
-            line: 876,
+            line: 882,
             anchor: "case .pi:",
             expectedProviderIDs: ["pi"],
             reason: "This branch dispatches the Pi-family root resolver for the fixed Pi dialect."),
         SuppressedProviderReference(
             path: "Sources/CodexBarCore/PiFamilySessionScanner.swift",
-            line: 913,
+            line: 919,
             anchor: "case .pi:",
             expectedProviderIDs: ["pi"],
             reason: "This branch dispatches the Pi-family root resolver for the fixed Pi dialect."),
         SuppressedProviderReference(
             path: "Sources/CodexBarCore/PiFamilySessionScanner.swift",
-            line: 1024,
+            line: 1030,
             anchor: "case .pi:",
             expectedProviderIDs: ["pi"],
             reason: "This branch checks command selectors for the fixed Pi dialect."),
@@ -1025,7 +1025,7 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This Codex account projection passes its fixed provider identity to shared spend infrastructure."),
         SuppressedProviderReference(
             path: "Sources/CodexBar/SpendDashboardController.swift",
-            line: 1745,
+            line: 1751,
             anchor: "provider: .codex,",
             expectedProviderIDs: ["codex"],
             reason: "This OpenCodex enrichment descriptor maps the canonical source back to the Codex family."),
@@ -2441,7 +2441,7 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This exact shared construct dispatches a provider-owned capability at the generic integration boundary."),
         AllowedProviderConstruct(
             path: "Sources/CodexBar/SpendDashboardController.swift",
-            line: 1820,
+            line: 1826,
             anchor: "guard input.provider == .codex,",
             expectedProviderIDs: ["codex"],
             expectedReferenceCount: 1,
@@ -3629,7 +3629,7 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This exact cost scanner dispatch selects a provider-owned transcript, cache, or pricing format."),
         AllowedProviderConstruct(
             path: "Sources/CodexBarCore/PiSessionCostScanner.swift",
-            line: 1161,
+            line: 1187,
             anchor: "case .codex:",
             expectedProviderIDs: ["codex"],
             expectedReferenceCount: 1,
@@ -3637,7 +3637,7 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This exact cost scanner dispatch selects a provider-owned transcript, cache, or pricing format."),
         AllowedProviderConstruct(
             path: "Sources/CodexBarCore/PiSessionCostScanner.swift",
-            line: 1175,
+            line: 1201,
             anchor: "case .claude:",
             expectedProviderIDs: ["claude"],
             expectedReferenceCount: 1,
@@ -3645,7 +3645,7 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This exact cost scanner dispatch selects a provider-owned transcript, cache, or pricing format."),
         AllowedProviderConstruct(
             path: "Sources/CodexBarCore/PiSessionCostScanner.swift",
-            line: 1202,
+            line: 1228,
             anchor: ".codex",
             expectedProviderIDs: ["claude", "codex"],
             expectedReferenceCount: 2,

@@ -672,6 +672,12 @@ struct PiFamilySessionScanner: Sendable {
         }
     }
 
+    enum RetainedSettingsRootResolution: Sendable {
+        case resolved(url: URL, retentionKey: String)
+        case removed
+        case unavailable
+    }
+
     static func scan(
         input: ScanInput,
         directoryBudget: inout DirectoryMetadataScanBudget) -> [AgentSession]
@@ -1114,6 +1120,74 @@ struct PiFamilySessionScanner: Sendable {
             ":base=" + self.canonicalURL(URL(fileURLWithPath: resolvingDirectory, isDirectory: true)).path
         }
         return "settings:" + self.canonicalURL(settingsURL).path + base
+    }
+
+    static func retainedSettingsRootResolution(
+        retentionKey: String,
+        environment: [String: String]) -> RetainedSettingsRootResolution
+    {
+        let prefix = "settings:"
+        guard retentionKey.hasPrefix(prefix) else { return .unavailable }
+        let payload = String(retentionKey.dropFirst(prefix.count))
+        guard !payload.isEmpty else { return .unavailable }
+
+        let baseMarker = ":base="
+        let settingsPath: String
+        let resolvingDirectory: String?
+        if let baseRange = payload.range(of: baseMarker, options: .backwards) {
+            settingsPath = String(payload[..<baseRange.lowerBound])
+            let base = String(payload[baseRange.upperBound...])
+            resolvingDirectory = base.isEmpty ? nil : base
+        } else {
+            settingsPath = payload
+            resolvingDirectory = Self.inferredSettingsResolvingDirectory(
+                for: URL(fileURLWithPath: settingsPath, isDirectory: false))
+        }
+        guard settingsPath.hasPrefix("/") else { return .unavailable }
+
+        let settingsURL = URL(fileURLWithPath: settingsPath, isDirectory: false)
+        switch Self.sessionDirectoryResolution(in: settingsURL) {
+        case .missing, .noSessionDirectory:
+            return .removed
+        case .unavailable:
+            return .unavailable
+        case let .configured(sessionDirectory):
+            let trimmed = sessionDirectory.trimmingCharacters(in: .whitespacesAndNewlines)
+            let selectorIsCWDIndependent = trimmed.hasPrefix("/") ||
+                trimmed == "~" ||
+                trimmed.hasPrefix("~/")
+            guard let resolvingDirectory = resolvingDirectory ??
+                (selectorIsCWDIndependent ? "/" : nil)
+            else {
+                // A legacy global relative selector had no project provenance. Retain its old root
+                // as unresolved rather than guessing which process directory originally resolved it.
+                return .unavailable
+            }
+            guard let home = Self.homeURL(environment),
+                  let url = Self.pathURL(
+                      sessionDirectory,
+                      cwd: resolvingDirectory,
+                      home: home.path)
+            else {
+                return .unavailable
+            }
+            return .resolved(
+                url: Self.canonicalURL(url),
+                retentionKey: Self.settingsRetentionKey(
+                    settingsURL,
+                    sessionDirectory: sessionDirectory,
+                    resolvingDirectory: resolvingDirectory))
+        }
+    }
+
+    private static func inferredSettingsResolvingDirectory(for settingsURL: URL) -> String? {
+        let parent = settingsURL.deletingLastPathComponent()
+        // Provider-specific by design: only Pi project settings use the `.pi/settings.json` path.
+        guard parent.lastPathComponent == ".pi" else { return nil }
+        let grandparent = parent.deletingLastPathComponent()
+        // Project settings live at <project>/.pi/settings.json. Global settings use the
+        // separate <home>/.pi/agent/settings.json layout and never reach this helper.
+        return self.canonicalURL(grandparent).path
     }
 
     private static func ompSessionRoots(

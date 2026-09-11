@@ -68,4 +68,48 @@ struct SpendDashboardLocalHistoryTests {
         #expect(summary.primarySpendText == "$7.00")
         #expect(!summary.isPartial)
     }
+
+    @Test
+    func `Pi keeps local history role without a loaded snapshot`() async throws {
+        let now = Date(timeIntervalSince1970: 1_784_179_200)
+        let sourceID = UsageProvider.pi.rawValue
+        let configuration = SpendDashboardConfiguration(
+            costUsageEnabled: true,
+            providerIDs: [sourceID],
+            codexAccountIdentities: [])
+
+        for state in [SpendSourcePublication.State.unavailable, .confirmedEmpty] {
+            let suiteName = "SpendDashboardLocalHistoryTests-\(UUID().uuidString)"
+            let defaults = try #require(UserDefaults(suiteName: suiteName))
+            let unavailableSourceIDs: Set<String> = state == .unavailable ? [sourceID] : []
+            let confirmedEmptySourceIDs: Set<String> = state == .confirmedEmpty ? [sourceID] : []
+            let controller = SpendDashboardController(
+                userDefaults: defaults,
+                requestBuilder: { mode in
+                    SpendDashboardLoadRequest(
+                        configuration: configuration,
+                        capturedInputs: [],
+                        unavailableSourceIDs: unavailableSourceIDs,
+                        confirmedEmptySourceIDs: confirmedEmptySourceIDs,
+                        codexRequests: [],
+                        now: now,
+                        force: mode.forcesLoader)
+                },
+                loader: { request in
+                    SpendDashboardLoadResult(inputs: [], failedSourceIDs: request.unavailableSourceIDs)
+                },
+                nowProvider: { now })
+
+            controller.update(configuration: configuration)
+            #expect(controller.publication.sources.first?.role == .localHistory)
+            try await SpendDashboardStateWait.until { !controller.isRefreshing }
+            let source = try #require(controller.publication.sources.first)
+            #expect(source.provider == .pi)
+            #expect(source.role == .localHistory)
+            #expect(source.state == state)
+            #expect(controller.publication.subscriptionCount(providerScope: [.pi]) == 0)
+            controller.stop()
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+    }
 }

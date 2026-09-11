@@ -265,6 +265,141 @@ struct PiSessionProcessContextTests {
     }
 
     @Test
+    func `pi cost cache revalidates a retained project setting after process exit`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2026, month: 4, day: 14)
+        let project = env.root.appendingPathComponent("pi-project-settings-retained", isDirectory: true)
+        let ambient = env.root.appendingPathComponent("ambient", isDirectory: true)
+        let settingsURL = project
+            .appendingPathComponent(".pi", isDirectory: true)
+            .appendingPathComponent("settings.json")
+        let sessionRoot = project.appendingPathComponent("sessions", isDirectory: true)
+        try [project, ambient, sessionRoot, settingsURL.deletingLastPathComponent()].forEach {
+            try FileManager.default.createDirectory(at: $0, withIntermediateDirectories: true)
+        }
+        try Data(#"{"sessionDir":"sessions"}"#.utf8).write(to: settingsURL, options: .atomic)
+        let entry: [String: Any] = [
+            "type": "message",
+            "timestamp": env.isoString(for: day),
+            "message": [
+                "role": "assistant",
+                "provider": "openai-codex",
+                "model": "gpt-5.4",
+                "timestamp": Int(day.timeIntervalSince1970 * 1000),
+                "usage": ["input": 8, "output": 4, "totalTokens": 12],
+            ],
+        ]
+        try env.jsonl([entry]).write(
+            to: sessionRoot.appendingPathComponent("2026-04-14T10-00-00-000Z_retained.jsonl"),
+            atomically: true,
+            encoding: .utf8)
+
+        let environment = ["HOME": env.root.path]
+        let first = try PiSessionCostScanner.loadDailyReportResultCancellable(
+            provider: .codex,
+            since: day,
+            until: day,
+            now: day,
+            options: PiSessionCostScanner.Options(
+                cacheRoot: env.cacheRoot,
+                refreshMinIntervalSeconds: 0,
+                environment: environment,
+                workingDirectory: ambient,
+                processContexts: [PiSessionProcessContext(
+                    command: "/usr/local/bin/pi",
+                    workingDirectory: project)]),
+            checkCancellation: nil)
+        #expect(first.isComplete)
+        #expect(first.report.summary?.totalTokens == 12)
+        #expect(first.scopeFingerprint?.contains(sessionRoot.path) == true)
+
+        let afterExit = try PiSessionCostScanner.loadDailyReportResultCancellable(
+            provider: .codex,
+            since: day,
+            until: day,
+            now: day.addingTimeInterval(1),
+            options: PiSessionCostScanner.Options(
+                cacheRoot: env.cacheRoot,
+                refreshMinIntervalSeconds: 0,
+                environment: environment,
+                workingDirectory: ambient),
+            checkCancellation: nil)
+        #expect(afterExit.isComplete)
+        #expect(afterExit.report.summary?.totalTokens == 12)
+        #expect(afterExit.scopeFingerprint?.contains(sessionRoot.path) == true)
+    }
+
+    @Test
+    func `pi cost cache preserves the previous report when retained settings are unavailable`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2026, month: 4, day: 15)
+        let project = env.root.appendingPathComponent("pi-project-settings-unavailable", isDirectory: true)
+        let ambient = env.root.appendingPathComponent("ambient-unavailable", isDirectory: true)
+        let configuredRoot = env.root.appendingPathComponent("settings-unavailable-sessions", isDirectory: true)
+        let settingsURL = project
+            .appendingPathComponent(".pi", isDirectory: true)
+            .appendingPathComponent("settings.json")
+        try [project, ambient, configuredRoot, settingsURL.deletingLastPathComponent()].forEach {
+            try FileManager.default.createDirectory(at: $0, withIntermediateDirectories: true)
+        }
+        try Data(("{\"sessionDir\":\"" + configuredRoot.path + "\"}").utf8).write(
+            to: settingsURL,
+            options: .atomic)
+        let entry: [String: Any] = [
+            "type": "message",
+            "timestamp": env.isoString(for: day),
+            "message": [
+                "role": "assistant",
+                "provider": "openai-codex",
+                "model": "gpt-5.4",
+                "timestamp": Int(day.timeIntervalSince1970 * 1000),
+                "usage": ["input": 5, "output": 4, "totalTokens": 9],
+            ],
+        ]
+        try env.jsonl([entry]).write(
+            to: configuredRoot.appendingPathComponent("2026-04-15T10-00-00-000Z_unavailable.jsonl"),
+            atomically: true,
+            encoding: .utf8)
+
+        let environment = ["HOME": env.root.path]
+        let first = try PiSessionCostScanner.loadDailyReportResultCancellable(
+            provider: .codex,
+            since: day,
+            until: day,
+            now: day,
+            options: PiSessionCostScanner.Options(
+                cacheRoot: env.cacheRoot,
+                refreshMinIntervalSeconds: 0,
+                environment: environment,
+                workingDirectory: ambient,
+                processContexts: [PiSessionProcessContext(
+                    command: "/usr/local/bin/pi",
+                    workingDirectory: project)]),
+            checkCancellation: nil)
+        #expect(first.isComplete)
+        #expect(first.report.summary?.totalTokens == 9)
+
+        try Data("{".utf8).write(to: settingsURL, options: .atomic)
+        let afterFailure = try PiSessionCostScanner.loadDailyReportResultCancellable(
+            provider: .codex,
+            since: day,
+            until: day,
+            now: day.addingTimeInterval(1),
+            options: PiSessionCostScanner.Options(
+                cacheRoot: env.cacheRoot,
+                refreshMinIntervalSeconds: 0,
+                environment: environment,
+                workingDirectory: ambient),
+            checkCancellation: nil)
+        #expect(!afterFailure.isComplete)
+        #expect(afterFailure.report.summary?.totalTokens == 9)
+    }
+
+    @Test
     func `omp profile process context survives missing cwd`() async throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }

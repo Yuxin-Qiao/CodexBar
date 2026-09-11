@@ -1714,10 +1714,16 @@ final class SpendDashboardController {
             } else {
                 .unavailable
             }
-            let role: SpendSourcePublication.Role = switch input?.sourceKind {
-            case .openCodex: .enrichment
-            case .localHistory: .localHistory
-            case .native, nil: .subscription
+            // Provider-specific by design: Pi remains local history while its snapshot is loading,
+            // unavailable, or confirmed empty, when no ProviderInput is available yet.
+            let role: SpendSourcePublication.Role = if provider == .pi {
+                .localHistory
+            } else {
+                switch input?.sourceKind {
+                case .openCodex: .enrichment
+                case .localHistory: .localHistory
+                case .native, nil: .subscription
+                }
             }
             return SpendSourcePublication(
                 id: sourceID,

@@ -461,7 +461,8 @@ enum PiSessionCostScanner {
             }
             return self.appendingPreviousSessionRoots(
                 resolvedRoots,
-                fingerprint: previousSessionRootsFingerprint)
+                fingerprint: previousSessionRootsFingerprint,
+                environment: options.environment)
         }
 
         let home = FileManager.default.homeDirectoryForCurrentUser
@@ -479,12 +480,14 @@ enum PiSessionCostScanner {
         }
         return self.appendingPreviousSessionRoots(
             fallbackRoots,
-            fingerprint: previousSessionRootsFingerprint)
+            fingerprint: previousSessionRootsFingerprint,
+            environment: options.environment)
     }
 
     private static func appendingPreviousSessionRoots(
         _ roots: [SessionRoot],
-        fingerprint: String?) -> [SessionRoot]
+        fingerprint: String?,
+        environment: [String: String]) -> [SessionRoot]
     {
         guard let fingerprint, !fingerprint.isEmpty else { return roots }
         var output = roots
@@ -502,14 +505,37 @@ enum PiSessionCostScanner {
             // A settings file is a replacement point: if it now resolves to another root, the
             // prior root belonged to the superseded selector and must not be carried forward.
             if let retentionKey, currentRetentionKeys.contains(retentionKey) { continue }
-            // If the settings file is no longer present or no longer contains a selector, its
-            // previously retained root is obsolete. Keep this check scoped to settings keys so
-            // explicit process selectors can remain durable after the process exits.
-            if let retentionKey,
-               retentionKey.hasPrefix("settings:"),
-               !currentSettingsRetentionKeys.contains(retentionKey)
-            {
-                continue
+            if let retentionKey, retentionKey.hasPrefix("settings:") {
+                switch PiFamilySessionScanner.retainedSettingsRootResolution(
+                    retentionKey: retentionKey,
+                    environment: environment)
+                {
+                case .removed:
+                    // The settings selector was removed, so its retained root is obsolete.
+                    continue
+                case let .resolved(url, resolvedRetentionKey):
+                    let resolvedURL = url.standardizedFileURL
+                    guard seen.insert(resolvedURL.path).inserted else { continue }
+                    output.append(SessionRoot(
+                        url: resolvedURL,
+                        missingIsKnownEmpty: fields[1] == "known-empty",
+                        resolutionIsComplete: true,
+                        preserveAfterProcessExit: true,
+                        retentionKey: resolvedRetentionKey))
+                    continue
+                case .unavailable:
+                    // Preserve the cached root while marking the scope incomplete. This avoids
+                    // silently dropping history when the settings file cannot be revalidated.
+                    let url = URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
+                    guard seen.insert(url.path).inserted else { continue }
+                    output.append(SessionRoot(
+                        url: url,
+                        missingIsKnownEmpty: fields[1] == "known-empty",
+                        resolutionIsComplete: false,
+                        preserveAfterProcessExit: true,
+                        retentionKey: retentionKey))
+                    continue
+                }
             }
             // Legacy fingerprints did not record provenance. If the current scope has a settings
             // selector, prefer its current value over an ambiguous retained settings root.
