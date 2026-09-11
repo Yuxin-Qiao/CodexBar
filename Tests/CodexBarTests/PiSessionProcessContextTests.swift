@@ -397,6 +397,12 @@ struct PiSessionProcessContextTests {
             checkCancellation: nil)
         #expect(!afterFailure.isComplete)
         #expect(afterFailure.report.summary?.totalTokens == 9)
+        #expect(afterFailure.scopeFingerprint == first.scopeFingerprint)
+        #expect(PiSessionCostScanner.scopeFingerprint(options: PiSessionCostScanner.Options(
+            cacheRoot: env.cacheRoot,
+            refreshMinIntervalSeconds: 0,
+            environment: environment,
+            workingDirectory: ambient)) == first.scopeFingerprint)
     }
 
     @Test

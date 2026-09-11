@@ -571,9 +571,9 @@ enum PiSessionCostScanner {
     /// configured project root before publishing it.
     package static func scopeFingerprint(options: Options) -> String {
         let cache = PiSessionCostCacheIO.load(cacheRoot: options.cacheRoot)
-        return self.sessionRootsFingerprint(self.defaultSessionRoots(
+        return self.scopeFingerprint(
             options: options,
-            previousSessionRootsFingerprint: cache.sessionRootsFingerprint))
+            cache: cache)
     }
 
     private struct SessionFileListResult {
@@ -1463,5 +1463,24 @@ extension PiSessionCostScanner {
 
             return lhs.modelName > rhs.modelName
         }
+    }
+
+    private static func scopeFingerprint(options: Options, cache originalCache: PiSessionCostCache) -> String {
+        var cache = originalCache
+        if cache.timeZoneIdentifier != options.calendar.timeZone.identifier {
+            cache = PiSessionCostCache()
+        }
+        let roots = self.defaultSessionRoots(
+            options: options,
+            previousSessionRootsFingerprint: cache.sessionRootsFingerprint)
+        // An incomplete root resolution restores the cached report wholesale. Advertise that
+        // retained scope so callers do not reject the report as belonging to a different dataset.
+        if roots.contains(where: { !$0.resolutionIsComplete }),
+           let cachedScope = cache.sessionRootsFingerprint,
+           !cachedScope.isEmpty
+        {
+            return cachedScope
+        }
+        return self.sessionRootsFingerprint(roots)
     }
 }
