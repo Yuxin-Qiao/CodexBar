@@ -217,20 +217,21 @@ struct PiFamilySessionScanner: Sendable {
         let missingIsKnownEmpty: Bool
         let resolutionIsComplete: Bool
         let preserveAfterProcessExit: Bool
-        let retentionKey: String?
+        let retentionKeys: Set<String>
 
         init(
             url: URL,
             missingIsKnownEmpty: Bool,
             resolutionIsComplete: Bool = true,
             preserveAfterProcessExit: Bool = false,
-            retentionKey: String? = nil)
+            retentionKey: String? = nil,
+            retentionKeys: Set<String> = [])
         {
             self.url = url
             self.missingIsKnownEmpty = missingIsKnownEmpty
             self.resolutionIsComplete = resolutionIsComplete
             self.preserveAfterProcessExit = preserveAfterProcessExit
-            self.retentionKey = retentionKey
+            self.retentionKeys = retentionKeys.union(retentionKey.map { [$0] } ?? [])
         }
     }
 
@@ -421,7 +422,7 @@ struct PiFamilySessionScanner: Sendable {
                 missingIsKnownEmpty: root.missingIsKnownEmpty,
                 resolutionIsComplete: root.resolutionIsComplete,
                 preserveAfterProcessExit: root.preserveAfterProcessExit,
-                retentionKey: root.retentionKey)
+                retentionKeys: root.retentionKeys)
             guard let index = outputIndexByPath[canonical.path] else {
                 outputIndexByPath[canonical.path] = output.count
                 output.append(candidate)
@@ -436,7 +437,7 @@ struct PiFamilySessionScanner: Sendable {
                 missingIsKnownEmpty: existing.missingIsKnownEmpty && candidate.missingIsKnownEmpty,
                 resolutionIsComplete: existing.resolutionIsComplete && candidate.resolutionIsComplete,
                 preserveAfterProcessExit: existing.preserveAfterProcessExit || candidate.preserveAfterProcessExit,
-                retentionKey: existing.retentionKey ?? candidate.retentionKey)
+                retentionKeys: existing.retentionKeys.union(candidate.retentionKeys))
         }
 
         for dialect in dialects {
@@ -683,6 +684,22 @@ struct PiFamilySessionScanner: Sendable {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.hasPrefix("/") || trimmed == "~" || trimmed.hasPrefix("~/") else { return false }
         return Self.pathURL(value, cwd: "/", home: environment["HOME"]) != nil
+    }
+
+    static func processRootSelectorKey(_ context: PiSessionProcessContext) -> String {
+        let process = AgentProcessRecord(
+            pid: 0, ppid: 0, startedAt: nil, command: context.command, arguments: context.arguments)
+        let dialect = AgentPSOutputParser.piDialect(for: process)?.rawValue ?? "unknown"
+        // Model, prompt and presentation arguments do not select another history store.
+        let sessionDirectory = Self.commandLineValue(
+            "--session-dir", in: context.command, arguments: context.arguments)
+        let profile = Self.commandLineValue("--profile", in: context.command, arguments: context.arguments)
+        return [
+            dialect,
+            context.workingDirectory?.standardizedFileURL.path ?? "<unresolved-cwd>",
+            sessionDirectory ?? "<default-session-dir>",
+            profile ?? "<default-profile>",
+        ].joined(separator: "\u{1F}")
     }
 
     private static func processRetentionKey(

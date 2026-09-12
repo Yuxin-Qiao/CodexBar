@@ -241,11 +241,7 @@ public struct LocalAgentSessionScanner: Sendable {
                 command: process.command,
                 arguments: process.arguments,
                 workingDirectory: workingDirectory)
-            let key = [
-                context.workingDirectory?.path ?? "<unresolved-cwd>",
-                "\(context.arguments ?? [])",
-                context.command,
-            ].joined(separator: "\u{1F}")
+            let key = PiFamilySessionScanner.processRootSelectorKey(context)
             guard seen.insert(key).inserted else { return nil }
             return context
         }

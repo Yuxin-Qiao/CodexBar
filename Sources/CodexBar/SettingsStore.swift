@@ -561,6 +561,8 @@ extension SettingsStore {
         let menuBarLayoutVerticalAdjustment = max(-20, min(20, rawVerticalAdjustment ?? 0))
         let copilotBudgetExtrasEnabled = userDefaults.object(forKey: "copilotBudgetExtrasEnabled") as? Bool ?? false
         let copilotIconSecondaryWindowIDRaw = Self.loadCopilotIconSecondaryWindowIDRaw(userDefaults: userDefaults)
+        let copilotSeatCreditEntitlementRaw = userDefaults.object(
+            forKey: "copilotSeatCreditEntitlement") as? String ?? ""
         let costUsageEnabled = userDefaults.object(forKey: "tokenCostUsageEnabled") as? Bool ?? false
         let codexLocalSessionCostLedgerEnabled = userDefaults.object(
             forKey: "codexLocalSessionCostLedgerEnabled") as? Bool ?? false
@@ -648,6 +650,8 @@ extension SettingsStore {
         let agentSessionLabelStyleRaw = userDefaults.string(forKey: "agentSessionLabelStyle")
             ?? AgentSessionLabelStyle.project.rawValue
         let agentSessionsManualHosts = userDefaults.string(forKey: "agentSessionsManualHosts") ?? ""
+        let agentSessionsHideUnreachableHosts = userDefaults.object(
+            forKey: "agentSessionsHideUnreachableHosts") as? Bool ?? false
         let preferredCurrencyCode = userDefaults.string(forKey: "preferredCurrencyCode") ?? "USD"
         let iCloudSyncEnabled = userDefaults.object(forKey: "iCloudSyncEnabled") as? Bool ?? false
         let iCloudSyncIncludeSecrets = userDefaults.object(forKey: "iCloudSyncIncludeSecrets") as? Bool ?? true
@@ -704,6 +708,7 @@ extension SettingsStore {
             menuBarLayoutVerticalAdjustment: menuBarLayoutVerticalAdjustment,
             copilotBudgetExtrasEnabled: copilotBudgetExtrasEnabled,
             copilotIconSecondaryWindowIDRaw: copilotIconSecondaryWindowIDRaw,
+            copilotSeatCreditEntitlementRaw: copilotSeatCreditEntitlementRaw,
             costUsageEnabled: costUsageEnabled,
             codexLocalSessionCostLedgerEnabled: codexLocalSessionCostLedgerEnabled,
             costUsageHistoryDays: costUsageHistoryDays,
@@ -744,6 +749,7 @@ extension SettingsStore {
             agentSessionsEnabled: agentSessionsEnabled,
             agentSessionLabelStyleRaw: agentSessionLabelStyleRaw,
             agentSessionsManualHosts: agentSessionsManualHosts,
+            agentSessionsHideUnreachableHosts: agentSessionsHideUnreachableHosts,
             preferredCurrencyCode: preferredCurrencyCode,
             iCloudSyncEnabled: iCloudSyncEnabled,
             iCloudSyncIncludeSecrets: iCloudSyncIncludeSecrets,

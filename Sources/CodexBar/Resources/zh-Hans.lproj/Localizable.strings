@@ -779,6 +779,9 @@
 "%@ is unavailable in the current environment." = "%@ 在当前环境不可用。";
 "All Systems Operational" = "系统全部正常";
 "Last 30 days" = "近 30 天";
+"Spend" = "花费";
+"Daily cost" = "每日费用";
+"API keys" = "API 密钥";
 "Last 30 days:" = "近 30 天：";
 "This month" = "本月";
 "Store multiple OpenAI API keys." = "存储多个 OpenAI API 密钥。";
@@ -1562,3 +1565,6 @@
 "Color Pace Indicator" = "用颜色显示使用节奏";
 "Green pace indicator when behind pace, red when ahead of pace (risk of running out early)" = "使用量低于预期进度时显示绿色（有余量）；高于预期时显示红色（可能提前耗尽配额）。";
 "%@ weekly" = "%@ 每周";
+
+"agent_sessions_hide_unreachable_title" = "隐藏无法连接的主机";
+"agent_sessions_hide_unreachable_subtitle" = "获取会话失败时隐藏该主机。";

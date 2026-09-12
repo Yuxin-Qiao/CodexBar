@@ -800,6 +800,15 @@ extension SettingsStore {
         }
     }
 
+    var copilotSeatCreditEntitlementRaw: String {
+        get { self.defaultsState.copilotSeatCreditEntitlementRaw }
+        set {
+            self.defaultsState.copilotSeatCreditEntitlementRaw = newValue
+            self.userDefaults.set(newValue, forKey: "copilotSeatCreditEntitlement")
+            self.noteBackgroundWorkSettingsChanged()
+        }
+    }
+
     private var claudeWebExtrasEnabledRaw: Bool {
         get { self.defaultsState.claudeWebExtrasEnabledRaw }
         set {
@@ -1194,6 +1203,14 @@ extension SettingsStore {
         set {
             self.defaultsState.agentSessionsManualHosts = newValue
             self.userDefaults.set(newValue, forKey: "agentSessionsManualHosts")
+        }
+    }
+
+    var agentSessionsHideUnreachableHosts: Bool {
+        get { self.defaultsState.agentSessionsHideUnreachableHosts }
+        set {
+            self.defaultsState.agentSessionsHideUnreachableHosts = newValue
+            self.userDefaults.set(newValue, forKey: "agentSessionsHideUnreachableHosts")
         }
     }
 

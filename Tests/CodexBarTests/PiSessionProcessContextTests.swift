@@ -332,14 +332,108 @@ struct PiSessionProcessContextTests {
     }
 
     @Test
-    func `pi cost cache preserves the previous report when retained settings are unavailable`() throws {
+    func `pi cost cache retains both settings selectors when shared roots diverge`() throws {
+        let env = try CostUsageTestEnvironment()
+        defer { env.cleanup() }
+
+        let day = try env.makeLocalNoon(year: 2026, month: 4, day: 14)
+        let project = env.root.appendingPathComponent("pi-project-settings-retained", isDirectory: true)
+        let ambient = env.root.appendingPathComponent("ambient", isDirectory: true)
+        let settingsURL = project
+            .appendingPathComponent(".pi", isDirectory: true)
+            .appendingPathComponent("settings.json")
+        let sessionRoot = project.appendingPathComponent("sessions", isDirectory: true)
+        try [project, ambient, sessionRoot, settingsURL.deletingLastPathComponent()].forEach {
+            try FileManager.default.createDirectory(at: $0, withIntermediateDirectories: true)
+        }
+        try Data(#"{"sessionDir":"sessions"}"#.utf8).write(to: settingsURL, options: .atomic)
+        let entry: [String: Any] = [
+            "type": "message",
+            "timestamp": env.isoString(for: day),
+            "message": [
+                "role": "assistant",
+                "provider": "openai-codex",
+                "model": "gpt-5.4",
+                "timestamp": Int(day.timeIntervalSince1970 * 1000),
+                "usage": ["input": 8, "output": 4, "totalTokens": 12],
+            ],
+        ]
+        try env.jsonl([entry]).write(
+            to: sessionRoot.appendingPathComponent("2026-04-14T10-00-00-000Z_retained.jsonl"),
+            atomically: true,
+            encoding: .utf8)
+
+        let environment = ["HOME": env.root.path]
+        let first = try PiSessionCostScanner.loadDailyReportResultCancellable(
+            provider: .codex,
+            since: day,
+            until: day,
+            now: day,
+            options: PiSessionCostScanner.Options(
+                cacheRoot: env.cacheRoot,
+                refreshMinIntervalSeconds: 0,
+                environment: environment,
+                workingDirectory: ambient,
+                processContexts: [PiSessionProcessContext(
+                    command: "/usr/local/bin/pi",
+                    workingDirectory: project)]),
+            checkCancellation: nil)
+        #expect(first.isComplete)
+        #expect(first.report.summary?.totalTokens == 12)
+        #expect(first.scopeFingerprint?.contains(sessionRoot.path) == true)
+
+        let secondProject = env.root.appendingPathComponent("second-project", isDirectory: true)
+        let secondSettings = secondProject.appendingPathComponent(".pi/settings.json")
+        try FileManager.default.createDirectory(
+            at: secondSettings.deletingLastPathComponent(),
+            withIntermediateDirectories: true)
+        try JSONSerialization.data(withJSONObject: ["sessionDir": sessionRoot.path]).write(to: secondSettings)
+        let shared = try PiSessionCostScanner.loadDailyReportResultCancellable(
+            provider: .codex,
+            since: day,
+            until: day,
+            now: day.addingTimeInterval(1),
+            options: PiSessionCostScanner.Options(
+                cacheRoot: env.cacheRoot,
+                refreshMinIntervalSeconds: 0,
+                environment: environment,
+                workingDirectory: ambient,
+                processContexts: [project, secondProject].map {
+                    PiSessionProcessContext(command: "pi", workingDirectory: $0)
+                }), checkCancellation: nil)
+        #expect(shared.isComplete)
+        #expect(shared.report.summary?.totalTokens == 12)
+        let newRoot = project.appendingPathComponent("new-sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: newRoot, withIntermediateDirectories: true)
+        try JSONSerialization.data(withJSONObject: ["sessionDir": newRoot.path]).write(to: settingsURL)
+        let afterExit = try PiSessionCostScanner.loadDailyReportResultCancellable(
+            provider: .codex,
+            since: day,
+            until: day,
+            now: day.addingTimeInterval(1),
+            options: PiSessionCostScanner.Options(
+                cacheRoot: env.cacheRoot,
+                refreshMinIntervalSeconds: 0,
+                environment: environment,
+                workingDirectory: ambient),
+            checkCancellation: nil)
+        #expect(afterExit.isComplete)
+        #expect(afterExit.report.summary?.totalTokens == 12)
+        #expect(afterExit.scopeFingerprint?.contains(sessionRoot.path) == true)
+    }
+
+    @Test(arguments: [false, true])
+    func `pi cost cache preserves the previous report when retained settings are unavailable`(
+        usesDefaultRoot: Bool) throws
+    {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }
 
         let day = try env.makeLocalNoon(year: 2026, month: 4, day: 15)
         let project = env.root.appendingPathComponent("pi-project-settings-unavailable", isDirectory: true)
         let ambient = env.root.appendingPathComponent("ambient-unavailable", isDirectory: true)
-        let configuredRoot = env.root.appendingPathComponent("settings-unavailable-sessions", isDirectory: true)
+        let configuredRoot = env.root.appendingPathComponent(
+            usesDefaultRoot ? ".pi/agent/sessions" : "settings-unavailable-sessions", isDirectory: true)
         let settingsURL = project
             .appendingPathComponent(".pi", isDirectory: true)
             .appendingPathComponent("settings.json")
@@ -447,9 +541,9 @@ struct PiSessionProcessContextTests {
             config: SessionScanConfig(maxProcessCount: 2),
             processOutputProvider: { _ in
                 """
-                204 1 Mon Jul 6 09:06:00 2026 /usr/local/bin/pi
-                203 1 Mon Jul 6 09:05:00 2026 /usr/local/bin/pi
-                202 1 Mon Jul 6 09:04:00 2026 /usr/local/bin/pi
+                204 1 Mon Jul 6 09:06:00 2026 /usr/local/bin/pi --model fictitious-alpha
+                203 1 Mon Jul 6 09:05:00 2026 /usr/local/bin/pi --model fictitious-beta
+                202 1 Mon Jul 6 09:04:00 2026 /usr/local/bin/pi --model fictitious-gamma
                 201 1 Sun Jul 5 09:03:00 2026 /usr/local/bin/pi --session-dir \(sessionRoot.path)
                 """
             },
@@ -460,7 +554,7 @@ struct PiSessionProcessContextTests {
         let contexts = await scanner.piSessionProcessContexts(environment: ["HOME": env.root.path])
 
         #expect(contexts.count == 2)
-        #expect(contexts.contains { $0.command == "/usr/local/bin/pi" })
+        #expect(contexts.contains { $0.command.contains("--model fictitious-alpha") })
         #expect(contexts.contains { $0.command.contains("--session-dir \(sessionRoot.path)") })
     }
 
@@ -488,9 +582,9 @@ struct PiSessionProcessContextTests {
         let firstResolved = try #require(roots.first { $0.url == firstRoot.standardizedFileURL })
         let secondResolved = try #require(roots.first { $0.url == secondRoot.standardizedFileURL })
 
-        #expect(firstResolved.retentionKey != nil)
-        #expect(secondResolved.retentionKey != nil)
-        #expect(firstResolved.retentionKey != secondResolved.retentionKey)
+        #expect(!firstResolved.retentionKeys.isEmpty)
+        #expect(!secondResolved.retentionKeys.isEmpty)
+        #expect(firstResolved.retentionKeys != secondResolved.retentionKeys)
     }
 
     @Test

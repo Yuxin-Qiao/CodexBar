@@ -77,7 +77,7 @@ enum PiSessionCostScanner {
         let missingIsKnownEmpty: Bool
         let resolutionIsComplete: Bool
         let preserveAfterProcessExit: Bool
-        let retentionKey: String?
+        let retentionKeys: Set<String>
     }
 
     private struct AssistantIdentity {
@@ -440,7 +440,7 @@ enum PiSessionCostScanner {
                         missingIsKnownEmpty: false,
                         resolutionIsComplete: true,
                         preserveAfterProcessExit: false,
-                        retentionKey: nil)
+                        retentionKeys: [])
                 }
         }
 
@@ -457,7 +457,7 @@ enum PiSessionCostScanner {
                     missingIsKnownEmpty: root.missingIsKnownEmpty,
                     resolutionIsComplete: root.resolutionIsComplete,
                     preserveAfterProcessExit: root.preserveAfterProcessExit,
-                    retentionKey: root.retentionKey)
+                    retentionKeys: root.retentionKeys)
             }
             return self.appendingPreviousSessionRoots(
                 resolvedRoots,
@@ -476,7 +476,7 @@ enum PiSessionCostScanner {
                 missingIsKnownEmpty: true,
                 resolutionIsComplete: true,
                 preserveAfterProcessExit: false,
-                retentionKey: nil)
+                retentionKeys: [])
         }
         return self.appendingPreviousSessionRoots(
             fallbackRoots,
@@ -489,13 +489,26 @@ enum PiSessionCostScanner {
         fingerprint: String?,
         environment: [String: String]) -> [SessionRoot]
     {
-        guard let fingerprint, !fingerprint.isEmpty else { return roots }
-        var output = roots
-        var seen = Set(roots.map(\.url.standardizedFileURL.path))
-        let currentRetentionKeys = Set(roots.compactMap(\.retentionKey))
-        let currentSettingsRetentionKeys = Set(roots.compactMap { root in
-            root.retentionKey?.hasPrefix("settings:") == true ? root.retentionKey : nil
-        })
+        var output: [SessionRoot] = []
+        var indices: [String: Int] = [:]
+        func appendRoot(_ root: SessionRoot) {
+            guard let index = indices[root.url.path] else {
+                indices[root.url.path] = output.count
+                output.append(root)
+                return
+            }
+            let current = output[index]
+            output[index] = SessionRoot(
+                url: root.url,
+                missingIsKnownEmpty: current.missingIsKnownEmpty && root.missingIsKnownEmpty,
+                resolutionIsComplete: current.resolutionIsComplete && root.resolutionIsComplete,
+                preserveAfterProcessExit: current.preserveAfterProcessExit || root.preserveAfterProcessExit,
+                retentionKeys: current.retentionKeys.union(root.retentionKeys))
+        }
+        roots.forEach(appendRoot)
+        guard let fingerprint, !fingerprint.isEmpty else { return output }
+        let currentRetentionKeys = Set(roots.flatMap(\.retentionKeys))
+        let currentSettingsRetentionKeys = Set(currentRetentionKeys.filter { $0.hasPrefix("settings:") })
         for component in fingerprint.split(separator: "\u{1E}", omittingEmptySubsequences: true) {
             let fields = component.split(separator: "\u{1F}", omittingEmptySubsequences: false)
             guard fields.count >= 4, fields[3] == "live" else { continue }
@@ -515,25 +528,23 @@ enum PiSessionCostScanner {
                     continue
                 case let .resolved(url, resolvedRetentionKey):
                     let resolvedURL = url.standardizedFileURL
-                    guard seen.insert(resolvedURL.path).inserted else { continue }
-                    output.append(SessionRoot(
+                    appendRoot(SessionRoot(
                         url: resolvedURL,
                         missingIsKnownEmpty: fields[1] == "known-empty",
                         resolutionIsComplete: true,
                         preserveAfterProcessExit: true,
-                        retentionKey: resolvedRetentionKey))
+                        retentionKeys: [resolvedRetentionKey]))
                     continue
                 case .unavailable:
                     // Preserve the cached root while marking the scope incomplete. This avoids
                     // silently dropping history when the settings file cannot be revalidated.
                     let url = URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
-                    guard seen.insert(url.path).inserted else { continue }
-                    output.append(SessionRoot(
+                    appendRoot(SessionRoot(
                         url: url,
                         missingIsKnownEmpty: fields[1] == "known-empty",
                         resolutionIsComplete: false,
                         preserveAfterProcessExit: true,
-                        retentionKey: retentionKey))
+                        retentionKeys: [retentionKey]))
                     continue
                 }
             }
@@ -541,27 +552,28 @@ enum PiSessionCostScanner {
             // selector, prefer its current value over an ambiguous retained settings root.
             if retentionKey == nil, !currentSettingsRetentionKeys.isEmpty { continue }
             let url = URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
-            guard seen.insert(url.path).inserted else { continue }
-            output.append(SessionRoot(
+            appendRoot(SessionRoot(
                 url: url,
                 missingIsKnownEmpty: fields[1] == "known-empty",
                 resolutionIsComplete: fields[2] == "resolved",
                 preserveAfterProcessExit: true,
-                retentionKey: retentionKey))
+                retentionKeys: retentionKey.map { [$0] } ?? []))
         }
         return output
     }
 
     private static func sessionRootsFingerprint(_ roots: [SessionRoot]) -> String {
         roots
-            .map { root in
-                [
-                    root.url.path,
-                    root.missingIsKnownEmpty ? "known-empty" : "required",
-                    root.resolutionIsComplete ? "resolved" : "unresolved",
-                    root.preserveAfterProcessExit ? "live" : "configured",
-                    root.retentionKey ?? "",
-                ].joined(separator: "\u{1F}")
+            .flatMap { root in
+                (root.retentionKeys.isEmpty ? [""] : root.retentionKeys.sorted()).map { retentionKey in
+                    [
+                        root.url.path,
+                        root.missingIsKnownEmpty ? "known-empty" : "required",
+                        root.resolutionIsComplete ? "resolved" : "unresolved",
+                        root.preserveAfterProcessExit ? "live" : "configured",
+                        retentionKey,
+                    ].joined(separator: "\u{1F}")
+                }
             }
             .joined(separator: "\u{1E}")
     }

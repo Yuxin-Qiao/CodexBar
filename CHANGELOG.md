@@ -1,24 +1,69 @@
 # Changelog
 
-## 0.58.1 — Unreleased
+## 0.59.1 — Unreleased
+
+### Highlights
+- **Provider credits:** show Codex workspace balances, DeepSeek daily spend, and optional Copilot credit allowances.
+- **Linux Cursor authentication:** reuse the signed-in Cursor app without manually copying cookies.
+- **More reliable local history:** recover Antigravity spend history and prevent scan-queue waiting from multiplying Codex catch-up delays.
+- **Safer account menus:** preserve privacy in Codex account labels and reauthenticate the credential source shown by the selected row.
+
+### Changes
+- Codex: show owner-visible workspace credit balances, keep unavailable observations authoritative across refreshes, and scope cached dashboard data to the same workspace (#3563). Thanks @Filip-Ar!
+- DeepSeek: load daily usage and spend from Platform per-key data, preserve UTC monthly fallback and fractional-cent costs, and align daily buckets across daylight-saving changes (#3555). Thanks @DrSmoothl!
+- Copilot: add optional per-account AI credit allowances and a way to clear legacy defaults, retaining matching cached usage during offline edits and preserving independent reset baselines (#2647). Thanks @KSEGIT!
+- Grok: add a visor critter across single- and two-meter quota layouts, respecting Hide Critters (#3028). Thanks @sm0keyyy!
+- Usage & Spend: count covered calendar days, align chart labels and ranges with the selected bucket time zone, and preserve historical-pace credits after midnight daylight-saving transitions (follow-up to #3565).
+- Usage & Spend: preserve heatmap coverage, token totals, and daily ledger rows across midnight daylight-saving transitions, retaining real gaps and unscanned days (#3565). Thanks @gabrielrojasc!
+- Cursor on Linux: restore automatic authentication from the signed-in app, honor absolute XDG/HOME paths, and preserve manual-cookie precedence and explicit web-mode isolation (#3539). Thanks @DonnieFi!
+- Codex spend: exclude time waiting behind other scans from automatic catch-up sleep calculations while preserving scan budgets, power safeguards, and complete-history publication (#3566, related to #3508 and #3411).
+- Antigravity: recover local token history from stable SQLite conversations without WAL sidecars while withholding results changed by concurrent writers (#3532). Thanks @urda!
+- Codex spend: keep waiting history files ahead of repeated migration revisits so large histories can finish bounded catch-up, preserving stored rows and checkpoints (#3548, related to #3411). Thanks @SergeiNikolenko!
+- Codex spend: avoid decoding discarded project/session rows in fresh and cached reads when catch-up retains a previous report, preserving totals, freshness and detailed reports (#3257). Thanks @Carl723000!
+- Codex accounts: reauthenticate the credential source used by the visible row, fixing repeated re-auth on saved accounts that also represent the System login, and reject stale account actions (#3558). Thanks @Nek-12!
+- Codex accounts: honor Hide Personal Info in switcher labels and tooltips, redact embedded workspace emails, and preserve distinct account numbers in narrow menus (#3551). Thanks @zenibako!
+- Claude accounts: show failed claude-swap activation errors before a slow ambient refresh finishes, preserving transaction serialization and configuration-change discard, and reject canceled adapter reads (extracted from #3452). Thanks @QuantIntellect!
+- Agent Sessions: add an opt-in setting to hide hosts whose session fetch failed, while keeping diagnostics visible by default (#3547). Thanks @warthurton!
+- Manus: reject empty and error-only credits envelopes in native and optional plugin fetching instead of displaying a false zero balance, preserving sparse responses and real zero credits.
+- Menu bar: align window and display coordinates so monitors above or below the primary display do not cause missed or false startup recovery.
+- Devin: honor hidden daily quotas even when the response includes daily usage, preserving weekly limits and extra balance (#3542). Thanks @dzienisz!
+- StepFun: keep credit plans without a populated balance from displaying exhausted five-hour and weekly quota bars, preserving genuine zero-credit balances and classic plan windows.
+- Grok: skip discarded local-history scans and version probes after terminal CLI billing failures, allowing fallback to start sooner (extracted from #3236). Thanks @Yuxin-Qiao!
+- Groq: reject unavailable, malformed, or overflowing Prometheus rates instead of showing nonnumeric usage or inventing zero, while preserving genuine empty-query results and API error messages.
+- Documentation: link the community-maintained CodexBar for Windows companion and AI Monitor USB desk display (#3525, #3544). Thanks @hinneslung and @tobymarks!
+
+### Development
+- Checks: interrupt the process-cleanup fixture after ownership is observed, so slow child startup cannot invalidate the cleanup test.
+- Checks: isolate Claude usage-retry tests from unrelated authentication subprocess startup.
+- Checks: allow process-fixture startup on loaded Macs before measuring cleanup deadlines, retaining all process-ownership and timeout assertions.
+- Checks: make the atomic file-watcher fixture write its initial value once, preserving and verifying the replacement produced inside its callback.
+- Logging: update SwiftLog to 1.15.1 for corrected legacy log forwarding and Swift 6.5 WASI compatibility.
+- Checks: tolerate repeated kill delivery while a cleanup fixture's exit is pending, retaining termination order, grace-period, deadline, and confirmed-reap assertions.
+- Linting: update SwiftLint to 0.65.1, Oxlint to 1.82.0, and Oxfmt to 0.67.0 for correctness and performance fixes, retaining verified macOS and Linux downloads.
+
+## 0.59.0 — 2026-09-10
+
+### Highlights
+- **Plugin switcher tabs:** give custom providers their own tabs, refresh the selected plugin directly, and use plugin-only menus (#3516).
+- **Optional pace colors:** show pace indicators in green when behind pace and red when ahead, while retaining their signed values (#3429).
+- **Better Codex cost tracking:** restore shared spend in multi-account menus and read activity totals without decoding unused event history (#3540, #3528).
+- **More reliable menus:** refresh cached menus when macOS appearance changes and surface exhausted Kimi monthly limits even after shorter quota windows reset (#3526, #3543).
 
 ### Added
-- Menu bar: optionally color Session, Weekly, and Auto pace indicators green when behind pace and red when ahead, preserving signed values, neutral unavailable values, and existing layouts (#3429, fixes #3428). Thanks @jb510!
 - Plugins: opt into first-class provider switcher tabs with selected-plugin refresh, plugin-only menus, and continued access to appended plugin cards (#3516, fixes #2988). Thanks @harjothkhara!
+- Menu bar: optionally color Session, Weekly, and Auto pace indicators green when behind pace and red when ahead, preserving signed values, neutral unavailable values, and existing layouts (#3429, fixes #3428). Thanks @jb510!
 
 ### Performance
 - Codex activity: read scoped daily totals without decoding unused event history, preserving account boundaries, coverage, and incomplete-scan checks (#3528, related to #3247). Thanks @brzvsk!
 
 ### Fixed
 - Codex accounts: restore shared local spend below multi-account cards in stacked and compact layouts, honoring the selected cost display mode and preserving account-scoped history isolation (#3540). Thanks @kays0x!
-- Website: keep Arabic and Persian hero copy clear of the illustration, preserve natural text direction, and avoid an oversized tablet popover during its reveal (#3514, fixes #3511). Thanks @devYRPauli!
-- Codex accounts: replace a misleading automatic CLI-retry promise with account-specific reauthentication guidance when native credentials need renewal (related to #3523). Thanks @zhulijin1991!
-- Kimi: show an exhausted monthly membership pool in automatic menu-bar usage even when Code quota windows have reset (related to #3536, #3537). Thanks @OttoPrua!
 - Menus: refresh cached status menus when macOS appearance changes, including previously opened submenus, so the first opening matches Light/Dark and accessibility appearances (#3526). Thanks @emanuelst!
-
+- Kimi: show an exhausted monthly membership pool in automatic menu-bar usage even when Code quota windows have reset (#3543, related to #3536, #3537). Thanks @OttoPrua!
 - Devin CLI: load manual bearer and organization settings from config and allow manual quota requests on Linux while keeping browser import macOS-only (#3541). Thanks @Waseemilyas!
-
-- Documentation: point Spark and Daily Routines visibility instructions to the current per-item controls and include Overview in their scope.
+- Codex accounts: replace a misleading automatic CLI-retry promise with account-specific reauthentication guidance when native credentials need renewal (#3534, related to #3523). Thanks @zhulijin1991!
+- Website: keep Arabic and Persian hero copy clear of the illustration, preserve natural text direction, and avoid an oversized tablet popover during its reveal (#3514, fixes #3511). Thanks @devYRPauli!
+- Documentation: point Spark and Daily Routines visibility instructions to the current per-item controls and include Overview in their scope (#3535).
 
 ## 0.58.0 — 2026-09-09
 
@@ -30,7 +75,7 @@
 
 ### Added
 - Usage & Spend: add a daily provider ledger for tokens, requests, and spend, honoring selected time zones and distinguishing unknown amounts from zero usage (#2635). Thanks @sahilaidev!
-- Inline cost charts: show each day’s localized date, cost, and token count on hover without shifting the chart layout (#3413). Thanks @666ghj!
+- Inline cost charts: show each day's localized date, cost, and token count on hover without shifting the chart layout (#3413). Thanks @666ghj!
 - Provider menus: choose visible usage rows across full and compact menus, Settings previews, and Overview; sync selections and restore hidden rows without changing fetching or alerts (#3196, #3182). Thanks @psufka and @J2TeamNNL!
 - Menu bar: choose Auto, Session, or Weekly percent windows in provider settings while preserving custom layout tokens and the global icon style (#3124). Thanks @J2TeamNNL!
 - Menu bar layouts: choose session or weekly reset countdowns and clocks, including conditional branches, with support for existing saved layouts (#3481, #3356). Thanks @vincent-peng!

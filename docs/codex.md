@@ -68,6 +68,7 @@ Usage source picker:
   Automatic mode also suppresses unscoped CLI fallback whenever a managed workspace is selected. Explicit
   managed-account workspace selection is stored in CodexBar's private managed-account metadata; it never edits the
   source `auth.json` or publishes an `account_id` change back to another application's credential file.
+- **Reauthenticate** follows the credential source shown by the account row: System rows use the existing system Codex login flow even when the same account is also saved; managed rows renew their private managed home. Credentials are not copied between those homes. A queued action is discarded if the row's source or workspace changes.
 - If native credentials need renewal, use **Reauthenticate** for the affected account in Settings → Providers → Codex.
   For CLI recovery, run `codex login` with that account's existing `CODEX_HOME` and select the intended workspace.
   The refresh error describes this manual recovery without promising automatic CLI fallback for managed workspaces.
@@ -191,7 +192,11 @@ is limited, using additional rows when needed.
 4) Last imported browser cookie email (cached).
 
 ## Credits
-- Web dashboard fills credits only when OAuth/CLI do not provide them. Account-matched extra usage reconciles monthly caps and purchased balances separately: a newer confirmed zero clears an old balance, while an unread balance preserves the last successful reading. Extra usage shows monthly spend/limit and a distinct purchased balance when available; the optional credits setting controls visibility.
+- Web dashboard fills credits only when OAuth/CLI do not provide them. Account-matched extra usage reconciles monthly caps and purchased balances separately; the optional credits setting controls visibility.
+- When usage reports limited workspace credits without an amount, an optional read of the account's `remaining_balance` endpoint uses the same OAuth or browser session. Access depends on workspace permissions. Failure preserves ordinary usage and monthly-limit data.
+- Workspace balances attach and persist only when the dashboard response account ID matches the selected account. Same-email workspace mismatches and old workspace caches without an account ID are rejected by both the app and CLI.
+- A newer explicitly unavailable workspace balance suppresses an older cached amount, including after restart. A later successful positive or zero balance restores visibility. Usage-only refreshes that skip the balance read preserve the account's prior observation; account changes never inherit it.
+- The custom **Balance** menu-bar token supports Codex credits, rounded and grouped as whole credits. Workspace pools remain distinct from a member's monthly cap and do not imply a total pool capacity.
 - CLI RPC: `account/rateLimits/read` → credits balance.
 - CLI PTY diagnostics can still parse `Credits:` from saved/manual `/status` output.
 
@@ -246,6 +251,8 @@ is limited, using additional rows when needed.
     coverage, and incomplete-scan checks. Cached reports
     retain row-level pricing evidence and project/session details, but omit raw token snapshots, accumulator state,
     and replay bodies. File cursor metadata, including JSONL resume state, remains available for progress tracking.
+    Fresh and cached fetches use progress metadata to recognize retained reports during catch-up, skipping
+    detail-row decoding that would be discarded. Reports without a matching retained result still load exact details.
     A native scan loads exact usage rows once, deferring raw token history and checkpoints until a file changes
     or a fork needs its ancestors. A single-use receipt binds those deferred reads and saves to the original
     connection, database identity and SQLite change observations,
@@ -272,8 +279,10 @@ is limited, using additional rows when needed.
 - Automatic Codex catch-up scheduling in both usage and Spend Dashboard honors the app’s 30-minute Low Power Mode minimum after each pass. Explicit acceleration remains immediate, and physical low-power/thermal pauses retain their own retry policy. The setting applies when the next delay is computed; an already pending sleep is not replanned.
 - Automatic catch-up reports thermal pressure when serious heat and Low Power Mode coexist. Both constraints keep the existing 60-second pause before rechecking resource state.
 - A catch-up worker that loses its account or settings scope clears its abandoned Refreshing activity on exit. Legitimate pauses remain visible, and an older worker cannot clear a replacement worker's activity.
+- Cache-wide migration reseeding keeps paths already waiting ahead of new revisits. Repeated pricing or priority-turn changes therefore cannot keep the same completed files ahead of the stale tail in each 512-candidate pass. Initial seeding still honors newest-first preference, and publication waits for exact inventory validation. Native Codex stores from published parser fingerprint `4969a789db679c93` adopt the new generation without rebuilding rows, checkpoints, or retained reports; Pi/OMP retains its existing one-time reparse on a parser-hash change.
 - When a warm cost refresh reaches its time limit, it saves the remaining file work and completed discovery. Compatible shorter/wider history requests resume that work across the retained scan range; publication still waits for exact inventory validation.
 - Inline cost charts preserve a slot for every day in that window, using the selected cost-bucket time zone and the snapshot's date. Missing days are zero only after history coverage is established; unscanned days and entries without prices remain unknown. Long windows fit within the menu width without dropping dates.
+- **Hide personal information** also replaces account-switcher emails with numbered labels and sanitizes email addresses embedded in workspace hints. Narrow switchers retain the account number, and tooltips use the same labels without emails.
 - **Hide personal information** replaces project/source names with numbered labels and hides their paths in the cost-history submenu; Usage & Spend also masks project names. Costs, tokens, grouping, and stored history are unchanged, and disabling the setting restores the original labels. This is display masking, not data deletion or export sanitization.
 - While a bounded refresh catches up with new session history, established totals remain visible only for the same
   account, history window, and bucket time zone. An incomplete first scan never borrows another account's totals.
@@ -301,3 +310,7 @@ dashboard labels its values as local estimates and keeps currencies separate.
   `Sources/CodexBarCore/PiSessionCostScanner.swift`,
   `Sources/CodexBarCore/PiSessionCostCache.swift`,
   `Sources/CodexBarCore/Vendored/CostUsage/*`
+
+Automatic local-history catch-up bases its duty-cycle delay on time spent executing its own scan, including cache
+publication. Time waiting behind another account or provider on the shared scan queue does not increase that delay.
+The existing power, thermal, scan-budget, and complete-history publication rules still apply.

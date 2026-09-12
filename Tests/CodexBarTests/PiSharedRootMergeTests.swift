@@ -64,7 +64,7 @@ struct PiSharedRootMergeTests {
         let root = try #require(roots.first { $0.url == sharedRoot.standardizedFileURL })
         #expect(!root.missingIsKnownEmpty)
         #expect(root.preserveAfterProcessExit)
-        #expect(root.retentionKey == "process:pi:session-dir:\(sharedRoot.standardizedFileURL.path)")
+        #expect(root.retentionKeys == ["process:pi:session-dir:\(sharedRoot.standardizedFileURL.path)"])
     }
 
     @Test
@@ -88,6 +88,6 @@ struct PiSharedRootMergeTests {
         let root = try #require(roots.first { $0.url == sharedRoot.standardizedFileURL })
         #expect(!root.missingIsKnownEmpty)
         #expect(root.preserveAfterProcessExit)
-        #expect(root.retentionKey == "process:omp:session-dir:\(sharedRoot.standardizedFileURL.path)")
+        #expect(root.retentionKeys == ["process:omp:session-dir:\(sharedRoot.standardizedFileURL.path)"])
     }
 }
