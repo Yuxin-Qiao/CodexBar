@@ -155,6 +155,8 @@ public struct UsageSnapshot: Codable, Sendable {
     public let openAIAPIUsage: OpenAIAPIUsageSnapshot?
     public let codexResetCredits: CodexRateLimitResetCreditsSnapshot?
     public let mistralUsage: MistralUsageSnapshot?
+    /// Retains an observed zero when a metered Copilot seat has no visible credit row.
+    public let copilotMeteredZeroCredits: Bool
     /// Live-only marker for optional Command Code subscription lookup failure.
     public let commandCodeSubscriptionEnrichmentUnavailable: Bool
     /// Live-only marker that Command Code returned a recognized subscription plan.
@@ -177,6 +179,7 @@ public struct UsageSnapshot: Codable, Sendable {
         case openAIAPIUsage
         case codexResetCredits
         case mistralUsage
+        case copilotMeteredZeroCredits
         case subscriptionExpiresAt
         case subscriptionRenewsAt
         case updatedAt
@@ -201,6 +204,7 @@ public struct UsageSnapshot: Codable, Sendable {
         openAIAPIUsage: OpenAIAPIUsageSnapshot? = nil,
         codexResetCredits: CodexRateLimitResetCreditsSnapshot? = nil,
         mistralUsage: MistralUsageSnapshot? = nil,
+        copilotMeteredZeroCredits: Bool = false,
         commandCodeSubscriptionEnrichmentUnavailable: Bool = false,
         commandCodeHasSubscriptionPlan: Bool = false,
         commandCodeMonthlyGrantDepleted: Bool = false,
@@ -226,6 +230,7 @@ public struct UsageSnapshot: Codable, Sendable {
         self.openAIAPIUsage = openAIAPIUsage
         self.codexResetCredits = codexResetCredits
         self.mistralUsage = mistralUsage
+        self.copilotMeteredZeroCredits = copilotMeteredZeroCredits
         self.commandCodeSubscriptionEnrichmentUnavailable = commandCodeSubscriptionEnrichmentUnavailable
         self.commandCodeHasSubscriptionPlan = commandCodeHasSubscriptionPlan
         self.commandCodeMonthlyGrantDepleted = commandCodeMonthlyGrantDepleted
@@ -238,6 +243,10 @@ public struct UsageSnapshot: Codable, Sendable {
 
     public func with(extraRateWindows: [NamedRateWindow]?) -> UsageSnapshot {
         self.replacing(extraRateWindows: .value(extraRateWindows))
+    }
+
+    public func with(details: [ProviderDetailSection]) -> UsageSnapshot {
+        self.replacing(details: .value(details))
     }
 
     public func withCodexResetCredits(_ resetCredits: CodexRateLimitResetCreditsSnapshot?) -> UsageSnapshot {
@@ -282,6 +291,8 @@ public struct UsageSnapshot: Codable, Sendable {
             CodexRateLimitResetCreditsSnapshot.self,
             forKey: .codexResetCredits)
         self.mistralUsage = try container.decodeIfPresent(MistralUsageSnapshot.self, forKey: .mistralUsage)
+        self.copilotMeteredZeroCredits = try container
+            .decodeIfPresent(Bool.self, forKey: .copilotMeteredZeroCredits) ?? false
         self.commandCodeSubscriptionEnrichmentUnavailable = false // Live-only fetch state
         self.commandCodeHasSubscriptionPlan = false // Live-only fetch state
         self.commandCodeMonthlyGrantDepleted = false // Live-only fetch state
@@ -325,6 +336,9 @@ public struct UsageSnapshot: Codable, Sendable {
         try container.encodeIfPresent(self.openAIAPIUsage, forKey: .openAIAPIUsage)
         try container.encodeIfPresent(self.codexResetCredits, forKey: .codexResetCredits)
         try container.encodeIfPresent(self.mistralUsage, forKey: .mistralUsage)
+        if self.copilotMeteredZeroCredits {
+            try container.encode(true, forKey: .copilotMeteredZeroCredits)
+        }
         try container.encodeIfPresent(self.subscriptionExpiresAt, forKey: .subscriptionExpiresAt)
         try container.encodeIfPresent(self.subscriptionRenewsAt, forKey: .subscriptionRenewsAt)
         try container.encode(self.updatedAt, forKey: .updatedAt)
@@ -383,6 +397,10 @@ public struct UsageSnapshot: Codable, Sendable {
 
     public func detailRow(label: String) -> ProviderDetailSection.Row? {
         self.details.lazy.flatMap(\.rows).first { $0.label == label }
+    }
+
+    public func detailRow(id: String) -> ProviderDetailSection.Row? {
+        self.details.lazy.flatMap(\.rows).first { $0.id == id }
     }
 
     public func rateLimitsUnavailable(for provider: UsageProvider) -> Bool {
@@ -513,6 +531,7 @@ public struct UsageSnapshot: Codable, Sendable {
             openAIAPIUsage: self.openAIAPIUsage,
             codexResetCredits: codexResetCredits.resolving(self.codexResetCredits),
             mistralUsage: self.mistralUsage,
+            copilotMeteredZeroCredits: self.copilotMeteredZeroCredits,
             commandCodeSubscriptionEnrichmentUnavailable: self.commandCodeSubscriptionEnrichmentUnavailable,
             commandCodeHasSubscriptionPlan: self.commandCodeHasSubscriptionPlan,
             commandCodeMonthlyGrantDepleted: self.commandCodeMonthlyGrantDepleted,
@@ -1143,42 +1162,75 @@ private final class CodexRPCClient: @unchecked Sendable {
 
 // MARK: - Public fetcher used by the app
 
-private actor CodexNativeCredentialRefreshCoordinator {
+actor CodexNativeCredentialRefreshCoordinator {
     private struct Entry {
         let id: UUID
-        let task: Task<Void, Error>
+        let task: Task<Void, Never>
+        var waiters: [UUID: CheckedContinuation<Void, any Error>]
     }
 
     static let shared = CodexNativeCredentialRefreshCoordinator()
 
     private var inFlightByHome: [String: Entry] = [:]
 
+    func waiterCount(home: String) -> Int {
+        self.inFlightByHome[home]?.waiters.count ?? 0
+    }
+
     func refresh(
         home: String,
         operation: @escaping @Sendable () async throws -> Void) async throws
     {
-        if let existing = self.inFlightByHome[home] {
-            try await existing.task.value
-            return
-        }
-
-        let id = UUID()
-        let task = Task {
-            try await operation()
-        }
-        self.inFlightByHome[home] = Entry(id: id, task: task)
-        do {
-            try await task.value
-            self.clear(home: home, id: id)
-        } catch {
-            self.clear(home: home, id: id)
-            throw error
+        let waiterID = UUID()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+                guard !Task.isCancelled else {
+                    continuation.resume(throwing: CancellationError())
+                    return
+                }
+                if self.inFlightByHome[home] != nil {
+                    self.inFlightByHome[home]?.waiters[waiterID] = continuation
+                    return
+                }
+                let id = UUID()
+                let task = Task {
+                    let result: Result<Void, any Error>
+                    do {
+                        try Task.checkCancellation()
+                        try await operation()
+                        result = .success(())
+                    } catch {
+                        result = .failure(error)
+                    }
+                    self.finish(home: home, id: id, result: result)
+                }
+                self.inFlightByHome[home] = Entry(id: id, task: task, waiters: [waiterID: continuation])
+            }
+            try Task.checkCancellation()
+        } onCancel: {
+            Task { await self.cancel(home: home, waiterID: waiterID) }
         }
     }
 
-    private func clear(home: String, id: UUID) {
-        guard self.inFlightByHome[home]?.id == id else { return }
+    private func cancel(home: String, waiterID: UUID) {
+        guard var entry = self.inFlightByHome[home],
+              let waiter = entry.waiters.removeValue(forKey: waiterID)
+        else { return }
+        if entry.waiters.isEmpty {
+            self.inFlightByHome[home] = nil
+            entry.task.cancel()
+        } else {
+            self.inFlightByHome[home] = entry
+        }
+        waiter.resume(throwing: CancellationError())
+    }
+
+    private func finish(home: String, id: UUID, result: Result<Void, any Error>) {
+        guard let entry = self.inFlightByHome[home], entry.id == id else { return }
         self.inFlightByHome[home] = nil
+        for waiter in entry.waiters.values {
+            waiter.resume(with: result)
+        }
     }
 }
 

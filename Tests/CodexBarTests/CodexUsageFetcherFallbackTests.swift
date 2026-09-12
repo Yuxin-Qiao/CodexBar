@@ -127,6 +127,7 @@ struct CodexUsageFetcherFallbackTests {
         defer {
             try? FileManager.default.removeItem(atPath: stubCLIPath)
             try? FileManager.default.removeItem(atPath: requestPath)
+            try? FileManager.default.removeItem(atPath: stubCLIPath + ".pid")
         }
 
         let fetcher = self.makeStubUsageFetcher(stubCLIPath)
@@ -148,11 +149,40 @@ struct CodexUsageFetcherFallbackTests {
     }
 
     @Test
+    func `canceling native renewal terminates its app server`() async throws {
+        let path = try self.makeNativeRefreshStubCodexCLI(delaySeconds: 30)
+        defer {
+            for suffix in ["", ".requests", ".pid"] {
+                try? FileManager.default.removeItem(atPath: path + suffix)
+            }
+        }
+        let fetcher = self.makeStubUsageFetcher(path)
+        let renewal = Task { try await fetcher.refreshNativeCodexCredentials() }
+        defer { renewal.cancel() }
+        let readyDeadline = ContinuousClock.now + .seconds(10)
+        while !FileManager.default.fileExists(atPath: path + ".requests"),
+              ContinuousClock.now < readyDeadline
+        {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        try #require(FileManager.default.fileExists(atPath: path + ".requests"))
+        let pid = try #require(Int32(String(contentsOfFile: path + ".pid", encoding: .utf8)))
+        renewal.cancel()
+        await #expect(throws: CancellationError.self) { try await renewal.value }
+        let exitDeadline = ContinuousClock.now + .seconds(5)
+        while kill(pid, 0) == 0, ContinuousClock.now < exitDeadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(kill(pid, 0) != 0, "Canceled renewal must stop its own app-server process")
+    }
+
+    @Test
     func `native credential refresh outlives the ordinary RPC request timeout`() async throws {
         let stubCLIPath = try self.makeNativeRefreshStubCodexCLI(delaySeconds: 3.2)
         defer {
             try? FileManager.default.removeItem(atPath: stubCLIPath)
             try? FileManager.default.removeItem(atPath: stubCLIPath + ".requests")
+            try? FileManager.default.removeItem(atPath: stubCLIPath + ".pid")
         }
 
         let fetcher = self.makeStubUsageFetcher(stubCLIPath)
@@ -516,6 +546,8 @@ struct CodexUsageFetcherFallbackTests {
         import time
 
         request_path = os.environ["CODEXBAR_TEST_RPC_REQUEST_PATH"]
+        with open(request_path[:-len(".requests")] + ".pid", "w") as output:
+            output.write(str(os.getpid()))
         if "app-server" not in sys.argv[1:]:
             sys.exit(92)
         for line in sys.stdin:
