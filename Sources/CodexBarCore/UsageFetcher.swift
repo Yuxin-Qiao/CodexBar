@@ -1024,6 +1024,22 @@ private final class CodexRPCClient: @unchecked Sendable {
         RPCChildProcessTeardown.terminate(process: self.process, stdin: self.stdin)
     }
 
+    /// Terminates the child and confirms it actually exited. The confirmation wait runs
+    /// detached so a canceled renewal still verifies its own child is gone before the
+    /// coordinator may hand the home to the next generation. Returns false when the
+    /// child cannot be confirmed exited within the bound; callers must not treat a sent
+    /// SIGKILL as an exit barrier.
+    func shutdownAndConfirmExit(timeoutSeconds: TimeInterval = 5.0) async -> Bool {
+        RPCChildProcessTeardown.terminate(process: self.process, stdin: self.stdin)
+        await Task.detached(priority: .utility) {
+            let deadline = Date().addingTimeInterval(timeoutSeconds)
+            while self.process.isRunning, Date() < deadline {
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+        }.value
+        return !self.process.isRunning
+    }
+
     // MARK: - JSON-RPC helpers
 
     private struct SendableJSONMessage: @unchecked Sendable {
@@ -1162,78 +1178,6 @@ private final class CodexRPCClient: @unchecked Sendable {
 
 // MARK: - Public fetcher used by the app
 
-actor CodexNativeCredentialRefreshCoordinator {
-    private struct Entry {
-        let id: UUID
-        let task: Task<Void, Never>
-        var waiters: [UUID: CheckedContinuation<Void, any Error>]
-    }
-
-    static let shared = CodexNativeCredentialRefreshCoordinator()
-
-    private var inFlightByHome: [String: Entry] = [:]
-
-    func waiterCount(home: String) -> Int {
-        self.inFlightByHome[home]?.waiters.count ?? 0
-    }
-
-    func refresh(
-        home: String,
-        operation: @escaping @Sendable () async throws -> Void) async throws
-    {
-        let waiterID = UUID()
-        try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
-                guard !Task.isCancelled else {
-                    continuation.resume(throwing: CancellationError())
-                    return
-                }
-                if self.inFlightByHome[home] != nil {
-                    self.inFlightByHome[home]?.waiters[waiterID] = continuation
-                    return
-                }
-                let id = UUID()
-                let task = Task {
-                    let result: Result<Void, any Error>
-                    do {
-                        try Task.checkCancellation()
-                        try await operation()
-                        result = .success(())
-                    } catch {
-                        result = .failure(error)
-                    }
-                    self.finish(home: home, id: id, result: result)
-                }
-                self.inFlightByHome[home] = Entry(id: id, task: task, waiters: [waiterID: continuation])
-            }
-            try Task.checkCancellation()
-        } onCancel: {
-            Task { await self.cancel(home: home, waiterID: waiterID) }
-        }
-    }
-
-    private func cancel(home: String, waiterID: UUID) {
-        guard var entry = self.inFlightByHome[home],
-              let waiter = entry.waiters.removeValue(forKey: waiterID)
-        else { return }
-        if entry.waiters.isEmpty {
-            self.inFlightByHome[home] = nil
-            entry.task.cancel()
-        } else {
-            self.inFlightByHome[home] = entry
-        }
-        waiter.resume(throwing: CancellationError())
-    }
-
-    private func finish(home: String, id: UUID, result: Result<Void, any Error>) {
-        guard let entry = self.inFlightByHome[home], entry.id == id else { return }
-        self.inFlightByHome[home] = nil
-        for waiter in entry.waiters.values {
-            waiter.resume(with: result)
-        }
-    }
-}
-
 public struct UsageFetcher: Sendable {
     private let environment: [String: String]
     private let initializeTimeoutSeconds: TimeInterval
@@ -1283,9 +1227,20 @@ public struct UsageFetcher: Sendable {
                 initializeTimeoutSeconds: self.initializeTimeoutSeconds,
                 requestTimeoutSeconds: self.requestTimeoutSeconds,
                 resolveExecutable: self.codexExecutableResolver)
-            defer { rpc.shutdown() }
-            try await rpc.initialize(clientName: "codexbar", clientVersion: "0.5.4")
-            try await rpc.refreshAccount()
+            // Every exit must confirm the child is gone before the coordinator may hand
+            // the home to a queued renewal. A sent SIGKILL is not an exit barrier.
+            do {
+                try await rpc.initialize(clientName: "codexbar", clientVersion: "0.5.4")
+                try await rpc.refreshAccount()
+            } catch {
+                guard await rpc.shutdownAndConfirmExit() else {
+                    throw CodexCredentialRenewalError.previousProcessExitUnconfirmed
+                }
+                throw error
+            }
+            guard await rpc.shutdownAndConfirmExit() else {
+                throw CodexCredentialRenewalError.previousProcessExitUnconfirmed
+            }
         }
     }
 
