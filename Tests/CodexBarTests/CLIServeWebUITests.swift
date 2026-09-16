@@ -1,5 +1,6 @@
 import Commander
 import Foundation
+import JavaScriptCore
 import Testing
 @testable import CodexBarCLI
 
@@ -8,15 +9,193 @@ struct CLIServeWebUITests {
         String(bytes: CLIServeWebUI.response().body, encoding: .utf8) ?? ""
     }
 
+    @Test(arguments: [false, true], [false, true])
+    func `window labels widths and accessibility values follow the selected fill mode`(
+        showUsed: Bool,
+        hasRemainingPercent: Bool) throws
+    {
+        let context = try self.recordingContext()
+        context.evaluateScript("""
+        state.snapshot = {host: {usageBarsShowUsed: \(showUsed)}};
+        const quota = {label: "Session", usedPercent: 25};
+        if (\(hasRemainingPercent)) quota.remainingPercent = 75;
+        const rendered = renderWindow(quota);
+        """)
+        #expect(context.exception == nil)
+        let value = showUsed ? 25 : 75
+        let suffix = showUsed ? "used" : "left"
+        #expect(context.evaluateScript("recordedText(rendered)[0]")?.toString() == "Session · \(value)% \(suffix)")
+        #expect(context.evaluateScript(
+            "recordedNodes(rendered).find(node => node.className === 'fill').style.width")?.toString() == "\(value)%")
+        #expect(context.evaluateScript(
+            "recordedNodes(rendered).find(node => node.className === 'track').attributes['aria-valuenow']")?
+            .toString() ==
+            String(value))
+    }
+
+    @Test
+    func `older browser snapshots without a fill hint use the remaining default`() throws {
+        let context = try self.recordingContext()
+        context.evaluateScript("""
+        state.snapshot = {};
+        const rendered = renderWindow({label: "Session", usedPercent: 25});
+        """)
+        #expect(context.exception == nil)
+        #expect(context.evaluateScript("recordedText(rendered)[0]")?.toString() == "Session · 75% left")
+        #expect(context.evaluateScript(
+            "recordedNodes(rendered).find(node => node.className === 'fill').style.width")?.toString() == "75%")
+    }
+
+    @Test(arguments: [false, true])
+    func `account-group windows share the host fill preference`(showUsed: Bool) throws {
+        let context = try self.recordingContext()
+        context.evaluateScript("fixture.host.usageBarsShowUsed = \(showUsed); renderSnapshot(fixture);")
+        #expect(context.exception == nil)
+        let widths = context.evaluateScript(
+            "recordedNodes(elements.providers).filter(node => node.className === 'fill')" +
+                ".map(node => node.style.width)")?
+            .toArray() as? [String]
+        #expect(widths == (showUsed ? ["20%", "40%", "70%", "10%"] : ["80%", "60%", "30%", "90%"]))
+    }
+
+    @Test
+    func `export optional synthetic fill preference proof pages`() throws {
+        guard let path = ProcessInfo.processInfo.environment["CODEXBAR_SERVE_FILL_PROOF_DIR"] else { return }
+        let output = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        let fixtures = try #require(Bundle.module.url(forResource: "Fixtures", withExtension: nil))
+            .appendingPathComponent("WebUI/account-group-snapshot.json")
+        var snapshot = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: fixtures)) as? [String: Any])
+        snapshot["generatedAt"] = ISO8601DateFormatter().string(from: Date())
+        var host = try #require(snapshot["host"] as? [String: Any])
+        for showUsed in [false, true] {
+            host["usageBarsShowUsed"] = showUsed
+            snapshot["host"] = host
+            let data = try JSONSerialization.data(withJSONObject: snapshot, options: [.sortedKeys])
+            let fixture = try #require(String(bytes: data, encoding: .utf8))
+                .replacingOccurrences(of: "</", with: "<\\/")
+            var html = self.html
+            if let icon = CLIServeWebUI.iconResponse(name: "ProviderIcon-claude") {
+                html = html.replacingOccurrences(
+                    of: "/icons/ProviderIcon-claude.svg",
+                    with: "data:image/svg+xml;base64," + icon.body.base64EncodedString())
+            }
+            let start = try #require(html.range(of: "<script>"))
+            let end = try #require(html.range(of: "</script>"))
+            var script = String(html[start.upperBound..<end.lowerBound])
+            let bootstrap = try #require(script.range(of: "const cached = storedSnapshot();", options: .backwards))
+            let fill = try #require(script.range(
+                of: "startProgressiveFill();", range: bootstrap.lowerBound..<script.endIndex))
+            script.replaceSubrange(bootstrap.lowerBound..<fill.upperBound, with: "renderSnapshot(\(fixture));")
+            let isolated = """
+            (() => {
+            const localStorage = {getItem: () => null, setItem() {}, removeItem() {}};
+            const fetch = () => Promise.reject(new Error("Synthetic proof has no network"));
+            const setTimeout = () => 0, setInterval = () => 0, clearTimeout = () => {};
+            \(script)
+            })();
+            """
+            html.replaceSubrange(start.upperBound..<end.lowerBound, with: isolated)
+            let name = showUsed ? "serve-used.html" : "serve-remaining.html"
+            try html.write(to: output.appendingPathComponent(name), atomically: true, encoding: .utf8)
+        }
+    }
+
+    @Test(arguments: [true, false])
+    func `shared costs and diagnostics survive account grouping without sharing credits`(grouped: Bool) throws {
+        let context = try self.recordingContext()
+        context.evaluateScript("fixture.providers[0].accounts = \(grouped) ? fixture.providers[0].accounts : [];")
+        context.evaluateScript("renderSnapshot(fixture);")
+        #expect(context.exception == nil)
+        let text = try #require(context.evaluateScript("recordedText(elements.providers)")?.toArray() as? [String])
+        for value in ["$2.00", "$5.00", "Synthetic adapter note"] {
+            #expect(text.filter { $0 == value }.count == 1)
+        }
+        #expect(text.filter { $0.contains("Synthetic provider diagnostic") }.count == 1)
+        #expect(text.contains("Provider data: Synthetic provider diagnostic") == grouped)
+        #expect(text.contains("Remaining") == !grouped)
+        #expect(text.contains("ambient@example.test") == !grouped)
+        for value in ["Synthetic account A note", "Synthetic account B note", "Claude local spend"] {
+            #expect(text.filter { $0 == value }.count == (grouped ? 1 : 0))
+        }
+        #expect(context.evaluateScript(
+            "recordedNodes(elements.providers).filter(x => x.tagName === 'svg').length")?.toInt32() == 1)
+    }
+
+    @Test
+    func `account group omits an empty shared cost card`() throws {
+        let context = try self.recordingContext()
+        context.evaluateScript("fixture.providers[0].cost = null; state.costHistories = {}; renderSnapshot(fixture);")
+        #expect(context.exception == nil)
+        let text = try #require(context.evaluateScript("recordedText(elements.providers)")?.toArray() as? [String])
+        #expect(!text.contains("Claude local spend"))
+        #expect(text.contains("Provider data: Synthetic provider diagnostic"))
+        #expect(context.evaluateScript(
+            "recordedNodes(elements.providers).filter(x => x.tagName === 'article').length")?.toInt32() == 2)
+    }
+
+    private func recordingContext() throws -> JSContext {
+        let context = try #require(JSContext())
+        let root = try #require(Bundle.module.url(forResource: "Fixtures", withExtension: nil))
+            .appendingPathComponent("WebUI")
+        try context.evaluateScript(String(contentsOf: root.appendingPathComponent("recording-dom.js"), encoding: .utf8))
+        let start = try #require(self.html.range(of: "<script>"))
+        let end = try #require(self.html.range(of: "</script>"))
+        context.evaluateScript(String(self.html[start.upperBound..<end.lowerBound]))
+        let fixture = try String(
+            contentsOf: root.appendingPathComponent("account-group-snapshot.json"),
+            encoding: .utf8)
+        context.evaluateScript("const fixture = \(fixture);")
+        context.evaluateScript("""
+        state.costHistories.claude = [{date:'2026-09-13',cost:3},{date:'2026-09-14',cost:2}];
+        """)
+        #expect(context.exception == nil)
+        return context
+    }
+
     @Test
     func `web ui renders account cards in titled groups for multi account providers`() {
         let html = self.html
         // Multi-account providers render one card per account inside a titled
-        // vertical group; identity falls back to the slot label when redacted.
+        // vertical group; account labels retain the producer's disambiguation.
         #expect(html.contains("function renderAccountCard(provider, account)"))
-        #expect(html.contains("account.identity?.accountEmail || account.label"))
         #expect(html.contains("provider.accountsError"))
         #expect(html.contains("group-title"))
+    }
+
+    @Test
+    func `account cards preserve projected labels before falling back to email`() throws {
+        let start = try #require(self.html.range(of: "function renderAccountCard(provider, account)"))
+        let end = try #require(self.html.range(of: "function renderProvider(provider)"))
+        let renderer = String(self.html[start.lowerBound..<end.lowerBound])
+        let context = try #require(JSContext())
+        context.evaluateScript(#"""
+        const titles = [];
+        function node(tag, className, text) {
+          if (className === "provider-name") titles.push(text);
+          return {style: {setProperty() {}}, classList: {add() {}}, append() {}};
+        }
+        function providerGlyph() { return node("span"); }
+        function accentColor(value) { return value; }
+        function visibleWindows(windows) { return windows || []; }
+        function worstWindowLevel() { return null; }
+        """#)
+        context.evaluateScript(renderer)
+        context.evaluateScript(#"""
+        for (const account of [
+          {label: "Work", identity: {accountEmail: "shared@example.com"}},
+          {label: "shared@example.com · Acme", identity: {accountEmail: "shared@example.com"}},
+          {label: "Account 1", identity: {accountEmail: "s***@example.com"}},
+          {label: "s***@example.com · Acme", identity: {accountEmail: "s***@example.com"}},
+          {label: "", identity: {accountEmail: "fallback@example.com"}},
+          {}
+        ]) renderAccountCard({}, account);
+        """#)
+        #expect(context.exception == nil)
+        #expect(context.evaluateScript("titles")?.toArray() as? [String] == [
+            "Work", "shared@example.com · Acme", "Account 1", "s***@example.com · Acme",
+            "fallback@example.com", "Account",
+        ])
     }
 
     @Test

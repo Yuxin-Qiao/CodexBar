@@ -26,7 +26,8 @@ enum DashboardSnapshotBuilder {
         generatedAt: Date,
         refreshInterval: TimeInterval,
         codexBarVersion: String?,
-        claudeSwap: DashboardClaudeSwapInput? = nil) -> DashboardSnapshotPayload
+        claudeSwap: DashboardClaudeSwapInput? = nil,
+        usageBarsShowUsed: Bool = false) -> DashboardSnapshotPayload
     {
         var costByProvider: [String: CostPayload] = [:]
         for cost in costPayloads {
@@ -60,7 +61,8 @@ enum DashboardSnapshotBuilder {
             staleAfterSeconds: max(180, refreshSeconds * 3),
             host: DashboardHostPayload(
                 codexBarVersion: codexBarVersion,
-                refreshIntervalSeconds: refreshSeconds),
+                refreshIntervalSeconds: refreshSeconds,
+                usageBarsShowUsed: usageBarsShowUsed),
             providers: providers)
     }
 
@@ -69,7 +71,8 @@ enum DashboardSnapshotBuilder {
         providers requestedProviders: [UsageProvider]? = nil,
         generatedAt: Date,
         refreshInterval: TimeInterval,
-        codexBarVersion: String?) -> DashboardSnapshotPayload
+        codexBarVersion: String?,
+        usageBarsShowUsed: Bool = false) -> DashboardSnapshotPayload
     {
         let providers = requestedProviders
             ?? config.enabledProviders().compactMap(\.firstPartyProvider)
@@ -102,7 +105,8 @@ enum DashboardSnapshotBuilder {
             staleAfterSeconds: max(180, refreshSeconds * 3),
             host: DashboardHostPayload(
                 codexBarVersion: codexBarVersion,
-                refreshIntervalSeconds: refreshSeconds),
+                refreshIntervalSeconds: refreshSeconds,
+                usageBarsShowUsed: usageBarsShowUsed),
             providers: rows)
     }
 
@@ -246,11 +250,11 @@ enum DashboardSnapshotBuilder {
         guard let status else { return nil }
         return DashboardStatusPayload(
             level: self.dashboardStatusLevel(status.indicator),
-            label: status.indicator.label,
+            label: status.indicator.cliLabel,
             updatedAt: status.updatedAt)
     }
 
-    private static func dashboardStatusLevel(_ indicator: ProviderStatusPayload.ProviderStatusIndicator) -> String {
+    private static func dashboardStatusLevel(_ indicator: ProviderStatusIndicator) -> String {
         switch indicator {
         case .none:
             "ok"

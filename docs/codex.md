@@ -258,6 +258,10 @@ is limited, using additional rows when needed.
     connection, database identity and SQLite change observations,
     checking again under the writer lock. Filesystem/anchor and catch-up reconciliation still run at comparison
     time; a concurrent database change requests a rescan. Fresh database opens retain integrity validation.
+  - Up to four recently used cache roots retain validated reader connections and decoded status/activity data.
+    External writes invalidate cached data; database replacement or incompatible metadata reopens the reader through
+    existing validation on its next access. Every read still reconciles file identities, and detailed report history
+    remains transient. Scanner and writer connections keep separate ownership.
   - Saved day/model aggregates group each file's usage rows in one pass per aggregate build. Packed token totals,
     authoritative costs (including zero), and standard/priority estimation buckets retain their existing meanings.
   - Fully read empty session fragments retain completion records even when another file contributes the same session.
@@ -271,6 +275,7 @@ is limited, using additional rows when needed.
     results with no priority turns; validated pricing outside that window remains intact.
 - Window: configurable 1-365 day rolling history.
 - Pending cost scans retain their discovery range when the same cache receives narrower or wider history requests ending on the same day. Reports still use the requested dates, and compatible existing caches retain stored usage and partial-scan progress on upgrade. A new ending day, changed roots/timezone, or a forced rescan keeps the usual discovery reset behavior.
+- Routine rescans of changed sessions replace request-pricing rows within the scan window alongside token totals. Cached rows outside that window remain available; obsolete rows cannot make an otherwise priceable day lose its cost estimate. Budget-limited scans retain matching request-pricing evidence and the parser position across restarts, without counting unparsed requests in active totals. Upgrades from 0.60.1 retain saved history, including sessions whose source files are no longer available.
 - App cadence: regular timer-driven local-history refreshes have a 15-minute minimum (30 minutes in Low Power Mode).
   Manual disables the recurring refresh timer, not all scan activity: startup refreshes and pending Codex catch-up can
   still scan local history. Faster provider refreshes still update quota/status. The scanner's default 60-second

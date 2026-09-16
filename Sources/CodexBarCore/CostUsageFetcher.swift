@@ -707,11 +707,6 @@ public struct CostUsageFetcher: Sendable {
         }
     }
 
-    private struct ModelsDevPricingTarget: Hashable, Sendable {
-        let providerID: String
-        let modelID: String
-    }
-
     private struct UnknownPricingRefreshRequest: Sendable {
         let targets: Set<ModelsDevPricingTarget>
         let now: Date
@@ -1557,58 +1552,6 @@ public struct CostUsageFetcher: Sendable {
                 return lhsTokens > rhsTokens
             }
             return lhs.modelName > rhs.modelName
-        }
-    }
-
-    static func selectCurrentSession(from sessions: [CostUsageSessionReport.Entry])
-        -> CostUsageSessionReport.Entry?
-    {
-        if sessions.isEmpty {
-            return nil
-        }
-        return sessions.max { lhs, rhs in
-            let lDate = CostUsageDateParser.parse(lhs.lastActivity) ?? .distantPast
-            let rDate = CostUsageDateParser.parse(rhs.lastActivity) ?? .distantPast
-            if lDate != rDate {
-                return lDate < rDate
-            }
-            let lCost = lhs.costUSD ?? -1
-            let rCost = rhs.costUSD ?? -1
-            if lCost != rCost {
-                return lCost < rCost
-            }
-            let lTokens = lhs.totalTokens ?? -1
-            let rTokens = rhs.totalTokens ?? -1
-            if lTokens != rTokens {
-                return lTokens < rTokens
-            }
-            return lhs.session < rhs.session
-        }
-    }
-
-    static func selectMostRecentMonth(from months: [CostUsageMonthlyReport.Entry])
-        -> CostUsageMonthlyReport.Entry?
-    {
-        if months.isEmpty {
-            return nil
-        }
-        return months.max { lhs, rhs in
-            let lDate = CostUsageDateParser.parseMonth(lhs.month) ?? .distantPast
-            let rDate = CostUsageDateParser.parseMonth(rhs.month) ?? .distantPast
-            if lDate != rDate {
-                return lDate < rDate
-            }
-            let lCost = lhs.costUSD ?? -1
-            let rCost = rhs.costUSD ?? -1
-            if lCost != rCost {
-                return lCost < rCost
-            }
-            let lTokens = lhs.totalTokens ?? -1
-            let rTokens = rhs.totalTokens ?? -1
-            if lTokens != rTokens {
-                return lTokens < rTokens
-            }
-            return lhs.month < rhs.month
         }
     }
 }

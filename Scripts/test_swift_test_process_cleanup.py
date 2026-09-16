@@ -897,6 +897,11 @@ class ReviewRegressionTests(unittest.TestCase):
                     return None
                 return original_lookup(pid, *args, **kwargs)
             started = time.monotonic()
+            drain_started = []
+            original_drain = runner.TestProcessOwnership._drain
+            def drain(ownership, process):
+                drain_started.append(time.monotonic() - started)
+                return original_drain(ownership, process)
             sent = []
             original_kill = os.kill
             def kill(pid, sig):
@@ -910,7 +915,8 @@ class ReviewRegressionTests(unittest.TestCase):
             try:
                 with patch.object(runner.subprocess, "Popen", side_effect=spawn), \
                         patch.object(runner, "test_process", side_effect=lookup), \
-                        patch.object(runner.os, "kill", side_effect=kill):
+                        patch.object(runner.os, "kill", side_effect=kill), \
+                        patch.object(runner.TestProcessOwnership, "_drain", autospec=True, side_effect=drain):
                     if failure is None:
                         self.assertEqual(runner.run_command(
                             [sys.executable, __file__, "--fixture", "stubborn", str(root)], timeout=2), 124)
@@ -924,7 +930,8 @@ class ReviewRegressionTests(unittest.TestCase):
                     self.assertEqual([sig for sig, _ in sent[:2]], [signal.SIGTERM, signal.SIGKILL])
                     self.assertTrue(all(sig == signal.SIGKILL for sig, _ in sent[2:]))
                     self.assertGreaterEqual(sent[0][1], 2, "missing metadata shortened the command deadline")
-                    self.assertGreaterEqual(sent[1][1] - sent[0][1], 3, "cleanup shortened the termination grace")
+                    # Cleanup starts its grace before process inspection and the first signal.
+                    self.assertGreaterEqual(sent[1][1] - drain_started[0], 3, "cleanup shortened the termination grace")
                     self.assertEqual(spawned[0].returncode, -signal.SIGKILL)
                 self.assertLess(time.monotonic() - started, 9)
             finally:

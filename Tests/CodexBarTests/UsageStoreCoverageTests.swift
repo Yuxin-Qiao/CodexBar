@@ -219,7 +219,7 @@ struct UsageStoreCoverageTests {
         #expect(model.metrics.allSatisfy { $0.pacePercent == nil })
         #expect(model.creditsText == nil)
         #expect(model.providerDetails.first?.rows.map(\.label) == [
-            "Individual credits", "Workspace billing@example.test",
+            "Individual", "Workspace billing@example.test",
         ])
         #expect(model.creditsRemaining == nil)
 
@@ -751,7 +751,7 @@ extension UsageStoreCoverageTests {
         await store.refresh()
         #expect(store.snapshot(for: .synthetic) == nil)
         #expect((store.accountSnapshots[.synthetic] ?? []).isEmpty)
-        #expect(store.tokenSnapshots[.synthetic] == nil)
+        #expect(store.tokenSnapshotPublications[.synthetic]?.snapshot == nil)
         #expect(store.enabledProvidersForBackgroundWork().isEmpty)
     }
 
