@@ -128,6 +128,7 @@ struct CodexUsageFetcherFallbackTests {
             try? FileManager.default.removeItem(atPath: stubCLIPath)
             try? FileManager.default.removeItem(atPath: requestPath)
             try? FileManager.default.removeItem(atPath: stubCLIPath + ".pid")
+            try? FileManager.default.removeItem(atPath: stubCLIPath + ".home")
         }
 
         let fetcher = self.makeStubUsageFetcher(stubCLIPath)
@@ -155,6 +156,7 @@ struct CodexUsageFetcherFallbackTests {
             for suffix in ["", ".requests", ".pid"] {
                 try? FileManager.default.removeItem(atPath: path + suffix)
             }
+            try? FileManager.default.removeItem(atPath: path + ".home")
         }
         let fetcher = self.makeStubUsageFetcher(path)
         let renewal = Task { try await fetcher.refreshNativeCodexCredentials() }
@@ -196,6 +198,7 @@ struct CodexUsageFetcherFallbackTests {
             for suffix in ["", ".requests", ".pid", ".launches", ".overlaps"] {
                 try? FileManager.default.removeItem(atPath: path + suffix)
             }
+            try? FileManager.default.removeItem(atPath: path + ".home")
         }
         let fetcher = self.makeStubUsageFetcher(
             path,
@@ -249,6 +252,7 @@ struct CodexUsageFetcherFallbackTests {
             try? FileManager.default.removeItem(atPath: stubCLIPath)
             try? FileManager.default.removeItem(atPath: stubCLIPath + ".requests")
             try? FileManager.default.removeItem(atPath: stubCLIPath + ".pid")
+            try? FileManager.default.removeItem(atPath: stubCLIPath + ".home")
         }
 
         let fetcher = self.makeStubUsageFetcher(stubCLIPath)
@@ -467,6 +471,7 @@ struct CodexUsageFetcherFallbackTests {
             "PATH": "/usr/bin:/bin",
             "CODEX_CLI_PATH": stubCLIPath,
             "CODEXBAR_TEST_RPC_REQUEST_PATH": stubCLIPath + ".requests",
+            "CODEX_HOME": stubCLIPath + ".home",
         ]
         for (key, value) in extraEnvironment {
             environment[key] = value

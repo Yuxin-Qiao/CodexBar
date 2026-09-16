@@ -1,3 +1,10 @@
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#elseif canImport(Musl)
+import Musl
+#endif
 import Foundation
 
 /// Explicit failure when a renewal generation ends without confirming its app-server
@@ -5,6 +12,68 @@ import Foundation
 /// new credential I/O while an old generation may still be alive.
 enum CodexCredentialRenewalError: Error, Sendable {
     case previousProcessExitUnconfirmed
+}
+
+/// Cross-process lease for the rotating native credential file. The in-process coordinator
+/// below coalesces callers within one app/CLI process, while this advisory lock serializes the
+/// desktop app and separate `codexbar usage` processes that share a `CODEX_HOME`.
+final class CodexNativeCredentialRefreshProcessLock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var descriptor: Int32?
+
+    private init(descriptor: Int32) {
+        self.descriptor = descriptor
+    }
+
+    deinit {
+        self.release()
+    }
+
+    static func acquire(home: String) async throws -> Self {
+        let homeURL = URL(fileURLWithPath: home, isDirectory: true).standardizedFileURL
+        let lockURL = homeURL.appendingPathComponent(".codexbar-native-refresh.lock", isDirectory: false)
+        try FileManager.default.createDirectory(
+            at: lockURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true)
+
+        let descriptor = lockURL.path.withCString {
+            open($0, O_CREAT | O_RDWR | O_CLOEXEC, mode_t(0o600))
+        }
+        guard descriptor >= 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        guard fchmod(descriptor, mode_t(0o600)) == 0 else {
+            let error = POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            close(descriptor)
+            throw error
+        }
+
+        do {
+            while true {
+                try Task.checkCancellation()
+                if flock(descriptor, LOCK_EX | LOCK_NB) == 0 {
+                    return Self(descriptor: descriptor)
+                }
+                let errorNumber = errno
+                guard errorNumber == EINTR || errorNumber == EAGAIN || errorNumber == EWOULDBLOCK else {
+                    throw POSIXError(POSIXErrorCode(rawValue: errorNumber) ?? .EIO)
+                }
+                try await Task.sleep(for: .milliseconds(50))
+            }
+        } catch {
+            close(descriptor)
+            throw error
+        }
+    }
+
+    func release() {
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        guard let descriptor = self.descriptor else { return }
+        _ = flock(descriptor, LOCK_UN)
+        close(descriptor)
+        self.descriptor = nil
+    }
 }
 
 actor CodexNativeCredentialRefreshCoordinator {

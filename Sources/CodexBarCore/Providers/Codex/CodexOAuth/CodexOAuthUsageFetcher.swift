@@ -345,7 +345,7 @@ public enum CodexOAuthFetchError: LocalizedError, Sendable {
         case .unauthorized:
             return "Codex OAuth token expired or invalid. Run `codex login` to re-authenticate."
         case .forbidden:
-            return "Codex account cannot access the selected workspace (HTTP 403)."
+            return "Codex request was forbidden (HTTP 403)."
         case .invalidResponse:
             return "Invalid response from Codex usage API."
         case let .serverError(code, message):

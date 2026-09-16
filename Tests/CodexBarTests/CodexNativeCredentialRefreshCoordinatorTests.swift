@@ -4,6 +4,27 @@ import Testing
 
 struct CodexNativeCredentialRefreshCoordinatorTests {
     @Test
+    func `cross-process lock serializes refresh generations`() async throws {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("codexbar-native-refresh-lock-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let first = try await CodexNativeCredentialRefreshProcessLock.acquire(home: home.path)
+        let secondAcquired = Gate()
+        let second = Task {
+            let lock = try await CodexNativeCredentialRefreshProcessLock.acquire(home: home.path)
+            await secondAcquired.release()
+            return lock
+        }
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(await secondAcquired.isReleased == false)
+        first.release()
+        let acquired = try await second.value
+        #expect(await secondAcquired.isReleased)
+        acquired.release()
+    }
+
+    @Test
     func `canceling one waiter preserves shared renewal for another`() async throws {
         let coordinator = CodexNativeCredentialRefreshCoordinator()
         let gate = Gate()

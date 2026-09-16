@@ -1168,6 +1168,13 @@ public struct UsageFetcher: Sendable {
         let home = CodexHomeScope.ambientHomeURL(env: self.environment).standardizedFileURL.path
         let coordinator = CodexNativeCredentialRefreshCoordinator.shared
         try await coordinator.refresh(home: home) {
+            let processLock = try await CodexNativeCredentialRefreshProcessLock.acquire(home: home)
+            var releaseProcessLock = true
+            defer {
+                if releaseProcessLock {
+                    processLock.release()
+                }
+            }
             let rpc = try CodexRPCClient(
                 arguments: self.codexArguments,
                 environment: self.environment,
@@ -1181,16 +1188,20 @@ public struct UsageFetcher: Sendable {
                 try await rpc.refreshAccount()
             } catch {
                 guard await rpc.shutdownAndConfirmExit() else {
+                    releaseProcessLock = false
                     await coordinator.registerExitObserver(home: home) {
                         await rpc.waitForExit()
+                        processLock.release()
                     }
                     throw CodexCredentialRenewalError.previousProcessExitUnconfirmed
                 }
                 throw error
             }
             guard await rpc.shutdownAndConfirmExit() else {
+                releaseProcessLock = false
                 await coordinator.registerExitObserver(home: home) {
                     await rpc.waitForExit()
+                    processLock.release()
                 }
                 throw CodexCredentialRenewalError.previousProcessExitUnconfirmed
             }
