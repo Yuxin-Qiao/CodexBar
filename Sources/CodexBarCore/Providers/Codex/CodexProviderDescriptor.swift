@@ -361,7 +361,8 @@ struct CodexOAuthNativeRefreshCLIStrategy: ProviderFetchStrategy {
     }
 
     func isAvailable(_ context: ProviderFetchContext) async -> Bool {
-        guard context.sourceMode == .auto || context.sourceMode == .oauth,
+        guard context.allowsNativeCodexCredentialRefresh,
+              context.sourceMode == .auto || context.sourceMode == .oauth,
               self.binaryResolver(context) != nil,
               let credentials = try? CodexOAuthCredentialsStore.loadForUsage(
                   env: context.env,
@@ -371,6 +372,9 @@ struct CodexOAuthNativeRefreshCLIStrategy: ProviderFetchStrategy {
     }
 
     func fetch(_ context: ProviderFetchContext) async throws -> ProviderFetchResult {
+        guard context.allowsNativeCodexCredentialRefresh else {
+            throw CodexOAuthCredentialsError.readOnlySource
+        }
         // Let the owner CLI rotate and persist its native tokens inside this exact CODEX_HOME.
         // Then reload them and perform the normal OAuth request, which preserves CodexBar's
         // selected managed-workspace header and account-ownership checks.

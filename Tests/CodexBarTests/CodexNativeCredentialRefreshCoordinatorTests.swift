@@ -200,6 +200,7 @@ struct CodexNativeCredentialRefreshCoordinatorTests {
         let oldStarted = Gate()
         let teardownEntered = Gate()
         let allowExit = Gate()
+        let exitConfirmed = Gate()
         let operationRuns = Counter()
         let first = Task {
             try await coordinator.refresh(home: "home") {
@@ -209,6 +210,9 @@ struct CodexNativeCredentialRefreshCoordinatorTests {
                 } catch {
                     await teardownEntered.release()
                     await allowExit.wait()
+                    await coordinator.registerExitObserver(home: "home") {
+                        await exitConfirmed.wait()
+                    }
                     throw CodexCredentialRenewalError.previousProcessExitUnconfirmed
                 }
             }
@@ -229,6 +233,22 @@ struct CodexNativeCredentialRefreshCoordinatorTests {
         await allowExit.release()
         await #expect(throws: CodexCredentialRenewalError.self) { try await queued.value }
         #expect(await operationRuns.isEmpty)
+        #expect(await coordinator.homeIsOccupied(home: "home"))
+
+        let later = Task {
+            try await coordinator.refresh(home: "home") {
+                await operationRuns.increment()
+            }
+        }
+        defer { later.cancel() }
+        await #expect(throws: CodexCredentialRenewalError.self) { try await later.value }
+        #expect(await operationRuns.isEmpty)
+
+        await exitConfirmed.release()
+        let deadline = ContinuousClock.now + .seconds(2)
+        while await coordinator.homeIsOccupied(home: "home"), ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
         #expect(await coordinator.homeIsOccupied(home: "home") == false)
     }
 

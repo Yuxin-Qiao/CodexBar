@@ -191,8 +191,9 @@ struct CodexUsageFetcherFallbackTests {
         let launchesPath = path + ".launches"
         let requestsPath = path + ".requests"
         let pidPath = path + ".pid"
+        let overlapsPath = path + ".overlaps"
         defer {
-            for suffix in ["", ".requests", ".pid", ".launches"] {
+            for suffix in ["", ".requests", ".pid", ".launches", ".overlaps"] {
                 try? FileManager.default.removeItem(atPath: path + suffix)
             }
         }
@@ -205,10 +206,15 @@ struct CodexUsageFetcherFallbackTests {
             return text.split(whereSeparator: \.isNewline).count
         }
 
+        func requestCount() -> Int {
+            guard let text = try? String(contentsOfFile: requestsPath, encoding: .utf8) else { return 0 }
+            return text.split(whereSeparator: \.isNewline).count
+        }
+
         let first = Task { try await fetcher.refreshNativeCodexCredentials() }
         defer { first.cancel() }
         let readyDeadline = ContinuousClock.now + .seconds(10)
-        while launchCount() == 0 || !FileManager.default.fileExists(atPath: pidPath),
+        while launchCount() == 0 || requestCount() < 1 || !FileManager.default.fileExists(atPath: pidPath),
               ContinuousClock.now < readyDeadline
         {
             try await Task.sleep(for: .milliseconds(10))
@@ -218,28 +224,17 @@ struct CodexUsageFetcherFallbackTests {
         first.cancel()
         await #expect(throws: CancellationError.self) { try await first.value }
 
-        // The old server needs ~0.4s to escalate from TERM to KILL, so at 0.3s it must
-        // still be alive and no replacement may have launched yet.
         let second = Task { try await fetcher.refreshNativeCodexCredentials() }
         defer { second.cancel() }
-        try await Task.sleep(for: .milliseconds(300))
-        #expect(launchCount() == 1, "Replacement must not launch before the old app server exits")
-        #expect(kill(oldPid, 0) == 0, "Old app server must still be alive at the checkpoint")
-
-        // A single parent-side poller records the order of the two decisive events.
-        var events: [String] = []
-        let orderDeadline = ContinuousClock.now + .seconds(20)
-        while events.count < 2, ContinuousClock.now < orderDeadline {
-            if kill(oldPid, 0) != 0, !events.contains("old-exited") {
-                events.append("old-exited")
-            }
-            if launchCount() >= 2, !events.contains("second-launched") {
-                events.append("second-launched")
-            }
+        let replacementDeadline = ContinuousClock.now + .seconds(20)
+        while launchCount() < 2, ContinuousClock.now < replacementDeadline {
             try await Task.sleep(for: .milliseconds(10))
         }
         try await second.value
-        #expect(events == ["old-exited", "second-launched"])
+        try #require(launchCount() == 2)
+        let overlapEvents = (try? String(contentsOfFile: overlapsPath, encoding: .utf8))?
+            .split(whereSeparator: \.isNewline) ?? []
+        #expect(overlapEvents.isEmpty, "A replacement must not launch while an older app server PID is alive")
         #expect(launchCount() == 2)
         #expect(kill(oldPid, 0) != 0, "Canceled renewal must stop its own app-server process")
         let requests = try String(contentsOfFile: requestsPath, encoding: .utf8)
@@ -665,9 +660,26 @@ struct CodexUsageFetcherFallbackTests {
         import time
 
         request_path = os.environ["CODEXBAR_TEST_RPC_REQUEST_PATH"]
-        with open(request_path[:-len(".requests")] + ".pid", "w") as output:
+        base_path = request_path[:-len(".requests")]
+        pid_path = base_path + ".pid"
+        launches_path = base_path + ".launches"
+        overlaps_path = base_path + ".overlaps"
+        prior_pids = []
+        try:
+            with open(launches_path, encoding="utf-8") as existing:
+                prior_pids = [int(line.split()[-1]) for line in existing if line.strip()]
+        except FileNotFoundError:
+            pass
+        for prior_pid in prior_pids:
+            try:
+                os.kill(prior_pid, 0)
+            except OSError:
+                continue
+            with open(overlaps_path, "a", encoding="utf-8") as overlap:
+                overlap.write("overlap " + str(prior_pid) + " -> " + str(os.getpid()) + "\\n")
+        with open(pid_path, "w") as output:
             output.write(str(os.getpid()))
-        with open(request_path[:-len(".requests")] + ".launches", "a", encoding="utf-8") as output:
+        with open(launches_path, "a", encoding="utf-8") as output:
             output.write("launch " + str(os.getpid()) + "\\n")
         ignore_term = os.environ.get("CODEXBAR_TEST_IGNORE_TERM") == "1"
 

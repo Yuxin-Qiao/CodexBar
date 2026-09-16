@@ -35,6 +35,19 @@ struct CodexOAuthManagedWorkspaceRecoveryTests {
     }
 
     @Test
+    func `native refresh recovery is unavailable for read only contexts`() async throws {
+        let context = self.makeContext(sourceMode: .oauth, allowsNativeCodexCredentialRefresh: false)
+        let calls = RefreshCallCounter()
+        let strategy = CodexOAuthNativeRefreshCLIStrategy(
+            binaryResolver: { _ in "/usr/bin/codex" },
+            credentialRefresher: { _ in await calls.increment() })
+
+        #expect(await strategy.isAvailable(context) == false)
+        await #expect(throws: CodexOAuthCredentialsError.self) { try await strategy.fetch(context) }
+        #expect(await calls.isEmpty)
+    }
+
+    @Test
     func `native refresh reloads scoped credentials before fetching the selected workspace`() async throws {
         let home = CodexCredentialFixtures.root
             .appendingPathComponent("codexbar-native-refresh-selected-workspace-\(UUID().uuidString)")
@@ -87,7 +100,8 @@ struct CodexOAuthManagedWorkspaceRecoveryTests {
     private func makeContext(
         sourceMode: ProviderSourceMode,
         env: [String: String] = [:],
-        runtime: ProviderRuntime = .app) -> ProviderFetchContext
+        runtime: ProviderRuntime = .app,
+        allowsNativeCodexCredentialRefresh: Bool = true) -> ProviderFetchContext
     {
         let browserDetection = BrowserDetection(cacheTTL: 0)
         let settings = ProviderSettingsSnapshot.make(codex: CodexProviderSettings(
@@ -106,7 +120,8 @@ struct CodexOAuthManagedWorkspaceRecoveryTests {
             settings: settings,
             fetcher: UsageFetcher(environment: env),
             claudeFetcher: ClaudeUsageFetcher(browserDetection: browserDetection),
-            browserDetection: browserDetection)
+            browserDetection: browserDetection,
+            allowsNativeCodexCredentialRefresh: allowsNativeCodexCredentialRefresh)
     }
 
     private static let usageBody = #"""
@@ -118,4 +133,16 @@ struct CodexOAuthManagedWorkspaceRecoveryTests {
       }
     }
     """#
+}
+
+private actor RefreshCallCounter {
+    private var calls: [Void] = []
+
+    var isEmpty: Bool {
+        self.calls.isEmpty
+    }
+
+    func increment() {
+        self.calls.append(())
+    }
 }

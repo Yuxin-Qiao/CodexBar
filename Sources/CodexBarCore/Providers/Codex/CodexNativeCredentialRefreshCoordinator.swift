@@ -22,6 +22,11 @@ actor CodexNativeCredentialRefreshCoordinator {
         /// the old task finishes its cleanup; new callers queue instead of starting I/O.
         var isDraining: Bool
         var queued: [QueuedWaiter]
+        /// True when the old process could not be confirmed exited. The home remains
+        /// quarantined until the process exit observer reports the actual termination.
+        var isQuarantined: Bool
+        var exitObserver: (@Sendable () async -> Void)?
+        var exitObservationTask: Task<Void, Never>?
     }
 
     static let shared = CodexNativeCredentialRefreshCoordinator()
@@ -49,7 +54,11 @@ actor CodexNativeCredentialRefreshCoordinator {
                     return
                 }
                 if var state = self.statesByHome[home] {
-                    if state.isDraining {
+                    if state.isQuarantined {
+                        // A previous generation may still own a rotating refresh token.
+                        // Fail closed until its actual process exit has been observed.
+                        continuation.resume(throwing: CodexCredentialRenewalError.previousProcessExitUnconfirmed)
+                    } else if state.isDraining {
                         // The old generation is still tearing down. Queue for the next
                         // generation without joining the canceled operation or starting I/O.
                         state.queued.append(QueuedWaiter(
@@ -94,7 +103,23 @@ actor CodexNativeCredentialRefreshCoordinator {
             activeTask: task,
             activeWaiters: [waiterID: continuation],
             isDraining: false,
-            queued: [])
+            queued: [],
+            isQuarantined: false,
+            exitObserver: nil,
+            exitObservationTask: nil)
+    }
+
+    /// Registers an asynchronous observation for the active generation's child process.
+    /// The operation calls this immediately before returning
+    /// `previousProcessExitUnconfirmed`, so a later refresh cannot clear the reservation
+    /// before the underlying process has actually terminated.
+    func registerExitObserver(
+        home: String,
+        waitForExit: @escaping @Sendable () async -> Void)
+    {
+        guard var state = self.statesByHome[home], !state.isQuarantined else { return }
+        state.exitObserver = waitForExit
+        self.statesByHome[home] = state
     }
 
     private func cancel(home: String, waiterID: UUID) {
@@ -124,21 +149,40 @@ actor CodexNativeCredentialRefreshCoordinator {
         var state = current
         let previousWaiters = state.activeWaiters
         state.activeWaiters = [:]
+
+        if Self.isExitUnconfirmed(result) {
+            // The old child may still be alive. Keep the home quarantined, fail all
+            // current waiters, and let the registered observer release the reservation
+            // only after Foundation reports the actual process termination.
+            let queuedWaiters = state.queued
+            state.queued = []
+            state.isDraining = true
+            state.isQuarantined = true
+            let observer = state.exitObserver
+            state.exitObserver = nil
+            self.statesByHome[home] = state
+            if let observer {
+                let observationTask = Task {
+                    await observer()
+                    self.exitConfirmed(home: home, id: id)
+                }
+                guard var updated = self.statesByHome[home], updated.activeID == id else { return }
+                updated.exitObservationTask = observationTask
+                self.statesByHome[home] = updated
+            }
+            for waiter in previousWaiters.values {
+                waiter.resume(with: result)
+            }
+            for queued in queuedWaiters {
+                queued.continuation.resume(with: result)
+            }
+            return
+        }
+
         guard !state.queued.isEmpty else {
             self.statesByHome[home] = nil
             for waiter in previousWaiters.values {
                 waiter.resume(with: result)
-            }
-            return
-        }
-        if Self.isExitUnconfirmed(result) {
-            // The old child may still be alive: report explicitly instead of starting new I/O.
-            self.statesByHome[home] = nil
-            for waiter in previousWaiters.values {
-                waiter.resume(with: result)
-            }
-            for queued in state.queued {
-                queued.continuation.resume(with: result)
             }
             return
         }
@@ -167,10 +211,18 @@ actor CodexNativeCredentialRefreshCoordinator {
             activeTask: task,
             activeWaiters: newWaiters,
             isDraining: false,
-            queued: [])
+            queued: [],
+            isQuarantined: false,
+            exitObserver: nil,
+            exitObservationTask: nil)
         for waiter in previousWaiters.values {
             waiter.resume(with: result)
         }
+    }
+
+    private func exitConfirmed(home: String, id: UUID) {
+        guard let state = self.statesByHome[home], state.activeID == id, state.isQuarantined else { return }
+        self.statesByHome[home] = nil
     }
 
     private static func isExitUnconfirmed(_ result: Result<Void, any Error>) -> Bool {

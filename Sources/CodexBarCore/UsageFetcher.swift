@@ -891,6 +891,7 @@ private final class CodexRPCClient: @unchecked Sendable {
     private let stdin = RPCChildProcessInput()
     private let stdoutPipe = Pipe()
     private let stderrPipe = Pipe()
+    private let termination = ProcessTermination()
     private let stdoutLineStream: AsyncStream<Data>
     private let stdoutLineContinuation: AsyncStream<Data>.Continuation
     private var nextID = 1
@@ -933,6 +934,10 @@ private final class CodexRPCClient: @unchecked Sendable {
         self.process.standardInput = self.stdin.pipe
         self.process.standardOutput = self.stdoutPipe
         self.process.standardError = self.stderrPipe
+        let termination = self.termination
+        self.process.terminationHandler = { process in
+            termination.resolve(process.terminationStatus)
+        }
 
         if let message = CodexCLILaunchGate.shared.backgroundSkipMessage(binary: resolvedExec) {
             Self.log.warning("Codex RPC launch skipped after recent launch failure", metadata: ["binary": resolvedExec])
@@ -1038,6 +1043,13 @@ private final class CodexRPCClient: @unchecked Sendable {
             }
         }.value
         return !self.process.isRunning
+    }
+
+    /// Waits for Foundation's termination callback. This remains valid after the
+    /// bounded shutdown confirmation timed out, so a quarantined home can be released
+    /// only after the original process has actually exited.
+    func waitForExit() async {
+        _ = await self.termination.wait()
     }
 
     // MARK: - JSON-RPC helpers
@@ -1220,7 +1232,8 @@ public struct UsageFetcher: Sendable {
     /// selected managed-workspace header.
     func refreshNativeCodexCredentials() async throws {
         let home = CodexHomeScope.ambientHomeURL(env: self.environment).standardizedFileURL.path
-        try await CodexNativeCredentialRefreshCoordinator.shared.refresh(home: home) {
+        let coordinator = CodexNativeCredentialRefreshCoordinator.shared
+        try await coordinator.refresh(home: home) {
             let rpc = try CodexRPCClient(
                 arguments: self.codexArguments,
                 environment: self.environment,
@@ -1234,11 +1247,17 @@ public struct UsageFetcher: Sendable {
                 try await rpc.refreshAccount()
             } catch {
                 guard await rpc.shutdownAndConfirmExit() else {
+                    await coordinator.registerExitObserver(home: home) {
+                        await rpc.waitForExit()
+                    }
                     throw CodexCredentialRenewalError.previousProcessExitUnconfirmed
                 }
                 throw error
             }
             guard await rpc.shutdownAndConfirmExit() else {
+                await coordinator.registerExitObserver(home: home) {
+                    await rpc.waitForExit()
+                }
                 throw CodexCredentialRenewalError.previousProcessExitUnconfirmed
             }
         }

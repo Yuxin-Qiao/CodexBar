@@ -23,7 +23,8 @@ struct CodexOAuthTests {
             settings: nil,
             fetcher: UsageFetcher(),
             claudeFetcher: ClaudeUsageFetcher(browserDetection: browserDetection),
-            browserDetection: browserDetection)
+            browserDetection: browserDetection,
+            allowsNativeCodexCredentialRefresh: true)
     }
 
     @Test

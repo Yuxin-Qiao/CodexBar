@@ -320,7 +320,8 @@ struct CodexOAuthExpiryPipelineTests {
                 managedWorkspaceAccountID: managed ? "fixture-workspace" : nil)),
             fetcher: UsageFetcher(environment: env),
             claudeFetcher: ClaudeUsageFetcher(browserDetection: browserDetection),
-            browserDetection: browserDetection)
+            browserDetection: browserDetection,
+            allowsNativeCodexCredentialRefresh: true)
     }
 
     private static func response(
