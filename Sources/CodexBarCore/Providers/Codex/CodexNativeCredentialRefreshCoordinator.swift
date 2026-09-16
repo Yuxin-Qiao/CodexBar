@@ -10,14 +10,25 @@ import Foundation
 /// Explicit failure when a renewal generation ends without confirming its app-server
 /// child exited. The coordinator reports this to queued callers instead of starting
 /// new credential I/O while an old generation may still be alive.
-enum CodexCredentialRenewalError: Error, Sendable {
+enum CodexCredentialRenewalError: LocalizedError, Sendable {
     case previousProcessExitUnconfirmed
+    case processLockTimedOut
+
+    var errorDescription: String? {
+        switch self {
+        case .previousProcessExitUnconfirmed:
+            "Codex credential refresh is unavailable until the previous app-server exits."
+        case .processLockTimedOut:
+            "Codex credential refresh is busy in another process. Try again shortly."
+        }
+    }
 }
 
 /// Cross-process lease for the rotating native credential file. The in-process coordinator
 /// below coalesces callers within one app/CLI process, while this advisory lock serializes the
 /// desktop app and separate `codexbar usage` processes that share a `CODEX_HOME`.
 final class CodexNativeCredentialRefreshProcessLock: @unchecked Sendable {
+    private static let acquisitionTimeoutSeconds: TimeInterval = 15
     private let lock = NSLock()
     private var descriptor: Int32?
 
@@ -29,9 +40,14 @@ final class CodexNativeCredentialRefreshProcessLock: @unchecked Sendable {
         self.release()
     }
 
-    static func acquire(home: String) async throws -> Self {
+    static func acquire(
+        home: String,
+        timeoutSeconds: TimeInterval = CodexNativeCredentialRefreshProcessLock.acquisitionTimeoutSeconds)
+        async throws -> Self
+    {
         let homeURL = URL(fileURLWithPath: home, isDirectory: true).standardizedFileURL
         let lockURL = homeURL.appendingPathComponent(".codexbar-native-refresh.lock", isDirectory: false)
+        let deadline = Date().addingTimeInterval(max(0, timeoutSeconds))
         try FileManager.default.createDirectory(
             at: lockURL.deletingLastPathComponent(),
             withIntermediateDirectories: true)
@@ -57,6 +73,9 @@ final class CodexNativeCredentialRefreshProcessLock: @unchecked Sendable {
                 let errorNumber = errno
                 guard errorNumber == EINTR || errorNumber == EAGAIN || errorNumber == EWOULDBLOCK else {
                     throw POSIXError(POSIXErrorCode(rawValue: errorNumber) ?? .EIO)
+                }
+                guard Date() < deadline else {
+                    throw CodexCredentialRenewalError.processLockTimedOut
                 }
                 try await Task.sleep(for: .milliseconds(50))
             }
@@ -295,7 +314,12 @@ actor CodexNativeCredentialRefreshCoordinator {
     }
 
     private static func isExitUnconfirmed(_ result: Result<Void, any Error>) -> Bool {
-        guard case let .failure(error) = result else { return false }
-        return error is CodexCredentialRenewalError
+        guard case let .failure(error) = result,
+              let renewalError = error as? CodexCredentialRenewalError
+        else { return false }
+        if case .previousProcessExitUnconfirmed = renewalError {
+            return true
+        }
+        return false
     }
 }

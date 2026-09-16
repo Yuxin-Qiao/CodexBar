@@ -25,6 +25,27 @@ struct CodexNativeCredentialRefreshCoordinatorTests {
     }
 
     @Test
+    func `cross-process lock times out instead of waiting forever`() async throws {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("codexbar-native-refresh-lock-timeout-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let first = try await CodexNativeCredentialRefreshProcessLock.acquire(home: home.path)
+        defer { first.release() }
+        do {
+            _ = try await CodexNativeCredentialRefreshProcessLock.acquire(
+                home: home.path,
+                timeoutSeconds: 0.15)
+            Issue.record("A held process lock must not be acquired by a second owner")
+        } catch let error as CodexCredentialRenewalError {
+            guard case .processLockTimedOut = error else {
+                Issue.record("A held process lock must report a bounded timeout")
+                return
+            }
+        }
+    }
+
+    @Test
     func `canceling one waiter preserves shared renewal for another`() async throws {
         let coordinator = CodexNativeCredentialRefreshCoordinator()
         let gate = Gate()
