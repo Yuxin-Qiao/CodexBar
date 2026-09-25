@@ -83,6 +83,26 @@ struct SpendDashboardDailyLedgerTests {
     }
 
     @Test
+    func `long ledger ranges start collapsed to the newest days`() throws {
+        let input = Self.input(
+            id: "claude",
+            provider: .claude,
+            displayName: "Claude",
+            entries: [Self.entry(day: "2026-07-14", cost: 2, tokens: 20, requests: 2)],
+            totalTokens: 20)
+        let group = try #require(SpendDashboardModel.build(
+            inputs: [input], requestedDays: 90, now: Self.now, calendar: Self.calendar).groups.first)
+        let summaries = group.dailySummaries
+        #expect(summaries.count > 30)
+
+        let collapsed = spendDailyLedgerVisibleSummaries(summaries, showsAllRows: false, collapsedRowCount: 30)
+        #expect(collapsed.map(\.day) == summaries.suffix(30).reversed().map(\.day))
+
+        let expanded = spendDailyLedgerVisibleSummaries(summaries, showsAllRows: true, collapsedRowCount: 30)
+        #expect(expanded.map(\.day) == summaries.reversed().map(\.day))
+    }
+
+    @Test
     func `daily ledger date text follows the selected app locale`() {
         let day = Self.date(day: 16)
         let english = CodexBarLocalizationOverride.$appLanguage.withValue("en") {

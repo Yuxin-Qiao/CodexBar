@@ -315,7 +315,8 @@ final class DockIconController: NSObject {
     }
 
     private func ensureRegularPolicy(activate: Bool) {
-        if NSApp.activationPolicy() != .regular, NSApp.setActivationPolicy(.regular) {
+        // Runs on every window update; `activationPolicy()` is a synchronous LaunchServices round trip.
+        if !self.isManagingRegularPolicy, NSApp.activationPolicy() != .regular, NSApp.setActivationPolicy(.regular) {
             self.isManagingRegularPolicy = true
         }
         if activate {
