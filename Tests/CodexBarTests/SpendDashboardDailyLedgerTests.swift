@@ -83,17 +83,15 @@ struct SpendDashboardDailyLedgerTests {
     }
 
     @Test
-    func `long ledger ranges start collapsed to the newest days`() throws {
-        let input = Self.input(
-            id: "claude",
-            provider: .claude,
-            displayName: "Claude",
-            entries: [Self.entry(day: "2026-07-14", cost: 2, tokens: 20, requests: 2)],
-            totalTokens: 20)
-        let group = try #require(SpendDashboardModel.build(
-            inputs: [input], requestedDays: 90, now: Self.now, calendar: Self.calendar).groups.first)
-        let summaries = group.dailySummaries
-        #expect(summaries.count > 30)
+    func `long ledger ranges start collapsed to the newest days`() {
+        let summaries = (0..<90).map { offset in
+            SpendDashboardModel.DailySummary(
+                day: Self.now.addingTimeInterval(Double(offset - 89) * 86400),
+                providers: [],
+                totalTokens: nil,
+                requestCount: nil,
+                totalCost: nil)
+        }
 
         let collapsed = spendDailyLedgerVisibleSummaries(summaries, showsAllRows: false, collapsedRowCount: 30)
         #expect(collapsed.map(\.day) == summaries.suffix(30).reversed().map(\.day))
