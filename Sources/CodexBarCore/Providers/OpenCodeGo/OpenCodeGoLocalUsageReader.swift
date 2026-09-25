@@ -123,9 +123,45 @@ public struct OpenCodeGoLocalUsageReader: Sendable {
             guard createdMs > 0, cost >= 0, cost.isFinite else { continue }
             let requestCount = max(1, Int(sqlite3_column_int64(stmt, 2)))
             let model = sqlite3_column_text(stmt, 3).map { String(cString: $0) } ?? ""
-            rows.append(UsageRow(createdMs: createdMs, cost: cost, requestCount: requestCount, model: model))
+            rows.append(UsageRow(
+                createdMs: createdMs,
+                cost: cost,
+                requestCount: requestCount,
+                model: model,
+                tokens: Self.tokenCounts(stmt: stmt, firstColumn: 4)))
         }
         return rows
+    }
+
+    /// Reads the `hasTokens, input, output, reasoning, cacheRead, cacheWrite, total` column run.
+    /// OpenCode's `total` already includes reasoning and cache tokens; older rows omit it.
+    private static func tokenCounts(stmt: OpaquePointer?, firstColumn: Int32) -> TokenCounts? {
+        guard sqlite3_column_int(stmt, firstColumn) != 0 else { return nil }
+        func count(_ offset: Int32) -> Int? {
+            let column = firstColumn + offset
+            guard sqlite3_column_type(stmt, column) != SQLITE_NULL else { return nil }
+            return Int(sqlite3_column_int64(stmt, column))
+        }
+        let components = [count(1), count(2), count(3), count(4), count(5)]
+        guard components.allSatisfy({ ($0 ?? 0) >= 0 }) else { return nil }
+        let input = components[0] ?? 0
+        let output = components[1] ?? 0
+        let reasoning = components[2] ?? 0
+        let cacheRead = components[3] ?? 0
+        let cacheWrite = components[4] ?? 0
+        let total: Int? = if let explicitTotal = count(6) {
+            explicitTotal >= 0 ? explicitTotal : nil
+        } else {
+            TokenCounts.sum([input, output, reasoning, cacheRead, cacheWrite])
+        }
+        guard let total else { return nil }
+        return TokenCounts(
+            input: input,
+            output: output,
+            reasoning: reasoning,
+            cacheRead: cacheRead,
+            cacheWrite: cacheWrite,
+            total: total)
     }
 
     private var walSidecarsAreMissing: Bool {
@@ -162,12 +198,28 @@ public struct OpenCodeGoLocalUsageReader: Sendable {
             message: db.map { String(cString: sqlite3_errmsg($0)) } ?? "unknown error")
     }
 
+    private static func tokenColumnsSQL(_ data: String) -> String {
+        """
+        json_type(\(data), '$.tokens') = 'object' AS hasTokens,
+          CAST(json_extract(\(data), '$.tokens.input') AS INTEGER) AS inputTokens,
+          CAST(json_extract(\(data), '$.tokens.output') AS INTEGER) AS outputTokens,
+          CAST(json_extract(\(data), '$.tokens.reasoning') AS INTEGER) AS reasoningTokens,
+          CAST(json_extract(\(data), '$.tokens.cache.read') AS INTEGER) AS cacheReadTokens,
+          CAST(json_extract(\(data), '$.tokens.cache.write') AS INTEGER) AS cacheWriteTokens,
+          CAST(json_extract(\(data), '$.tokens.total') AS INTEGER) AS totalTokens
+        """
+    }
+
+    private static let tokenColumnNames =
+        "hasTokens, inputTokens, outputTokens, reasoningTokens, cacheReadTokens, cacheWriteTokens, totalTokens"
+
     private static let messageUsageSQL = """
         SELECT
           CAST(COALESCE(json_extract(data, '$.time.created'), time_created) AS INTEGER) AS createdMs,
           CAST(json_extract(data, '$.cost') AS REAL) AS cost,
           1 AS requestCount,
-          COALESCE(json_extract(data, '$.modelID'), '') AS modelID
+          COALESCE(json_extract(data, '$.modelID'), '') AS modelID,
+          \(Self.tokenColumnsSQL("data"))
         FROM message
         WHERE json_valid(data)
           AND json_extract(data, '$.providerID') = 'opencode-go'
@@ -182,7 +234,8 @@ public struct OpenCodeGoLocalUsageReader: Sendable {
             CAST(COALESCE(json_extract(data, '$.time.created'), time_created) AS INTEGER) AS createdMs,
             CAST(json_extract(data, '$.cost') AS REAL) AS cost,
             json_type(data, '$.cost') IN ('integer', 'real') AS hasCost,
-            COALESCE(json_extract(data, '$.modelID'), '') AS modelID
+            COALESCE(json_extract(data, '$.modelID'), '') AS modelID,
+            \(Self.tokenColumnsSQL("data"))
           FROM message
           WHERE json_valid(data)
             AND json_extract(data, '$.providerID') = 'opencode-go'
@@ -193,14 +246,15 @@ public struct OpenCodeGoLocalUsageReader: Sendable {
             AS createdMs,
           CAST(json_extract(p.data, '$.cost') AS REAL) AS cost,
           1 AS requestCount,
-          m.modelID AS modelID
+          m.modelID AS modelID,
+          \(Self.tokenColumnsSQL("p.data"))
         FROM part p
         JOIN provider_messages m ON m.messageID = p.message_id
         WHERE json_valid(p.data)
           AND json_extract(p.data, '$.type') = 'step-finish'
           AND json_type(p.data, '$.cost') IN ('integer', 'real')
         UNION ALL
-        SELECT createdMs, cost, 1 AS requestCount, modelID
+        SELECT createdMs, cost, 1 AS requestCount, modelID, \(Self.tokenColumnNames)
         FROM provider_messages m
         WHERE hasCost
           AND NOT EXISTS (
@@ -220,6 +274,60 @@ public struct OpenCodeGoLocalUsageReader: Sendable {
         let requestCount: Int
         /// The underlying model behind the `opencode-go` Zen proxy; empty when unattributed.
         let model: String
+        /// Nil when the row carries no readable `tokens` object.
+        let tokens: TokenCounts?
+    }
+
+    private struct TokenCounts {
+        static let zero = TokenCounts(input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 0)
+
+        let input: Int
+        let output: Int
+        let reasoning: Int
+        let cacheRead: Int
+        let cacheWrite: Int
+        let total: Int
+
+        static func sum(_ values: [Int]) -> Int? {
+            var result = 0
+            for value in values {
+                let addition = result.addingReportingOverflow(value)
+                guard !addition.overflow else { return nil }
+                result = addition.partialValue
+            }
+            return result
+        }
+
+        func adding(_ other: TokenCounts) -> TokenCounts? {
+            guard let input = Self.sum([self.input, other.input]),
+                  let output = Self.sum([self.output, other.output]),
+                  let reasoning = Self.sum([self.reasoning, other.reasoning]),
+                  let cacheRead = Self.sum([self.cacheRead, other.cacheRead]),
+                  let cacheWrite = Self.sum([self.cacheWrite, other.cacheWrite]),
+                  let total = Self.sum([self.total, other.total])
+            else { return nil }
+            return TokenCounts(
+                input: input,
+                output: output,
+                reasoning: reasoning,
+                cacheRead: cacheRead,
+                cacheWrite: cacheWrite,
+                total: total)
+        }
+    }
+
+    /// Per-model day bucket. `tokens` turns nil once any contributing row lacks token data, so a
+    /// partially known day is never reported as a complete total.
+    private struct DailyBucket {
+        var cost: Double = 0
+        var requestCount = 0
+        var tokens: TokenCounts? = .zero
+
+        mutating func add(_ row: UsageRow) {
+            self.cost += row.cost
+            self.requestCount += row.requestCount
+            self.tokens = self.tokens.flatMap { current in row.tokens.flatMap(current.adding) }
+        }
     }
 
     private struct SQLiteReadFailure: Error {
@@ -322,35 +430,47 @@ public struct OpenCodeGoLocalUsageReader: Sendable {
         }
         let sinceStartOfDay = calendar.startOfDay(for: since)
 
-        var totalsByModel: [String: [String: (cost: Double, requestCount: Int)]] = [:]
+        var totalsByModel: [String: [String: DailyBucket]] = [:]
         for row in rows {
             let date = Date(timeIntervalSince1970: TimeInterval(row.createdMs) / 1000)
             guard date >= sinceStartOfDay, date <= now else { continue }
             let key = CostUsageScanner.CostUsageDayRange.dayKey(from: date)
             let trimmedModel = row.model.trimmingCharacters(in: .whitespacesAndNewlines)
             let model = trimmedModel.isEmpty ? Self.unknownModelName : trimmedModel
-            totalsByModel[key, default: [:]][model, default: (0, 0)].cost += row.cost
-            totalsByModel[key, default: [:]][model, default: (0, 0)].requestCount += row.requestCount
+            totalsByModel[key, default: [:]][model, default: DailyBucket()].add(row)
         }
 
         return totalsByModel.keys.sorted().compactMap { key in
             guard let dayTotals = totalsByModel[key] else { return nil }
             let modelBreakdowns = dayTotals.keys.sorted().map { model in
-                let bucket = dayTotals[model] ?? (cost: 0, requestCount: 0)
+                let bucket = dayTotals[model] ?? DailyBucket()
                 return CostUsageDailyReport.ModelBreakdown(
                     modelName: model,
                     costUSD: bucket.cost,
-                    requestCount: bucket.requestCount)
+                    totalTokens: bucket.tokens?.total,
+                    requestCount: bucket.requestCount,
+                    inputTokens: bucket.tokens?.input,
+                    outputTokens: bucket.tokens?.output,
+                    cacheReadTokens: bucket.tokens?.cacheRead,
+                    cacheCreationTokens: bucket.tokens?.cacheWrite,
+                    reasoningTokens: bucket.tokens?.reasoning)
             }.sorted { ($0.costUSD ?? 0) > ($1.costUSD ?? 0) }
-            let totalCost = dayTotals.values.reduce(0) { $0 + $1.cost }
-            let totalRequests = dayTotals.values.reduce(0) { $0 + $1.requestCount }
+            var day = DailyBucket()
+            for bucket in dayTotals.values {
+                day.cost += bucket.cost
+                day.requestCount += bucket.requestCount
+                day.tokens = day.tokens.flatMap { current in bucket.tokens.flatMap(current.adding) }
+            }
             return CostUsageDailyReport.Entry(
                 date: key,
-                inputTokens: nil,
-                outputTokens: nil,
-                totalTokens: nil,
-                requestCount: totalRequests,
-                costUSD: totalCost,
+                inputTokens: day.tokens?.input,
+                outputTokens: day.tokens?.output,
+                cacheReadTokens: day.tokens?.cacheRead,
+                cacheCreationTokens: day.tokens?.cacheWrite,
+                reasoningTokens: day.tokens?.reasoning,
+                totalTokens: day.tokens?.total,
+                requestCount: day.requestCount,
+                costUSD: day.cost,
                 modelsUsed: dayTotals.keys.sorted(),
                 modelBreakdowns: modelBreakdowns)
         }
