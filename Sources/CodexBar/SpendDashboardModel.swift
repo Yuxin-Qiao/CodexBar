@@ -201,6 +201,19 @@ struct SpendDashboardModel: Equatable, Sendable {
             self.incompleteRequestCount > 0 || self.providers.contains(where: \.countsAreLowerBound)
         }
 
+        /// Totals sum only the providers that report the metric, so a mixed day is a floor.
+        var hasPartialTokens: Bool {
+            self.hasPartialCounts || Self.mixesKnownAndUnknown(self.providers.map(\.totalTokens))
+        }
+
+        var hasPartialRequests: Bool {
+            self.hasPartialCounts || Self.mixesKnownAndUnknown(self.providers.map(\.requestCount))
+        }
+
+        private static func mixesKnownAndUnknown(_ values: [Int?]) -> Bool {
+            values.contains { $0 != nil } && values.contains { $0 == nil }
+        }
+
         var id: Date {
             self.day
         }
@@ -257,6 +270,8 @@ struct SpendDashboardModel: Equatable, Sendable {
         let overflowModelCount: Int
         let displayedModels: [ModelRow]
         let selectedDay: Date?
+        /// Day shown by the hourly chart: the selected day, else the newest day with hourly spend.
+        let hourlyDay: Date?
         let hourlyPoints: [HourlyPoint]
         let hourlyChartDomain: ClosedRange<Date>?
         let timeZone: TimeZone
@@ -289,6 +304,7 @@ struct SpendDashboardModel: Equatable, Sendable {
             sessions: [SessionRow] = [],
             overflowModelCount: Int = 0,
             selectedDay: Date? = nil,
+            hourlyDay: Date? = nil,
             hourlyPoints: [HourlyPoint] = [],
             hourlyChartDomain: ClosedRange<Date>? = nil,
             timeZone: TimeZone = .current)
@@ -313,6 +329,7 @@ struct SpendDashboardModel: Equatable, Sendable {
             self.overflowModelCount = overflowModelCount
             self.displayedModels = Array(models.prefix(Self.modelRowDisplayLimit))
             self.selectedDay = selectedDay
+            self.hourlyDay = hourlyDay ?? selectedDay
             self.hourlyPoints = hourlyPoints
             self.hourlyChartDomain = hourlyChartDomain
             self.timeZone = timeZone
@@ -648,9 +665,10 @@ struct SpendDashboardModel: Equatable, Sendable {
         case (false, false): .unknown
         }
         let overflowCount = max(0, modelSummary.rows.count - CurrencyGroup.modelRowDisplayLimit)
+        let hourlyDay = selectedDay ?? Self.latestHourlyDay(summaries: summaries, bounds: bounds, calendar: calendar)
         let hourlyPoints = Self.hourlyPoints(
             summaries: summaries,
-            selectedDay: selectedDay,
+            selectedDay: hourlyDay,
             bounds: bounds,
             calendar: calendar)
         return CurrencyGroup(
@@ -673,10 +691,11 @@ struct SpendDashboardModel: Equatable, Sendable {
             sessions: Self.sessionRows(summaries: summaries, bounds: bounds, calendar: calendar),
             overflowModelCount: overflowCount,
             selectedDay: selectedDay,
+            hourlyDay: hourlyPoints.isEmpty ? nil : hourlyDay,
             hourlyPoints: hourlyPoints,
             hourlyChartDomain: Self.hourlyChartDomain(
                 points: hourlyPoints,
-                selectedDay: selectedDay,
+                selectedDay: hourlyDay,
                 calendar: calendar),
             timeZone: calendar.timeZone)
     }
@@ -1049,8 +1068,8 @@ struct SpendDashboardModel: Equatable, Sendable {
             result.append(DailySummary(
                 day: day,
                 providers: sortedRows,
-                totalTokens: Self.completeIntSum(providerRows.map(\.totalTokens)),
-                requestCount: Self.completeIntSum(providerRows.map(\.requestCount)),
+                totalTokens: Self.knownIntSum(providerRows.map(\.totalTokens)),
+                requestCount: Self.knownIntSum(providerRows.map(\.requestCount)),
                 totalCost: totalCost))
             guard let nextDay = calendar.date(byAdding: .day, value: 1, to: day) else { return [] }
             day = calendar.startOfDay(for: nextDay)
@@ -1551,6 +1570,21 @@ struct SpendDashboardModel: Equatable, Sendable {
             }
             return points
         }
+    }
+
+    /// Hourly bars stay readable only within one day, so an unselected range focuses the newest day with spend.
+    private static func latestHourlyDay(
+        summaries: [InputSummary],
+        bounds: ClosedRange<Date>,
+        calendar: Calendar) -> Date?
+    {
+        summaries
+            .filter { !$0.hasInvalidCostHistory }
+            .flatMap(\.input.snapshot.hourly)
+            .filter { (Self.validCost($0.costUSD) ?? 0) > 0 }
+            .map { calendar.startOfDay(for: $0.hour) }
+            .filter { bounds.contains($0) }
+            .max()
     }
 
     private static func hourlyChartDomain(

@@ -837,6 +837,11 @@ private struct SpendDashboardTrendPanel: View {
                 HStack(alignment: .center, spacing: 12) {
                     Text(self.activeSection.title)
                         .font(.headline)
+                    if self.activeSection == .hourly, let hourlyDay = self.group.hourlyDay {
+                        Text(SpendActivityDateFormatting.mediumDateString(hourlyDay, calendar: self.group.calendar))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     Spacer()
                     if self.availableSections.count > 1 {
                         Picker(L("Usage & Spend"), selection: self.normalizedSelection) {
@@ -1259,17 +1264,23 @@ private struct SpendDailyLedgerRow: View {
     }
 
     private var tokensText: String {
-        self.countText(self.summary.totalTokens, format: UsageFormatter.tokenCountString)
+        self.countText(
+            self.summary.totalTokens,
+            isPartial: self.summary.hasPartialTokens,
+            format: UsageFormatter.tokenCountString)
     }
 
     private var requestsText: String {
-        self.countText(self.summary.requestCount, format: codexBarLocalizedInteger)
+        self.countText(
+            self.summary.requestCount,
+            isPartial: self.summary.hasPartialRequests,
+            format: codexBarLocalizedInteger)
     }
 
-    private func countText(_ count: Int?, format: (Int) -> String) -> String {
+    private func countText(_ count: Int?, isPartial: Bool, format: (Int) -> String) -> String {
         guard let count else { return "—" }
         let text = format(count)
-        return self.summary.hasPartialCounts ? "≥\(text)" : text
+        return isPartial ? "≥\(text)" : text
     }
 
     private var accessibilityLabel: String {

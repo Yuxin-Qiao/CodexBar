@@ -34,6 +34,47 @@ struct SpendDashboardDailyLedgerTests {
     }
 
     @Test
+    func `cost only providers keep known token and request counts as a floor`() throws {
+        let claude = Self.input(
+            id: "claude",
+            provider: .claude,
+            displayName: "Claude",
+            entries: [Self.entry(day: "2026-07-16", cost: 2, tokens: 20, requests: 2)],
+            totalTokens: 20)
+        let cursor = SpendDashboardModel.ProviderInput(
+            provider: .cursor,
+            displayName: "Cursor",
+            snapshot: CostUsageTokenSnapshot(
+                sessionTokens: nil,
+                sessionCostUSD: nil,
+                last30DaysTokens: nil,
+                last30DaysCostUSD: 3,
+                currencyCode: "USD",
+                historyDays: 3,
+                daily: [CostUsageDailyReport.Entry(
+                    date: "2026-07-16",
+                    inputTokens: nil,
+                    outputTokens: nil,
+                    totalTokens: nil,
+                    costUSD: 3,
+                    modelsUsed: nil,
+                    modelBreakdowns: nil)],
+                updatedAt: Self.now))
+
+        let mixed = try #require(Self.group(inputs: [claude, cursor])?.dailySummaries.last)
+        #expect(mixed.totalCost == 5)
+        #expect(mixed.totalTokens == 20)
+        #expect(mixed.requestCount == 2)
+        #expect(mixed.hasPartialTokens)
+        #expect(mixed.hasPartialRequests)
+
+        let alone = try #require(Self.group(inputs: [claude])?.dailySummaries.last)
+        #expect(alone.totalTokens == 20)
+        #expect(!alone.hasPartialTokens)
+        #expect(!alone.hasPartialRequests)
+    }
+
+    @Test
     func `unpriced requests with zero tokens remain unknown spend`() throws {
         let input = Self.input(
             id: "antigravity",
