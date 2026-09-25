@@ -1207,7 +1207,7 @@ extension CostUsageFetcherTests {
                 [
                     "type": "session_meta",
                     "timestamp": env.isoString(for: day),
-                    "payload": ["session_id": "first-session"],
+                    "payload": ["session_id": "first-session", "cwd": "/Users/example/Projects/alpha-app"],
                 ],
                 [
                     "type": "event_msg",
@@ -1284,6 +1284,9 @@ extension CostUsageFetcherTests {
         #expect(first.requestCount == nil)
         #expect(first.modelBreakdowns.map(\.modelName) == ["gpt-5.4"])
         #expect(first.costUSD != nil)
+        #expect(first.projectPath == "/Users/example/Projects/alpha-app")
+        let second = try #require(snapshot.sessions.first(where: { $0.sessionID == "second-session" }))
+        #expect(second.projectPath == nil)
 
         let cache = CostUsageStoreAccess.read(cacheRoot: env.cacheRoot)
         let range = CostUsageScanner.CostUsageDayRange(since: day, until: day)

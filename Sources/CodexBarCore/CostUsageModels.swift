@@ -125,6 +125,8 @@ public struct CostUsageSessionBreakdown: Sendable, Equatable, Identifiable {
     public let requestCount: Int?
     public let costUSD: Double?
     public let modelBreakdowns: [CostUsageDailyReport.ModelBreakdown]
+    public let title: String?
+    public let projectPath: String?
 
     public var id: String {
         self.sessionID
@@ -140,9 +142,13 @@ public struct CostUsageSessionBreakdown: Sendable, Equatable, Identifiable {
         totalTokens: Int?,
         requestCount: Int?,
         costUSD: Double?,
-        modelBreakdowns: [CostUsageDailyReport.ModelBreakdown])
+        modelBreakdowns: [CostUsageDailyReport.ModelBreakdown],
+        title: String? = nil,
+        projectPath: String? = nil)
     {
         self.sessionID = sessionID
+        self.title = title
+        self.projectPath = projectPath
         self.lastActivity = lastActivity
         self.inputTokens = inputTokens
         self.cachedInputTokens = cachedInputTokens

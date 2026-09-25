@@ -75,7 +75,9 @@ extension CostUsageScanner {
                 totalTokens: summary?.totalTokens,
                 requestCount: requestCounts.isEmpty ? nil : requestCounts.reduce(0, +),
                 costUSD: summary?.totalCostUSD,
-                modelBreakdowns: Self.codexProjectModelBreakdowns(from: report.data) ?? [])
+                modelBreakdowns: Self.codexProjectModelBreakdowns(from: report.data) ?? [],
+                title: file.usage.codexSession?.title,
+                projectPath: file.usage.projectPath ?? file.usage.codexSession?.cwd)
         }
         .sorted { lhs, rhs in
             if lhs.lastActivity != rhs.lastActivity {

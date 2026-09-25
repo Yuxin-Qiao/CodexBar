@@ -330,6 +330,27 @@ struct SpendDashboardModel: Equatable, Sendable {
         let totalTokens: Int?
         let totalCost: Double?
         let modelName: String?
+        var title: String?
+        var projectName: String?
+
+        /// Most specific identity available: session title, then project folder, then source name.
+        var headline: String {
+            self.title ?? self.projectName ?? self.displayName
+        }
+
+        var contextLabels: [String] {
+            var labels: [String] = []
+            if self.title != nil, let projectName = self.projectName {
+                labels.append(projectName)
+            }
+            if self.headline != self.displayName {
+                labels.append(self.displayName)
+            }
+            if let modelName = self.modelName {
+                labels.append(modelName)
+            }
+            return labels
+        }
     }
 
     struct HourlyPoint: Identifiable, Equatable, Sendable {
@@ -1452,7 +1473,9 @@ struct SpendDashboardModel: Equatable, Sendable {
                     lastActivity: session.lastActivity,
                     totalTokens: session.totalTokens,
                     totalCost: session.costUSD.map { $0 * summary.costMultiplier },
-                    modelName: modelName)
+                    modelName: modelName,
+                    title: Self.nonEmptyTrimmed(session.title),
+                    projectName: Self.sessionProjectName(path: session.projectPath))
             }
         }
         .sorted { lhs, rhs in
@@ -1462,6 +1485,18 @@ struct SpendDashboardModel: Equatable, Sendable {
             return lhs.id < rhs.id
         }
         return Array(rows.prefix(12))
+    }
+
+    private static func sessionProjectName(path: String?) -> String? {
+        guard let path = self.nonEmptyTrimmed(path) else { return nil }
+        return self.nonEmptyTrimmed(URL(fileURLWithPath: path, isDirectory: true).lastPathComponent)
+    }
+
+    private static func nonEmptyTrimmed(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+            return nil
+        }
+        return trimmed
     }
 
     private static func hourlyPoints(

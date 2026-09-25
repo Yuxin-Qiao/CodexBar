@@ -337,6 +337,18 @@ enum SpendActivityDateFormatting {
         formatter.timeStyle = .none
         return formatter.string(from: date)
     }
+
+    static func mediumDateTimeString(_ date: Date, calendar: Calendar? = nil, locale: Locale? = nil) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = locale ?? codexBarLocalizedResourceLocale()
+        formatter.calendar = calendar ?? Calendar.current
+        if let calendar {
+            formatter.timeZone = calendar.timeZone
+        }
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
 }
 
 enum SpendActivityAccessibility {

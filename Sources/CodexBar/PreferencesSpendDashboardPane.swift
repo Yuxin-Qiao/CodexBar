@@ -1289,16 +1289,18 @@ private struct SpendSessionRows: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(self.group.sessions.enumerated()), id: \.element.id) { index, row in
-                let subtitle = row.modelName ?? SpendActivityDateFormatting.mediumDateString(row.lastActivity)
+                let subtitle = (row.contextLabels + [
+                    SpendActivityDateFormatting.mediumDateTimeString(row.lastActivity),
+                ]).joined(separator: " · ")
                 if index > 0 {
                     Divider()
                 }
                 HStack(spacing: 10) {
                     SpendProviderIcon(provider: row.provider, sourceKind: .native)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(row.displayName)
+                        Text(row.headline)
                             .lineLimit(1)
-                            .help(row.displayName)
+                            .help(row.headline)
                         Text(subtitle)
                             .font(.caption)
                             .foregroundStyle(.secondary)
