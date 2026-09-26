@@ -202,9 +202,6 @@ extension UsageStore {
             }
             self.clearSpendDashboardTokenSnapshot(for: provider)
             self.spendDashboardTokenFailedTriggers[provider.instanceID] = trigger
-            self.tokenCostLogger.error(
-                "Spend Dashboard cost refresh failed provider=\(provider.rawValue) "
-                    + "error=\(error.localizedDescription)")
         }
     }
 

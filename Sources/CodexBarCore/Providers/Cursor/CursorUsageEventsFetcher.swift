@@ -35,11 +35,6 @@ struct CursorUsageEventsPage: Decodable, Sendable {
         }
     }
 
-    init(totalUsageEventsCount: Int?, usageEventsDisplay: [CursorUsageEvent]) {
-        self.totalUsageEventsCount = totalUsageEventsCount
-        self.usageEventsDisplay = usageEventsDisplay
-    }
-
     init(from decoder: Decoder) throws {
         // Empty queries omit both fields; empty terminal pages retain the query's total count.
         // Inspect every key so error envelopes cannot masquerade as confirmed empty usage.
