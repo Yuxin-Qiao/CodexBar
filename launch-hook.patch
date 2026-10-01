@@ -1,0 +1,29 @@
+diff --git a/Sources/CodexBar/CodexbarApp.swift b/Sources/CodexBar/CodexbarApp.swift
+index 2ac82fb88..23849331e 100644
+--- a/Sources/CodexBar/CodexbarApp.swift
++++ b/Sources/CodexBar/CodexbarApp.swift
+@@ -27,6 +27,7 @@ enum CodexBarEntryPoint {
+             exit(CodexBarCoreResourceSmoke.run())
+         }
+         #if DEBUG
++        if SpendProjectNativeProof.runIfRequested() { return }
+         if MenuBarLayoutNativeProof.runIfRequested() {
+             return
+         }
+diff --git a/Sources/CodexBar/PreferencesSpendDashboardPane.swift b/Sources/CodexBar/PreferencesSpendDashboardPane.swift
+index 097aacc4b..529e6e94a 100644
+--- a/Sources/CodexBar/PreferencesSpendDashboardPane.swift
++++ b/Sources/CodexBar/PreferencesSpendDashboardPane.swift
+@@ -1609,3 +1609,12 @@ func spendDashboardHistoryCaption(
+     parts.append(spendDashboardCoverageText(covered: group.coveredDayCount, requested: requestedDays))
+     return parts.joined(separator: " · ")
+ }
++
++#if DEBUG
++@MainActor
++func spendProjectNativeProofPanel(
++    group: SpendDashboardModel.CurrencyGroup, hidePersonalInfo: Bool) -> some View
++{
++    SpendDashboardDetailPanel(group: group, hidePersonalInfo: hidePersonalInfo, selection: .constant(.projects))
++}
++#endif

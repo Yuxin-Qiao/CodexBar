@@ -1,0 +1,39 @@
+{
+  "allNamesAndPathsAliasedAfterAggregation": true,
+  "allUsageAndMoneyWithheld": true,
+  "dataSource": "Four unchanged actual rollout files and copied saved Codex project metadata",
+  "head": "f5fcf05d6e78972c2b17409fec63b047a0fc44c2",
+  "localScope": "30 days, selected four real sessions only; not the full account total",
+  "pricingNetworkRefresh": false,
+  "projectRows": [
+    {
+      "cost": null,
+      "name": "Project 3",
+      "path": "/redacted/location-1/workspace",
+      "tokens": null
+    },
+    {
+      "cost": null,
+      "name": "Project 2",
+      "path": "/redacted/location-2/workspace",
+      "tokens": null
+    },
+    {
+      "cost": null,
+      "name": "Project 1",
+      "path": "/redacted/location-3/workspace",
+      "tokens": null
+    },
+    {
+      "cost": null,
+      "name": "Project 2",
+      "path": "/redacted/location-4/workspace",
+      "tokens": null
+    }
+  ],
+  "providerStartup": false,
+  "sameLabelDistinctPaths": true,
+  "savedLabelResolvedBeforeRedaction": true,
+  "scanHistoryComplete": true,
+  "windowUses": "unchanged production SpendDashboardDetailPanel and SpendProjectRows"
+}
