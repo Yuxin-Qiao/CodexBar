@@ -182,7 +182,7 @@ extension UsageStore {
         }
         return try await withThrowingTaskGroup(of: CostUsageTokenResult.self) { group in
             group.addTask(priority: .utility) {
-                try await fetcher.loadTokenResult(
+                let result = try await fetcher.loadTokenResult(
                     provider: provider,
                     environment: environment,
                     now: now,
@@ -197,6 +197,20 @@ extension UsageStore {
                     bypassScannerDebounce: true,
                     calendar: self.settings.costUsageBucketCalendar,
                     reportContext: reportContext)
+                if provider == .codex, reportContext == .regular,
+                   !result.snapshot.historyCoverageIsEstablished,
+                   let checkpoint = await fetcher.loadCodexTokenCheckpoint(
+                       now: now,
+                       codexHomePath: codexHomePath,
+                       historyDays: historyDays,
+                       includePiSessions: effectiveIncludePiSessions,
+                       calendar: self.settings.costUsageBucketCalendar,
+                       environment: environment)
+                {
+                    try Task.checkCancellation()
+                    return checkpoint
+                }
+                return result
             }
             group.addTask {
                 try await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
@@ -251,7 +265,7 @@ extension UsageStore {
 
     func retainsEstablishedTokenHistory(_ snapshot: CostUsageTokenSnapshot, for provider: UsageProvider) -> Bool {
         // Provider-specific by design: bounded Codex and partial Antigravity scans retain complete same-scope history.
-        if (provider == .codex && !snapshot.historyCoverageIsEstablished)
+        if (provider == .codex && !snapshot.historyIsFullyScanned)
             || (provider == .antigravity && snapshot.historyScanIsPartial),
             self.tokenSnapshotPublicationForCurrentProviderConfig(for: provider)?
                 .snapshot?.historyCoverageIsEstablished == true
@@ -266,7 +280,12 @@ extension UsageStore {
         for provider: UsageProvider,
         accounting: PiSnapshotAccounting? = nil)
     {
-        if self.retainsEstablishedTokenHistory(snapshot, for: provider) { return }
+        if self.retainsEstablishedTokenHistory(snapshot, for: provider) {
+            if provider == .codex, let checkpoint = self.codexCheckpointPublication(snapshot, accounting: accounting) {
+                self.publishTokenSnapshotState(checkpoint.snapshot, for: provider, accounting: checkpoint.accounting)
+            }
+            return
+        }
         self.publishTokenSnapshotState(snapshot, for: provider, accounting: accounting)
     }
 

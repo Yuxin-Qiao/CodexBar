@@ -211,6 +211,29 @@ public struct CostUsageFetcher: Sendable {
             scannerOptions: self.scannerOptions)
     }
 
+    /// Foreground publication may read advancing aggregates without changing ordinary
+    /// cache hydration's preserved-report contract or declaring discovery complete.
+    package func loadCodexTokenCheckpoint(
+        now: Date = Date(),
+        codexHomePath: String?,
+        historyDays: Int,
+        includePiSessions: Bool,
+        calendar: Calendar,
+        environment: [String: String]) async -> CostUsageTokenResult?
+    {
+        await Self.loadCachedCodexTokenSnapshotResult(
+            now: now,
+            codexHomePath: codexHomePath,
+            historyDays: historyDays,
+            allowScopedCodexHome: true,
+            includePiSessions: includePiSessions,
+            includeProjectAndSessionBreakdowns: false,
+            preferCurrentCache: true,
+            scannerOptions: self.scannerOptions(calendar: calendar),
+            environment: environment)
+            .map { CostUsageTokenResult(snapshot: $0.snapshot, accounting: $0.accounting) }
+    }
+
     public func loadTokenSnapshot(
         provider: UsageProvider,
         environment: [String: String] = ProcessInfo.processInfo.environment,
@@ -1291,6 +1314,7 @@ public struct CostUsageFetcher: Sendable {
         includePiSessions: Bool = true,
         includeProjectAndSessionBreakdowns: Bool = true,
         requireCompleteHistory: Bool = false,
+        preferCurrentCache: Bool = false,
         scannerOptions overrideScannerOptions: CostUsageScanner.Options? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment,
         piScannerOptions: PiSessionCostScanner.Options? = nil) async
@@ -1339,7 +1363,7 @@ public struct CostUsageFetcher: Sendable {
             // Final catch-up publication must not fall back to the report from before a new pending scan.
             guard !requireCompleteHistory || nativeHistoryCoverageIsEstablished else { return nil }
 
-            if !nativeHistoryCoverageIsEstablished,
+            if !preferCurrentCache, !nativeHistoryCoverageIsEstablished,
                let previous = cache.previousReport(
                    range: range,
                    rootsFingerprint: rootsFingerprint)
@@ -1397,6 +1421,7 @@ public struct CostUsageFetcher: Sendable {
                 calendar: options.calendar,
                 historyCoverageIsEstablished: nativeHistoryCoverageIsEstablished
                     || staleSnapshotUpdatedAt != nil,
+                historyScanIsPartial: preferCurrentCache && !nativeHistoryCoverageIsEstablished,
                 costProvenance: .listPriceEstimate,
                 projects: Self.mergedProjectBreakdowns(projects),
                 sessions: sessions,
@@ -1460,6 +1485,7 @@ public struct CostUsageFetcher: Sendable {
                     historyDays: clampedHistoryDays,
                     calendar: options.calendar,
                     historyCoverageIsEstablished: displayedHistoryCoverageIsEstablished,
+                    historyScanIsPartial: preferCurrentCache && !displayedHistoryCoverageIsEstablished,
                     costProvenance: .listPriceEstimate,
                     projects: Self.mergedProjectBreakdowns(projects),
                     sessions: sessions,
