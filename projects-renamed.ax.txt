@@ -2,18 +2,18 @@ Window: "CodexBar — Project identity runtime proof", App: CodexBar Project Pro
 0 标准窗口 CodexBar — Project identity runtime proof, Secondary Actions: Raise
 	1 滚动区
 		2 text Usage & Spend · Projects Runtime proof · PR #4172 · anonymized local evidence Names and paths aliased after aggregation. Usage and money withheld.
-		3 转换 Show saved project rename, Value: off, ID: proof-show-rename
+		3 转换 Show saved project rename, Value: on, ID: proof-show-rename
 		4 转换 隐藏个人信息, Value: off, ID: proof-hide-personal-info
 		5 Description: 用量与支出, ID: spend-dashboard-detail-picker
 			6 单选按钮 Description: 提供商, Value: 0
 			7 单选按钮 Description: 项目, Value: 1
 		8 文本 #1
 		9 图像 Description: 移动, ID: folder
-		10 text Help: /redacted/location-1/workspace, Value: Project 3 — Codex Project 2 #2
+		10 text Help: /redacted/location-1/workspace, Value: Project 3 (renamed) — Codex Project 2 #2
 		11 图像 Description: 移动, ID: folder
 		12 text Codex — /redacted/location-2/workspace #3
 		13 图像 Description: 移动, ID: folder
-		14 text Help: /redacted/location-3/workspace, Value: Project 1 — Codex Project 2 #4
+		14 text Help: /redacted/location-3/workspace, Value: Project 1 (renamed) — Codex Project 2 #4
 		15 图像 Description: 移动, ID: folder
 		16 text Codex — /redacted/location-4/workspace
 	17 关闭按钮

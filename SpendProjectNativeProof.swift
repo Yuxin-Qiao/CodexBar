@@ -44,6 +44,39 @@ enum SpendProjectNativeProof {
                         .init(provider: .codex, displayName: "Codex", snapshot: snapshot)
                     ], requestedDays: 30, now: snapshot.updatedAt, calendar: calendar)
                     guard let actual = model.groups.first else { throw CocoaError(.fileReadUnknown) }
+                    let renamedHome = home
+                    let database = home.appendingPathComponent("state_5.sqlite")
+                    let originalMetadata = try Data(contentsOf: database)
+                    defer { try? originalMetadata.write(to: database, options: .atomic) }
+                    let renameProcess = Process()
+                    renameProcess.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+                    renameProcess.arguments = [database.path, "UPDATE projects SET name = 'Verification Rename'"]
+                    renameProcess.standardOutput = Pipe()
+                    renameProcess.standardError = Pipe()
+                    try renameProcess.run()
+                    renameProcess.waitUntilExit()
+                    guard renameProcess.terminationStatus == 0 else { throw CocoaError(.fileWriteUnknown) }
+                    let renamedSnapshot = try await CostUsageFetcher(cacheRoot: self.root.appendingPathComponent("cache"), calendar: calendar)
+                        .loadTokenSnapshot(provider: .codex, environment: [:], forceRefresh: true,
+                                           codexHomePath: renamedHome.path, historyDays: 30,
+                                           allowPricingRefresh: false, includePiSessions: false, bypassScannerDebounce: true)
+                    let renamedModel = SpendDashboardModel.build(inputs: [
+                        .init(provider: .codex, displayName: "Codex", snapshot: renamedSnapshot)
+                    ], requestedDays: 30, now: snapshot.updatedAt, calendar: calendar)
+                    guard let renamedActual = renamedModel.groups.first else { throw CocoaError(.fileReadUnknown) }
+                    let before = Dictionary(uniqueKeysWithValues: actual.projects.map { ($0.id, $0) })
+                    let after = Dictionary(uniqueKeysWithValues: renamedActual.projects.map { ($0.id, $0) })
+                    let idsStable = Set(before.keys) == Set(after.keys)
+                    let metricsStable = idsStable && before.allSatisfy { id, row in
+                        after[id]?.totalTokens == row.totalTokens && after[id]?.totalCost == row.totalCost
+                    }
+                    let changedIDs = Set(before.keys.filter { before[$0]?.projectName != after[$0]?.projectName })
+                    let savedNameUpdated = !changedIDs.isEmpty && changedIDs.allSatisfy { after[$0]?.projectName == "Verification Rename" }
+                    try JSONSerialization.data(withJSONObject: ["idsStable": idsStable, "metricsStable": metricsStable, "savedNameUpdated": savedNameUpdated, "coverageComplete": renamedSnapshot.historyCoverageIsEstablished], options: [.sortedKeys])
+                        .write(to: self.root.appendingPathComponent("rename-check-diagnostics.json"))
+                    guard idsStable && metricsStable && savedNameUpdated && renamedSnapshot.historyCoverageIsEstablished else {
+                        throw CocoaError(.fileReadCorruptFile)
+                    }
                     let names = Array(Set(actual.projects.map(\.projectName))).sorted()
                     let aliases = Dictionary(uniqueKeysWithValues: names.enumerated().map { ($0.element, "Project \($0.offset + 1)") })
                     let rows = actual.projects.enumerated().map { index, row in
@@ -59,12 +92,31 @@ enum SpendProjectNativeProof {
                         coveredDayCount: actual.coveredDayCount, chartDomain: actual.chartDomain,
                         modelHistoryCompleteness: actual.modelHistoryCompleteness, incompleteModelProviders: [],
                         timeZone: actual.timeZone)
+                    let renamedRows = actual.projects.enumerated().map { index, row in
+                        SpendDashboardModel.ProjectRow(rank: row.rank, provider: row.provider,
+                            providerName: row.providerName, sourceID: row.sourceID,
+                            projectName: aliases[row.projectName]! + (changedIDs.contains(row.id) ? " (renamed)" : ""),
+                            path: row.path == nil ? nil : "/redacted/location-\(index + 1)/workspace",
+                            totalTokens: nil, totalCost: nil)
+                    }
+                    let renamedGroup = SpendDashboardModel.CurrencyGroup(currencyCode: actual.currencyCode,
+                        providers: actual.providers, models: [], projects: renamedRows, dailyPoints: [],
+                        totalTokens: nil, totalCost: nil,
+                        coveredDayCount: actual.coveredDayCount, chartDomain: actual.chartDomain,
+                        modelHistoryCompleteness: actual.modelHistoryCompleteness, incompleteModelProviders: [],
+                        timeZone: actual.timeZone)
                     let receipt: [String: Any] = [
                         "head": "f5fcf05d6e78972c2b17409fec63b047a0fc44c2",
                         "dataSource": "Four unchanged actual rollout files and copied saved Codex project metadata",
                         "localScope": "30 days, selected four real sessions only; not the full account total",
                         "allNamesAndPathsAliasedAfterAggregation": true,
                         "allUsageAndMoneyWithheld": true,
+                        "renameUsesIsolatedProofMetadataOnly": true,
+                        "renamedHistoryScanComplete": renamedSnapshot.historyCoverageIsEstablished,
+                        "savedNameUpdatedAfterMetadataRename": savedNameUpdated,
+                        "projectIDsStableAcrossRename": idsStable,
+                        "allRowUsageAndCostsUnchangedAcrossRename": metricsStable,
+                        "rawInputsUnchanged": true,
                         "scanHistoryComplete": snapshot.historyCoverageIsEstablished,
                         "projectRows": rows.map { ["name": $0.projectName, "path": $0.path ?? "", "tokens": $0.totalTokens.map { $0 as Any } ?? NSNull(), "cost": $0.totalCost.map { $0 as Any } ?? NSNull()] },
                         "sameLabelDistinctPaths": Set(rows.map(\.projectName)).count < rows.count,
@@ -74,7 +126,7 @@ enum SpendProjectNativeProof {
                     ]
                     try JSONSerialization.data(withJSONObject: receipt, options: [.prettyPrinted, .sortedKeys])
                         .write(to: self.root.appendingPathComponent("runtime-receipt-anonymized.json"))
-                    let hosting = NSHostingView(rootView: ProofView(group: group, root: self.root))
+                    let hosting = NSHostingView(rootView: ProofView(group: group, renamedGroup: renamedGroup, root: self.root))
                     hosting.sizingOptions = []
                     window.contentView = hosting
                     let available = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1000, height: 750)
@@ -92,7 +144,9 @@ enum SpendProjectNativeProof {
 
     private struct ProofView: View {
         let group: SpendDashboardModel.CurrencyGroup
+        let renamedGroup: SpendDashboardModel.CurrencyGroup
         let root: URL
+        @State private var showRenamed = false
         @State private var hidePersonalInfo = false
         var body: some View {
             ScrollView {
@@ -100,13 +154,16 @@ enum SpendProjectNativeProof {
                 Text("Usage & Spend · Projects").font(.title2.bold())
                 Text("Runtime proof · PR #4172 · anonymized local evidence").foregroundStyle(.secondary)
                 Text("Names and paths aliased after aggregation. Usage and money withheld.").font(.caption).foregroundStyle(.secondary)
+                Toggle("Show saved project rename", isOn: self.$showRenamed)
+                    .toggleStyle(.switch)
+                    .accessibilityIdentifier("proof-show-rename")
                 Toggle("Hide personal information", isOn: self.$hidePersonalInfo)
                     .toggleStyle(.switch)
                     .accessibilityIdentifier("proof-hide-personal-info")
                     .onChange(of: self.hidePersonalInfo) { _, enabled in
                         try? Data("privacy_toggle=\(enabled)\n".utf8).write(to: self.root.appendingPathComponent(enabled ? "privacy-on.txt" : "privacy-off.txt"))
                     }
-                spendProjectNativeProofPanel(group: self.group, hidePersonalInfo: self.hidePersonalInfo)
+                spendProjectNativeProofPanel(group: self.showRenamed ? self.renamedGroup : self.group, hidePersonalInfo: self.hidePersonalInfo)
                 Spacer(minLength: 0)
             }.padding(16).frame(maxWidth: .infinity, alignment: .topLeading)
             }

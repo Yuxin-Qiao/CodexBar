@@ -8,5 +8,12 @@
   "restoredAccessibilityMatchesInitial": true,
   "allUsageAndMoneyWithheld": true,
   "noSourceLogsCredentialsOrMappingPublished": true,
-  "anonymizationAppliedAfterProductionAggregation": true
+  "anonymizationAppliedAfterProductionAggregation": true,
+  "projectIDsStableAcrossRename": true,
+  "allRowUsageAndCostsUnchangedAcrossRename": true,
+  "savedNameUpdatedAfterMetadataRename": true,
+  "renamedHistoryScanComplete": true,
+  "restoredAccessibilityComparisonScope": "project identities and paths; native window decoration excluded",
+  "proofMetadataRestoredAfterRename": true,
+  "inputLogsUnmodified": true
 }

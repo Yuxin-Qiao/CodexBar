@@ -1,10 +1,12 @@
 {
   "allNamesAndPathsAliasedAfterAggregation": true,
+  "allRowUsageAndCostsUnchangedAcrossRename": true,
   "allUsageAndMoneyWithheld": true,
   "dataSource": "Four unchanged actual rollout files and copied saved Codex project metadata",
   "head": "f5fcf05d6e78972c2b17409fec63b047a0fc44c2",
   "localScope": "30 days, selected four real sessions only; not the full account total",
   "pricingNetworkRefresh": false,
+  "projectIDsStableAcrossRename": true,
   "projectRows": [
     {
       "cost": null,
@@ -32,8 +34,12 @@
     }
   ],
   "providerStartup": false,
+  "rawInputsUnchanged": true,
+  "renamedHistoryScanComplete": true,
+  "renameUsesIsolatedProofMetadataOnly": true,
   "sameLabelDistinctPaths": true,
   "savedLabelResolvedBeforeRedaction": true,
+  "savedNameUpdatedAfterMetadataRename": true,
   "scanHistoryComplete": true,
   "windowUses": "unchanged production SpendDashboardDetailPanel and SpendProjectRows"
 }
