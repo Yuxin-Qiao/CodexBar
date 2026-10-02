@@ -6,6 +6,7 @@ extension UsageStore {
         _ snapshot: CostUsageTokenSnapshot,
         accounting: PiSnapshotAccounting?) -> CostUsageTokenResult?
     {
+        // Provider-specific by design: only Codex has a preserved report plus advancing bounded discovery checkpoints.
         guard let previous = self.tokenSnapshotPublicationForCurrentProviderConfig(for: .codex),
               let established = previous.snapshot,
               previous.accounting?.scope == accounting?.scope,

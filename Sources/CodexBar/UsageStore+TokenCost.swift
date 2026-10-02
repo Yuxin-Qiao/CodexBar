@@ -197,6 +197,7 @@ extension UsageStore {
                     bypassScannerDebounce: true,
                     calendar: self.settings.costUsageBucketCalendar,
                     reportContext: reportContext)
+                // Provider-specific by design: Codex discovery preserves old reports while its daily cache advances.
                 if provider == .codex, reportContext == .regular,
                    !result.snapshot.historyCoverageIsEstablished,
                    let checkpoint = await fetcher.loadCodexTokenCheckpoint(
@@ -281,6 +282,7 @@ extension UsageStore {
         accounting: PiSnapshotAccounting? = nil)
     {
         if self.retainsEstablishedTokenHistory(snapshot, for: provider) {
+            // Provider-specific by design: only Codex exposes an in-scope monotonic daily checkpoint during discovery.
             if provider == .codex, let checkpoint = self.codexCheckpointPublication(snapshot, accounting: accounting) {
                 self.publishTokenSnapshotState(checkpoint.snapshot, for: provider, accounting: checkpoint.accounting)
             }
