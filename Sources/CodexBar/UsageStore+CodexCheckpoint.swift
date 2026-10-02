@@ -16,10 +16,13 @@ extension UsageStore {
         switch (previous.accounting, accounting) {
         case let (.includesPi(oldScope, native)?, .includesPi(newScope, checkpoint)?):
             guard oldScope == newScope else { return nil }
+            let nextNative = checkpoint.historyIsFullyScanned
+                ? checkpoint
+                : native.mergingMonotonicCheckpoint(
+                    checkpoint, now: Date(), calendar: self.settings.costUsageBucketCalendar) ?? native
             mergedAccounting = .includesPi(
                 scope: oldScope,
-                native: native.mergingMonotonicCheckpoint(
-                    checkpoint, now: Date(), calendar: self.settings.costUsageBucketCalendar) ?? native)
+                native: nextNative)
         case (.nativeOnly?, .nativeOnly?), (nil, nil), (nil, .nativeOnly?), (.nativeOnly?, nil):
             mergedAccounting = accounting
         case let (.piOnly(oldScope)?, .piOnly(newScope)?):

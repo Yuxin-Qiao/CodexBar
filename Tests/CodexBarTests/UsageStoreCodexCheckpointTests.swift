@@ -70,6 +70,18 @@ struct UsageStoreCodexCheckpointTests {
             for: .codex,
             accounting: .includesPi(scope: "fixture", native: nextNative))
         #expect(store.tokenSnapshot(for: .codex)?.sessionTokens == 180)
+        let completedNative = Self.snapshot(days: [(day, 90)], now: now)
+        store.publishTokenSnapshot(
+            Self.snapshot(days: [(day, 190)], now: now, complete: false),
+            for: .codex,
+            accounting: .includesPi(scope: "fixture", native: completedNative))
+        let reconciled = try #require(store.tokenSnapshotPublicationForCurrentProviderConfig(for: .codex))
+        guard case let .includesPi(_, reconciledNative)? = reconciled.accounting else {
+            Issue.record("Completed native accounting was lost")
+            return
+        }
+        #expect(reconciledNative.sessionTokens == 90)
+        #expect(reconciledNative.historyIsFullyScanned)
     }
 
     private static func makeStore() throws -> UsageStore {
