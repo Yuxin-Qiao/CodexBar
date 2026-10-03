@@ -1,0 +1,15 @@
+{
+  "source_persisted_in_real_config_copy": true,
+  "separate_cli_process_loads_saved_source": true,
+  "other_normalized_config_fields_preserved": true,
+  "enabled_state_preserved": true,
+  "unsupported_preserves_config_bytes": true,
+  "invalid-source_preserves_config_bytes": true,
+  "invalid-provider_preserves_config_bytes": true,
+  "auto_removes_persisted_source_override": true,
+  "separate_cli_process_observes_auto_reset": true,
+  "auto_preserves_other_normalized_fields": true,
+  "original_live_config_bytes_unchanged": true,
+  "copy_input_was_byte_identical_to_real_config": true,
+  "published_command_output_contains_no_config_secret_values": true
+}

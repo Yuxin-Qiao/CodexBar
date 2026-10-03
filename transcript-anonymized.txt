@@ -1,0 +1,62 @@
+$ CodexBarCLI config set-source --provider claude --source cli --json --pretty
+{
+  "configPath": "<isolated-config>",
+  "displayName": "Claude",
+  "enabled": false,
+  "provider": "claude",
+  "source": "cli"
+}
+exit=0
+
+$ CodexBarCLI config set-source --provider commandcode --source cli --json
+[
+  {
+    "source": "cli",
+    "provider": "cli",
+    "error": {
+      "code": 1,
+      "message": "Source cli is not supported for commandcode. Supported sources: auto, web.",
+      "kind": "args"
+    }
+  }
+]
+exit=1
+
+$ CodexBarCLI config set-source --provider claude --source invalid --json
+[
+  {
+    "provider": "cli",
+    "source": "cli",
+    "error": {
+      "kind": "args",
+      "code": 1,
+      "message": "Unknown or missing source. Use --source auto|web|cli|oauth|api."
+    }
+  }
+]
+exit=1
+
+$ CodexBarCLI config set-source --provider invalid-provider --source auto --json
+[
+  {
+    "source": "cli",
+    "provider": "cli",
+    "error": {
+      "kind": "args",
+      "message": "Unknown or missing provider. Use --provider <name>.",
+      "code": 1
+    }
+  }
+]
+exit=1
+
+$ CodexBarCLI config set-source --provider claude --source auto --json --pretty
+{
+  "configPath": "<isolated-config>",
+  "displayName": "Claude",
+  "enabled": false,
+  "provider": "claude",
+  "source": "auto"
+}
+exit=0
+
