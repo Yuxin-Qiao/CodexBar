@@ -1,6 +1,6 @@
 # Codex request-ledger CLI validation (anonymized derivative)
 
-Production revision: `9e48be06431b73a2bb7e4c4db193841287f4ed98`, for [PR #4195](https://github.com/steipete/CodexBar/pull/4195).
+Production revision: `e7e325e23`, for [PR #4195](https://github.com/steipete/CodexBar/pull/4195).
 
 A freshly built debug CLI parsed an isolated copy of an existing native Codex rollout. The JSONL records were not edited, renamed, or synthesized before parsing. The file was split immediately before its final typed usage record; the existing suffix was then appended unchanged. Each CLI call ran in a new process, using a contained application home and a contained `CODEX_HOME`. A separate contained home parsed the full original as a cold reference.
 
