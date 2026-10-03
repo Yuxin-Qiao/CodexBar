@@ -1,6 +1,6 @@
 # Codex request-ledger CLI validation (anonymized derivative)
 
-Production revision: `e7e325e23`, for [PR #4195](https://github.com/steipete/CodexBar/pull/4195).
+Production revision: `18ccd38ee`, for [PR #4195](https://github.com/steipete/CodexBar/pull/4195).
 
 A freshly built debug CLI parsed an isolated copy of an existing native Codex rollout. The JSONL records were not edited, renamed, or synthesized before parsing. The file was split immediately before its final typed usage record; the existing suffix was then appended unchanged. Each CLI call ran in a new process, using a contained application home and a contained `CODEX_HOME`. A separate contained home parsed the full original as a cold reference.
 
@@ -22,6 +22,6 @@ codexbar cost --provider codex --provider-native-only --period all --json --refr
 
 ## Scope and limitation
 
-This proves accounting on a real unmodified native rollout, including append, reopened cache, mixed-format deduplication, and cold-reference agreement. The available original did **not** exhibit a legacy counter reset. Recovery across a counter reset remains covered by explicitly synthetic parser/CLI fixtures; this receipt does not claim a real reset reproduction. Separate checked-in tests cover split thread/session identities, serialized subagent buffers and ordinal boundaries, and revision-5/revision-6 SQLite adoption followed by bounded revision-7 reparse, reopen, pricing preservation, and append.
+This proves accounting on a real unmodified native rollout, including append, reopened cache, mixed-format deduplication, and cold-reference agreement. The available original did **not** exhibit a legacy counter reset. Recovery across a counter reset remains covered by explicitly synthetic parser/CLI fixtures; this receipt does not claim a real reset reproduction. Separate checked-in tests cover split thread/session identities, serialized subagent buffers and ordinal boundaries, and revision-5/revision-6 SQLite adoption followed by bounded revision-7 reparse, reopen, pricing preservation, and append. A separate current-revision split-scan regression also retains standard/priority pricing, authoritative known costs, and unpriced coverage when a cached legacy observation is replaced by its typed mirror, with identical and differing cumulative counter domains.
 
 See [receipt.json](receipt.json). All numerical values in the public PR's regression fixtures are invented.
