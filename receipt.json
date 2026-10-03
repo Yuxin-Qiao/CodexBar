@@ -1,0 +1,15 @@
+{
+  "all_cli_exits_zero": true,
+  "no_cli_errors": true,
+  "append_advances": true,
+  "repeat_totals_stable": true,
+  "repeat_daily_stable": true,
+  "cold_totals_match": true,
+  "cold_daily_match": true,
+  "owned_response_oracle_matches": true,
+  "real_counter_reset_observed": false,
+  "source_rows_modified": false,
+  "numeric_usage_and_money_withheld": true,
+  "synthetic_cli_counter_reset_recovers": true,
+  "synthetic_cli_reset_repeat_stable": true
+}
