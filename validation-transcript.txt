@@ -1,0 +1,12 @@
+Anonymized validation transcript; actual values retained locally.
+Production head: 19087ebd1571f2d27c1ac98ad2a9d8bcc38e0aa2
+Inputs: unchanged existing desktop-history copies, no generated usage fixtures.
+Sample: eight history files; all runtime input values withheld.
+scan: exit 0; 1 XCTest; 0 failures.
+Test Case '-[CodexBarTests.SpendDashboardRealHistoryProofTests test_copiedHistoryScanAndCachedReload]' passed (1.040 seconds).
+reload: exit 0; 1 XCTest; 0 failures.
+Test Case '-[CodexBarTests.SpendDashboardRealHistoryProofTests test_copiedHistoryScanAndCachedReload]' passed (0.138 seconds).
+Marker-disabled cached control: project fallback, row identities, source paths, token and cost values unchanged.
+Restored metadata: identical classified output.
+Privacy display projection: numbered labels, hidden paths, original identities restored when disabled.
+Native renders: completed; originals kept private; no new interactive or installed-app claim.

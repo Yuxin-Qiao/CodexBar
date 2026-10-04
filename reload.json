@@ -1,0 +1,17 @@
+{
+  "allProjectAccountingAndSourcePathsMatchControl" : true,
+  "cachedReloadMatchesFreshScan" : true,
+  "completeHistory" : true,
+  "dailyAccountingMatchesMarkerDisabledControl" : true,
+  "hasPricedProjectRows" : true,
+  "independentChatRows" : 2,
+  "metadataRestorationReproducesClassification" : true,
+  "mode" : "reload",
+  "privacyHidesAllPathsAndUsesNumberedLabels" : true,
+  "privacyOffRestoresDisplayIdentities" : true,
+  "privateValues" : "withheld: names, paths, IDs, token counts, amounts",
+  "projectRows" : 2,
+  "rowIdentitiesPreservedAcrossClassification" : true,
+  "scannerFileAttempts" : 0,
+  "source" : "copied existing desktop history"
+}
