@@ -110,6 +110,11 @@ public enum GrokProviderDescriptor {
                         tertiary: metadata.opusLabel ?? "Sonnet",
                         showsTertiary: metadata.supportsOpus)
                 },
+                costPresenter: { snapshot in
+                    guard let cost = snapshot.providerCost else { return ProviderCostPresentation() }
+                    return ProviderCostPresentation(
+                        showsGenericFallback: !(cost.used == 0 && cost.limit == 0 && cost.balance != nil))
+                },
                 iconDecorations: [.grok]),
             fetchPlan: ProviderFetchPlan(
                 sourceModes: [.auto, .cli, .oauth, .web],

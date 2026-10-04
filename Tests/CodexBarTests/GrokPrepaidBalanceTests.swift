@@ -80,6 +80,19 @@ struct GrokPrepaidBalanceTests {
         #expect(usage.primary?.usedPercent == (fields.contains("onDemandCap") ? 25 : nil))
     }
 
+    @Test(arguments: [0, 1446])
+    func `wallet without quota does not invent spending in CLI text`(cents: Int) throws {
+        let data = Data("{\"config\":{\"prepaidBalance\":{\"val\":\(cents)}}}".utf8)
+        let usage = try Self.usage(GrokCreditsProxyFetcher.parseSnapshot(data))
+        let output = CLIRenderer.renderText(
+            provider: .grok,
+            snapshot: usage,
+            credits: nil,
+            context: RenderContext(header: "Grok", status: nil, useColor: false, resetStyle: .absolute))
+        #expect(!output.contains("Cost:"))
+        #expect(usage.providerCost?.balance == Double(cents) / 100)
+    }
+
     @Test
     func `wallet survives plan overlay and usage enrichment`() async throws {
         let proxy = try GrokCreditsProxyFetcher.parseSnapshot(Data(#"{"config":{"prepaidBalance":{"val":1446}}}"#.utf8))
