@@ -602,7 +602,7 @@ struct MenuCardAntigravityTests {
     }
 
     @Test
-    func `antigravity hides a renamed third party pair when it is untouched`() throws {
+    func `antigravity keeps a renamed third party pair when it is untouched`() throws {
         let now = Date(timeIntervalSince1970: 1_735_000_000)
         let model = try Self.quotaSummaryModel(
             windows: [
@@ -620,6 +620,8 @@ struct MenuCardAntigravityTests {
         #expect(model.metrics.map(\.id) == [
             "antigravity-quota-summary-gemini-5h",
             "antigravity-quota-summary-gemini-weekly",
+            "antigravity-quota-summary-3p-5h",
+            "antigravity-quota-summary-3p-weekly",
         ])
     }
 
@@ -646,7 +648,7 @@ struct MenuCardAntigravityTests {
     }
 
     @Test
-    func `antigravity hides an unfamiliar family pair when it is untouched`() throws {
+    func `antigravity keeps an unfamiliar family pair when it is untouched`() throws {
         let now = Date(timeIntervalSince1970: 1_735_000_000)
         let model = try Self.quotaSummaryModel(
             windows: [
@@ -660,12 +662,14 @@ struct MenuCardAntigravityTests {
         #expect(model.metrics.map(\.id) == [
             "antigravity-quota-summary-gemini-5h",
             "antigravity-quota-summary-gemini-weekly",
+            "antigravity-quota-summary-grok-5h",
+            "antigravity-quota-summary-grok-weekly",
         ])
     }
 
     @Test
     func `antigravity provider details keep every family`() throws {
-        // Provider details is the diagnostic surface, so it lists lanes the menu curates away.
+        // Provider details retains the same complete family list as the menu.
         let now = Date(timeIntervalSince1970: 1_735_000_000)
         let model = try Self.quotaSummaryModel(
             windows: [
