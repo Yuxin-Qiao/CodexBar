@@ -91,9 +91,22 @@ public struct AntigravityStatusSnapshot: Sendable {
     let quotaSummary: AntigravityQuotaSummary?
 
     var hasKnownQuotaSummary: Bool {
-        self.quotaSummary?.groups.contains { group in
+        guard !self.hasUncadencedAllModelsSummary else { return false }
+        return self.quotaSummary?.groups.contains { group in
             group.buckets.contains { !$0.disabled && $0.remainingFraction != nil }
         } == true
+    }
+
+    /// OAuth may return a model catalogue instead of the grouped weekly/session limits.
+    var hasUncadencedAllModelsSummary: Bool {
+        guard let groups = self.quotaSummary?.groups, !groups.isEmpty else { return false }
+        return groups.allSatisfy { group in
+            group.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+                .caseInsensitiveCompare("All Models") == .orderedSame &&
+                !group.buckets.isEmpty && group.buckets.allSatisfy {
+                    Self.windowMinutes(forQuotaBucket: $0) == nil
+                }
+        }
     }
 
     public init(

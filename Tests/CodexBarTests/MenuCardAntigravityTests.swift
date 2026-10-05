@@ -515,7 +515,7 @@ struct MenuCardAntigravityTests {
     }
 
     @Test
-    func `antigravity quota summary hides an untouched model family`() throws {
+    func `antigravity quota summary keeps untouched families as in the official quota page`() throws {
         let now = Date(timeIntervalSince1970: 1_735_000_000)
         let model = try Self.quotaSummaryModel(
             windows: [
@@ -529,6 +529,8 @@ struct MenuCardAntigravityTests {
         #expect(model.metrics.map(\.id) == [
             "antigravity-quota-summary-gemini-5h",
             "antigravity-quota-summary-gemini-weekly",
+            "antigravity-quota-summary-3p-5h",
+            "antigravity-quota-summary-3p-weekly",
         ])
     }
 

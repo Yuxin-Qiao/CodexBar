@@ -164,6 +164,13 @@ public struct AntigravityRemoteUsageFetcher: Sendable {
                 dataLoader: self.dataLoader)
             try Task.checkCancellation()
             let summary = try response.snapshot(accountEmail: claims.email, accountPlan: plan, source: .remote)
+            if summary.hasUncadencedAllModelsSummary {
+                return AntigravityStatusSnapshot(
+                    modelQuotas: [],
+                    accountEmail: claims.email,
+                    accountPlan: plan,
+                    source: .remote)
+            }
             if summary.hasKnownQuotaSummary { return summary }
         } catch {
             if error is CancellationError || (error as? URLError)?.code == .cancelled ||

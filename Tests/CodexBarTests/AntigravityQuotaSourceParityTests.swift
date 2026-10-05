@@ -3,6 +3,57 @@ import Testing
 @testable import CodexBarCore
 
 struct AntigravityQuotaSourceParityTests {
+    @Test(arguments: [1.0, 0.4])
+    func `OAuth model catalogue is not measured weekly or session quota`(fraction: Double) async throws {
+        let credentials = AntigravityOAuthCredentials(
+            accessToken: "synthetic-token",
+            refreshToken: nil,
+            expiryDate: nil,
+            email: "quota@example.com",
+            projectID: "synthetic-project")
+        let token = try AntigravityOAuthCredentialsStore.tokenAccountValue(for: credentials)
+        let data = GeminiAPITestHelpers.jsonData(["groups": [[
+            "displayName": "All Models", "buckets": [[
+                "bucketId": "gemini-test-low", "displayName": "Gemini Test (Low)",
+                "remainingFraction": fraction,
+            ]],
+        ]]])
+        let parsed = try AntigravityStatusProbe.parseQuotaSummaryResponse(data)
+        #expect(parsed.hasUncadencedAllModelsSummary)
+        #expect(!parsed.hasKnownQuotaSummary)
+        let fetcher = AntigravityRemoteUsageFetcher(
+            homeDirectory: "/synthetic-antigravity-home",
+            environment: [AntigravityOAuthCredentialsStore.environmentCredentialsKey: token],
+            dataLoader: GeminiAPITestHelpers.dataLoader { request in
+                let url = try #require(request.url)
+                #expect(["/v1internal:loadCodeAssist", "/v1internal:retrieveUserQuotaSummary"].contains(url.path))
+                return GeminiAPITestHelpers.response(
+                    url: url.absoluteString,
+                    status: 200,
+                    body: url.path.hasSuffix("loadCodeAssist") ? Data("{}".utf8) : data)
+            })
+        let remote = try await fetcher.fetch()
+        let usage = try AntigravityOAuthFetchStrategy.usageSnapshot(from: remote)
+        #expect(usage.primary == nil)
+        #expect(usage.secondary == nil)
+        #expect(usage.extraRateWindows == nil)
+        #expect(usage.identity?.accountEmail == "quota@example.com")
+    }
+
+    @Test
+    func `All Models with explicit cadence remains measured quota`() throws {
+        let data = GeminiAPITestHelpers.jsonData(["groups": [[
+            "displayName": "All Models", "buckets": [[
+                "bucketId": "all-weekly", "displayName": "Weekly Limit",
+                "window": "weekly", "remainingFraction": 0.8,
+            ]],
+        ]]])
+        let parsed = try AntigravityStatusProbe.parseQuotaSummaryResponse(data)
+        #expect(!parsed.hasUncadencedAllModelsSummary)
+        #expect(parsed.hasKnownQuotaSummary)
+        #expect(try parsed.toUsageSnapshot().extraRateWindows?.first?.window.windowMinutes == 10080)
+    }
+
     /// #2427 supplies the grouped response; #3789 supplies the weekly-only Starter values.
     private static func summary(starter: Bool) -> [String: Any] {
         let families = [("Gemini Models", "gemini"), ("Claude and GPT models", "3p")]

@@ -1661,4 +1661,3 @@
 "Browser profile" = "浏览器配置文件";
 "Unavailable profile: %@" = "配置文件不可用：%@";
 "Read only the selected %@ profile. Accounts are never selected automatically." = "仅读取所选的 %@ 配置文件。绝不会自动选择账户。";
-"antigravity_model_quota_preview" = "显示 %2$d 个模型额度中的 %1$d 个，优先显示不可用或剩余最少的额度。完整列表见提供商详情。";

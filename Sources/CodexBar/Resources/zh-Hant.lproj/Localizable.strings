@@ -1678,4 +1678,3 @@
 "Browser profile" = "瀏覽器設定檔";
 "Unavailable profile: %@" = "無法使用的設定檔：%@";
 "Read only the selected %@ profile. Accounts are never selected automatically." = "僅讀取所選的 %@ 設定檔。絕不會自動選擇帳號。";
-"antigravity_model_quota_preview" = "顯示 %2$d 個模型額度中的 %1$d 個，優先顯示不可用或剩餘最少的額度。完整清單見供應商詳細資訊。";

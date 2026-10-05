@@ -1646,4 +1646,3 @@
 "Browser profile" = "Browserprofiel";
 "Unavailable profile: %@" = "Profiel niet beschikbaar: %@";
 "Read only the selected %@ profile. Accounts are never selected automatically." = "Lees alleen het geselecteerde %@-profiel. Accounts worden nooit automatisch geselecteerd.";
-"antigravity_model_quota_preview" = "%1$d van %2$d modelquota, met niet-beschikbare quota en de laagste resterende quota eerst. Alle modellen staan in de providergegevens.";

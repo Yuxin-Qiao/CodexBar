@@ -1650,4 +1650,3 @@
 "Browser profile" = "Profilo del browser";
 "Unavailable profile: %@" = "Profilo non disponibile: %@";
 "Read only the selected %@ profile. Accounts are never selected automatically." = "Leggi solo il profilo %@ selezionato. Gli account non vengono mai selezionati automaticamente.";
-"antigravity_model_quota_preview" = "Mostrate %1$d di %2$d quote dei modelli, prima quelle non disponibili e con meno quota residua. Tutti i modelli sono nei dettagli del fornitore.";

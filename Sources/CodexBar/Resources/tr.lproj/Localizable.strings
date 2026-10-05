@@ -1649,4 +1649,3 @@
 "Browser profile" = "Tarayıcı profili";
 "Unavailable profile: %@" = "Profil kullanılamıyor: %@";
 "Read only the selected %@ profile. Accounts are never selected automatically." = "Yalnızca seçilen %@ profilini oku. Hesaplar asla otomatik seçilmez.";
-"antigravity_model_quota_preview" = "%2$d model kotasının %1$d tanesi gösteriliyor; kullanılamayan ve en az kalan kotalar önce gelir. Tüm modeller sağlayıcı ayrıntılarındadır.";

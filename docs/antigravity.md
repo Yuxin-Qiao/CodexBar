@@ -118,6 +118,12 @@ project and a two-second timeout cap. Unavailable, legacy model-bucket, or unmea
 back to the existing model endpoints; authentication failures and cancellation still propagate. Grouped OAuth
 quotas retain that account's existing email and plan, without an additional identity request.
 
+An `All Models` summary containing only model/thinking-tier buckets without recognized weekly or
+five-hour cadence is not accepted as the grouped account quota. OAuth keeps the account identity and
+shows `Limits not available` rather than rendering those model percentages as the account's limits.
+The local probe rejects that summary and can try its existing local fallback endpoints. The native
+menu retains both measured model families, including a Claude/GPT family with 100% remaining.
+
 Older local payloads may only include raw Claude, GPT-OSS, Gemini tiers, account plan, and session reset timestamps.
 Current Antigravity IDE local endpoints return `GetUserStatus`, `GetAvailableModels`, and `GetCascadeModelConfigData`
 with five-hour/session reset data, but not the app/CLI `RetrieveUserQuotaSummary` weekly/session grouping. OAuth
@@ -354,11 +360,6 @@ shared OAuth file can still be used as a fallback credential source.
 - The dashboard-v1 payload keeps every family for its script clients and marks the lanes of an untouched family with
   `idle` instead. The `codexbar serve` web UI skips those rows, so the web card matches the menu without repeating
   the family rule in JavaScript. See `docs/dashboard-api.md`.
-- An `All Models` summary without explicit session/weekly cadences is a per-model allowance list, not evidence
-  of shared limits. The macOS menu previews four rows, prioritizing unavailable quotas and then the lowest
-  remaining allowance, and omits the repeated `All Models` title prefix. A note points to provider details,
-  which retains every model. The snapshot and other quota consumers remain unchanged; explicit cadence
-  summaries are never capped by this preview.
 - CLI text and `cards` render quota-summary buckets once, using the same idle-family visibility rule. Missing or disabled quota stays unavailable, including in brief cards, while reset context remains visible. Raw JSON retains every bucket.
 - Linux and Omarchy list each measured quota-summary bucket once with its family title. The most constrained bucket in each family stays first for the tray meters; notification history follows the bucket when its position changes.
 
