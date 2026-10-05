@@ -1,6 +1,4 @@
-import AppKit
 import Foundation
-import SwiftUI
 import Testing
 @testable import CodexBar
 @testable import CodexBarCore
@@ -50,33 +48,6 @@ struct AntigravityModelQuotaPreviewTests {
         #expect(model.metrics.allSatisfy { $0.title == "All Models weekly" })
         #expect(model.quotaPreviewNote == nil)
         #expect(snapshot.extraRateWindows?.allSatisfy { $0.window.windowMinutes == 10080 } == true)
-    }
-
-    @MainActor
-    @Test
-    func `render a synthetic flat model quota preview`() throws {
-        guard let path = ProcessInfo.processInfo.environment["CODEXBAR_ANTIGRAVITY_PREVIEW_PROOF_DIR"] else { return }
-        let directory = URL(fileURLWithPath: path, isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let snapshot = try self.snapshot(fractions: Array(repeating: 1, count: 11))
-        let after = try self.model(snapshot: snapshot)
-        var before = try self.model(snapshot: snapshot, details: true)
-        for index in before.metrics.indices {
-            before.metrics[index].title = "All Models " + before.metrics[index].title
-        }
-        for (name, model) in [("before", before), ("after", after)] {
-            try CodexBarLocalizationOverride.$appLanguage.withValue("zh-Hans") {
-                let view = AnyView(UsageMenuCardView(model: model, width: 380)
-                    .environment(\.locale, Locale(identifier: "zh_CN"))
-                    .environment(\.colorScheme, .light)
-                    .environment(\.displayScale, 2)
-                    .background(Color(nsColor: .windowBackgroundColor)))
-                let hosting = NSHostingView(rootView: view)
-                hosting.appearance = NSAppearance(named: .aqua)
-                try #require(MenuLayoutScreenshotRenderTests.pngDataWithWindow(hosting: hosting))
-                    .write(to: directory.appendingPathComponent("antigravity-model-preview-\(name).png"))
-            }
-        }
     }
 
     private func snapshot(fractions: [Double?], window: String? = nil) throws -> UsageSnapshot {
