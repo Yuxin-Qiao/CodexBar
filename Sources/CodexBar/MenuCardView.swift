@@ -175,6 +175,7 @@ struct UsageMenuCardView: View {
         var planEmphasis: PlanEmphasis = .none
         var metrics: [Metric]
         let usageNotes: [String]
+        var quotaPreviewNote: String?
         var subscriptionNotes: [String] = []
         var providerDetails: [ProviderDetailSection] = []
         /// Provider-owned titles remain stable when the displayed sections are localized or redacted.
@@ -638,6 +639,9 @@ private struct UsageMenuCardUsageContentView: View {
             } else {
                 self.metricRows(self.model.metrics)
             }
+            if let note = self.model.quotaPreviewNote {
+                UsageNotesContent(notes: [note])
+            }
             if let resetCredits = self.model.limitResetCredits {
                 if !self.model.metrics.isEmpty, self.showsSectionDividers {
                     Divider()
@@ -932,6 +936,7 @@ extension UsageMenuCardView.Model {
             planEmphasis: input.planEmphasis,
             metrics: metrics,
             usageNotes: usageNotes,
+            quotaPreviewNote: Self.antigravityQuotaPreviewNote(input: input),
             subscriptionNotes: Self.subscriptionMetadataNotes(snapshot: input.snapshot, provider: input.provider),
             providerDetails: providerDetails.sections,
             providerDetailRawTitles: providerDetails.rawTitles,

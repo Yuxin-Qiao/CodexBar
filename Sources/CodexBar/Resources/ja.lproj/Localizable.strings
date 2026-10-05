@@ -1647,3 +1647,4 @@
 "Browser profile" = "ブラウザープロファイル";
 "Unavailable profile: %@" = "利用できないプロファイル: %@";
 "Read only the selected %@ profile. Accounts are never selected automatically." = "選択した %@ プロファイルのみを読み取ります。アカウントが自動で選択されることはありません。";
+"antigravity_model_quota_preview" = "%2$d 件のモデル割り当てのうち %1$d 件を表示。利用不可または残量が少ないものを優先します。全モデルはプロバイダーの詳細で確認できます。";

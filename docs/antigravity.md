@@ -354,6 +354,11 @@ shared OAuth file can still be used as a fallback credential source.
 - The dashboard-v1 payload keeps every family for its script clients and marks the lanes of an untouched family with
   `idle` instead. The `codexbar serve` web UI skips those rows, so the web card matches the menu without repeating
   the family rule in JavaScript. See `docs/dashboard-api.md`.
+- An `All Models` summary without explicit session/weekly cadences is a per-model allowance list, not evidence
+  of shared limits. The macOS menu previews four rows, prioritizing unavailable quotas and then the lowest
+  remaining allowance, and omits the repeated `All Models` title prefix. A note points to provider details,
+  which retains every model. The snapshot and other quota consumers remain unchanged; explicit cadence
+  summaries are never capped by this preview.
 - CLI text and `cards` render quota-summary buckets once, using the same idle-family visibility rule. Missing or disabled quota stays unavailable, including in brief cards, while reset context remains visible. Raw JSON retains every bucket.
 - Linux and Omarchy list each measured quota-summary bucket once with its family title. The most constrained bucket in each family stays first for the tray meters; notification history follows the bucket when its position changes.
 

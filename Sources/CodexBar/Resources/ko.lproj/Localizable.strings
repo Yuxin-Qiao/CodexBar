@@ -1616,3 +1616,4 @@
 "Browser profile" = "브라우저 프로필";
 "Unavailable profile: %@" = "사용할 수 없는 프로필: %@";
 "Read only the selected %@ profile. Accounts are never selected automatically." = "선택한 %@ 프로필만 읽습니다. 계정은 자동으로 선택되지 않습니다.";
+"antigravity_model_quota_preview" = "모델 할당량 %2$d개 중 %1$d개 표시. 사용 불가 또는 잔여량이 적은 항목을 먼저 표시합니다. 전체 모델은 제공업체 세부 정보에서 확인하세요.";

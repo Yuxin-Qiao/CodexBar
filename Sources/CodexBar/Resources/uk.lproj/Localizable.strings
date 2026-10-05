@@ -1647,3 +1647,4 @@
 "Browser profile" = "Профіль браузера";
 "Unavailable profile: %@" = "Профіль недоступний: %@";
 "Read only the selected %@ profile. Accounts are never selected automatically." = "Читати лише вибраний профіль %@. Облікові записи ніколи не вибираються автоматично.";
+"antigravity_model_quota_preview" = "Показано %1$d із %2$d квот моделей: спочатку недоступні та з найменшим залишком. Усі моделі доступні у відомостях про постачальника.";

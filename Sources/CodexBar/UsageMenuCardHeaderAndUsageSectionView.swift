@@ -29,6 +29,7 @@ struct MetricRowHeader: View {
     let resetText: String?
     let layoutResetText: String?
     let isHighlighted: Bool
+    var titleLineLimit = 1
 
     var body: some View {
         if let layoutResetText {
@@ -71,7 +72,7 @@ struct MetricRowHeader: View {
         Text(title)
             .font(.body)
             .fontWeight(.medium)
-            .lineLimit(1)
+            .lineLimit(self.titleLineLimit)
     }
 
     private func resetLabel(_ resetText: String) -> some View {

@@ -424,6 +424,7 @@ extension UsageMenuCardView.Model {
               self.accountIdentityFingerprint == candidate.accountIdentityFingerprint,
               !includeMetrics || self.metrics.count == candidate.metrics.count,
               self.usageNotes == candidate.usageNotes,
+              self.quotaPreviewNote == candidate.quotaPreviewNote,
               self.providerDetails == candidate.providerDetails,
               (self.openAIAPIUsage == nil) == (candidate.openAIAPIUsage == nil),
               self.creditsShowProgress == candidate.creditsShowProgress,
@@ -883,8 +884,10 @@ extension UsageMenuCardView.Model {
             let metrics = Self.extraRateWindowMetrics(
                 snapshot: snapshot,
                 input: input,
-                percentStyle: percentStyle)
-            guard !input.showsAllUsageLanes else { return metrics }
+                percentStyle: percentStyle,
+                windows: Self.antigravityQuotaPreview(input: input, snapshot: snapshot))
+            guard !input.showsAllUsageLanes,
+                  !Self.isAntigravityPerModelSummary(snapshot.extraRateWindows ?? []) else { return metrics }
             let idleIDs = AntigravityQuotaFamilyVisibility.idleWindowIDs(in: snapshot)
             return idleIDs.isEmpty ? metrics : metrics.filter { !idleIDs.contains($0.id) }
         }
@@ -921,12 +924,50 @@ extension UsageMenuCardView.Model {
         return metrics
     }
 
+    static func antigravityQuotaPreviewNote(input: Input) -> String? {
+        // Provider-specific by design: Antigravity's flat All Models quota report needs a bounded menu preview.
+        guard input.provider == .antigravity, !input.showsAllUsageLanes,
+              let windows = input.snapshot?.extraRateWindows,
+              isAntigravityPerModelSummary(windows), windows.count > Self.antigravityModelPreviewLimit
+        else { return nil }
+        return String(format: L("antigravity_model_quota_preview"), Self.antigravityModelPreviewLimit, windows.count)
+    }
+
+    private static let antigravityModelPreviewLimit = 4
+
+    private static func isAntigravityPerModelSummary(_ windows: [NamedRateWindow]) -> Bool {
+        !windows.isEmpty && windows.allSatisfy { window in
+            Self.isAntigravityQuotaSummaryWindow(window) &&
+                window.window.windowMinutes == nil &&
+                window.title.hasPrefix("All Models ")
+        }
+    }
+
+    private static func antigravityQuotaPreview(input: Input, snapshot: UsageSnapshot) -> [NamedRateWindow]? {
+        guard !input.showsAllUsageLanes, let windows = snapshot.extraRateWindows,
+              isAntigravityPerModelSummary(windows), windows.count > Self.antigravityModelPreviewLimit
+        else { return nil }
+        // A flat model summary does not establish shared pools or a session/weekly cadence.
+        // Preview unknown quotas first, then the most constrained measured models; details retain every row.
+        let ranked = windows.enumerated().sorted { lhs, rhs in
+            if lhs.element.usageKnown != rhs.element.usageKnown {
+                return !lhs.element.usageKnown
+            }
+            if lhs.element.window.usedPercent != rhs.element.window.usedPercent {
+                return lhs.element.window.usedPercent > rhs.element.window.usedPercent
+            }
+            return lhs.offset < rhs.offset
+        }
+        return ranked.prefix(Self.antigravityModelPreviewLimit).map(\.element)
+    }
+
     static func extraRateWindowMetrics(
         snapshot: UsageSnapshot,
         input: Input,
-        percentStyle: PercentStyle) -> [Metric]
+        percentStyle: PercentStyle,
+        windows: [NamedRateWindow]? = nil) -> [Metric]
     {
-        guard let extraRateWindows = snapshot.extraRateWindows else { return [] }
+        guard let extraRateWindows = windows ?? snapshot.extraRateWindows else { return [] }
         let menuCard = ProviderDescriptorRegistry.descriptor(for: input.provider).presentation.menuCard
         // Codex additional limits (e.g. Codex Spark) are optional extra usage and follow the
         // "optional credits and extra usage" setting. Other providers' extra windows (Antigravity
@@ -976,6 +1017,12 @@ extension UsageMenuCardView.Model {
             let title = if input.provider == .claude, namedWindow.id.hasPrefix("claude-weekly-scoped-") {
                 String(format: L("%@ weekly"), namedWindow.title.replacingOccurrences(
                     of: #"\s+only\s*$"#, with: "", options: [.regularExpression, .caseInsensitive]))
+            } else if input.provider == .antigravity,
+                      Self.isAntigravityQuotaSummaryWindow(namedWindow),
+                      namedWindow.window.windowMinutes == nil,
+                      namedWindow.title.hasPrefix("All Models ")
+            {
+                L(String(namedWindow.title.dropFirst("All Models ".count)))
             } else if input.provider == .doubao, namedWindow.id.contains("-team-") {
                 "\(L(namedWindow.title)) (\(L("Team")))"
             } else {

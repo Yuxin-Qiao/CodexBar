@@ -1649,3 +1649,4 @@
 "Browser profile" = "Perfil del navegador";
 "Unavailable profile: %@" = "Perfil no disponible: %@";
 "Read only the selected %@ profile. Accounts are never selected automatically." = "Llegeix només el perfil de %@ seleccionat. Els comptes no se seleccionen mai automàticament.";
+"antigravity_model_quota_preview" = "Es mostren %1$d de %2$d quotes de models, primer les no disponibles i les que tenen menys saldo. Consulta tots els models als detalls del proveïdor.";

@@ -27,7 +27,8 @@ struct MetricRow: View {
                     layoutTitle: layoutPresentation.titleText,
                     resetText: self.compact ? nil : presentation.resetText,
                     layoutResetText: self.compact ? nil : layoutPresentation.resetText,
-                    isHighlighted: self.isHighlighted)
+                    isHighlighted: self.isHighlighted,
+                    titleLineLimit: self.metric.id.hasPrefix("antigravity-quota-summary-") ? 2 : 1)
                 UsageProgressBar(
                     percent: self.metric.percent,
                     tint: self.progressColor,

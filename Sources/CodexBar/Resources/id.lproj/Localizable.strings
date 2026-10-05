@@ -1650,3 +1650,4 @@
 "Browser profile" = "Profil browser";
 "Unavailable profile: %@" = "Profil tidak tersedia: %@";
 "Read only the selected %@ profile. Accounts are never selected automatically." = "Hanya baca profil %@ yang dipilih. Akun tidak pernah dipilih secara otomatis.";
+"antigravity_model_quota_preview" = "Menampilkan %1$d dari %2$d kuota model, dengan kuota tidak tersedia dan sisa terendah lebih dahulu. Lihat semua model di detail penyedia.";

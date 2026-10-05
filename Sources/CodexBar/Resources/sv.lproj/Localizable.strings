@@ -1646,3 +1646,4 @@
 "Browser profile" = "Webbläsarprofil";
 "Unavailable profile: %@" = "Profilen är inte tillgänglig: %@";
 "Read only the selected %@ profile. Accounts are never selected automatically." = "Läs endast den valda %@-profilen. Konton väljs aldrig automatiskt.";
+"antigravity_model_quota_preview" = "Visar %1$d av %2$d modellkvoter, med otillgängliga kvoter och lägst återstående kvot först. Alla modeller finns i leverantörsinformationen.";

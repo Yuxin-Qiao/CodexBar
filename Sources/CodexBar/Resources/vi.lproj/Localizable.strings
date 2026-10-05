@@ -1648,3 +1648,4 @@
 "Browser profile" = "Hồ sơ trình duyệt";
 "Unavailable profile: %@" = "Hồ sơ không khả dụng: %@";
 "Read only the selected %@ profile. Accounts are never selected automatically." = "Chỉ đọc hồ sơ %@ đã chọn. Tài khoản không bao giờ được chọn tự động.";
+"antigravity_model_quota_preview" = "Hiển thị %1$d trong %2$d hạn mức mô hình, ưu tiên hạn mức không khả dụng và còn ít nhất. Xem tất cả mô hình trong chi tiết nhà cung cấp.";
