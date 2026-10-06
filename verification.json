@@ -1,0 +1,58 @@
+{
+  "artifactType": "explicitly_anonymized_derivative_of_local_native_runtime_proof",
+  "testedHead": "70a822973104cd7f6bba01686eb7fe1d74ad619f",
+  "testedBase": "6a26b2e9b1b60471970deb6fe663f9e5f284e2ce",
+  "allPassed": true,
+  "checks": {
+    "both_native_scans_complete": true,
+    "both_opencodex_coverage_complete": true,
+    "all_three_cases_have_seven_days": true,
+    "baseline_reproduces_seven_unavailable_mixed_requests": true,
+    "patched_mixed_counts_match_independent_log": true,
+    "patched_exact_counts_match_independent_log": true,
+    "unknown_only_stays_unknown": true,
+    "all_daily_tokens_and_costs_unchanged": true,
+    "visible_and_accessible_mixed_requests_are_lower_bounds": true,
+    "visible_and_accessible_exact_requests_are_exact": true,
+    "visible_and_accessible_unknown_requests_are_dashes": true,
+    "visible_and_accessible_baseline_reproduces_dashes": true,
+    "inputs_unchanged": true,
+    "installed_application_unchanged": true,
+    "pr_worktree_clean": true,
+    "patched_binary_provenance_matches": true,
+    "patched_SpendDashboardModel_matches_commit": true,
+    "patched_PreferencesSpendDashboardPane_matches_commit": true,
+    "baseline_binary_provenance_matches": true,
+    "baseline_SpendDashboardModel_matches_commit": true,
+    "baseline_PreferencesSpendDashboardPane_matches_commit": true,
+    "all_screenshots_saved": true
+  },
+  "scope": "Seven-day UTC window over copied real OpenCodex usage history and one non-forked native Codex session. Production scanners, model, and SwiftUI currency section under an isolated temporary debug launcher. Not a full native-history audit, installed-app deployment test, or account refresh test.",
+  "redaction": "Dates and source labels aliased consistently; real request/token/cost values, process IDs, local paths, raw history, account/session identifiers, and input-file fingerprints omitted. Original proof retained locally.",
+  "productionSourceHashes": {
+    "patched": [
+      {
+        "path": "Sources/CodexBar/SpendDashboardModel.swift",
+        "sha256": "39b78933ae176b180540a98873978721dc3138033804868358faabd1204cd2f3"
+      },
+      {
+        "path": "Sources/CodexBar/PreferencesSpendDashboardPane.swift",
+        "sha256": "b80cc0f5544a4155bdd912dca4a30ee00b66ebcb5c2cadb5637800c4baea0476"
+      }
+    ],
+    "baseline": [
+      {
+        "path": "Sources/CodexBar/SpendDashboardModel.swift",
+        "sha256": "bbeeae92acfc640d6ff6e24fa41e454b81fa0886b283914c021cdeb7a513a9e7"
+      },
+      {
+        "path": "Sources/CodexBar/PreferencesSpendDashboardPane.swift",
+        "sha256": "10072188d46aab6729796d9a026b325f1604ed947641a92c5e5a74e88d47dce5"
+      }
+    ]
+  },
+  "publicRuntimeArtifacts": [
+    "runtime-transcript.md",
+    "SpendRequestRuntimeProof.swift"
+  ]
+}
