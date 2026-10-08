@@ -1715,6 +1715,8 @@
 /* Provider menu bar color */
 "Color by provider" = "Couleur par fournisseur";
 /* Agent usage profiles */
+"Runtime performance" = "Performances d’exécution";
+"spend_agent_profile_configuration_count" = "%@ configurations";
 "Agent usage profiles" = "Profils d’utilisation des agents";
 "Native Codex timing is currently supported." = "Les temps de Codex natif sont actuellement pris en charge.";
 "No timed turns in this period." = "Aucun tour chronométré sur cette période.";

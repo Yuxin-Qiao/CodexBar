@@ -1718,6 +1718,8 @@
 /* Provider menu bar color */
 "Color by provider" = "Sağlayıcıya göre renk";
 /* Agent usage profiles */
+"Runtime performance" = "Çalışma performansı";
+"spend_agent_profile_configuration_count" = "%@ yapılandırma";
 "Agent usage profiles" = "Ajan kullanım profilleri";
 "Native Codex timing is currently supported." = "Şu anda yerel Codex zaman ölçümleri desteklenmektedir.";
 "No timed turns in this period." = "Bu dönemde süresi ölçülmüş tur yok.";

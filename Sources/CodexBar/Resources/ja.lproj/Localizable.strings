@@ -1716,6 +1716,8 @@
 /* Provider menu bar color */
 "Color by provider" = "プロバイダー別の色";
 /* Agent usage profiles */
+"Runtime performance" = "実行パフォーマンス";
+"spend_agent_profile_configuration_count" = "%@ 件の設定";
 "Agent usage profiles" = "エージェント利用プロファイル";
 "Native Codex timing is currently supported." = "現在はネイティブ Codex の所要時間に対応しています。";
 "No timed turns in this period." = "この期間には計測済みのターンがありません。";

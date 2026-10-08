@@ -1719,6 +1719,8 @@
 /* Provider menu bar color */
 "Color by provider" = "Warna menurut penyedia";
 /* Agent usage profiles */
+"Runtime performance" = "Kinerja eksekusi";
+"spend_agent_profile_configuration_count" = "%@ konfigurasi";
 "Agent usage profiles" = "Profil penggunaan agen";
 "Native Codex timing is currently supported." = "Saat ini mendukung pengukuran waktu Codex native.";
 "No timed turns in this period." = "Tidak ada giliran terukur dalam periode ini.";

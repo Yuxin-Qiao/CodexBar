@@ -1720,6 +1720,8 @@
 /* Provider menu bar color */
 "Color by provider" = "สีตามผู้ให้บริการ";
 /* Agent usage profiles */
+"Runtime performance" = "ประสิทธิภาพการทำงาน";
+"spend_agent_profile_configuration_count" = "%@ การกำหนดค่า";
 "Agent usage profiles" = "โปรไฟล์การใช้งานเอเจนต์";
 "Native Codex timing is currently supported." = "ขณะนี้รองรับการวัดเวลาของ Codex แบบเนทีฟ";
 "No timed turns in this period." = "ไม่มีรอบที่วัดเวลาในช่วงนี้";

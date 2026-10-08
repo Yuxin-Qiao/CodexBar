@@ -1685,6 +1685,8 @@
 /* Provider menu bar color */
 "Color by provider" = "제공업체별 색상";
 /* Agent usage profiles */
+"Runtime performance" = "실행 성능";
+"spend_agent_profile_configuration_count" = "%@개 구성";
 "Agent usage profiles" = "에이전트 사용 프로필";
 "Native Codex timing is currently supported." = "현재 기본 Codex의 시간 측정을 지원합니다.";
 "No timed turns in this period." = "이 기간에는 측정된 턴이 없습니다.";

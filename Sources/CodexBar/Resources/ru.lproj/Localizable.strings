@@ -1717,6 +1717,8 @@
 /* Provider menu bar color */
 "Color by provider" = "Цвет по провайдеру";
 /* Agent usage profiles */
+"Runtime performance" = "Производительность выполнения";
+"spend_agent_profile_configuration_count" = "%@ конфигураций";
 "Agent usage profiles" = "Профили использования агентов";
 "Native Codex timing is currently supported." = "Сейчас поддерживается измерение времени нативного Codex.";
 "No timed turns in this period." = "За этот период нет ходов с замерами времени.";

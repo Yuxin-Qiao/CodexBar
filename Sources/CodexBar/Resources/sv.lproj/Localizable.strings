@@ -1715,6 +1715,8 @@
 /* Provider menu bar color */
 "Color by provider" = "Färg per leverantör";
 /* Agent usage profiles */
+"Runtime performance" = "Körningsprestanda";
+"spend_agent_profile_configuration_count" = "%@ konfigurationer";
 "Agent usage profiles" = "Agenternas användningsprofiler";
 "Native Codex timing is currently supported." = "Tidsmätning för inbyggd Codex stöds för närvarande.";
 "No timed turns in this period." = "Inga tidsmätta turer under denna period.";

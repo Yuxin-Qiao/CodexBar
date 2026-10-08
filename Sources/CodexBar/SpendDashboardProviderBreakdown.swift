@@ -7,6 +7,7 @@ struct SpendProviderBreakdown: Identifiable, Equatable {
     let displayName: String
     let subscriptions: [SpendDashboardModel.ProviderRow]
     let models: [SpendDashboardModel.ModelRow]
+    let agentProfiles: [SpendAgentProfile]
     let totalTokens: Int?
     let totalCost: Double?
     let incompleteRequestCount: Int
@@ -54,6 +55,7 @@ func spendDashboardProviderBreakdowns(
     return providerIDs.map { provider in
         let subscriptions = group.providers.filter { $0.provider == provider }
         let models = group.models.filter { $0.provider == provider }
+        let sourceIDs = Set(subscriptions.map(\.id))
         let costs = subscriptions.compactMap(\.totalCost)
         let tokens = subscriptions.compactMap(\.totalTokens)
         let totalCost = spendDashboardProviderCostSum(costs)
@@ -64,6 +66,7 @@ func spendDashboardProviderBreakdowns(
             displayName: ProviderDescriptorRegistry.descriptor(for: provider).metadata.displayName,
             subscriptions: subscriptions,
             models: models,
+            agentProfiles: group.agentProfiles.filter { sourceIDs.contains($0.id.sourceID) },
             totalTokens: totalTokens,
             totalCost: totalCost,
             incompleteRequestCount: incompleteRequestCount,
@@ -117,6 +120,9 @@ func spendDashboardBreakdownMetricText(
 
 struct SpendProviderBreakdownRows: View {
     let group: SpendDashboardModel.CurrencyGroup
+    var hidePersonalInfo = false
+    var onSelectProfile: ((SpendAgentProfile.Configuration) -> Void)?
+    var initiallyExpandedPerformanceProviders: Set<UsageProvider> = []
     @State private var expandedProviders: Set<UsageProvider> = []
 
     var body: some View {
@@ -257,6 +263,13 @@ struct SpendProviderBreakdownRows: View {
                 self.modelHistoryState(L("Model breakdown unavailable"))
             } else if self.group.models.isEmpty {
                 self.modelHistoryState(L("No model-level history"))
+            }
+            if !breakdown.agentProfiles.isEmpty {
+                SpendProviderPerformanceSection(
+                    profiles: breakdown.agentProfiles,
+                    hidePersonalInfo: self.hidePersonalInfo,
+                    onSelect: self.onSelectProfile,
+                    initiallyExpanded: self.initiallyExpandedPerformanceProviders.contains(breakdown.provider))
             }
         }
     }

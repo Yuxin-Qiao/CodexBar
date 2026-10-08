@@ -1730,6 +1730,8 @@
 /* Provider menu bar color */
 "Color by provider" = "按服务商着色";
 /* Agent usage profiles */
+"Runtime performance" = "运行表现";
+"spend_agent_profile_configuration_count" = "%@ 个配置";
 "Agent usage profiles" = "Agent 使用画像";
 "Native Codex timing is currently supported." = "目前支持原生 Codex 的回合计时。";
 "No timed turns in this period." = "此时间段没有计时回合。";

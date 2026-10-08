@@ -1720,6 +1720,8 @@
 /* Provider menu bar color */
 "Color by provider" = "رنگ بر اساس ارائه‌دهنده";
 /* Agent usage profiles */
+"Runtime performance" = "عملکرد اجرا";
+"spend_agent_profile_configuration_count" = "%@ پیکربندی";
 "Agent usage profiles" = "نمایه‌های استفاده از عامل‌ها";
 "Native Codex timing is currently supported." = "در حال حاضر زمان‌سنجی Codex بومی پشتیبانی می‌شود.";
 "No timed turns in this period." = "در این بازه نوبت زمان‌سنجی‌شده‌ای وجود ندارد.";

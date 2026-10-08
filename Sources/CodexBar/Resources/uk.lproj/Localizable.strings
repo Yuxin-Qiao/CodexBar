@@ -1716,6 +1716,8 @@
 /* Provider menu bar color */
 "Color by provider" = "Колір за провайдером";
 /* Agent usage profiles */
+"Runtime performance" = "Продуктивність виконання";
+"spend_agent_profile_configuration_count" = "%@ конфігурацій";
 "Agent usage profiles" = "Профілі використання агентів";
 "Native Codex timing is currently supported." = "Наразі підтримуються вимірювання часу нативного Codex.";
 "No timed turns in this period." = "За цей період немає ходів із вимірюваннями часу.";

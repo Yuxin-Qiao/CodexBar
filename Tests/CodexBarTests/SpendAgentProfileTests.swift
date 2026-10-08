@@ -78,6 +78,11 @@ struct SpendAgentProfileTests {
         let group = try Self.group(inputs: inputs)
         #expect(group.agentProfiles.count == 5)
         #expect(Set(group.agentProfiles.map(\.id.sourceID)) == ["a", "b"])
+        let breakdowns = spendDashboardProviderBreakdowns(group)
+        let codex = try #require(breakdowns.first { $0.provider == .codex })
+        #expect(codex.agentProfiles == group.agentProfiles)
+        let otherProfiles = breakdowns.filter { $0.provider != .codex }.flatMap(\.agentProfiles)
+        #expect(otherProfiles.isEmpty)
         let unknownProfile = try #require(group.agentProfiles.first { $0.id.model == nil })
         CodexBarLocalizationOverride.$appLanguage.withValue("en") {
             #expect(unknownProfile.modelName == "Unknown model")
@@ -88,6 +93,7 @@ struct SpendAgentProfileTests {
         let hidden = try Self.group(inputs: inputs, hiddenSourceIDs: ["a"])
         #expect(hidden.agentProfiles.count == 1)
         #expect(hidden.agentProfiles.first?.id.sourceID == "b")
+        #expect(spendDashboardProviderBreakdowns(hidden).flatMap(\.agentProfiles).map(\.id.sourceID) == ["b"])
     }
 
     @Test
@@ -135,7 +141,7 @@ struct SpendAgentProfileTests {
     }
 
     @Test
-    func `render integrated production dashboard and profile cards using synthetic history`() throws {
+    func `render inline provider performance and production dashboard using synthetic history`() throws {
         guard let path = ProcessInfo.processInfo.environment["CODEXBAR_AGENT_PROFILE_UI_PROOF_DIR"] else { return }
         let root = URL(fileURLWithPath: path, isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -155,32 +161,54 @@ struct SpendAgentProfileTests {
                 effort: "medium")
         }
         let missing = try Self.sample(model: "gpt-5", effort: nil)
-        let input = Self.input(sampleSets: [Array(high.prefix(10)), Array(high.suffix(10)), medium, [missing, missing]])
-        let group = try Self.group(inputs: [input])
+        let input = Self.input(
+            sampleSets: [Array(high.prefix(10)), Array(high.suffix(10)), medium, [missing, missing]],
+            includeModelHistory: true,
+            displayName: "Codex")
+        let cursor = try Self.input(
+            id: "cursor",
+            sampleSets: [[Self.sample(model: "example-cursor-model")]],
+            provider: .cursor,
+            includeModelHistory: true,
+            displayName: "Cursor")
+        let claude = try Self.input(
+            id: "claude",
+            sampleSets: [[Self.sample(model: "example-claude-model")]],
+            provider: .claude,
+            includeModelHistory: true,
+            displayName: "Claude")
+        let group = try Self.group(inputs: [input, cursor, claude])
         for language in ["en", "zh-Hans"] {
             for dark in [false, true] {
                 try CodexBarLocalizationOverride.$appLanguage.withValue(language) {
                     for width in [520.0, 980.0] {
                         let view = VStack(alignment: .leading, spacing: 18) {
                             Text(L("Usage & Spend")).font(.title2.bold())
-                            SpendAgentProfilesPanel(
-                                profiles: group.agentProfiles,
-                                hidePersonalInfo: true,
-                                onSelect: { _ in })
-                            SpendSessionRows(
-                                group: group,
-                                hidePersonalInfo: true,
-                                rows: group.agentProfiles.first?.sessions)
+                            Text(L("Providers")).font(.headline)
+                            SpendDashboardPanel {
+                                SpendProviderBreakdownRows(
+                                    group: group,
+                                    hidePersonalInfo: true,
+                                    onSelectProfile: { _ in },
+                                    initiallyExpandedPerformanceProviders: [.codex])
+                            }
                         }
                         try Self.render(
                             view,
                             root: root,
-                            name: "profiles-\(language)-\(dark ? "dark" : "light")-\(Int(width))",
+                            name: "providers-expanded-\(language)-\(dark ? "dark" : "light")-\(Int(width))",
                             width: width,
                             dark: dark)
                     }
-                    let view = SpendDashboardCurrencySection(
-                        group: group, requestedDays: 7, hidePersonalInfo: true, initialDetailSection: .sessions)
+                    try Self.render(
+                        SpendDashboardPanel {
+                            SpendProviderBreakdownRows(group: group, hidePersonalInfo: true)
+                        },
+                        root: root,
+                        name: "providers-collapsed-\(language)-\(dark ? "dark" : "light")",
+                        width: 980,
+                        dark: dark)
+                    let view = SpendDashboardCurrencySection(group: group, requestedDays: 7, hidePersonalInfo: true)
                     try Self.render(
                         view,
                         root: root,
@@ -193,13 +221,32 @@ struct SpendAgentProfileTests {
     }
 
     private static func render(_ view: some View, root: URL, name: String, width: Double, dark: Bool) throws {
-        let renderer = ImageRenderer(content: view
+        let content = view
             .padding(20).frame(width: width)
             .background(dark ? Color(red: 0.12, green: 0.12, blue: 0.12) : .white)
             .foregroundStyle(dark ? .white : .black)
-            .environment(\.colorScheme, dark ? .dark : .light))
-        renderer.scale = 2
-        let bitmap = try NSBitmapImageRep(cgImage: #require(renderer.cgImage))
+            .environment(\.colorScheme, dark ? .dark : .light)
+        // Host native AppKit controls as well as SwiftUI content; ImageRenderer cannot export link buttons.
+        let hosting = NSHostingView(rootView: content)
+        let appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        hosting.appearance = appearance
+        let size = hosting.fittingSize
+        #expect(size.width > 0 && size.height > 0)
+        hosting.frame = CGRect(origin: .zero, size: size)
+        let window = NSWindow(
+            contentRect: hosting.frame,
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        window.appearance = appearance
+        window.contentView = hosting
+        window.layoutIfNeeded()
+        hosting.layoutSubtreeIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        let bitmap = try #require(hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds))
+        hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
         try #require(bitmap.representation(using: .png, properties: [:]))
             .write(to: root.appendingPathComponent("\(name).png"))
     }
@@ -231,8 +278,18 @@ struct SpendAgentProfileTests {
         provider: UsageProvider = .codex,
         source: SpendDashboardModel.SourceKind = .native,
         partial: Bool = false,
-        lastActivity: Date? = nil) -> SpendDashboardModel.ProviderInput
+        lastActivity: Date? = nil,
+        includeModelHistory: Bool = false,
+        displayName: String? = nil) -> SpendDashboardModel.ProviderInput
     {
+        let samples = sampleSets.flatMap(\.self)
+        let models: [CostUsageDailyReport.ModelBreakdown]? = includeModelHistory && !samples.isEmpty
+            ? Dictionary(grouping: samples, by: { $0.model ?? "example-test-model" }).map { model, observations in
+                .init(
+                    modelName: model,
+                    costUSD: 0.1 * Double(observations.count) / Double(samples.count),
+                    totalTokens: 3000 * observations.count / samples.count)
+            } : nil
         let sessions = sampleSets.enumerated().map { index, samples in
             CostUsageSessionBreakdown(
                 sessionID: "synthetic-\(index)",
@@ -262,13 +319,13 @@ struct SpendAgentProfileTests {
                 totalTokens: 3000,
                 costUSD: 0.1,
                 modelsUsed: nil,
-                modelBreakdowns: nil)],
+                modelBreakdowns: models)],
             sessions: sessions,
             updatedAt: Self.now)
         return .init(
             id: id,
             provider: provider,
-            displayName: "Synthetic source \(id)",
+            displayName: displayName ?? "Synthetic source \(id)",
             snapshot: snapshot,
             sourceKind: source)
     }

@@ -1720,6 +1720,8 @@
 /* Provider menu bar color */
 "Color by provider" = "تلوين حسب المزوّد";
 /* Agent usage profiles */
+"Runtime performance" = "أداء التشغيل";
+"spend_agent_profile_configuration_count" = "%@ إعدادات";
 "Agent usage profiles" = "ملفات استخدام الوكلاء";
 "Native Codex timing is currently supported." = "يُدعم حاليًا قياس وقت Codex الأصلي.";
 "No timed turns in this period." = "لا توجد جولات مقاسة في هذه الفترة.";

@@ -1717,6 +1717,8 @@
 /* Provider menu bar color */
 "Color by provider" = "Màu theo nhà cung cấp";
 /* Agent usage profiles */
+"Runtime performance" = "Hiệu suất thực thi";
+"spend_agent_profile_configuration_count" = "%@ cấu hình";
 "Agent usage profiles" = "Hồ sơ sử dụng agent";
 "Native Codex timing is currently supported." = "Hiện hỗ trợ đo thời gian của Codex gốc.";
 "No timed turns in this period." = "Không có lượt được đo thời gian trong giai đoạn này.";

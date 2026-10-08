@@ -696,23 +696,17 @@ struct SpendDashboardCurrencySection: View {
             SpendDashboardSummary(
                 group: self.group,
                 onClearSelectedDay: self.onClearSelectedDay)
-            // Provider-specific by design: other sources do not yet expose validated completed-turn timing.
-            if self.group.providers.contains(where: { $0.provider == .codex && $0.sourceKind == .native }) {
-                SpendAgentProfilesPanel(
-                    profiles: self.group.agentProfiles,
-                    hidePersonalInfo: self.hidePersonalInfo,
-                    onSelect: { id in
-                        self.selectedAgentProfileID = id
-                        self.selectedDetailSection = .sessions
-                        self.onSelectProfile?()
-                    })
-            }
             SpendDashboardDetailPanel(
                 group: self.group,
                 hidePersonalInfo: self.hidePersonalInfo,
                 selection: self.$selectedDetailSection,
                 selectedProfile: self.selectedAgentProfile,
-                onClearProfile: { self.selectedAgentProfileID = nil })
+                onClearProfile: { self.selectedAgentProfileID = nil },
+                onSelectProfile: { id in
+                    self.selectedAgentProfileID = id
+                    self.selectedDetailSection = .sessions
+                    self.onSelectProfile?()
+                })
                 .id(SpendDashboardScrollTarget.details(self.group.id))
             SpendDashboardTrendPanel(
                 group: self.group,
@@ -745,6 +739,7 @@ private struct SpendDashboardDetailPanel: View {
     @Binding var selection: SpendDashboardDetailSection
     let selectedProfile: SpendAgentProfile?
     let onClearProfile: () -> Void
+    let onSelectProfile: (SpendAgentProfile.Configuration) -> Void
 
     var body: some View {
         SpendDashboardPanel {
@@ -788,7 +783,10 @@ private struct SpendDashboardDetailPanel: View {
     private var detailContent: some View {
         switch self.activeSection {
         case .providers:
-            SpendProviderBreakdownRows(group: self.group)
+            SpendProviderBreakdownRows(
+                group: self.group,
+                hidePersonalInfo: self.hidePersonalInfo,
+                onSelectProfile: self.onSelectProfile)
         case .projects:
             SpendProjectRows(group: self.group, hidePersonalInfo: self.hidePersonalInfo, isProjectless: false)
         case .chats:
