@@ -1714,3 +1714,18 @@
 "merged_icon_source_frontmost_app" = "Aplicación do provedor en primeiro plano";
 /* Provider menu bar color */
 "Color by provider" = "Cor por provedor";
+/* Agent usage profiles */
+"Agent usage profiles" = "Perfís de uso dos axentes";
+"Native Codex timing is currently supported." = "Actualmente admítese a medición de tempos do Codex nativo.";
+"No timed turns in this period." = "Non hai quendas cronometradas neste período.";
+"Completed timed turns only. Failures and task outcomes are not recorded." = "Só quendas completadas con tempos medidos. Non se rexistran fallos nin resultados das tarefas.";
+"spend_agent_profile_samples" = "%@ quendas cronometradas · %@ sesións";
+"spend_agent_profile_cache_coverage" = "Caché: %@/%@ quendas";
+"Cache score needs five measured turns." = "A puntuación da caché require cinco quendas medidas.";
+"Partial history" = "Historial parcial";
+"Task performance" = "Rendemento nas tarefas";
+"Not evaluated" = "Sen avaliar";
+"View sessions" = "Ver sesións";
+"Cache reuse score" = "Puntuación de reutilización da caché";
+"Score = cached input share × 25. Experimental; not a task quality score." = "Puntuación = proporción de entrada na caché × 25. Experimental; non mide a calidade das tarefas.";
+"Session costs cover entire sessions." = "Os custos corresponden ás sesións completas.";

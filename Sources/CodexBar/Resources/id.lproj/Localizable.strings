@@ -1718,3 +1718,18 @@
 "merged_icon_source_frontmost_app" = "Aplikasi penyedia di depan";
 /* Provider menu bar color */
 "Color by provider" = "Warna menurut penyedia";
+/* Agent usage profiles */
+"Agent usage profiles" = "Profil penggunaan agen";
+"Native Codex timing is currently supported." = "Saat ini mendukung pengukuran waktu Codex native.";
+"No timed turns in this period." = "Tidak ada giliran terukur dalam periode ini.";
+"Completed timed turns only. Failures and task outcomes are not recorded." = "Hanya giliran selesai dengan pengukuran waktu. Kegagalan dan hasil tugas tidak dicatat.";
+"spend_agent_profile_samples" = "%@ giliran terukur · %@ sesi";
+"spend_agent_profile_cache_coverage" = "Cache: %@/%@ giliran";
+"Cache score needs five measured turns." = "Skor cache memerlukan lima giliran terukur.";
+"Partial history" = "Riwayat sebagian";
+"Task performance" = "Kinerja tugas";
+"Not evaluated" = "Belum dievaluasi";
+"View sessions" = "Lihat sesi";
+"Cache reuse score" = "Skor penggunaan ulang cache";
+"Score = cached input share × 25. Experimental; not a task quality score." = "Skor = proporsi input dalam cache × 25. Eksperimental; bukan skor kualitas tugas.";
+"Session costs cover entire sessions." = "Biaya mencakup seluruh sesi.";

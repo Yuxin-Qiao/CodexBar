@@ -1718,3 +1718,18 @@
 "merged_icon_source_frontmost_app" = "Frontmost provider app";
 /* Provider menu bar color */
 "Color by provider" = "Color by provider";
+/* Agent usage profiles */
+"Agent usage profiles" = "Agent usage profiles";
+"Native Codex timing is currently supported." = "Native Codex timing is currently supported.";
+"No timed turns in this period." = "No timed turns in this period.";
+"Completed timed turns only. Failures and task outcomes are not recorded." = "Completed timed turns only. Failures and task outcomes are not recorded.";
+"spend_agent_profile_samples" = "%@ timed turns · %@ sessions";
+"spend_agent_profile_cache_coverage" = "Cache: %@/%@ turns";
+"Cache score needs five measured turns." = "Cache score needs five measured turns.";
+"Partial history" = "Partial history";
+"Task performance" = "Task performance";
+"Not evaluated" = "Not evaluated";
+"View sessions" = "View sessions";
+"Cache reuse score" = "Cache reuse score";
+"Score = cached input share × 25. Experimental; not a task quality score." = "Score = cached input share × 25. Experimental; not a task quality score.";
+"Session costs cover entire sessions." = "Session costs cover entire sessions.";

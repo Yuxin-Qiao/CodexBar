@@ -261,6 +261,7 @@ struct SpendDashboardModel: Equatable, Sendable {
         let provenance: CostProvenance
         let meteredCost: Double?
         let sessions: [SessionRow]
+        let agentProfiles: [SpendAgentProfile]
         let projects: [ProjectRow]
         let overflowModelCount: Int
         let displayedModels: [ModelRow]
@@ -295,6 +296,7 @@ struct SpendDashboardModel: Equatable, Sendable {
             provenance: CostProvenance = .unknown,
             meteredCost: Double? = nil,
             sessions: [SessionRow] = [],
+            agentProfiles: [SpendAgentProfile] = [],
             overflowModelCount: Int = 0,
             selectedDay: Date? = nil,
             hourlyPoints: [HourlyPoint] = [],
@@ -317,6 +319,7 @@ struct SpendDashboardModel: Equatable, Sendable {
             self.provenance = provenance
             self.meteredCost = meteredCost
             self.sessions = sessions
+            self.agentProfiles = agentProfiles
             self.projects = projects
             self.overflowModelCount = overflowModelCount
             self.displayedModels = Array(models.prefix(Self.modelRowDisplayLimit))
@@ -645,6 +648,12 @@ struct SpendDashboardModel: Equatable, Sendable {
             selectedDay: selectedDay,
             bounds: bounds,
             calendar: calendar)
+        let allSessions = Self.sessionRows(
+            summaries: summaries,
+            bounds: bounds,
+            calendar: calendar,
+            selectedDay: selectedDay,
+            limit: Int.max)
         return CurrencyGroup(
             currencyCode: currencyCode,
             providers: providers,
@@ -662,8 +671,10 @@ struct SpendDashboardModel: Equatable, Sendable {
             coverageAccumulator: coverage,
             provenance: provenance,
             meteredCost: hasMeteredCostAmount ? metered : nil,
-            sessions: Self.sessionRows(
+            sessions: Array(allSessions.prefix(Self.sessionRowLimit)),
+            agentProfiles: SpendAgentProfile.build(
                 summaries: summaries,
+                sessions: allSessions,
                 bounds: bounds,
                 calendar: calendar,
                 selectedDay: selectedDay),
@@ -1469,7 +1480,8 @@ struct SpendDashboardModel: Equatable, Sendable {
         summaries: [InputSummary],
         bounds: ClosedRange<Date>,
         calendar: Calendar,
-        selectedDay: Date? = nil) -> [SessionRow]
+        selectedDay: Date? = nil,
+        limit: Int = SpendDashboardModel.sessionRowLimit) -> [SessionRow]
     {
         let rows = summaries.flatMap { summary -> [SessionRow] in
             summary.input.snapshot.sessions.compactMap { session -> SessionRow? in
@@ -1502,7 +1514,7 @@ struct SpendDashboardModel: Equatable, Sendable {
             }
         }
         .sorted(by: Self.sessionOrder)
-        return rows.prefix(Self.sessionRowLimit).enumerated().map { rank, row in
+        return rows.prefix(limit).enumerated().map { rank, row in
             var ranked = row
             ranked.rank = rank + 1
             return ranked

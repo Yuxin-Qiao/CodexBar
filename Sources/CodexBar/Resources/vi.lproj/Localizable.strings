@@ -1716,3 +1716,18 @@
 "merged_icon_source_frontmost_app" = "Ứng dụng nhà cung cấp ở phía trước";
 /* Provider menu bar color */
 "Color by provider" = "Màu theo nhà cung cấp";
+/* Agent usage profiles */
+"Agent usage profiles" = "Hồ sơ sử dụng agent";
+"Native Codex timing is currently supported." = "Hiện hỗ trợ đo thời gian của Codex gốc.";
+"No timed turns in this period." = "Không có lượt được đo thời gian trong giai đoạn này.";
+"Completed timed turns only. Failures and task outcomes are not recorded." = "Chỉ gồm lượt đã hoàn thành và được đo thời gian. Lỗi và kết quả tác vụ không được ghi lại.";
+"spend_agent_profile_samples" = "%@ lượt đo thời gian · %@ phiên";
+"spend_agent_profile_cache_coverage" = "Bộ nhớ đệm: %@/%@ lượt";
+"Cache score needs five measured turns." = "Điểm bộ nhớ đệm cần năm lượt được đo hợp lệ.";
+"Partial history" = "Lịch sử chưa đầy đủ";
+"Task performance" = "Hiệu quả tác vụ";
+"Not evaluated" = "Chưa đánh giá";
+"View sessions" = "Xem phiên";
+"Cache reuse score" = "Điểm tái sử dụng bộ nhớ đệm";
+"Score = cached input share × 25. Experimental; not a task quality score." = "Điểm = tỷ lệ đầu vào được lưu đệm × 25. Thử nghiệm; không đánh giá chất lượng tác vụ.";
+"Session costs cover entire sessions." = "Chi phí bao gồm toàn bộ phiên.";

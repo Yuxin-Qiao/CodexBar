@@ -1718,3 +1718,18 @@
 "merged_icon_source_frontmost_app" = "Aplicació del proveïdor en primer pla";
 /* Provider menu bar color */
 "Color by provider" = "Color per proveïdor";
+/* Agent usage profiles */
+"Agent usage profiles" = "Perfils d’ús dels agents";
+"Native Codex timing is currently supported." = "Actualment s’admet la mesura de temps del Codex natiu.";
+"No timed turns in this period." = "No hi ha torns cronometrats en aquest període.";
+"Completed timed turns only. Failures and task outcomes are not recorded." = "Només torns completats amb temps mesurats. No es registren errors ni resultats de tasques.";
+"spend_agent_profile_samples" = "%@ torns cronometrats · %@ sessions";
+"spend_agent_profile_cache_coverage" = "Memòria cau: %@/%@ torns";
+"Cache score needs five measured turns." = "La puntuació de memòria cau requereix cinc torns mesurats.";
+"Partial history" = "Historial parcial";
+"Task performance" = "Rendiment en tasques";
+"Not evaluated" = "Sense avaluar";
+"View sessions" = "Mostra les sessions";
+"Cache reuse score" = "Puntuació de reutilització de memòria cau";
+"Score = cached input share × 25. Experimental; not a task quality score." = "Puntuació = proporció d’entrada en memòria cau × 25. Experimental; no mesura la qualitat de les tasques.";
+"Session costs cover entire sessions." = "Els costos corresponen a sessions completes.";

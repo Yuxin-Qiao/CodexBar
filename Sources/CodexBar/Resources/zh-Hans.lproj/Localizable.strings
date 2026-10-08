@@ -1729,3 +1729,18 @@
 "merged_icon_source_frontmost_app" = "最前台的服务提供方应用";
 /* Provider menu bar color */
 "Color by provider" = "按服务商着色";
+/* Agent usage profiles */
+"Agent usage profiles" = "Agent 使用画像";
+"Native Codex timing is currently supported." = "目前支持原生 Codex 的回合计时。";
+"No timed turns in this period." = "此时间段没有计时回合。";
+"Completed timed turns only. Failures and task outcomes are not recorded." = "仅统计已完成且有计时的回合，未记录失败与任务结果。";
+"spend_agent_profile_samples" = "%@ 个计时回合 · %@ 个会话";
+"spend_agent_profile_cache_coverage" = "缓存数据：%@/%@ 个回合";
+"Cache score needs five measured turns." = "至少需要 5 个有效回合才能计算缓存分数。";
+"Partial history" = "历史记录不完整";
+"Task performance" = "任务表现";
+"Not evaluated" = "尚未评价";
+"View sessions" = "查看会话";
+"Cache reuse score" = "缓存复用分";
+"Score = cached input share × 25. Experimental; not a task quality score." = "分数 = 缓存输入占比 × 25。实验性指标，不代表任务质量。";
+"Session costs cover entire sessions." = "费用统计覆盖整个会话。";

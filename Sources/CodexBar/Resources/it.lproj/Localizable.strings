@@ -1718,3 +1718,18 @@
 "merged_icon_source_frontmost_app" = "App del provider in primo piano";
 /* Provider menu bar color */
 "Color by provider" = "Colore per fornitore";
+/* Agent usage profiles */
+"Agent usage profiles" = "Profili di utilizzo degli agenti";
+"Native Codex timing is currently supported." = "Attualmente sono supportati i tempi di Codex nativo.";
+"No timed turns in this period." = "Nessun turno cronometrato in questo periodo.";
+"Completed timed turns only. Failures and task outcomes are not recorded." = "Solo turni completati con tempi misurati. Errori ed esiti delle attività non vengono registrati.";
+"spend_agent_profile_samples" = "%@ turni cronometrati · %@ sessioni";
+"spend_agent_profile_cache_coverage" = "Cache: %@/%@ turni";
+"Cache score needs five measured turns." = "Il punteggio della cache richiede cinque turni misurati.";
+"Partial history" = "Cronologia parziale";
+"Task performance" = "Prestazioni nelle attività";
+"Not evaluated" = "Non valutate";
+"View sessions" = "Visualizza sessioni";
+"Cache reuse score" = "Punteggio di riutilizzo della cache";
+"Score = cached input share × 25. Experimental; not a task quality score." = "Punteggio = quota di input in cache × 25. Sperimentale; non misura la qualità delle attività.";
+"Session costs cover entire sessions." = "I costi coprono le sessioni complete.";

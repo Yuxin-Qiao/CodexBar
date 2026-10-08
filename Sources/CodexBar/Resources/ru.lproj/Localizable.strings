@@ -1716,3 +1716,18 @@
 "merged_icon_source_frontmost_app" = "Приложение провайдера на переднем плане";
 /* Provider menu bar color */
 "Color by provider" = "Цвет по провайдеру";
+/* Agent usage profiles */
+"Agent usage profiles" = "Профили использования агентов";
+"Native Codex timing is currently supported." = "Сейчас поддерживается измерение времени нативного Codex.";
+"No timed turns in this period." = "За этот период нет ходов с замерами времени.";
+"Completed timed turns only. Failures and task outcomes are not recorded." = "Только завершённые ходы с замерами. Ошибки и результаты задач не записываются.";
+"spend_agent_profile_samples" = "%@ ходов с замерами · %@ сессий";
+"spend_agent_profile_cache_coverage" = "Кэш: %@/%@ ходов";
+"Cache score needs five measured turns." = "Для оценки кэша нужны пять измеренных ходов.";
+"Partial history" = "Неполная история";
+"Task performance" = "Результативность задач";
+"Not evaluated" = "Не оценена";
+"View sessions" = "Показать сессии";
+"Cache reuse score" = "Оценка повторного использования кэша";
+"Score = cached input share × 25. Experimental; not a task quality score." = "Оценка = доля кэшированного ввода × 25. Экспериментальная; не оценивает качество задач.";
+"Session costs cover entire sessions." = "Стоимость относится к полным сессиям.";

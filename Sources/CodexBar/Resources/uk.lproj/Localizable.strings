@@ -1715,3 +1715,18 @@
 "merged_icon_source_frontmost_app" = "Застосунок провайдера на передньому плані";
 /* Provider menu bar color */
 "Color by provider" = "Колір за провайдером";
+/* Agent usage profiles */
+"Agent usage profiles" = "Профілі використання агентів";
+"Native Codex timing is currently supported." = "Наразі підтримуються вимірювання часу нативного Codex.";
+"No timed turns in this period." = "За цей період немає ходів із вимірюваннями часу.";
+"Completed timed turns only. Failures and task outcomes are not recorded." = "Лише завершені ходи з вимірюваннями. Помилки та результати завдань не записуються.";
+"spend_agent_profile_samples" = "%@ ходів із вимірюваннями · %@ сеансів";
+"spend_agent_profile_cache_coverage" = "Кеш: %@/%@ ходів";
+"Cache score needs five measured turns." = "Для оцінки кешу потрібні п’ять виміряних ходів.";
+"Partial history" = "Неповна історія";
+"Task performance" = "Результативність завдань";
+"Not evaluated" = "Не оцінено";
+"View sessions" = "Переглянути сеанси";
+"Cache reuse score" = "Оцінка повторного використання кешу";
+"Score = cached input share × 25. Experimental; not a task quality score." = "Оцінка = частка кешованого введення × 25. Експериментальна; не оцінює якість завдань.";
+"Session costs cover entire sessions." = "Вартість охоплює цілі сеанси.";

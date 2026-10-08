@@ -1715,3 +1715,18 @@
 "merged_icon_source_frontmost_app" = "最前面のプロバイダーアプリ";
 /* Provider menu bar color */
 "Color by provider" = "プロバイダー別の色";
+/* Agent usage profiles */
+"Agent usage profiles" = "エージェント利用プロファイル";
+"Native Codex timing is currently supported." = "現在はネイティブ Codex の所要時間に対応しています。";
+"No timed turns in this period." = "この期間には計測済みのターンがありません。";
+"Completed timed turns only. Failures and task outcomes are not recorded." = "完了して時間を計測できたターンのみ。失敗やタスクの結果は記録されていません。";
+"spend_agent_profile_samples" = "計測済み %@ ターン · %@ セッション";
+"spend_agent_profile_cache_coverage" = "キャッシュ：%@/%@ ターン";
+"Cache score needs five measured turns." = "キャッシュスコアには5つの有効な計測ターンが必要です。";
+"Partial history" = "一部の履歴のみ";
+"Task performance" = "タスクの成果";
+"Not evaluated" = "未評価";
+"View sessions" = "セッションを表示";
+"Cache reuse score" = "キャッシュ再利用スコア";
+"Score = cached input share × 25. Experimental; not a task quality score." = "スコア = キャッシュ済み入力の割合 × 25。実験的な指標で、タスクの品質は示しません。";
+"Session costs cover entire sessions." = "費用はセッション全体のものです。";

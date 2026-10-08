@@ -1719,3 +1719,18 @@
 "merged_icon_source_frontmost_app" = "تطبيق المزوّد في المقدمة";
 /* Provider menu bar color */
 "Color by provider" = "تلوين حسب المزوّد";
+/* Agent usage profiles */
+"Agent usage profiles" = "ملفات استخدام الوكلاء";
+"Native Codex timing is currently supported." = "يُدعم حاليًا قياس وقت Codex الأصلي.";
+"No timed turns in this period." = "لا توجد جولات مقاسة في هذه الفترة.";
+"Completed timed turns only. Failures and task outcomes are not recorded." = "الجولات المكتملة والمقاسة فقط. لا تُسجَّل الإخفاقات ونتائج المهام.";
+"spend_agent_profile_samples" = "%@ جولة مقاسة · %@ جلسة";
+"spend_agent_profile_cache_coverage" = "ذاكرة التخزين المؤقت: %@/%@ جولة";
+"Cache score needs five measured turns." = "تتطلب درجة التخزين المؤقت خمس جولات مقاسة.";
+"Partial history" = "سجل جزئي";
+"Task performance" = "أداء المهام";
+"Not evaluated" = "لم يُقيَّم";
+"View sessions" = "عرض الجلسات";
+"Cache reuse score" = "درجة إعادة استخدام التخزين المؤقت";
+"Score = cached input share × 25. Experimental; not a task quality score." = "الدرجة = نسبة الإدخال المخزن مؤقتًا × 25. تجريبية؛ لا تقيس جودة المهام.";
+"Session costs cover entire sessions." = "تشمل التكاليف الجلسات بأكملها.";

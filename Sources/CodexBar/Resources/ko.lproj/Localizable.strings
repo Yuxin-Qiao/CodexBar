@@ -1684,3 +1684,18 @@
 "merged_icon_source_frontmost_app" = "전면의 공급자 앱";
 /* Provider menu bar color */
 "Color by provider" = "제공업체별 색상";
+/* Agent usage profiles */
+"Agent usage profiles" = "에이전트 사용 프로필";
+"Native Codex timing is currently supported." = "현재 기본 Codex의 시간 측정을 지원합니다.";
+"No timed turns in this period." = "이 기간에는 측정된 턴이 없습니다.";
+"Completed timed turns only. Failures and task outcomes are not recorded." = "완료되고 시간이 측정된 턴만 포함합니다. 실패 및 작업 결과는 기록되지 않습니다.";
+"spend_agent_profile_samples" = "측정된 턴 %@개 · 세션 %@개";
+"spend_agent_profile_cache_coverage" = "캐시: %@/%@개 턴";
+"Cache score needs five measured turns." = "캐시 점수에는 유효한 측정 턴 5개가 필요합니다.";
+"Partial history" = "일부 기록";
+"Task performance" = "작업 성과";
+"Not evaluated" = "평가되지 않음";
+"View sessions" = "세션 보기";
+"Cache reuse score" = "캐시 재사용 점수";
+"Score = cached input share × 25. Experimental; not a task quality score." = "점수 = 캐시된 입력 비율 × 25. 실험적 지표이며 작업 품질 점수가 아닙니다.";
+"Session costs cover entire sessions." = "비용은 전체 세션을 포함합니다.";

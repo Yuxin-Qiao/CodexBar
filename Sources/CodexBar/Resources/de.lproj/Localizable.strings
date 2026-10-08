@@ -1715,3 +1715,18 @@
 "merged_icon_source_frontmost_app" = "Anbieter-App im Vordergrund";
 /* Provider menu bar color */
 "Color by provider" = "Nach Anbieter einfärben";
+/* Agent usage profiles */
+"Agent usage profiles" = "Agent-Nutzungsprofile";
+"Native Codex timing is currently supported." = "Derzeit wird die Zeitmessung für natives Codex unterstützt.";
+"No timed turns in this period." = "Keine gemessenen Durchläufe in diesem Zeitraum.";
+"Completed timed turns only. Failures and task outcomes are not recorded." = "Nur abgeschlossene Durchläufe mit Zeitmessung. Fehler und Aufgabenergebnisse werden nicht erfasst.";
+"spend_agent_profile_samples" = "%@ gemessene Durchläufe · %@ Sitzungen";
+"spend_agent_profile_cache_coverage" = "Cache: %@/%@ Durchläufe";
+"Cache score needs five measured turns." = "Der Cache-Wert benötigt fünf gemessene Durchläufe.";
+"Partial history" = "Unvollständiger Verlauf";
+"Task performance" = "Aufgabenleistung";
+"Not evaluated" = "Nicht bewertet";
+"View sessions" = "Sitzungen anzeigen";
+"Cache reuse score" = "Cache-Wiederverwendungswert";
+"Score = cached input share × 25. Experimental; not a task quality score." = "Wert = Anteil gecachter Eingaben × 25. Experimentell; kein Maß für Aufgabenqualität.";
+"Session costs cover entire sessions." = "Sitzungskosten gelten für die gesamten Sitzungen.";

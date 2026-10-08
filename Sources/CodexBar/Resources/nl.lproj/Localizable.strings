@@ -1714,3 +1714,18 @@
 "merged_icon_source_frontmost_app" = "Provider-app op de voorgrond";
 /* Provider menu bar color */
 "Color by provider" = "Kleur per provider";
+/* Agent usage profiles */
+"Agent usage profiles" = "Gebruiksprofielen van agents";
+"Native Codex timing is currently supported." = "Tijdmetingen van native Codex worden momenteel ondersteund.";
+"No timed turns in this period." = "Geen gemeten beurten in deze periode.";
+"Completed timed turns only. Failures and task outcomes are not recorded." = "Alleen voltooide beurten met tijdmetingen. Fouten en taakresultaten worden niet vastgelegd.";
+"spend_agent_profile_samples" = "%@ gemeten beurten · %@ sessies";
+"spend_agent_profile_cache_coverage" = "Cache: %@/%@ beurten";
+"Cache score needs five measured turns." = "De cachescore vereist vijf gemeten beurten.";
+"Partial history" = "Gedeeltelijke geschiedenis";
+"Task performance" = "Taakprestaties";
+"Not evaluated" = "Niet beoordeeld";
+"View sessions" = "Sessies bekijken";
+"Cache reuse score" = "Score voor cachehergebruik";
+"Score = cached input share × 25. Experimental; not a task quality score." = "Score = aandeel gecachete invoer × 25. Experimenteel; geen maat voor taakkwaliteit.";
+"Session costs cover entire sessions." = "De kosten gelden voor volledige sessies.";

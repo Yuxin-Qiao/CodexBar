@@ -1714,3 +1714,18 @@
 "merged_icon_source_frontmost_app" = "Leverantörsapp i förgrunden";
 /* Provider menu bar color */
 "Color by provider" = "Färg per leverantör";
+/* Agent usage profiles */
+"Agent usage profiles" = "Agenternas användningsprofiler";
+"Native Codex timing is currently supported." = "Tidsmätning för inbyggd Codex stöds för närvarande.";
+"No timed turns in this period." = "Inga tidsmätta turer under denna period.";
+"Completed timed turns only. Failures and task outcomes are not recorded." = "Endast slutförda turer med tidsmätning. Fel och uppgiftsresultat registreras inte.";
+"spend_agent_profile_samples" = "%@ tidsmätta turer · %@ sessioner";
+"spend_agent_profile_cache_coverage" = "Cache: %@/%@ turer";
+"Cache score needs five measured turns." = "Cachepoängen kräver fem uppmätta turer.";
+"Partial history" = "Ofullständig historik";
+"Task performance" = "Uppgiftsprestanda";
+"Not evaluated" = "Inte utvärderad";
+"View sessions" = "Visa sessioner";
+"Cache reuse score" = "Poäng för cacheåteranvändning";
+"Score = cached input share × 25. Experimental; not a task quality score." = "Poäng = andel cachad indata × 25. Experimentell; mäter inte uppgifternas kvalitet.";
+"Session costs cover entire sessions." = "Kostnaderna avser hela sessioner.";

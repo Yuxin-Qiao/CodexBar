@@ -1719,3 +1719,18 @@
 "merged_icon_source_frontmost_app" = "แอปผู้ให้บริการที่อยู่ด้านหน้า";
 /* Provider menu bar color */
 "Color by provider" = "สีตามผู้ให้บริการ";
+/* Agent usage profiles */
+"Agent usage profiles" = "โปรไฟล์การใช้งานเอเจนต์";
+"Native Codex timing is currently supported." = "ขณะนี้รองรับการวัดเวลาของ Codex แบบเนทีฟ";
+"No timed turns in this period." = "ไม่มีรอบที่วัดเวลาในช่วงนี้";
+"Completed timed turns only. Failures and task outcomes are not recorded." = "เฉพาะรอบที่เสร็จสิ้นและมีการวัดเวลา ไม่มีการบันทึกความล้มเหลวและผลลัพธ์ของงาน";
+"spend_agent_profile_samples" = "%@ รอบที่วัดเวลา · %@ เซสชัน";
+"spend_agent_profile_cache_coverage" = "แคช: %@/%@ รอบ";
+"Cache score needs five measured turns." = "คะแนนแคชต้องมีรอบที่วัดได้อย่างน้อยห้ารอบ";
+"Partial history" = "ประวัติไม่ครบ";
+"Task performance" = "ผลการทำงาน";
+"Not evaluated" = "ยังไม่ได้ประเมิน";
+"View sessions" = "ดูเซสชัน";
+"Cache reuse score" = "คะแนนการใช้แคชซ้ำ";
+"Score = cached input share × 25. Experimental; not a task quality score." = "คะแนน = สัดส่วนอินพุตที่แคชไว้ × 25 เป็นการทดลอง ไม่ใช่คะแนนคุณภาพงาน";
+"Session costs cover entire sessions." = "ค่าใช้จ่ายครอบคลุมทั้งเซสชัน";

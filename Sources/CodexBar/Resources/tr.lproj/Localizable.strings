@@ -1717,3 +1717,18 @@
 "merged_icon_source_frontmost_app" = "Öndeki sağlayıcı uygulaması";
 /* Provider menu bar color */
 "Color by provider" = "Sağlayıcıya göre renk";
+/* Agent usage profiles */
+"Agent usage profiles" = "Ajan kullanım profilleri";
+"Native Codex timing is currently supported." = "Şu anda yerel Codex zaman ölçümleri desteklenmektedir.";
+"No timed turns in this period." = "Bu dönemde süresi ölçülmüş tur yok.";
+"Completed timed turns only. Failures and task outcomes are not recorded." = "Yalnızca tamamlanmış ve süresi ölçülmüş turlar. Hatalar ve görev sonuçları kaydedilmez.";
+"spend_agent_profile_samples" = "%@ ölçülmüş tur · %@ oturum";
+"spend_agent_profile_cache_coverage" = "Önbellek: %@/%@ tur";
+"Cache score needs five measured turns." = "Önbellek puanı için beş ölçülmüş tur gerekir.";
+"Partial history" = "Kısmi geçmiş";
+"Task performance" = "Görev performansı";
+"Not evaluated" = "Değerlendirilmedi";
+"View sessions" = "Oturumları görüntüle";
+"Cache reuse score" = "Önbellek yeniden kullanım puanı";
+"Score = cached input share × 25. Experimental; not a task quality score." = "Puan = önbelleğe alınan girdi oranı × 25. Deneyseldir; görev kalitesini ölçmez.";
+"Session costs cover entire sessions." = "Maliyetler oturumların tamamını kapsar.";

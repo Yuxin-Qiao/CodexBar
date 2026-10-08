@@ -1746,3 +1746,18 @@
 "merged_icon_source_frontmost_app" = "最前景的服務提供者 App";
 /* Provider menu bar color */
 "Color by provider" = "依服務商著色";
+/* Agent usage profiles */
+"Agent usage profiles" = "Agent 使用概況";
+"Native Codex timing is currently supported." = "目前支援原生 Codex 的回合計時。";
+"No timed turns in this period." = "此期間沒有計時回合。";
+"Completed timed turns only. Failures and task outcomes are not recorded." = "僅統計已完成且有計時的回合，未記錄失敗與任務結果。";
+"spend_agent_profile_samples" = "%@ 個計時回合 · %@ 個工作階段";
+"spend_agent_profile_cache_coverage" = "快取資料：%@/%@ 個回合";
+"Cache score needs five measured turns." = "至少需要 5 個有效回合才能計算快取分數。";
+"Partial history" = "歷史記錄不完整";
+"Task performance" = "任務表現";
+"Not evaluated" = "尚未評估";
+"View sessions" = "查看工作階段";
+"Cache reuse score" = "快取重用分數";
+"Score = cached input share × 25. Experimental; not a task quality score." = "分數 = 快取輸入占比 × 25。實驗性指標，不代表任務品質。";
+"Session costs cover entire sessions." = "費用統計涵蓋整個工作階段。";

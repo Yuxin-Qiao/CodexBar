@@ -1719,3 +1719,18 @@
 "merged_icon_source_frontmost_app" = "برنامه ارائه‌دهنده در پیش‌زمینه";
 /* Provider menu bar color */
 "Color by provider" = "رنگ بر اساس ارائه‌دهنده";
+/* Agent usage profiles */
+"Agent usage profiles" = "نمایه‌های استفاده از عامل‌ها";
+"Native Codex timing is currently supported." = "در حال حاضر زمان‌سنجی Codex بومی پشتیبانی می‌شود.";
+"No timed turns in this period." = "در این بازه نوبت زمان‌سنجی‌شده‌ای وجود ندارد.";
+"Completed timed turns only. Failures and task outcomes are not recorded." = "فقط نوبت‌های تکمیل‌شده با زمان‌سنجی. شکست‌ها و نتایج کارها ثبت نمی‌شوند.";
+"spend_agent_profile_samples" = "%@ نوبت زمان‌سنجی‌شده · %@ نشست";
+"spend_agent_profile_cache_coverage" = "حافظهٔ نهان: %@/%@ نوبت";
+"Cache score needs five measured turns." = "امتیاز حافظهٔ نهان به پنج نوبت اندازه‌گیری‌شده نیاز دارد.";
+"Partial history" = "تاریخچهٔ ناقص";
+"Task performance" = "عملکرد در کارها";
+"Not evaluated" = "ارزیابی نشده";
+"View sessions" = "نمایش نشست‌ها";
+"Cache reuse score" = "امتیاز استفادهٔ مجدد از حافظهٔ نهان";
+"Score = cached input share × 25. Experimental; not a task quality score." = "امتیاز = سهم ورودی ذخیره‌شده در حافظهٔ نهان × 25. آزمایشی است؛ کیفیت کار را نمی‌سنجد.";
+"Session costs cover entire sessions." = "هزینه‌ها کل نشست‌ها را پوشش می‌دهند.";

@@ -144,16 +144,18 @@ struct SpendDashboardPane: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                self.header
-                SpendTimeZoneControls(settings: self.settings)
-                self.refreshStatus
-                self.codexCostCatchUpPanel
-                self.content
-                self.dataControls
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    self.header
+                    SpendTimeZoneControls(settings: self.settings)
+                    self.refreshStatus
+                    self.codexCostCatchUpPanel
+                    self.content(scrollProxy: proxy)
+                    self.dataControls
+                }
+                .padding(24)
             }
-            .padding(24)
         }
         .background(FocusResigningBackground())
         .onAppear {
@@ -402,7 +404,7 @@ struct SpendDashboardPane: View {
     }
 
     @ViewBuilder
-    private var content: some View {
+    private func content(scrollProxy: ScrollViewProxy) -> some View {
         if !self.settings.costUsageEnabled {
             SpendDashboardPanel {
                 ContentUnavailableView {
@@ -431,6 +433,11 @@ struct SpendDashboardPane: View {
                     onSelectDay: { self.controller.selectDay($0) },
                     onClearSelectedDay: {
                         self.controller.selectDay(nil)
+                    },
+                    onSelectProfile: {
+                        withAnimation {
+                            scrollProxy.scrollTo(SpendDashboardScrollTarget.details(group.id), anchor: .top)
+                        }
                     })
             }
         }
@@ -577,6 +584,10 @@ enum SpendDashboardDetailSection: Hashable, Identifiable {
     }
 }
 
+enum SpendDashboardScrollTarget: Hashable {
+    case details(String)
+}
+
 func spendDashboardAvailableDetailSections(
     hasProjects: Bool,
     hasSessions: Bool,
@@ -644,8 +655,10 @@ struct SpendDashboardCurrencySection: View {
     let hidePersonalInfo: Bool
     let onClearSelectedDay: (() -> Void)?
     let onSelectDay: ((Date) -> Void)?
+    let onSelectProfile: (() -> Void)?
     @State private var selectedDetailSection: SpendDashboardDetailSection
     @State private var selectedTrendSection: SpendDashboardTrendSection
+    @State private var selectedAgentProfileID: SpendAgentProfile.Configuration?
 
     init(
         group: SpendDashboardModel.CurrencyGroup,
@@ -654,13 +667,15 @@ struct SpendDashboardCurrencySection: View {
         initialDetailSection: SpendDashboardDetailSection = .providers,
         initialTrendSection: SpendDashboardTrendSection? = nil,
         onSelectDay: ((Date) -> Void)? = nil,
-        onClearSelectedDay: (() -> Void)? = nil)
+        onClearSelectedDay: (() -> Void)? = nil,
+        onSelectProfile: (() -> Void)? = nil)
     {
         self.group = group
         self.requestedDays = requestedDays
         self.hidePersonalInfo = hidePersonalInfo
         self.onClearSelectedDay = onClearSelectedDay
         self.onSelectDay = onSelectDay
+        self.onSelectProfile = onSelectProfile
         self._selectedDetailSection = State(initialValue: initialDetailSection)
         self._selectedTrendSection = State(
             initialValue: initialTrendSection
@@ -681,16 +696,31 @@ struct SpendDashboardCurrencySection: View {
             SpendDashboardSummary(
                 group: self.group,
                 onClearSelectedDay: self.onClearSelectedDay)
+            // Provider-specific by design: other sources do not yet expose validated completed-turn timing.
+            if self.group.providers.contains(where: { $0.provider == .codex && $0.sourceKind == .native }) {
+                SpendAgentProfilesPanel(
+                    profiles: self.group.agentProfiles,
+                    hidePersonalInfo: self.hidePersonalInfo,
+                    onSelect: { id in
+                        self.selectedAgentProfileID = id
+                        self.selectedDetailSection = .sessions
+                        self.onSelectProfile?()
+                    })
+            }
             SpendDashboardDetailPanel(
                 group: self.group,
                 hidePersonalInfo: self.hidePersonalInfo,
-                selection: self.$selectedDetailSection)
+                selection: self.$selectedDetailSection,
+                selectedProfile: self.selectedAgentProfile,
+                onClearProfile: { self.selectedAgentProfileID = nil })
+                .id(SpendDashboardScrollTarget.details(self.group.id))
             SpendDashboardTrendPanel(
                 group: self.group,
                 selection: self.$selectedTrendSection,
                 onSelectDay: self.onSelectDay.map { onSelectDay in
                     { day in
                         self.selectedDetailSection = .providers
+                        self.selectedAgentProfileID = nil
                         onSelectDay(day)
                     }
                 },
@@ -699,6 +729,13 @@ struct SpendDashboardCurrencySection: View {
         }
         .environment(\.timeZone, self.group.timeZone)
         .environment(\.calendar, self.group.calendar)
+        .onChange(of: self.group.agentProfiles.map(\.id)) {
+            if self.selectedAgentProfile == nil { self.selectedAgentProfileID = nil }
+        }
+    }
+
+    private var selectedAgentProfile: SpendAgentProfile? {
+        self.group.agentProfiles.first { $0.id == self.selectedAgentProfileID }
     }
 }
 
@@ -706,6 +743,8 @@ private struct SpendDashboardDetailPanel: View {
     let group: SpendDashboardModel.CurrencyGroup
     let hidePersonalInfo: Bool
     @Binding var selection: SpendDashboardDetailSection
+    let selectedProfile: SpendAgentProfile?
+    let onClearProfile: () -> Void
 
     var body: some View {
         SpendDashboardPanel {
@@ -731,7 +770,7 @@ private struct SpendDashboardDetailPanel: View {
     private var availableSections: [SpendDashboardDetailSection] {
         spendDashboardAvailableDetailSections(
             hasProjects: self.group.projects.contains { !$0.isProjectless },
-            hasSessions: !self.group.sessions.isEmpty,
+            hasSessions: !self.group.sessions.isEmpty || self.selectedProfile?.sessions.isEmpty == false,
             hasChats: self.group.projects.contains(where: \.isProjectless))
     }
 
@@ -755,7 +794,22 @@ private struct SpendDashboardDetailPanel: View {
         case .chats:
             SpendProjectRows(group: self.group, hidePersonalInfo: self.hidePersonalInfo, isProjectless: true)
         case .sessions:
-            SpendSessionRows(group: self.group, hidePersonalInfo: self.hidePersonalInfo)
+            if let profile = self.selectedProfile {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(profile.modelName + " · " + profile.effortName).font(.caption.weight(.medium))
+                        Text(L("Session costs cover entire sessions."))
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button(L("Clear"), action: self.onClearProfile).controlSize(.small)
+                }
+            }
+            SpendSessionRows(
+                group: self.group,
+                hidePersonalInfo: self.hidePersonalInfo,
+                rows: self.selectedProfile?.sessions)
+                .id(self.selectedProfile?.id)
         }
     }
 }
@@ -826,7 +880,7 @@ private struct SpendProjectRows: View {
     }
 }
 
-private struct SpendPanelExpandButton: View {
+struct SpendPanelExpandButton: View {
     let rowCount: Int
     let collapsedRowCount: Int
     @Binding var showsAllRows: Bool
@@ -1028,6 +1082,7 @@ private struct SpendDailyLedgerRow: View {
 struct SpendSessionRows: View {
     let group: SpendDashboardModel.CurrencyGroup
     let hidePersonalInfo: Bool
+    var rows: [SpendDashboardModel.SessionRow]?
     @State private var showsAllRows = false
 
     private static let collapsedRowCount = 8
@@ -1077,15 +1132,19 @@ struct SpendSessionRows: View {
                 .padding(.vertical, 12)
             }
             SpendPanelExpandButton(
-                rowCount: self.group.sessions.count,
+                rowCount: self.effectiveRows.count,
                 collapsedRowCount: Self.collapsedRowCount,
                 showsAllRows: self.$showsAllRows)
         }
     }
 
     private var visibleRows: ArraySlice<SpendDashboardModel.SessionRow> {
-        self.group.sessions.prefix(
-            self.showsAllRows ? self.group.sessions.count : Self.collapsedRowCount)
+        self.effectiveRows.prefix(
+            self.showsAllRows ? self.effectiveRows.count : Self.collapsedRowCount)
+    }
+
+    private var effectiveRows: [SpendDashboardModel.SessionRow] {
+        self.rows ?? self.group.sessions
     }
 }
 
