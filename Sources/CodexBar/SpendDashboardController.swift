@@ -1174,7 +1174,12 @@ final class SpendDashboardController {
 
     private(set) var model = SpendDashboardModel(requestedDays: 30, groups: [])
     private(set) var publication = SpendDashboardPublication.empty
-    private(set) var isRefreshing = false
+    private var isLoading = false
+    private(set) var isProjecting = false
+    var isRefreshing: Bool {
+        self.isLoading || self.isProjecting
+    }
+
     private(set) var failedSourceCount = 0
     private(set) var generation: UInt64 = 0
     private(set) var configuration: SpendDashboardConfiguration?
@@ -1188,6 +1193,8 @@ final class SpendDashboardController {
     private let loader: Loader
     private let nowProvider: @Sendable () -> Date
     private let publicationHandler: PublicationHandler?
+    @ObservationIgnored private let projectionWorker: SpendDashboardProjectionWorker
+    @ObservationIgnored private var projectionNeedsPublication = false
     private var loadTask: Task<Void, Never>?
     private var loadedInputs: [SpendDashboardModel.ProviderInput] = []
     private var loadedInputScopes: [String: SpendDashboardLoadedInputScope] = [:]
@@ -1206,7 +1213,9 @@ final class SpendDashboardController {
         cachedLoader: CachedLoader? = nil,
         loader: @escaping Loader = SpendDashboardSource.load,
         nowProvider: @escaping @Sendable () -> Date = { Date() },
-        publicationHandler: PublicationHandler? = nil)
+        publicationHandler: PublicationHandler? = nil,
+        modelBuilder: @escaping SpendDashboardProjectionWorker.Builder =
+            SpendDashboardProjectionRequest.buildOffMainActor)
     {
         self.userDefaults = userDefaults
         self.requestBuilder = requestBuilder
@@ -1214,6 +1223,7 @@ final class SpendDashboardController {
         self.loader = loader
         self.nowProvider = nowProvider
         self.publicationHandler = publicationHandler
+        self.projectionWorker = SpendDashboardProjectionWorker(builder: modelBuilder)
         let legacyDays = userDefaults.object(forKey: "settingsSpendDashboardDays") as? Int
         self.selectedPeriod = userDefaults.string(forKey: Self.periodDefaultsKey)
             .flatMap(CostReportingPeriod.init(rawValue:))
@@ -1245,7 +1255,10 @@ final class SpendDashboardController {
                     self.selectedDay = normalized
                 }
             }
-            self.rebuildModel()
+            let hidesDifferentSources = previousConfiguration.hiddenSourceIDs != configuration.hiddenSourceIDs
+                || previousConfiguration.hideNativeCodexCostWhenOpenCodexPresent
+                != configuration.hideNativeCodexCostWhenOpenCodexPresent
+            self.rebuildModel(clearDisplayedModel: hidesDifferentSources)
             return
         }
         self.configuration = configuration
@@ -1259,7 +1272,7 @@ final class SpendDashboardController {
                 self.selectedDay = normalized
             }
         }
-        if self.isRefreshing || self.phase.manualRefreshOutstanding,
+        if self.isLoading || self.phase.manualRefreshOutstanding,
            let previousConfiguration,
            Self.sameSourceOwnership(previousConfiguration, configuration)
         {
@@ -1277,6 +1290,9 @@ final class SpendDashboardController {
         configuration: SpendDashboardConfiguration,
         phase: LoadPhase)
     {
+        self.projectionWorker.invalidate()
+        self.projectionNeedsPublication = false
+        self.isProjecting = false
         self.generation &+= 1
         let generation = self.generation
         self.loadTask?.cancel()
@@ -1297,7 +1313,7 @@ final class SpendDashboardController {
                 self.loadedInputScopes.removeValue(forKey: sourceID)
             }
             self.failedSourceCount = 0
-            self.rebuildModel()
+            self.rebuildModel(clearDisplayedModel: true)
         }
         let shouldPrimeCachedCodex: Bool = if case .ordinary = phase {
             self.cachedLoader != nil && !Set(Self.codexOwnershipByID(configuration.codexAccountIdentities).keys)
@@ -1315,7 +1331,7 @@ final class SpendDashboardController {
             self.confirmedEmptySourceIDs = []
             self.openCodexObservation = .disabled
             self.failedSourceCount = 0
-            self.isRefreshing = false
+            self.isLoading = false
             self.lastSuccessfulConfiguration = configuration
             self.phase = .ordinary
             self.loadTask = nil
@@ -1323,7 +1339,7 @@ final class SpendDashboardController {
             return
         }
 
-        self.isRefreshing = true
+        self.isLoading = true
         self.publishCurrentState()
         self.loadTask = Task { [weak self] in
             guard let self else { return }
@@ -1550,7 +1566,7 @@ final class SpendDashboardController {
         self.failedSourceIDs = result.failedSourceIDs
         self.confirmedEmptySourceIDs = confirmedEmptySourceIDs
         self.openCodexObservation = result.openCodexObservation
-        self.isRefreshing = false
+        self.isLoading = false
         self.phase = .ordinary
         self.loadTask = nil
         self.rebuildModel()
@@ -1670,6 +1686,9 @@ final class SpendDashboardController {
     }
 
     func stop() {
+        self.projectionWorker.invalidate()
+        self.projectionNeedsPublication = false
+        self.isProjecting = false
         self.loadTask?.cancel()
         self.loadTask = nil
         self.configuration = nil
@@ -1677,28 +1696,12 @@ final class SpendDashboardController {
         self.failedSourceIDs = []
         self.confirmedEmptySourceIDs = []
         self.openCodexObservation = .disabled
-        self.isRefreshing = false
+        self.isLoading = false
         self.phase = .ordinary
         self.lastRefreshDateWindowAt = nil
         self.lastRefreshDateWindowDayStart = nil
         self.dashboardSnapshotLoadedAt = nil
         self.publishCurrentState()
-    }
-
-    private func rebuildModel(publish: Bool = true) {
-        let configuration = self.configuration
-        self.model = SpendDashboardModel.build(
-            inputs: self.loadedInputs,
-            reportingPeriod: self.selectedPeriod,
-            now: self.loadedAt,
-            calendar: configuration?.bucketCalendar ?? .current,
-            preferredCurrencyCode: configuration?.preferredCurrencyCode ?? "auto",
-            hiddenSourceIDs: Set(configuration?.hiddenSourceIDs ?? []),
-            hideNativeCodexWhenOpenCodexPresent: configuration?.hideNativeCodexCostWhenOpenCodexPresent ?? false,
-            selectedDay: self.selectedDay)
-        if publish {
-            self.publishCurrentState()
-        }
     }
 
     @ObservationIgnored private var failedSourceIDs: Set<String> = []
@@ -1916,5 +1919,45 @@ final class SpendDashboardController {
             guard !accountID.isEmpty else { return nil }
             return ("codex:\(accountID)", identity)
         })
+    }
+}
+
+extension SpendDashboardController {
+    private func rebuildModel(publish: Bool = true, clearDisplayedModel: Bool = false) {
+        self.projectionNeedsPublication = self.projectionNeedsPublication || publish
+        let configuration = self.configuration
+        let request = SpendDashboardProjectionRequest(
+            inputs: self.loadedInputs,
+            reportingPeriod: self.selectedPeriod,
+            now: self.loadedAt,
+            calendar: configuration?.bucketCalendar ?? .current,
+            preferredCurrencyCode: configuration?.preferredCurrencyCode ?? "auto",
+            hiddenSourceIDs: Set(configuration?.hiddenSourceIDs ?? []),
+            hideNativeCodexWhenOpenCodexPresent: configuration?.hideNativeCodexCostWhenOpenCodexPresent ?? false,
+            selectedDay: self.selectedDay)
+        if request.inputs.isEmpty {
+            self.projectionWorker.invalidate()
+            self.isProjecting = false
+            self.model = request.build()
+            self.projectionNeedsPublication = false
+        } else {
+            if clearDisplayedModel {
+                self.model = SpendDashboardModel(requestedDays: self.model.requestedDays, groups: [])
+            }
+            self.isProjecting = true
+            self.projectionWorker.submit(request) { [weak self] model in
+                guard let self else { return }
+                self.model = model
+                self.isProjecting = false
+                let needsPublication = self.projectionNeedsPublication
+                self.projectionNeedsPublication = false
+                if needsPublication {
+                    self.publishCurrentState()
+                }
+            }
+        }
+        if publish {
+            self.publishCurrentState()
+        }
     }
 }

@@ -2,12 +2,11 @@ import AppKit
 import CodexBarCore
 import SwiftUI
 
-struct SpendProviderBreakdown: Identifiable, Equatable {
+struct SpendProviderBreakdown: Identifiable, Equatable, Sendable {
     let provider: UsageProvider
     let displayName: String
     let subscriptions: [SpendDashboardModel.ProviderRow]
     let models: [SpendDashboardModel.ModelRow]
-    let agentProfiles: [SpendAgentProfile]
     let performance: CostUsageTurnPerformanceSummary?
     let cacheSampleCount: Int
     let historyScanIsPartial: Bool
@@ -54,12 +53,21 @@ private func spendDashboardProviderCostSum(_ values: [Double]) -> Double? {
 func spendDashboardProviderBreakdowns(
     _ group: SpendDashboardModel.CurrencyGroup) -> [SpendProviderBreakdown]
 {
-    let providerIDs = Set(group.providers.map(\.provider)).union(group.models.map(\.provider))
+    group.providerBreakdowns
+}
+
+func spendDashboardProviderBreakdowns(
+    providers: [SpendDashboardModel.ProviderRow],
+    models allModels: [SpendDashboardModel.ModelRow],
+    agentProfiles: [SpendAgentProfile],
+    incompleteModelProviders: Set<UsageProvider>) -> [SpendProviderBreakdown]
+{
+    let providerIDs = Set(providers.map(\.provider)).union(allModels.map(\.provider))
     return providerIDs.map { provider in
-        let subscriptions = group.providers.filter { $0.provider == provider }
-        let models = group.models.filter { $0.provider == provider }
+        let subscriptions = providers.filter { $0.provider == provider }
+        let models = allModels.filter { $0.provider == provider }
         let sourceIDs = Set(subscriptions.map(\.id))
-        let profiles = group.agentProfiles.filter { sourceIDs.contains($0.id.sourceID) }
+        let profiles = agentProfiles.filter { sourceIDs.contains($0.id.sourceID) }
         let samples = profiles.flatMap(\.samples)
         let costs = subscriptions.compactMap(\.totalCost)
         let tokens = subscriptions.compactMap(\.totalTokens)
@@ -71,7 +79,6 @@ func spendDashboardProviderBreakdowns(
             displayName: ProviderDescriptorRegistry.descriptor(for: provider).metadata.displayName,
             subscriptions: subscriptions,
             models: models,
-            agentProfiles: profiles,
             performance: CostUsageTurnPerformanceSummary(samples: samples),
             cacheSampleCount: profiles.reduce(0) { $0 + $1.cacheSampleCount },
             historyScanIsPartial: profiles.contains(where: \.historyScanIsPartial),
@@ -82,7 +89,7 @@ func spendDashboardProviderBreakdowns(
                 (totalTokens == nil && !tokens.isEmpty) || subscriptions.contains(where: \.tokensAreLowerBound),
             hasPartialCost: incompleteRequestCount > 0 || costs.count < subscriptions.count ||
                 (totalCost == nil && !costs.isEmpty) || subscriptions.contains(where: \.costIsLowerBound),
-            hasPartialModelHistory: group.incompleteModelProviders.contains(provider),
+            hasPartialModelHistory: incompleteModelProviders.contains(provider),
             modelCount: models.count)
     }
     .sorted { lhs, rhs in
@@ -127,8 +134,16 @@ func spendDashboardBreakdownMetricText(
 }
 
 struct SpendProviderBreakdownRows: View {
-    let group: SpendDashboardModel.CurrencyGroup
+    private let breakdowns: [SpendProviderBreakdown]
+    private let currencyCode: String
+    private let hasModelHistory: Bool
     @State private var expandedProviders: Set<UsageProvider> = []
+
+    init(group: SpendDashboardModel.CurrencyGroup) {
+        self.breakdowns = group.providerBreakdowns
+        self.currencyCode = group.currencyCode
+        self.hasModelHistory = !group.models.isEmpty
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -140,10 +155,6 @@ struct SpendProviderBreakdownRows: View {
                 self.providerGroup(breakdown)
             }
         }
-    }
-
-    private var breakdowns: [SpendProviderBreakdown] {
-        spendDashboardProviderBreakdowns(self.group)
     }
 
     private func showsSubscriptionChildren(_ breakdown: SpendProviderBreakdown) -> Bool {
@@ -178,7 +189,7 @@ struct SpendProviderBreakdownRows: View {
                         Text(spendDashboardMetricText(
                             cost: row.totalCost,
                             tokens: row.totalTokens,
-                            currencyCode: self.group.currencyCode,
+                            currencyCode: self.currencyCode,
                             incompleteRequestCount: row.incompleteRequestCount,
                             costIsLowerBound: row.costIsLowerBound,
                             tokensAreLowerBound: row.tokensAreLowerBound))
@@ -217,7 +228,7 @@ struct SpendProviderBreakdownRows: View {
                         Text(spendDashboardMetricText(
                             cost: row.totalCost,
                             tokens: row.totalTokens,
-                            currencyCode: self.group.currencyCode,
+                            currencyCode: self.currencyCode,
                             incompleteRequestCount: row.incompleteRequestCount))
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
@@ -246,7 +257,7 @@ struct SpendProviderBreakdownRows: View {
                 }
             } else if breakdown.hasPartialModelHistory {
                 self.modelHistoryState(L("Model breakdown unavailable"))
-            } else if self.group.models.isEmpty {
+            } else if !self.hasModelHistory {
                 self.modelHistoryState(L("No model-level history"))
             }
         }
@@ -286,7 +297,7 @@ struct SpendProviderBreakdownRows: View {
         Text(spendDashboardBreakdownMetricText(
             cost: breakdown.totalCost,
             tokens: breakdown.totalTokens,
-            currencyCode: self.group.currencyCode,
+            currencyCode: self.currencyCode,
             hasPartialCost: breakdown.hasPartialCost,
             hasPartialTokens: breakdown.hasPartialTokens,
             incompleteRequestCount: breakdown.incompleteRequestCount,

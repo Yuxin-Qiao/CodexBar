@@ -61,6 +61,7 @@ final class SpendDashboardNativeProofTests: XCTestCase {
         controller.update(configuration: configuration)
         try await SpendDashboardStateWait.until { !controller.isRefreshing && !controller.model.groups.isEmpty }
         controller.selectDay(now)
+        try await SpendDashboardStateWait.until { !controller.isProjecting }
         defer {
             controller.stop()
             store.stopSharedSpendDashboardPublication()

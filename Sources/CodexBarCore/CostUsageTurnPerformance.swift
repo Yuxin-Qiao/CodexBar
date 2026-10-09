@@ -59,17 +59,20 @@ public struct CostUsageTurnPerformanceSummary: Sendable, Equatable {
               let duration = CheckedSum.integers(samples.map(\.durationMilliseconds)),
               duration > 0
         else { return nil }
-        self.details = CostUsageTurnPerformanceDetails(samples: samples)
+        let durations = samples.map(\.durationMilliseconds).sorted()
+        let firstTokens = samples.compactMap(\.firstTokenMilliseconds).sorted()
+        self.details = CostUsageTurnPerformanceDetails(
+            samples: samples,
+            sortedDurations: durations,
+            sortedFirstTokens: firstTokens)
         self.sampleCount = samples.count
         self.outputTokensPerSecond = Double(output) / Double(duration) * 1000
-        let durations = samples.map(\.durationMilliseconds).sorted()
         let durationMiddle = durations.count / 2
         self.medianDurationMilliseconds = if durations.count.isMultiple(of: 2) {
             Double(durations[durationMiddle - 1]) / 2 + Double(durations[durationMiddle]) / 2
         } else {
             Double(durations[durationMiddle])
         }
-        let firstTokens = samples.compactMap(\.firstTokenMilliseconds).sorted()
         self.firstTokenSampleCount = firstTokens.count
         let middle = firstTokens.count / 2
         self.medianFirstTokenMilliseconds = if firstTokens.isEmpty {

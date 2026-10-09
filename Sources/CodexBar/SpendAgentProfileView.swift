@@ -1,11 +1,16 @@
 import CodexBarCore
 import SwiftUI
 
+extension EnvironmentValues {
+    @Entry var spendDashboardIsProjecting = false
+}
+
 /// The harness's observed metrics appear directly beside its name, without another navigation level.
 struct SpendHarnessPerformanceText: View {
     let performance: CostUsageTurnPerformanceSummary
     let cacheSampleCount: Int
     let historyScanIsPartial: Bool
+    @Environment(\.spendDashboardIsProjecting) private var isProjecting
     @State private var showsRatingDetails = false
 
     var body: some View {
@@ -20,6 +25,7 @@ struct SpendHarnessPerformanceText: View {
                 }
             }
             .buttonStyle(.plain)
+            .disabled(self.isProjecting)
             .help(L("spend_harness_open_details"))
             .accessibilityLabel(self.scoreText + " · " + self.dimensionsText)
             .accessibilityHint(L("spend_harness_open_details"))
@@ -39,6 +45,9 @@ struct SpendHarnessPerformanceText: View {
         .onChange(of: self.performance) { _, _ in self.showsRatingDetails = false }
         .onChange(of: self.cacheSampleCount) { _, _ in self.showsRatingDetails = false }
         .onChange(of: self.historyScanIsPartial) { _, _ in self.showsRatingDetails = false }
+        .onChange(of: self.isProjecting) { _, projecting in
+            if projecting { self.showsRatingDetails = false }
+        }
     }
 
     private var rating: SpendHarnessRating {

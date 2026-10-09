@@ -96,6 +96,7 @@ struct SpendDashboardCachedPresentationTests {
 
         controller.update(configuration: configuration)
         await Self.waitForPendingCount(1, gate: gate)
+        await Self.waitUntil { !controller.isProjecting }
 
         #expect(controller.isRefreshing)
         #expect(controller.model.groups.first?.totalCost == 3)
@@ -160,6 +161,7 @@ struct SpendDashboardCachedPresentationTests {
 
         controller.update(configuration: utc)
         await Self.waitForPendingCount(1, gate: gate)
+        await Self.waitUntil { !controller.isProjecting }
         #expect(controller.model.groups.first?.totalCost == 3)
 
         activeConfiguration.withLock { $0 = pacific }
@@ -198,6 +200,7 @@ struct SpendDashboardCachedPresentationTests {
 
         controller.update(configuration: configuration)
         await Self.waitForPendingCount(1, gate: gate)
+        await Self.waitUntil { !controller.isProjecting }
         #expect(controller.model.groups.first?.totalCost == 3)
 
         await gate.resume(at: 0, result: .init(

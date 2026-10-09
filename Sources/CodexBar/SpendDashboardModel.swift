@@ -262,6 +262,8 @@ struct SpendDashboardModel: Equatable, Sendable {
         let meteredCost: Double?
         let sessions: [SessionRow]
         let agentProfiles: [SpendAgentProfile]
+        /// Prepared once with the model, so SwiftUI updates never aggregate raw turn histories.
+        let providerBreakdowns: [SpendProviderBreakdown]
         let projects: [ProjectRow]
         let overflowModelCount: Int
         let displayedModels: [ModelRow]
@@ -320,6 +322,11 @@ struct SpendDashboardModel: Equatable, Sendable {
             self.meteredCost = meteredCost
             self.sessions = sessions
             self.agentProfiles = agentProfiles
+            self.providerBreakdowns = spendDashboardProviderBreakdowns(
+                providers: providers,
+                models: models,
+                agentProfiles: agentProfiles,
+                incompleteModelProviders: incompleteModelProviders)
             self.projects = projects
             self.overflowModelCount = overflowModelCount
             self.displayedModels = Array(models.prefix(Self.modelRowDisplayLimit))
@@ -1483,15 +1490,14 @@ struct SpendDashboardModel: Equatable, Sendable {
         selectedDay: Date? = nil,
         limit: Int = SpendDashboardModel.sessionRowLimit) -> [SessionRow]
     {
+        let interval = Self.performanceInterval(bounds: bounds, calendar: calendar, selectedDay: selectedDay)
         let rows = summaries.flatMap { summary -> [SessionRow] in
             summary.input.snapshot.sessions.compactMap { session -> SessionRow? in
                 let day = calendar.startOfDay(for: session.lastActivity)
                 // Provider-specific by design: only the native Codex ledger has validated turn timing.
                 let performanceSamples = summary.input.provider == .codex && summary.input.sourceKind == .native
                     ? session.turnPerformanceSamples.filter {
-                        let completionDay = calendar.startOfDay(for: $0.completedAt)
-                        return bounds.contains(completionDay) &&
-                            (selectedDay == nil || completionDay == selectedDay)
+                        interval?.contains($0.completedAt) == true
                     } : []
                 guard bounds.contains(day) || !performanceSamples.isEmpty else { return nil }
                 let modelName = session.modelBreakdowns.max {
@@ -1522,6 +1528,18 @@ struct SpendDashboardModel: Equatable, Sendable {
     }
 
     static let sessionRowLimit = 50
+
+    /// Half-open instants preserve calendar-day filtering, including DST, without normalizing every turn.
+    static func performanceInterval(
+        bounds: ClosedRange<Date>, calendar: Calendar, selectedDay: Date?) -> Range<Date>?
+    {
+        let start = selectedDay.map { calendar.startOfDay(for: $0) } ?? bounds.lowerBound
+        let lastDay = selectedDay == nil ? bounds.upperBound : start
+        guard bounds.contains(start),
+              let end = calendar.date(byAdding: .day, value: 1, to: lastDay), end > start
+        else { return nil }
+        return start..<end
+    }
 
     /// Most expensive first, like Projects. Unpriced sessions follow priced ones.
     private static func sessionOrder(_ lhs: SessionRow, _ rhs: SessionRow) -> Bool {

@@ -26,11 +26,18 @@ public struct CostUsageTurnPerformanceDetails: Sendable, Equatable {
     }
 
     public init(samples: [CostUsageTurnPerformanceSample]) {
+        self.init(
+            samples: samples,
+            sortedDurations: samples.map(\.durationMilliseconds).sorted(),
+            sortedFirstTokens: samples.compactMap(\.firstTokenMilliseconds).sorted())
+    }
+
+    init(samples: [CostUsageTurnPerformanceSample], sortedDurations: [Int], sortedFirstTokens: [Int]) {
         self.p95DurationMilliseconds = Self.percentile(
-            samples.map { Double($0.durationMilliseconds) }, fraction: 0.95, minimumCount: 20)
+            sortedDurations, fraction: 0.95, minimumCount: 20).map(Double.init)
         self.p95FirstTokenMilliseconds = Self.percentile(
-            samples.compactMap { $0.firstTokenMilliseconds.map(Double.init) }, fraction: 0.95, minimumCount: 20)
-        let rates = samples.map { Double($0.outputTokens) / Double($0.durationMilliseconds) * 1000 }
+            sortedFirstTokens, fraction: 0.95, minimumCount: 20).map(Double.init)
+        let rates = samples.map { Double($0.outputTokens) / Double($0.durationMilliseconds) * 1000 }.sorted()
         self.outputRateLowerQuartile = Self.percentile(rates, fraction: 0.25, minimumCount: 4)
         self.outputRateUpperQuartile = Self.percentile(rates, fraction: 0.75, minimumCount: 4)
         let cacheSamples = samples.filter { $0.inputTokens != nil && $0.cachedInputTokens != nil }
@@ -42,19 +49,24 @@ public struct CostUsageTurnPerformanceDetails: Sendable, Equatable {
         } else {
             self.cachedInputFraction = nil
         }
-        self.groups = Dictionary(grouping: samples) { Key(model: $0.model, effort: $0.reasoningEffort) }
+        let observationsByKey = Dictionary(grouping: samples) { Key(model: $0.model, effort: $0.reasoningEffort) }
+        let hasSingleGroup = observationsByKey.count == 1
+        self.groups = observationsByKey
             .compactMap { key, observations in
                 guard let output = CheckedSum.integers(observations.map(\.outputTokens)),
                       let duration = CheckedSum.integers(observations.map(\.durationMilliseconds)), duration > 0
                 else { return nil }
-                let firstTokens = observations.compactMap { $0.firstTokenMilliseconds.map(Double.init) }
+                let firstTokens = hasSingleGroup
+                    ? sortedFirstTokens : observations.compactMap(\.firstTokenMilliseconds).sorted()
+                let durations = hasSingleGroup
+                    ? sortedDurations : observations.map(\.durationMilliseconds).sorted()
                 return Group(
                     model: key.model,
                     reasoningEffort: key.effort,
                     sampleCount: observations.count,
                     firstTokenSampleCount: firstTokens.count,
                     medianFirstTokenMilliseconds: Self.median(firstTokens),
-                    medianDurationMilliseconds: Self.median(observations.map { Double($0.durationMilliseconds) }) ?? 0,
+                    medianDurationMilliseconds: Self.median(durations) ?? 0,
                     outputTokensPerSecond: Double(output) / Double(duration) * 1000)
             }.sorted {
                 if $0.model != $1.model { return ($0.model ?? "") < ($1.model ?? "") }
@@ -63,16 +75,15 @@ public struct CostUsageTurnPerformanceDetails: Sendable, Equatable {
     }
 
     /// Nearest-rank percentiles. P95 requires 20 observations; quartiles require four.
-    private static func percentile(_ values: [Double], fraction: Double, minimumCount: Int) -> Double? {
-        guard values.count >= minimumCount else { return nil }
-        let sorted = values.sorted()
+    private static func percentile<T>(_ sorted: [T], fraction: Double, minimumCount: Int) -> T? {
+        guard sorted.count >= minimumCount else { return nil }
         return sorted[Int(ceil(Double(sorted.count) * fraction)) - 1]
     }
 
-    private static func median(_ values: [Double]) -> Double? {
-        guard !values.isEmpty else { return nil }
-        let sorted = values.sorted()
+    private static func median(_ sorted: [Int]) -> Double? {
+        guard !sorted.isEmpty else { return nil }
         let middle = sorted.count / 2
-        return sorted.count.isMultiple(of: 2) ? sorted[middle - 1] / 2 + sorted[middle] / 2 : sorted[middle]
+        return sorted.count.isMultiple(of: 2)
+            ? Double(sorted[middle - 1]) / 2 + Double(sorted[middle]) / 2 : Double(sorted[middle])
     }
 }

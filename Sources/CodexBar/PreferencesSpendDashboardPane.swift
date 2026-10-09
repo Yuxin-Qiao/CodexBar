@@ -432,6 +432,7 @@ struct SpendDashboardPane: View {
                     onClearSelectedDay: {
                         self.controller.selectDay(nil)
                     })
+                    .environment(\.spendDashboardIsProjecting, self.controller.isProjecting)
             }
         }
 

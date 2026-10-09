@@ -43,6 +43,8 @@ struct SpendAgentProfile: Identifiable, Equatable, Sendable {
         calendar: Calendar,
         selectedDay: Date?) -> [Self]
     {
+        guard let interval = SpendDashboardModel.performanceInterval(
+            bounds: bounds, calendar: calendar, selectedDay: selectedDay) else { return [] }
         var observations: [Configuration: [String: [CostUsageTurnPerformanceSample]]] = [:]
         var sources: [String: SpendDashboardModel.ProviderInput] = [:]
         // Provider-specific by design: only the native Codex ledger provides validated completed-turn timing.
@@ -51,8 +53,7 @@ struct SpendAgentProfile: Identifiable, Equatable, Sendable {
             sources[input.id] = input
             for session in input.snapshot.sessions {
                 for sample in session.turnPerformanceSamples {
-                    let day = calendar.startOfDay(for: sample.completedAt)
-                    guard bounds.contains(day), selectedDay == nil || selectedDay == day else { continue }
+                    guard interval.contains(sample.completedAt) else { continue }
                     let key = Configuration(
                         sourceID: input.id,
                         model: sample.model,

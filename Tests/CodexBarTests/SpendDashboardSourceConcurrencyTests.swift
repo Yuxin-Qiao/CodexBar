@@ -110,6 +110,7 @@ struct SpendDashboardSourceConcurrencyTests {
 
         controller.update(configuration: replacement)
         try await gate.waitForPendingCount(1)
+        try await SpendDashboardStateWait.until { !controller.isProjecting }
         #expect(controller.model.groups.first?.totalCost == 5)
         #expect(Set(controller.model.groups.flatMap(\.providers).map(\.id)) == ["codex:b"])
         gate.resume(result: SpendDashboardLoadResult(
@@ -177,6 +178,7 @@ struct SpendDashboardSourceConcurrencyTests {
         try await Self.waitUntil { !controller.isRefreshing }
 
         controller.update(configuration: replacement)
+        try await SpendDashboardStateWait.until { !controller.isProjecting }
         let pendingRows = try #require(controller.model.groups.first?.providers)
         #expect(Dictionary(uniqueKeysWithValues: pendingRows.map { ($0.id, $0.displayName) }) == [
             "codex:b": "Codex · #1",

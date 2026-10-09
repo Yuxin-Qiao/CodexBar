@@ -383,6 +383,7 @@ struct SpendDashboardControllerTests {
 
         controller.update(configuration: replacementConfiguration)
         await Self.waitForPendingCount(1, gate: gate)
+        await Self.waitUntil { !controller.isProjecting }
         #expect(controller.isRefreshing)
         #expect(controller.model.groups.first?.totalCost == 9)
         #expect(Set(controller.model.groups.flatMap(\.providers).map(\.id)) == ["codex", "openai"])
