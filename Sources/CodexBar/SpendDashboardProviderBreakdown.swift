@@ -81,7 +81,10 @@ func spendDashboardProviderBreakdowns(
             models: models,
             performance: CostUsageTurnPerformanceSummary(samples: samples),
             cacheSampleCount: profiles.reduce(0) { $0 + $1.cacheSampleCount },
-            historyScanIsPartial: profiles.contains(where: \.historyScanIsPartial),
+            historyScanIsPartial: profiles.contains(where: \.historyScanIsPartial) || subscriptions.contains {
+                // Provider-specific by design: only native Codex scans supply eligible timed-turn history.
+                $0.provider == .codex && $0.sourceKind == .native && $0.tokensAreLowerBound
+            },
             totalTokens: totalTokens,
             totalCost: totalCost,
             incompleteRequestCount: incompleteRequestCount,

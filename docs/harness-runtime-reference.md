@@ -36,7 +36,9 @@ coverage can be smaller than the total timed-turn count. Missing measurements
 and insufficient samples remain unavailable. A total out of 100 is shown only
 when all four dimensions are rated; missing dimensions are neither assigned zero
 nor given redistributed weight. Five samples are a display threshold, not a
-statistical confidence guarantee. Partial history remains visibly marked.
+statistical confidence guarantee. Partial history remains visibly marked,
+including selected native sources with no eligible timed turns. Hidden sources,
+imported histories, and other providers cannot set this native timing warning.
 
 ## Experimental rules
 
@@ -69,6 +71,12 @@ away from the main actor. The worker permits one active projection and one
 replaceable pending request. A revision check rejects superseded results,
 including across stop/reopen and source replacement. Hiding sources clears the
 previous displayed model. Updated observations close an obsolete score popover.
+Observation tracks an immutable model snapshot by reference, so publishing an
+unchanged history does not compare all raw samples on the main actor.
+
+Menu and share summaries explicitly omit session evidence and runtime profiles.
+They preserve the existing billing, token, chart, and coverage aggregates without
+aggregating completed-turn timing on the menu's main-actor construction path.
 
 Rendering does not scan logs, make model or network grading calls, or add polling
 timers. The score popover uses aggregate values and static explanations. Existing

@@ -9,124 +9,6 @@ import Testing
 struct SpendAgentProfileTests {
     private static let now = Date(timeIntervalSince1970: 1_778_414_400)
 
-    private struct PerformanceMeasurement: Codable {
-        let turns: Int
-        let sessions: Int
-        let modelBuildMilliseconds: [Double]
-        let providerProjectionMilliseconds: [Double]
-        let checksum: Int
-    }
-
-    @Test
-    func `measure large synthetic harness histories when explicitly requested`() throws {
-        guard let path = ProcessInfo.processInfo.environment["CODEXBAR_HARNESS_BENCHMARK_OUTPUT"] else { return }
-        var measurements: [PerformanceMeasurement] = []
-        for (sessionCount, turnsPerSession) in [(20, 20), (1000, 20), (2000, 50)] {
-            let samples = try (0..<turnsPerSession).map { index in
-                try Self.sample(
-                    input: 10000 + index,
-                    cached: 8000,
-                    duration: 1000 + index * 731,
-                    output: 100 + index * 43,
-                    firstToken: 100 + index * 31,
-                    model: "example-model-\(index % 8)",
-                    effort: index.isMultiple(of: 2) ? "high" : "medium")
-            }
-            let input = Self.input(sampleSets: Array(repeating: samples, count: sessionCount))
-            let group = try Self.group(inputs: [input])
-            var buildTimes: [Double] = []
-            var projectionTimes: [Double] = []
-            var checksum = 0
-            for iteration in 0..<13 {
-                let start = ContinuousClock.now
-                let rebuilt = try Self.group(inputs: [input])
-                let buildTime = Self.milliseconds(start.duration(to: .now))
-                let projectionStart = ContinuousClock.now
-                let rows = spendDashboardProviderBreakdowns(group)
-                let projectionTime = Self.milliseconds(projectionStart.duration(to: .now))
-                checksum += rebuilt.agentProfiles.reduce(0) { $0 + $1.performance.sampleCount }
-                checksum += rows.reduce(0) { $0 + ($1.performance?.sampleCount ?? 0) }
-                if iteration >= 2 {
-                    buildTimes.append(buildTime)
-                    projectionTimes.append(projectionTime)
-                }
-            }
-            measurements.append(.init(
-                turns: sessionCount * turnsPerSession,
-                sessions: sessionCount,
-                modelBuildMilliseconds: buildTimes,
-                providerProjectionMilliseconds: projectionTimes,
-                checksum: checksum))
-        }
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(measurements).write(to: URL(fileURLWithPath: path))
-    }
-
-    private static func milliseconds(_ duration: Duration) -> Double {
-        Double(duration.components.seconds) * 1000 + Double(duration.components.attoseconds) / 1e15
-    }
-
-    @Test
-    func `measure main actor responsiveness during background history projection when requested`() async throws {
-        guard let path = ProcessInfo.processInfo.environment["CODEXBAR_HARNESS_RESPONSIVENESS_OUTPUT"] else { return }
-        let samples = try (0..<50).map { index in
-            try Self.sample(
-                input: 10000,
-                cached: 8000,
-                duration: 1000 + index * 731,
-                output: 100 + index * 43,
-                firstToken: 100 + index * 31,
-                model: "example-model-\(index % 8)")
-        }
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = .gmt
-        let request = SpendDashboardProjectionRequest(
-            inputs: [Self.input(sampleSets: Array(repeating: samples, count: 2000))],
-            reportingPeriod: .rolling(days: 7),
-            now: Self.now,
-            calendar: calendar,
-            preferredCurrencyCode: "auto",
-            hiddenSourceIDs: [],
-            hideNativeCodexWhenOpenCodexPresent: false,
-            selectedDay: nil)
-        let heartbeat = Task { @MainActor in
-            var gaps: [Double] = []
-            var previous = ContinuousClock.now
-            while !Task.isCancelled {
-                do { try await Task.sleep(for: .milliseconds(4)) } catch { break }
-                let now = ContinuousClock.now
-                gaps.append(Self.milliseconds(previous.duration(to: now)))
-                previous = now
-            }
-            return gaps
-        }
-        defer { heartbeat.cancel() }
-        try await Task.sleep(for: .milliseconds(8))
-        let worker = SpendDashboardProjectionWorker()
-        defer { worker.invalidate() }
-        let start = ContinuousClock.now
-        var enqueueTime = 0.0
-        let model: SpendDashboardModel = await withCheckedContinuation { continuation in
-            worker.submit(request) { continuation.resume(returning: $0) }
-            enqueueTime = Self.milliseconds(start.duration(to: .now))
-        }
-        let completionTime = Self.milliseconds(start.duration(to: .now))
-        heartbeat.cancel()
-        let gaps = await heartbeat.value
-        let count = model.groups.flatMap(\.providerBreakdowns).reduce(0) { $0 + ($1.performance?.sampleCount ?? 0) }
-        #expect(count == 100_000)
-        let metrics: [String: Any] = [
-            "turns": count, "enqueueMilliseconds": enqueueTime, "completionMilliseconds": completionTime,
-            "heartbeatTargetMilliseconds": 4, "heartbeatGapMilliseconds": gaps,
-            "displayMaximumFramesPerSecond": NSScreen.main?.maximumFramesPerSecond ?? 0,
-            "physicalMemoryBytes": ProcessInfo.processInfo.physicalMemory,
-            "logicalProcessorCount": ProcessInfo.processInfo.processorCount,
-        ]
-        try JSONSerialization.data(withJSONObject: metrics, options: [.prettyPrinted, .sortedKeys])
-            .write(to: URL(fileURLWithPath: path))
-    }
-
     private struct RatingExample {
         let sample: CostUsageTurnPerformanceSample
         let points: [Int]
@@ -167,6 +49,72 @@ struct SpendAgentProfileTests {
         #expect(abs(performance.outputTokensPerSecond - 500.0 / 13) < 0.001)
         #expect(try abs(#require(performance.details.cachedInputFraction) - 990.0 / 1030) < 0.001)
         #expect(harness.cacheSampleCount == 5)
+    }
+
+    @Test
+    func `partial native sources without eligible turns still mark the combined harness history`() throws {
+        let measured = try Self.sample(input: 100, cached: 80, firstToken: 200)
+        let old = try Self.sample(date: Self.now.addingTimeInterval(-30 * 86400))
+        let complete = Self.input(id: "complete", sampleSets: [Array(repeating: measured, count: 5)])
+        for missingSamples in [[], [old]] {
+            let partial = Self.input(id: "partial", sampleSets: [missingSamples], partial: true)
+            for selectedDay in [nil, Self.now] {
+                let group = try Self.group(inputs: [complete, partial], selectedDay: selectedDay)
+                #expect(group.agentProfiles.count == 1)
+                let harness = try #require(spendDashboardProviderBreakdowns(group).first)
+                #expect(harness.performance?.sampleCount == 5)
+                #expect(harness.historyScanIsPartial)
+                let performance = try #require(harness.performance)
+                let text = SpendHarnessPerformanceText(
+                    performance: performance,
+                    cacheSampleCount: harness.cacheSampleCount,
+                    historyScanIsPartial: harness.historyScanIsPartial)
+                CodexBarLocalizationOverride.$appLanguage.withValue("en") {
+                    #expect(text.observationsText.contains("Partial history"))
+                }
+            }
+        }
+    }
+
+    @Test
+    func `hidden imported and other provider scans cannot mark native harness history partial`() throws {
+        let sample = try Self.sample(input: 100, cached: 80, firstToken: 200)
+        let complete = Self.input(id: "complete", sampleSets: [Array(repeating: sample, count: 5)])
+        let group = try Self.group(inputs: [
+            complete,
+            Self.input(id: "hidden", sampleSets: [[]], partial: true),
+            Self.input(id: "imported", sampleSets: [[]], source: .openCodex, partial: true),
+            Self.input(id: "other", sampleSets: [[]], provider: .claude, partial: true),
+        ], hiddenSourceIDs: ["hidden"])
+        let harness = try #require(spendDashboardProviderBreakdowns(group).first { $0.provider == .codex })
+        #expect(harness.performance?.sampleCount == 5)
+        #expect(!harness.historyScanIsPartial)
+    }
+
+    @Test
+    func `spend summaries omit timed history while preserving billing and coverage`() throws {
+        let sample = try Self.sample(input: 100, cached: 80, firstToken: 200)
+        let input = Self.input(
+            sampleSets: Array(repeating: Array(repeating: sample, count: 5), count: 60),
+            partial: true,
+            includeModelHistory: true)
+        let full = try Self.group(inputs: [input])
+        let summary = try Self.group(inputs: [input], includeSessionDetails: false)
+        #expect(full.agentProfiles.first?.performance.sampleCount == 300)
+        #expect(full.sessions.count == SpendDashboardModel.sessionRowLimit)
+        #expect(summary.agentProfiles.isEmpty)
+        #expect(summary.sessions.isEmpty)
+        #expect(summary.providerBreakdowns.first?.performance == nil)
+        #expect(summary.providers == full.providers)
+        #expect(summary.models == full.models)
+        #expect(summary.projects == full.projects)
+        #expect(summary.dailyPoints == full.dailyPoints)
+        #expect(summary.dailySummaries == full.dailySummaries)
+        #expect(summary.totalTokens == full.totalTokens)
+        #expect(summary.totalCost == full.totalCost)
+        #expect(summary.coverage == full.coverage)
+        #expect(summary.tokenMix == full.tokenMix)
+        #expect(summary.modelHistoryCompleteness == full.modelHistoryCompleteness)
     }
 
     @Test
@@ -711,7 +659,8 @@ struct SpendAgentProfileTests {
         inputs: [SpendDashboardModel.ProviderInput],
         selectedDay: Date? = nil,
         timeZone: TimeZone = .gmt,
-        hiddenSourceIDs: Set<String> = []) throws
+        hiddenSourceIDs: Set<String> = [],
+        includeSessionDetails: Bool = true) throws
         -> SpendDashboardModel.CurrencyGroup
     {
         var calendar = Calendar(identifier: .gregorian)
@@ -722,6 +671,215 @@ struct SpendAgentProfileTests {
             now: Self.now,
             calendar: calendar,
             hiddenSourceIDs: hiddenSourceIDs,
-            selectedDay: selectedDay).groups.first)
+            selectedDay: selectedDay,
+            includeSessionDetails: includeSessionDetails).groups.first)
+    }
+}
+
+/// Opt-in synthetic measurements; ordinary regression runs do not execute these workloads.
+extension SpendAgentProfileTests {
+    private struct PerformanceMeasurement: Codable {
+        let turns: Int
+        let sessions: Int
+        let modelBuildMilliseconds: [Double]
+        let summaryBuildMilliseconds: [Double]
+        let providerProjectionMilliseconds: [Double]
+        let checksum: Int
+    }
+
+    @Test
+    func `measure large synthetic harness histories when explicitly requested`() throws {
+        guard let path = ProcessInfo.processInfo.environment["CODEXBAR_HARNESS_BENCHMARK_OUTPUT"] else { return }
+        var measurements: [PerformanceMeasurement] = []
+        for (sessionCount, turnsPerSession) in [(20, 20), (1000, 20), (2000, 50)] {
+            let samples = try (0..<turnsPerSession).map { index in
+                try Self.sample(
+                    input: 10000 + index,
+                    cached: 8000,
+                    duration: 1000 + index * 731,
+                    output: 100 + index * 43,
+                    firstToken: 100 + index * 31,
+                    model: "example-model-\(index % 8)",
+                    effort: index.isMultiple(of: 2) ? "high" : "medium")
+            }
+            let input = Self.input(sampleSets: Array(repeating: samples, count: sessionCount))
+            let group = try Self.group(inputs: [input])
+            var buildTimes: [Double] = []
+            var summaryTimes: [Double] = []
+            var projectionTimes: [Double] = []
+            var checksum = 0
+            for iteration in 0..<13 {
+                let start = ContinuousClock.now
+                let rebuilt = try Self.group(inputs: [input])
+                let buildTime = Self.milliseconds(start.duration(to: .now))
+                let summaryStart = ContinuousClock.now
+                let summary = try Self.group(inputs: [input], includeSessionDetails: false)
+                let summaryTime = Self.milliseconds(summaryStart.duration(to: .now))
+                let projectionStart = ContinuousClock.now
+                let rows = spendDashboardProviderBreakdowns(group)
+                let projectionTime = Self.milliseconds(projectionStart.duration(to: .now))
+                checksum += rebuilt.agentProfiles.reduce(0) { $0 + $1.performance.sampleCount }
+                checksum += rows.reduce(0) { $0 + ($1.performance?.sampleCount ?? 0) }
+                #expect(summary.agentProfiles.isEmpty)
+                #expect(summary.sessions.isEmpty)
+                if iteration >= 2 {
+                    buildTimes.append(buildTime)
+                    summaryTimes.append(summaryTime)
+                    projectionTimes.append(projectionTime)
+                }
+            }
+            measurements.append(.init(
+                turns: sessionCount * turnsPerSession,
+                sessions: sessionCount,
+                modelBuildMilliseconds: buildTimes,
+                summaryBuildMilliseconds: summaryTimes,
+                providerProjectionMilliseconds: projectionTimes,
+                checksum: checksum))
+        }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(measurements).write(to: URL(fileURLWithPath: path))
+    }
+
+    private static func milliseconds(_ duration: Duration) -> Double {
+        Double(duration.components.seconds) * 1000 + Double(duration.components.attoseconds) / 1e15
+    }
+
+    @Test
+    func `measure main actor responsiveness during background history projection when requested`() async throws {
+        guard let path = ProcessInfo.processInfo.environment["CODEXBAR_HARNESS_RESPONSIVENESS_OUTPUT"] else { return }
+        let samples = try (0..<50).map { index in
+            try Self.sample(
+                input: 10000,
+                cached: 8000,
+                duration: 1000 + index * 731,
+                output: 100 + index * 43,
+                firstToken: 100 + index * 31,
+                model: "example-model-\(index % 8)")
+        }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .gmt
+        let request = SpendDashboardProjectionRequest(
+            inputs: [Self.input(sampleSets: Array(repeating: samples, count: 2000))],
+            reportingPeriod: .rolling(days: 7),
+            now: Self.now,
+            calendar: calendar,
+            preferredCurrencyCode: "auto",
+            hiddenSourceIDs: [],
+            hideNativeCodexWhenOpenCodexPresent: false,
+            selectedDay: nil)
+        let heartbeat = Task { @MainActor in
+            var gaps: [Double] = []
+            var previous = ContinuousClock.now
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .milliseconds(4)) } catch { break }
+                let now = ContinuousClock.now
+                gaps.append(Self.milliseconds(previous.duration(to: now)))
+                previous = now
+            }
+            return gaps
+        }
+        defer { heartbeat.cancel() }
+        try await Task.sleep(for: .milliseconds(8))
+        let worker = SpendDashboardProjectionWorker()
+        defer { worker.invalidate() }
+        let start = ContinuousClock.now
+        var enqueueTime = 0.0
+        let model: SpendDashboardModel = await withCheckedContinuation { continuation in
+            worker.submit(request) { continuation.resume(returning: $0) }
+            enqueueTime = Self.milliseconds(start.duration(to: .now))
+        }
+        let completionTime = Self.milliseconds(start.duration(to: .now))
+        heartbeat.cancel()
+        let gaps = await heartbeat.value
+        let count = model.groups.flatMap(\.providerBreakdowns).reduce(0) { $0 + ($1.performance?.sampleCount ?? 0) }
+        #expect(count == 100_000)
+        let metrics: [String: Any] = [
+            "turns": count, "enqueueMilliseconds": enqueueTime, "completionMilliseconds": completionTime,
+            "heartbeatTargetMilliseconds": 4, "heartbeatGapMilliseconds": gaps,
+            "displayMaximumFramesPerSecond": NSScreen.main?.maximumFramesPerSecond ?? 0,
+            "physicalMemoryBytes": ProcessInfo.processInfo.physicalMemory,
+            "logicalProcessorCount": ProcessInfo.processInfo.processorCount,
+        ]
+        try JSONSerialization.data(withJSONObject: metrics, options: [.prettyPrinted, .sortedKeys])
+            .write(to: URL(fileURLWithPath: path))
+    }
+
+    @Test
+    func `measure full controller publication of large unchanged histories when requested`() async throws {
+        guard let path = ProcessInfo.processInfo.environment["CODEXBAR_HARNESS_PUBLICATION_OUTPUT"] else { return }
+        let samples = try (0..<50).map { index in
+            try Self.sample(
+                input: 10000,
+                cached: 8000,
+                duration: 1000 + index * 731,
+                output: 100 + index * 43,
+                firstToken: 100 + index * 31,
+                model: "example-model-\(index % 8)")
+        }
+        let input = Self.input(sampleSets: Array(repeating: samples, count: 2000))
+        let configuration = SpendDashboardConfiguration(
+            costUsageEnabled: true,
+            providerIDs: [UsageProvider.codex.rawValue],
+            codexAccountIdentities: [],
+            bucketTimeZoneIdentifier: "UTC")
+        let suite = "SpendHarnessPublicationBenchmark-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let benchmarkNow = Self.now
+        let controller = SpendDashboardController(
+            userDefaults: defaults,
+            requestBuilder: { mode in
+                .init(
+                    configuration: configuration,
+                    capturedInputs: [input],
+                    unavailableSourceIDs: [],
+                    codexRequests: [],
+                    now: Self.now,
+                    force: mode.forcesLoader)
+            },
+            loader: { .init(inputs: $0.capturedInputs, failedSourceIDs: []) },
+            nowProvider: { benchmarkNow })
+        defer { controller.stop() }
+        var measurements: [[String: Any]] = []
+        for iteration in 0..<3 {
+            let heartbeat = Task { @MainActor in
+                var gaps: [Double] = []
+                var previous = ContinuousClock.now
+                while !Task.isCancelled {
+                    do { try await Task.sleep(for: .milliseconds(4)) } catch { break }
+                    let now = ContinuousClock.now
+                    gaps.append(Self.milliseconds(previous.duration(to: now)))
+                    previous = now
+                }
+                return gaps
+            }
+            defer { heartbeat.cancel() }
+            try await Task.sleep(for: .milliseconds(8))
+            let start = ContinuousClock.now
+            if iteration == 0 {
+                controller.update(configuration: configuration)
+            } else {
+                controller.refresh()
+            }
+            let enqueueTime = Self.milliseconds(start.duration(to: .now))
+            while controller.isRefreshing {
+                try #require(start.duration(to: .now) < .seconds(30))
+                try await Task.sleep(for: .milliseconds(1))
+            }
+            let completionTime = Self.milliseconds(start.duration(to: .now))
+            heartbeat.cancel()
+            let gaps = await heartbeat.value
+            let count = controller.model.groups.flatMap(\.providerBreakdowns)
+                .reduce(0) { $0 + ($1.performance?.sampleCount ?? 0) }
+            #expect(count == 100_000)
+            measurements.append([
+                "iteration": iteration, "turns": count,
+                "enqueueMilliseconds": enqueueTime, "completionMilliseconds": completionTime,
+                "heartbeatTargetMilliseconds": 4, "heartbeatGapMilliseconds": gaps,
+            ])
+        }
+        try JSONSerialization.data(withJSONObject: measurements, options: [.prettyPrinted, .sortedKeys])
+            .write(to: URL(fileURLWithPath: path))
     }
 }

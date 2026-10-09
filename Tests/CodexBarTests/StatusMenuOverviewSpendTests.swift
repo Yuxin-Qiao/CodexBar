@@ -360,6 +360,11 @@ extension StatusMenuTests {
         let day = String(format: "%04d-%02d-%02d", year, month, dayOfMonth)
 
         let store = self.makeCodexStore(settings: settings, dashboardAuthorized: false)
+        let timedTurn = try #require(CostUsageTurnPerformanceSample(
+            completedAt: now,
+            outputTokens: 40,
+            durationMilliseconds: 1000,
+            firstTokenMilliseconds: 100))
         store._setTokenSnapshotForTesting(CostUsageTokenSnapshot(
             sessionTokens: nil,
             sessionCostUSD: nil,
@@ -378,6 +383,17 @@ extension StatusMenuTests {
                     modelsUsed: ["test-model"],
                     modelBreakdowns: nil),
             ],
+            sessions: [.init(
+                sessionID: "synthetic-overview-session",
+                lastActivity: now,
+                inputTokens: 60,
+                cachedInputTokens: 40,
+                outputTokens: 40,
+                totalTokens: 100,
+                requestCount: 5,
+                costUSD: 1,
+                modelBreakdowns: [],
+                turnPerformanceSamples: Array(repeating: timedTurn, count: 5))],
             updatedAt: now), provider: .codex)
         let controller = StatusItemController(
             store: store,
@@ -397,6 +413,9 @@ extension StatusMenuTests {
         #expect(group.timeZone.identifier == bucketCalendar.timeZone.identifier)
         #expect(group.totalCost == 1)
         #expect(group.totalTokens == 100)
+        #expect(group.sessions.isEmpty)
+        #expect(group.agentProfiles.isEmpty)
+        #expect(group.providerBreakdowns.first?.performance == nil)
         #expect(group.dailyPoints.map(\.day) == [bucketStart])
         let sharePayload = try #require(ShareStatsPayloadFactory.make(model: model, store: store))
         #expect(sharePayload.providers.map(\.provider) == [.codex])

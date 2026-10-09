@@ -1172,7 +1172,22 @@ final class SpendDashboardController {
         }
     }
 
-    private(set) var model = SpendDashboardModel(requestedDays: 30, groups: [])
+    private final class ModelSnapshot {
+        let value: SpendDashboardModel
+
+        init(_ value: SpendDashboardModel) {
+            self.value = value
+        }
+    }
+
+    /// Observation compares references here, avoiding a main-actor equality scan of raw turn histories.
+    private var modelSnapshot = ModelSnapshot(SpendDashboardModel(requestedDays: 30, groups: []))
+
+    private(set) var model: SpendDashboardModel {
+        get { self.modelSnapshot.value }
+        set { self.modelSnapshot = ModelSnapshot(newValue) }
+    }
+
     private(set) var publication = SpendDashboardPublication.empty
     private var isLoading = false
     private(set) var isProjecting = false

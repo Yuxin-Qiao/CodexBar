@@ -90,6 +90,12 @@ struct SpendDashboardProjectionTests {
         defer { gate.close() }
         let controller = Self.controller(gate: gate)
         defer { controller.stop() }
+        let recorder = SpendDashboardProjectionRecorder()
+        withObservationTracking {
+            _ = controller.model
+        } onChange: {
+            Task { @MainActor in recorder.published.append(1) }
+        }
         controller.update(configuration: Self.configuration())
         try await gate.waitForPendingCount(1)
         #expect(controller.isRefreshing)
@@ -107,6 +113,7 @@ struct SpendDashboardProjectionTests {
         #expect(controller.model.selectedDay == Self.request(tokens: 5).calendar.startOfDay(for: Self.now))
         #expect(controller.model.groups.first?.providerBreakdowns.first?.performance?.sampleCount == 5)
         #expect(controller.publication.isRefreshing == false)
+        try await SpendDashboardStateWait.until { recorder.published == [1] }
     }
 
     @Test

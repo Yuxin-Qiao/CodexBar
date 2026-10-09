@@ -402,7 +402,8 @@ struct SpendDashboardModel: Equatable, Sendable {
         preferredCurrencyCode: String = "auto",
         hiddenSourceIDs: Set<String> = [],
         hideNativeCodexWhenOpenCodexPresent: Bool = false,
-        selectedDay: Date? = nil) -> Self
+        selectedDay: Date? = nil,
+        includeSessionDetails: Bool = true) -> Self
     {
         let calculationCalendar = Self.gregorianCalendar(timeZone: calendar.timeZone)
         let availableSources = inputs
@@ -453,7 +454,8 @@ struct SpendDashboardModel: Equatable, Sendable {
                     now: now,
                     calendar: calculationCalendar,
                     bounds: bounds,
-                    selectedDay: selectedDay.map { calculationCalendar.startOfDay(for: $0) })
+                    selectedDay: selectedDay.map { calculationCalendar.startOfDay(for: $0) },
+                    includeSessionDetails: includeSessionDetails)
             }
             .sorted { $0.currencyCode < $1.currencyCode }
         return Self(
@@ -569,7 +571,8 @@ struct SpendDashboardModel: Equatable, Sendable {
         now: Date,
         calendar: Calendar,
         bounds: ClosedRange<Date>? = nil,
-        selectedDay: Date?) -> CurrencyGroup
+        selectedDay: Date?,
+        includeSessionDetails: Bool) -> CurrencyGroup
     {
         let bounds = bounds ?? Self.bounds(days: days, now: now, calendar: calendar)
         let summaries = inputs.map { classified in
@@ -656,12 +659,13 @@ struct SpendDashboardModel: Equatable, Sendable {
             selectedDay: selectedDay,
             bounds: bounds,
             calendar: calendar)
-        let allSessions = Self.sessionRows(
+        // Menu/share summaries need billing aggregates, not a scan of timed turns or session evidence.
+        let allSessions = includeSessionDetails ? Self.sessionRows(
             summaries: summaries,
             bounds: bounds,
             calendar: calendar,
             selectedDay: selectedDay,
-            limit: Int.max)
+            limit: Int.max) : []
         return CurrencyGroup(
             currencyCode: currencyCode,
             providers: providers,
@@ -680,12 +684,12 @@ struct SpendDashboardModel: Equatable, Sendable {
             provenance: provenance,
             meteredCost: hasMeteredCostAmount ? metered : nil,
             sessions: Array(allSessions.prefix(Self.sessionRowLimit)),
-            agentProfiles: SpendAgentProfile.build(
+            agentProfiles: includeSessionDetails ? SpendAgentProfile.build(
                 summaries: summaries,
                 sessions: allSessions,
                 bounds: bounds,
                 calendar: calendar,
-                selectedDay: selectedDay),
+                selectedDay: selectedDay) : [],
             overflowModelCount: overflowCount,
             selectedDay: selectedDay,
             hourlyPoints: hourlyPoints,
@@ -1532,18 +1536,6 @@ struct SpendDashboardModel: Equatable, Sendable {
     }
 
     static let sessionRowLimit = 50
-
-    /// Half-open instants preserve calendar-day filtering, including DST, without normalizing every turn.
-    static func performanceInterval(
-        bounds: ClosedRange<Date>, calendar: Calendar, selectedDay: Date?) -> Range<Date>?
-    {
-        let start = selectedDay.map { calendar.startOfDay(for: $0) } ?? bounds.lowerBound
-        let lastDay = selectedDay == nil ? bounds.upperBound : start
-        guard bounds.contains(start),
-              let end = calendar.date(byAdding: .day, value: 1, to: lastDay), end > start
-        else { return nil }
-        return start..<end
-    }
 
     /// Most expensive first, like Projects. Unpriced sessions follow priced ones.
     private static func sessionOrder(_ lhs: SessionRow, _ rhs: SessionRow) -> Bool {

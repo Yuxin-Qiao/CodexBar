@@ -268,7 +268,8 @@ extension StatusItemController {
                     reportingPeriod: self.settings.costReportingPeriod,
                     now: now,
                     calendar: self.settings.costUsageBucketCalendar,
-                    preferredCurrencyCode: self.settings.preferredCurrencyCode)
+                    preferredCurrencyCode: self.settings.preferredCurrencyCode,
+                    includeSessionDetails: false)
             }
             return publication.model(
                 requestedDays: self.settings.costUsageHistoryDays,
@@ -278,7 +279,8 @@ extension StatusItemController {
                 preferredCurrencyCode: self.settings.preferredCurrencyCode,
                 hiddenSourceIDs: Set(self.settings.spendDashboardHiddenSourceIDs),
                 hideNativeCodexWhenOpenCodexPresent: self.settings.hideNativeCodexCostWhenOpenCodexPresent,
-                providerScope: Set(providers))
+                providerScope: Set(providers),
+                includeSessionDetails: false)
         }
         let inputs = providers.compactMap { provider -> SpendDashboardModel.ProviderInput? in
             // Provider-level snapshots cannot honor account-level source exclusions before publication.
@@ -297,6 +299,7 @@ extension StatusItemController {
             reportingPeriod: self.settings.costReportingPeriod,
             now: now,
             calendar: self.settings.costUsageBucketCalendar,
-            preferredCurrencyCode: self.settings.preferredCurrencyCode)
+            preferredCurrencyCode: self.settings.preferredCurrencyCode,
+            includeSessionDetails: false)
     }
 }

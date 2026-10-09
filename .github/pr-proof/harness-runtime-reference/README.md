@@ -26,6 +26,11 @@ render was manually inspected. File dimensions and hashes are in
 
 ## Validation result
 
+The original submission results below belong to the source fingerprints in
+`validation-receipt.json`. The later performance and stability follow-up is
+documented in [the audit](performance-audit.md); its source fingerprints and
+complete validation outcome are recorded separately in `performance-audit-receipt.json`.
+
 The synchronized source builds. All 16 scoring/native-render tests, 10 projection/
 data/inventory tests, and 33 new-provider resource tests pass. `make check` passes
 with 2,937 Swift files and zero violations; catalog and documentation checks pass.

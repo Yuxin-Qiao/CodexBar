@@ -1,0 +1,337 @@
+{
+  "audited_base_revision": "81438267faa935f699578c0195b7e38c314f2596",
+  "prior_published_revision": "a9f89c199543206b745e383c851bf5cf435d25b6",
+  "upstream_main_observed_after_audit_started": "94fd089e06e49cf69f1b14f4138f91a444dd77e4",
+  "upstream_base_was_not_advanced_in_this_personal_feature_audit": true,
+  "source_sha256": {
+    "Sources/CodexBar/PreferencesSpendDashboardPane.swift": "f6eb77813e38f82b29b42d2a52cd80c5c8620f970186ab1898500e60754b386d",
+    "Sources/CodexBar/Resources/ar.lproj/Localizable.strings": "aa2286748180b7a044e17e6ce22b73ab7922bc8c07310ebc35c2b8f40b461443",
+    "Sources/CodexBar/Resources/ca.lproj/Localizable.strings": "9044f345c1e51b044e027b1b339c4c70a6a870c309a62cfa2795f9555b006898",
+    "Sources/CodexBar/Resources/de.lproj/Localizable.strings": "63237b6a0d363319c5dd40d7c826a6ec8ae2968d2215e393ba39333620db4135",
+    "Sources/CodexBar/Resources/en.lproj/Localizable.strings": "c2e865c830f251e06c60ece3b45892d55e08c7f6c6b79160ab5c2581f15fc0a1",
+    "Sources/CodexBar/Resources/es.lproj/Localizable.strings": "8469de10f868df621cab896a0f66943046f8989670be14faf73c60e356ca2a41",
+    "Sources/CodexBar/Resources/fa.lproj/Localizable.strings": "33fb77450881d54f63f6d4acb17bc146d8c1ea2f8d120b5249618cfedf960c36",
+    "Sources/CodexBar/Resources/fr.lproj/Localizable.strings": "6417e152776627f36ffbea467035cda24b1e3dc747eb1f25332a06e32b5ef921",
+    "Sources/CodexBar/Resources/gl.lproj/Localizable.strings": "aa748c7bb7dcc8c10b19afdfd125791e05c6171acd4bbf53b999b05c30fe6304",
+    "Sources/CodexBar/Resources/id.lproj/Localizable.strings": "b8b92958bd029966c858cdf46c63e954132b46aa2ce880f1a9535f85ba4d7276",
+    "Sources/CodexBar/Resources/it.lproj/Localizable.strings": "03058a66d790267f689b54d1226f8e68d6b3c4325b7cd5a9d0e1c586b720ea7d",
+    "Sources/CodexBar/Resources/ja.lproj/Localizable.strings": "08d90f9e9e9b5f9ebf42e9a91ee7d4f583979c98293ad09bde4fda58c853a085",
+    "Sources/CodexBar/Resources/ko.lproj/Localizable.strings": "f28cbd72cd9ad78f7c2a7c359436b21926d1894ae233b4642654553b0732a7bd",
+    "Sources/CodexBar/Resources/nl.lproj/Localizable.strings": "5bd15fb273949f56373f25541504cbb52120e4af9341cdf929f62ad9a1b419a2",
+    "Sources/CodexBar/Resources/pl.lproj/Localizable.strings": "7e501b4c31a60377deaefd018690e10a8555c8ca4217f2caa43fbdebf94d1cee",
+    "Sources/CodexBar/Resources/pt-BR.lproj/Localizable.strings": "23270fdd042034c1ade00128f2b6b8d5019ab22a95d21f9b52c9437dee9e8178",
+    "Sources/CodexBar/Resources/ru.lproj/Localizable.strings": "afb4cd51b3c88a976b9705ef8988930fcc9ae66c55a7d3f8d6cbbfc8a093d430",
+    "Sources/CodexBar/Resources/sv.lproj/Localizable.strings": "027b1dfaf7ff6f7ca7ff3d4cb7713833bd504a375cf7b7494e93a8c89861f49c",
+    "Sources/CodexBar/Resources/th.lproj/Localizable.strings": "0b51c98a2fd95456d3efd7f678ec3bdcfdde30a7598d3ea51c0a176bc45eabf8",
+    "Sources/CodexBar/Resources/tr.lproj/Localizable.strings": "e4d33bcad082d980143703f75436b1e7122f6da0211006ff6f79653ce9fa3643",
+    "Sources/CodexBar/Resources/uk.lproj/Localizable.strings": "706e9fd6fb486058561eb1b4619a2455a85464bc96ccfe3b10f9d9bc6a6f4d41",
+    "Sources/CodexBar/Resources/vi.lproj/Localizable.strings": "e8f781e4c43be8e6ce25677b1f0200bede61aadcdf066648bbef1ab9d23197c0",
+    "Sources/CodexBar/Resources/zh-Hans.lproj/Localizable.strings": "07d7b62031260bec7bc2e4da9e5a951a9606996250f526ea2b1c2fdfda905e55",
+    "Sources/CodexBar/Resources/zh-Hant.lproj/Localizable.strings": "2d9fda19a98d30f3725914557d7168ff7f87e7dd65bc84a4df0d0033d65668f6",
+    "Sources/CodexBar/SpendAgentProfile.swift": "b983f2b703115dd528a263957179bcd887615f67327405d616a30c1dc414fc97",
+    "Sources/CodexBar/SpendAgentProfileView.swift": "98f1d3a276b06ae03f8a1dcf5e04ffebaeea46a3487507cdaba3e659de3edd3d",
+    "Sources/CodexBar/SpendDashboardController.swift": "dfc85ff5e8bb2d774b79a42cd69abb2c95cc27dced768d35b78b3281c8a9a31a",
+    "Sources/CodexBar/SpendDashboardModel+Performance.swift": "374cde331c9bc7e1bbdb85e6d515f244608d717da093eab685b14945b5fdc0a0",
+    "Sources/CodexBar/SpendDashboardModel.swift": "9901f4ca19103983ea256200a855c6e7df510901d298fdedbe42791cffdb67cc",
+    "Sources/CodexBar/SpendDashboardProjection.swift": "2ce04ccfba006717252a4494bfdce325f992dd28d90e86d204e1987917ea18a1",
+    "Sources/CodexBar/SpendDashboardProviderBreakdown.swift": "ffc12fb94ded0433a2a5975cf3ad18d8a5cedec918d52aee55b31b506ef1c014",
+    "Sources/CodexBar/SpendDashboardPublication.swift": "85131b7716937b5e2a5ef14b53f979d8e164a3e97e177750596f23609a2f3bd1",
+    "Sources/CodexBar/SpendHarnessRating.swift": "374c42394796fc41e39194eba244f57f32df32f6f35ce768c7dffbd3d532f260",
+    "Sources/CodexBar/SpendHarnessRatingDetailsView.swift": "646c9abe98138b079915b782a957fef298dd4d34fbfc3b3d20d919891efa3333",
+    "Sources/CodexBar/SpendHarnessRatingStyle.swift": "fb6bd5926386b875970cf261f24d552c9194872e74213a48b7ed516b0ffc4cd8",
+    "Sources/CodexBar/StatusItemController+OverviewSpend.swift": "55bb5258538d482cace0ce0c3a579057ce8811b3218f8aa2dcee01e15314fa2b",
+    "Sources/CodexBarCore/CostUsageTurnPerformance.swift": "711f8c6037d84cd2f97645a78a7f4667e25f4125c8c5acf82ee72a8ab45f9718",
+    "Sources/CodexBarCore/CostUsageTurnPerformanceDetails.swift": "5170c7ce9d1f39bca4428b185788f417bf42e57327ca779872dc6fbf0a3f480c",
+    "Tests/CodexBarTests/CostUsageTurnPerformanceDetailsTests.swift": "5146ee32372fb6df454eba8579feeb4255fc490c9460a7fc10e62ed677349b3c",
+    "Tests/CodexBarTests/SpendAgentProfileTests.swift": "ec6bdbb191be8df0ae9e41deb032e7da748e92165270d9203fca2cec4d43dc19",
+    "Tests/CodexBarTests/SpendDashboardCachedPresentationTests.swift": "a4951656d3bcff090ed28f5156f27bb2790dcbb694c54f1ce33b9ace2217a5e1",
+    "Tests/CodexBarTests/SpendDashboardControllerTests.swift": "728c52d383908e0b7f9337cff0f13e9a05e089d72d95a4c92fb47cd1628c9b6a",
+    "Tests/CodexBarTests/SpendDashboardNativeProofTests.swift": "803707dd5ccddd439870e45137c94e8addc5730aa2370e276821971d3d5faff1",
+    "Tests/CodexBarTests/SpendDashboardProjectionTests.swift": "2d773b0fdeb0a993d77185f6b6fdad2a832fe838fc7ea08830176c474b1af6bc",
+    "Tests/CodexBarTests/SpendDashboardSourceConcurrencyTests.swift": "781f09eeb50b47b76cc3232b9ec02d31dc6e510afa7221199c27de5417a2dcfb",
+    "Tests/CodexBarTests/StatusMenuOverviewSpendTests.swift": "615ce970476ff381d10572134129236462cb54030a007fd6abdc838bcccbf769"
+  },
+  "native_debug_test_binary_sha256": "7e9bfded7c67f03ceaa81de4bfc75802fd40f2051de8108ae45061168399005a",
+  "swift_version": "Apple Swift 6.4 (swiftlang-6.4.0.34.1)",
+  "synthetic_fixture": {
+    "sessions": 2000,
+    "completed_turns": 100000,
+    "model_configurations": 8
+  },
+  "host": {
+    "physical_memory_gib": 24,
+    "maximum_display_hz": 60,
+    "logical_processors": 10
+  },
+  "controller_confirmation": [
+    {
+      "iteration": 0,
+      "turns": 100000,
+      "enqueue_ms": 0.186417,
+      "completion_ms": 1230.871625,
+      "heartbeat": {
+        "observations": 295,
+        "median_ms": 4.08075,
+        "p95_ms": 5.041208,
+        "maximum_ms": 5.095125
+      },
+      "final_heartbeat_gap_ms": 4.091708
+    },
+    {
+      "iteration": 1,
+      "turns": 100000,
+      "enqueue_ms": 0.246917,
+      "completion_ms": 1236.034125,
+      "heartbeat": {
+        "observations": 297,
+        "median_ms": 4.076958,
+        "p95_ms": 5.037417,
+        "maximum_ms": 5.10875
+      },
+      "final_heartbeat_gap_ms": 4.067375
+    },
+    {
+      "iteration": 2,
+      "turns": 100000,
+      "enqueue_ms": 0.032125,
+      "completion_ms": 1190.869916,
+      "heartbeat": {
+        "observations": 288,
+        "median_ms": 4.0780835,
+        "p95_ms": 5.030833,
+        "maximum_ms": 5.044125
+      },
+      "final_heartbeat_gap_ms": 4.0625
+    }
+  ],
+  "controller_confirmation_with_concurrent_compilation": [
+    {
+      "iteration": 0,
+      "turns": 100000,
+      "enqueue_ms": 0.217375,
+      "completion_ms": 1427.8575,
+      "heartbeat": {
+        "observations": 342,
+        "median_ms": 4.101395999999999,
+        "p95_ms": 5.041417,
+        "maximum_ms": 5.10475
+      },
+      "final_heartbeat_gap_ms": 4.082583
+    },
+    {
+      "iteration": 1,
+      "turns": 100000,
+      "enqueue_ms": 0.070459,
+      "completion_ms": 3178.4745,
+      "heartbeat": {
+        "observations": 626,
+        "median_ms": 4.412625500000001,
+        "p95_ms": 8.372708,
+        "maximum_ms": 33.014709
+      },
+      "final_heartbeat_gap_ms": 6.234417
+    },
+    {
+      "iteration": 2,
+      "turns": 100000,
+      "enqueue_ms": 0.140958,
+      "completion_ms": 3816.736792,
+      "heartbeat": {
+        "observations": 818,
+        "median_ms": 4.2528334999999995,
+        "p95_ms": 5.53675,
+        "maximum_ms": 13.621208
+      },
+      "final_heartbeat_gap_ms": 5.624334
+    }
+  ],
+  "earlier_controller_before_reference_snapshot_fix": [
+    {
+      "iteration": 0,
+      "turns": 100000,
+      "enqueue_ms": 0.206666,
+      "completion_ms": 1663.302541,
+      "heartbeat": {
+        "observations": 389,
+        "median_ms": 4.11575,
+        "p95_ms": 5.06125,
+        "maximum_ms": 6.038625
+      },
+      "final_heartbeat_gap_ms": 4.149458
+    },
+    {
+      "iteration": 1,
+      "turns": 100000,
+      "enqueue_ms": 0.162958,
+      "completion_ms": 2246.647791,
+      "heartbeat": {
+        "observations": 511,
+        "median_ms": 4.158791,
+        "p95_ms": 5.065167,
+        "maximum_ms": 34.118542
+      },
+      "final_heartbeat_gap_ms": 34.118542
+    },
+    {
+      "iteration": 2,
+      "turns": 100000,
+      "enqueue_ms": 0.104583,
+      "completion_ms": 2282.896541,
+      "heartbeat": {
+        "observations": 515,
+        "median_ms": 4.163875,
+        "p95_ms": 5.073875,
+        "maximum_ms": 29.118
+      },
+      "final_heartbeat_gap_ms": 29.118
+    }
+  ],
+  "model_measurements": [
+    {
+      "turns": 400,
+      "sessions": 20,
+      "full_build": {
+        "observations": 11,
+        "median_ms": 8.2935,
+        "p95_ms": 12.47925,
+        "maximum_ms": 12.47925
+      },
+      "summary_build": {
+        "observations": 11,
+        "median_ms": 0.7855,
+        "p95_ms": 1.78925,
+        "maximum_ms": 1.78925
+      }
+    },
+    {
+      "turns": 20000,
+      "sessions": 1000,
+      "full_build": {
+        "observations": 11,
+        "median_ms": 819.581,
+        "p95_ms": 933.124459,
+        "maximum_ms": 933.124459
+      },
+      "summary_build": {
+        "observations": 11,
+        "median_ms": 1.242917,
+        "p95_ms": 7.811959,
+        "maximum_ms": 7.811959
+      }
+    },
+    {
+      "turns": 100000,
+      "sessions": 2000,
+      "full_build": {
+        "observations": 11,
+        "median_ms": 1437.37475,
+        "p95_ms": 1485.017208,
+        "maximum_ms": 1485.017208
+      },
+      "summary_build": {
+        "observations": 11,
+        "median_ms": 0.614375,
+        "p95_ms": 0.724667,
+        "maximum_ms": 0.724667
+      }
+    }
+  ],
+  "validation": {
+    "focused_broad": {
+      "passed": true,
+      "tests": 515,
+      "suites": 33,
+      "seconds": 63.159
+    },
+    "focused_final": {
+      "passed": true,
+      "tests": 77,
+      "suites": 4,
+      "seconds": 4.195
+    },
+    "make_check": {
+      "passed": true,
+      "swift_files": 2938,
+      "violations": 0
+    },
+    "documentation_links": {
+      "passed": true,
+      "local_links": 425
+    },
+    "llms_index": {
+      "passed": true
+    },
+    "full_suite": {
+      "passed": false,
+      "exit_code": 1,
+      "selections": 1644,
+      "groups": 148,
+      "successful_groups": 147,
+      "failed_groups": 1,
+      "timeouts": 0,
+      "retries": 0,
+      "seconds": 797.5,
+      "unresolved": "WidgetHeadlineLocalizationTests rendering/OCR: both headline parameter cases throw .nilError; isolated run also fails",
+      "widget_test_unchanged_from_audited_base": true
+    }
+  },
+  "log_sha256": {
+    "focused-confirmed.log": "d45bdaaba75c4db8f35fdb1ec3db3db8a0729a93aeed122277853ea093d4e5bc",
+    "stability-final.log": "49dd2ab5be1267b497e26722b96922fc6dc3332a1dfa05a6d6e3ebca58223b87",
+    "check-confirmed.log": "4bf3150cbc734b923f86cd1190d49131d7a188503e61e6f24ca7a8db1db42f8e",
+    "full-confirmed.log": "cbae761929709d66c8036401b73f9c08c88a4bdd40aed28e16c3f97188eb3856",
+    "widget-isolated-confirmed.log": "b7b3d411e6e9e3f923bf6317630357a63a9d5faf46f0079f5a045ee5daed9a75",
+    "model-and-summary-final.log": "29bd6eb6ef83da80dbb0148b63d34fd10646c6cc7d8cddab01f95b4fc6df7355",
+    "publication-confirmation.log": "fb119f18030db22162996aa921a5a1210fef93bab18974c2aff81489db2b07f9",
+    "publication-source-final.log": "4f4a89dca186fdd60d670948495265e7bce8d720dc5ceedc5b28a44ec0014441",
+    "doc-links-correct.log": "b83617aee9170c35d1fce4a4b15ccf8f0327a0e2a0021e231d4f26546d7fd53c",
+    "llms-index.log": "4c6a6bdec24475cd987caa5438f66e2c8fc829204f369012f8e6e9e67b5b14b4"
+  },
+  "raw_measurement_sha256": {
+    "model-and-summary-final.json": "a2d3ea084d4fead7a5fcfbfc46728f3c585895c1609a9aad9a283b87a1e55b98",
+    "publication-confirmation.json": "52bc161eda16b3f558d80af4129053dff53a98842185ca021f82ecd314f422f3",
+    "publication-source-final.json": "b7d374185c2ee539ef5ac90ceaf6be92a74922c9cf8acfdd81d9594ed69b85c4",
+    "publication-with-summary.json": "6beef4e301ef72c28bdd3388e2476da0d9b9734ce37901240f65ecb414d34c2c"
+  },
+  "upstream_pr": {
+    "number": 4393,
+    "state": "CLOSED",
+    "merged": false,
+    "closed_by": "steipete",
+    "closed_at": "2026-10-09T14:51:44Z",
+    "reason": "Product scope: upstream declined opinionated ratings and invited smaller raw-metric or independently measured projection work",
+    "old_published_head_ci": "all checks successful; does not validate this new unpublished head"
+  },
+  "excluded_attempts": [
+    "First benchmark failed to source Bash isolation script in zsh; repeated in Bash.",
+    "A partial official run was deliberately interrupted before completion to add controller publication measurement.",
+    "An intermediate build was rejected because input source was changed during compilation.",
+    "An earlier full run stopped on a provider-specific documentation gate; that gate was fixed and the official suite rerun.",
+    "Initial format failures were corrected; the final check completed with zero violations."
+  ],
+  "limitations": [
+    "Debug synthetic model/scheduling measurements, not actual frame presentation.",
+    "No release/installed-app/real-account/120Hz/8GiB/energy or soak-test proof.",
+    "No apples-to-apples pre-feature baseline for rating-only overhead.",
+    "Concurrent compilation caused measurable scheduling outliers; no hard frame-time guarantee.",
+    "One invalidated active projection drains to completion, with no pending backlog.",
+    "Test process RSS/footprint include the runner, test bundle and synthetic fixtures; repeated fixtures share input arrays."
+  ],
+  "test_process_memory_counters": {
+    "model-and-summary-final.log": {
+      "maximum_resident_size_bytes": 387334144,
+      "reported_peak_memory_footprint_bytes": 94552808,
+      "swaps": 0
+    },
+    "publication-confirmation.log": {
+      "maximum_resident_size_bytes": 369147904,
+      "reported_peak_memory_footprint_bytes": 91161320,
+      "swaps": 0
+    },
+    "publication-source-final.log": {
+      "maximum_resident_size_bytes": 355024896,
+      "reported_peak_memory_footprint_bytes": 91439848,
+      "swaps": 0
+    }
+  }
+}

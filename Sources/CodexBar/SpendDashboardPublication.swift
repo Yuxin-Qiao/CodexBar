@@ -50,7 +50,8 @@ struct SpendDashboardPublication: Sendable {
         hiddenSourceIDs: Set<String> = [],
         hideNativeCodexWhenOpenCodexPresent: Bool = false,
         selectedDay: Date? = nil,
-        providerScope: Set<UsageProvider>? = nil) -> SpendDashboardModel
+        providerScope: Set<UsageProvider>? = nil,
+        includeSessionDetails: Bool = true) -> SpendDashboardModel
     {
         let staleSourceIDs = Set(self.sources.compactMap { source in
             source.state == .staleLastKnown ? source.id : nil
@@ -67,7 +68,8 @@ struct SpendDashboardPublication: Sendable {
             preferredCurrencyCode: preferredCurrencyCode,
             hiddenSourceIDs: hiddenSourceIDs,
             hideNativeCodexWhenOpenCodexPresent: hideNativeCodexWhenOpenCodexPresent,
-            selectedDay: selectedDay)
+            selectedDay: selectedDay,
+            includeSessionDetails: includeSessionDetails)
     }
 
     func subscriptionCount(
