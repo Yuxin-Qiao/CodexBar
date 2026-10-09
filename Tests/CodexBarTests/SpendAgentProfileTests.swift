@@ -13,7 +13,8 @@ struct SpendAgentProfileTests {
     func `profiles aggregate raw turns with token weighted cache and time weighted throughput`() throws {
         let small = try Self.sample(input: 10, cached: 0, duration: 1000)
         let large = try Self.sample(input: 990, cached: 990, duration: 9000)
-        let group = try Self.group(inputs: [Self.input(sampleSets: [[small, small, small, small], [large]])])
+        let input = Self.input(sampleSets: [[small, small, small, small], [large]])
+        let group = try Self.group(inputs: [input])
         let profile = try #require(group.agentProfiles.first)
         #expect(profile.performance.sampleCount == 5)
         #expect(profile.performance.medianDurationMilliseconds == 1000)
@@ -21,6 +22,27 @@ struct SpendAgentProfileTests {
         #expect(try abs(#require(profile.cacheScore) - 25 * 990.0 / 1030) < 0.001)
         #expect(profile.sessions.count == 2)
         #expect(profile.sessions.map(\.rank) == [1, 2])
+        for _ in 0..<10 {
+            #expect(try Self.group(inputs: [input]).agentProfiles == group.agentProfiles)
+        }
+    }
+
+    @Test
+    func `harness totals use raw turns across configurations instead of averaging medians and percentages`() throws {
+        let small = try Self.sample(input: 10, cached: 0, duration: 1000)
+        let large = try Self.sample(input: 990, cached: 990, duration: 9000, effort: "low")
+        let group = try Self.group(inputs: [
+            Self.input(id: "a", sampleSets: [[small, small, small, small]]),
+            Self.input(id: "b", sampleSets: [[large]]),
+        ])
+        let harness = try #require(spendDashboardProviderBreakdowns(group).first)
+        let performance = try #require(harness.performance)
+        #expect(harness.agentProfiles.count == 2)
+        #expect(performance.sampleCount == 5)
+        #expect(performance.medianDurationMilliseconds == 1000)
+        #expect(abs(performance.outputTokensPerSecond - 500.0 / 13) < 0.001)
+        #expect(try abs(#require(performance.details.cachedInputFraction) - 990.0 / 1030) < 0.001)
+        #expect(harness.cacheSampleCount == 5)
     }
 
     @Test
@@ -81,8 +103,10 @@ struct SpendAgentProfileTests {
         let breakdowns = spendDashboardProviderBreakdowns(group)
         let codex = try #require(breakdowns.first { $0.provider == .codex })
         #expect(codex.agentProfiles == group.agentProfiles)
+        #expect(codex.performance?.sampleCount == 5)
         let otherProfiles = breakdowns.filter { $0.provider != .codex }.flatMap(\.agentProfiles)
         #expect(otherProfiles.isEmpty)
+        #expect(breakdowns.filter { $0.provider != .codex }.compactMap(\.performance).isEmpty)
         let unknownProfile = try #require(group.agentProfiles.first { $0.id.model == nil })
         CodexBarLocalizationOverride.$appLanguage.withValue("en") {
             #expect(unknownProfile.modelName == "Unknown model")
@@ -138,10 +162,11 @@ struct SpendAgentProfileTests {
         #expect(profile.sessions.allSatisfy { $0.turnPerformance?.medianDurationMilliseconds == 1000 })
         #expect(profile.sessions.first?.totalCost == group.sessions.first?.totalCost)
         #expect(profile.sessions.first?.displayIdentity(hidePersonalInfo: true).name != "Synthetic task 59")
+        #expect(spendDashboardProviderBreakdowns(group).first?.performance?.sampleCount == 120)
     }
 
     @Test
-    func `render inline provider performance and production dashboard using synthetic history`() throws {
+    func `render metrics directly after harness names using synthetic history`() throws {
         guard let path = ProcessInfo.processInfo.environment["CODEXBAR_AGENT_PROFILE_UI_PROOF_DIR"] else { return }
         let root = URL(fileURLWithPath: path, isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -186,28 +211,16 @@ struct SpendAgentProfileTests {
                             Text(L("Usage & Spend")).font(.title2.bold())
                             Text(L("Providers")).font(.headline)
                             SpendDashboardPanel {
-                                SpendProviderBreakdownRows(
-                                    group: group,
-                                    hidePersonalInfo: true,
-                                    onSelectProfile: { _ in },
-                                    initiallyExpandedPerformanceProviders: [.codex])
+                                SpendProviderBreakdownRows(group: group)
                             }
                         }
                         try Self.render(
                             view,
                             root: root,
-                            name: "providers-expanded-\(language)-\(dark ? "dark" : "light")-\(Int(width))",
+                            name: "providers-inline-\(language)-\(dark ? "dark" : "light")-\(Int(width))",
                             width: width,
                             dark: dark)
                     }
-                    try Self.render(
-                        SpendDashboardPanel {
-                            SpendProviderBreakdownRows(group: group, hidePersonalInfo: true)
-                        },
-                        root: root,
-                        name: "providers-collapsed-\(language)-\(dark ? "dark" : "light")",
-                        width: 980,
-                        dark: dark)
                     let view = SpendDashboardCurrencySection(group: group, requestedDays: 7, hidePersonalInfo: true)
                     try Self.render(
                         view,

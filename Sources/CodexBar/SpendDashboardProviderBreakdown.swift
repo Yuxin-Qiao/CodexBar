@@ -8,6 +8,9 @@ struct SpendProviderBreakdown: Identifiable, Equatable {
     let subscriptions: [SpendDashboardModel.ProviderRow]
     let models: [SpendDashboardModel.ModelRow]
     let agentProfiles: [SpendAgentProfile]
+    let performance: CostUsageTurnPerformanceSummary?
+    let cacheSampleCount: Int
+    let historyScanIsPartial: Bool
     let totalTokens: Int?
     let totalCost: Double?
     let incompleteRequestCount: Int
@@ -56,6 +59,8 @@ func spendDashboardProviderBreakdowns(
         let subscriptions = group.providers.filter { $0.provider == provider }
         let models = group.models.filter { $0.provider == provider }
         let sourceIDs = Set(subscriptions.map(\.id))
+        let profiles = group.agentProfiles.filter { sourceIDs.contains($0.id.sourceID) }
+        let samples = profiles.flatMap(\.samples)
         let costs = subscriptions.compactMap(\.totalCost)
         let tokens = subscriptions.compactMap(\.totalTokens)
         let totalCost = spendDashboardProviderCostSum(costs)
@@ -66,7 +71,10 @@ func spendDashboardProviderBreakdowns(
             displayName: ProviderDescriptorRegistry.descriptor(for: provider).metadata.displayName,
             subscriptions: subscriptions,
             models: models,
-            agentProfiles: group.agentProfiles.filter { sourceIDs.contains($0.id.sourceID) },
+            agentProfiles: profiles,
+            performance: CostUsageTurnPerformanceSummary(samples: samples),
+            cacheSampleCount: profiles.reduce(0) { $0 + $1.cacheSampleCount },
+            historyScanIsPartial: profiles.contains(where: \.historyScanIsPartial),
             totalTokens: totalTokens,
             totalCost: totalCost,
             incompleteRequestCount: incompleteRequestCount,
@@ -120,9 +128,6 @@ func spendDashboardBreakdownMetricText(
 
 struct SpendProviderBreakdownRows: View {
     let group: SpendDashboardModel.CurrencyGroup
-    var hidePersonalInfo = false
-    var onSelectProfile: ((SpendAgentProfile.Configuration) -> Void)?
-    var initiallyExpandedPerformanceProviders: Set<UsageProvider> = []
     @State private var expandedProviders: Set<UsageProvider> = []
 
     var body: some View {
@@ -150,28 +155,8 @@ struct SpendProviderBreakdownRows: View {
 
     private func providerGroup(_ breakdown: SpendProviderBreakdown) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 10) {
-                SpendProviderIcon(provider: breakdown.provider)
-                Text(breakdown.displayName)
-                    .font(.headline)
-                    .lineLimit(1)
-                    .help(breakdown.displayName)
-                Spacer()
-                Text(spendDashboardBreakdownMetricText(
-                    cost: breakdown.totalCost,
-                    tokens: breakdown.totalTokens,
-                    currencyCode: self.group.currencyCode,
-                    hasPartialCost: breakdown.hasPartialCost,
-                    hasPartialTokens: breakdown.hasPartialTokens,
-                    incompleteRequestCount: breakdown.incompleteRequestCount,
-                    costIsLowerBound: breakdown.costIsLowerBound,
-                    tokensAreLowerBound: breakdown.tokensAreLowerBound))
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(breakdown.totalCost == nil && breakdown.totalTokens == nil ? .secondary : .primary)
-                    .monospacedDigit()
-                    .fixedSize(horizontal: true, vertical: false)
-            }
-            .padding(.vertical, 5)
+            self.providerHeader(breakdown)
+                .padding(.vertical, 5)
 
             if self.showsSubscriptionChildren(breakdown) {
                 self.subsectionLabel(breakdown.subscriptions.contains { $0.sourceKind != .native }
@@ -264,13 +249,61 @@ struct SpendProviderBreakdownRows: View {
             } else if self.group.models.isEmpty {
                 self.modelHistoryState(L("No model-level history"))
             }
-            if !breakdown.agentProfiles.isEmpty {
-                SpendProviderPerformanceSection(
-                    profiles: breakdown.agentProfiles,
-                    hidePersonalInfo: self.hidePersonalInfo,
-                    onSelect: self.onSelectProfile,
-                    initiallyExpanded: self.initiallyExpandedPerformanceProviders.contains(breakdown.provider))
+        }
+    }
+
+    private func providerHeader(_ breakdown: SpendProviderBreakdown) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                self.providerTitle(breakdown)
+                self.performanceText(breakdown).fixedSize()
+                Spacer(minLength: 12)
+                self.providerCost(breakdown)
             }
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 10) {
+                    self.providerTitle(breakdown)
+                    Spacer(minLength: 12)
+                    self.providerCost(breakdown)
+                }
+                self.performanceText(breakdown)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 32)
+            }
+        }
+    }
+
+    private func providerTitle(_ breakdown: SpendProviderBreakdown) -> some View {
+        HStack(spacing: 10) {
+            SpendProviderIcon(provider: breakdown.provider)
+            Text(breakdown.displayName)
+                .font(.headline).lineLimit(1).help(breakdown.displayName)
+        }
+        .fixedSize()
+    }
+
+    private func providerCost(_ breakdown: SpendProviderBreakdown) -> some View {
+        Text(spendDashboardBreakdownMetricText(
+            cost: breakdown.totalCost,
+            tokens: breakdown.totalTokens,
+            currencyCode: self.group.currencyCode,
+            hasPartialCost: breakdown.hasPartialCost,
+            hasPartialTokens: breakdown.hasPartialTokens,
+            incompleteRequestCount: breakdown.incompleteRequestCount,
+            costIsLowerBound: breakdown.costIsLowerBound,
+            tokensAreLowerBound: breakdown.tokensAreLowerBound))
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(breakdown.totalCost == nil && breakdown.totalTokens == nil ? .secondary : .primary)
+            .monospacedDigit().fixedSize(horizontal: true, vertical: false)
+    }
+
+    @ViewBuilder
+    private func performanceText(_ breakdown: SpendProviderBreakdown) -> some View {
+        if let performance = breakdown.performance {
+            SpendHarnessPerformanceText(
+                performance: performance,
+                cacheSampleCount: breakdown.cacheSampleCount,
+                historyScanIsPartial: breakdown.historyScanIsPartial)
         }
     }
 

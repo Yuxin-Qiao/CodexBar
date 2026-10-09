@@ -34,7 +34,7 @@ struct SpendPerformanceMetric: Identifiable, Equatable {
     var help: String?
 }
 
-struct SpendPerformanceMetricStrip: View {
+private struct SpendPerformanceMetricStrip: View {
     let metrics: [SpendPerformanceMetric]
 
     var body: some View {

@@ -12,6 +12,8 @@ struct SpendAgentProfile: Identifiable, Equatable, Sendable {
     let id: Configuration
     let sourceName: String
     let performance: CostUsageTurnPerformanceSummary
+    /// Retain raw observations so harness totals do not average configuration medians or rates.
+    let samples: [CostUsageTurnPerformanceSample]
     /// Re-ranked evidence rows, including sessions beyond the dashboard's default 50-row limit.
     /// Their timing is scoped to this configuration; their costs still describe entire sessions.
     let sessions: [SpendDashboardModel.SessionRow]
@@ -66,7 +68,7 @@ struct SpendAgentProfile: Identifiable, Equatable, Sendable {
             }
         }
         return observations.compactMap { key, bySession -> Self? in
-            let samples = bySession.values.flatMap(\.self)
+            let samples = bySession.keys.sorted().flatMap { bySession[$0] ?? [] }
             guard let source = sources[key.sourceID],
                   let performance = CostUsageTurnPerformanceSummary(samples: samples) else { return nil }
             let evidence = sessions.compactMap { row -> SpendDashboardModel.SessionRow? in
@@ -83,6 +85,7 @@ struct SpendAgentProfile: Identifiable, Equatable, Sendable {
                 id: key,
                 sourceName: source.displayName,
                 performance: performance,
+                samples: samples,
                 sessions: evidence,
                 cacheSampleCount: samples.filter { ($0.inputTokens ?? 0) > 0 && $0.cachedInputTokens != nil }.count,
                 historyScanIsPartial: source.snapshot.historyScanIsPartial)
