@@ -1,0 +1,191 @@
+name: Native-only musl workflow scheduling proof
+'on':
+  push:
+    branches:
+    - ci/musl-native-scheduling-proof
+    paths:
+    - Sources/CQuickJS/quickjs.c
+permissions:
+  contents: read
+env:
+  SWIFT_VERSION: 6.3.3
+  SWIFTLY_VERSION: 1.1.3
+  SWIFTLY_SIGNING_FINGERPRINT: E813C892820A6FA13755B268F167DF1ACF9CE069
+jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      macos-tests: ${{ steps.macos-tests.outputs.macos-tests }}
+      macos-tests-deferred: ${{ steps.macos-tests.outputs.macos-tests-deferred }}
+      macos-tests-reason: ${{ steps.macos-tests.outputs.macos-tests-reason }}
+      linux-cli-build: ${{ steps.macos-tests.outputs.linux-cli-build }}
+      linux-cli-build-reason: ${{ steps.macos-tests.outputs.linux-cli-build-reason }}
+      changed-path-count: ${{ steps.macos-tests.outputs.changed-path-count }}
+      linux-musl-build: ${{ steps.linux-musl-build.outputs.linux-musl-build }}
+      linux-musl-build-reason: ${{ steps.linux-musl-build.outputs.linux-musl-build-reason }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - name: Detect Swift build and test impact
+      id: macos-tests
+      shell: bash
+      env:
+        CI_PULL_REQUEST_DRAFT: ${{ github.event.pull_request.draft || false }}
+      run: "set -euo pipefail\n\nif [[ \"${{ github.event_name }}\" == \"pull_request\" ]]; then\n  base_sha=\"${{ github.event.pull_request.base.sha\
+        \ }}\"\nelse\n  base_sha=\"${{ github.event.before }}\"\nfi\n\nchanged_paths=\"${RUNNER_TEMP}/changed-paths.txt\"\n\
+        if [[ -z \"$base_sha\" || \"$base_sha\" =~ ^0+$ ]]; then\n  git ls-files | awk '{ print \"A\\t\" $0 }' > \"$changed_paths\"\
+        \nelif ! git cat-file -e \"${base_sha}^{commit}\" 2>/dev/null; then\n  echo \"Base commit ${base_sha} is unavailable;\
+        \ running Swift builds and tests conservatively.\"\n  git ls-files | awk '{ print \"A\\t\" $0 }' > \"$changed_paths\"\
+        \nelse\n  git diff --name-status \"$base_sha\" \"$GITHUB_SHA\" > \"$changed_paths\"\nfi\n\nprintf 'Changed paths:\\\
+        n'\nsed 's/^/- /' \"$changed_paths\"\n./Scripts/ci_macos_test_gate.sh \"$changed_paths\"\n"
+    - name: Detect Linux musl build impact
+      id: linux-musl-build
+      shell: bash
+      run: ./Scripts/ci_linux_musl_build_gate.sh "$RUNNER_TEMP/changed-paths.txt"
+    - name: Summarize CI path gates
+      if: ${{ always() }}
+      shell: bash
+      env:
+        MACOS_TESTS: ${{ steps.macos-tests.outputs.macos-tests }}
+        MACOS_TESTS_REASON: ${{ steps.macos-tests.outputs.macos-tests-reason }}
+        LINUX_CLI_BUILD: ${{ steps.macos-tests.outputs.linux-cli-build }}
+        LINUX_CLI_BUILD_REASON: ${{ steps.macos-tests.outputs.linux-cli-build-reason }}
+        CHANGED_PATH_COUNT: ${{ steps.macos-tests.outputs.changed-path-count }}
+        LINUX_MUSL_BUILD: ${{ steps.linux-musl-build.outputs.linux-musl-build }}
+        LINUX_MUSL_BUILD_REASON: ${{ steps.linux-musl-build.outputs.linux-musl-build-reason }}
+      run: "set -euo pipefail\nreason=\"${MACOS_TESTS_REASON:-<unset>}\"\nreason=\"${reason//|/\\\\|}\"\nlinux_reason=\"${LINUX_CLI_BUILD_REASON:-<unset>}\"\
+        \nlinux_reason=\"${linux_reason//|/\\\\|}\"\nmusl_reason=\"${LINUX_MUSL_BUILD_REASON:-<unset>}\"\nmusl_reason=\"${musl_reason//|/\\\
+        \\|}\"\n{\n  printf '### CI path gates\\n\\n'\n  printf '| Field | Value |\\n'\n  printf '| --- | --- |\\n'\n  printf\
+        \ '| macOS Swift tests required | `%s` |\\n' \"${MACOS_TESTS:-<unset>}\"\n  printf '| macOS reason | %s |\\n' \"$reason\"\
+        \n  printf '| Linux glibc CLI matrix required | `%s` |\\n' \"${LINUX_CLI_BUILD:-<unset>}\"\n  printf '| Linux glibc\
+        \ reason | %s |\\n' \"$linux_reason\"\n  printf '| Linux musl build required | `%s` |\\n' \"${LINUX_MUSL_BUILD:-<unset>}\"\
+        \n  printf '| Linux musl reason | %s |\\n' \"$musl_reason\"\n  printf '| Changed path entries | `%s` |\\n' \"${CHANGED_PATH_COUNT:-<unset>}\"\
+        \n} >> \"$GITHUB_STEP_SUMMARY\"\n"
+    - name: Verify native-only delta and original-versus-fixed gate
+      env:
+        FIXED_REQUIRED: ${{ steps.linux-musl-build.outputs.linux-musl-build }}
+      shell: bash
+      run: 'set -euo pipefail
+
+        expected_gate_sha=eba8a62f1a2826fef6f77c19775aa961001520e9e56216d3a32897efa21304e2
+
+        actual_gate_sha="$(sha256sum Scripts/ci_linux_musl_build_gate.sh | cut -d '' '' -f1)"
+
+        test "$actual_gate_sha" = "$expected_gate_sha"
+
+        printf ''Production gate SHA256: %s\n'' "$actual_gate_sha"
+
+        test "$(cat "$RUNNER_TEMP/changed-paths.txt")" = $''M\tSources/CQuickJS/quickjs.c''
+
+        git show 81438267faa935f699578c0195b7e38c314f2596:Scripts/ci_linux_musl_build_gate.sh > "$RUNNER_TEMP/baseline-gate.sh"
+
+        GITHUB_OUTPUT="$RUNNER_TEMP/baseline-gate.output" bash "$RUNNER_TEMP/baseline-gate.sh" "$RUNNER_TEMP/changed-paths.txt"
+
+        grep -Fx ''linux-musl-build=false'' "$RUNNER_TEMP/baseline-gate.output"
+
+        test "$FIXED_REQUIRED" = true
+
+        printf ''Native-only delta: original=false fixed=%s\n'' "$FIXED_REQUIRED"
+
+        '
+    if: ${{ github.repository == 'Yuxin-Qiao/CodexBar' && github.event.before != '0000000000000000000000000000000000000000'
+      }}
+  build-linux-musl-cli:
+    needs: changes
+    if: ${{ needs.changes.outputs.linux-musl-build == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      SWIFT_VERSION: 6.3.3
+      SWIFT_STATIC_LINUX_SDK: swift-6.3.3-RELEASE_static-linux-0.1.0
+      SWIFT_STATIC_LINUX_SDK_TRIPLE: x86_64-swift-linux-musl
+      SWIFT_STATIC_LINUX_SDK_ARCH: x86_64
+      SWIFT_STATIC_LINUX_SDK_URL: https://download.swift.org/swift-6.3.3-release/static-sdk/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE_static-linux-0.1.0.artifactbundle.tar.gz
+      SWIFT_STATIC_LINUX_SDK_CHECKSUM: 87c3eaf908e67c0e13a84367119e12273cec1d2cd3d81f7d74bb36722d6b607b
+      SQLITE_AMALGAMATION_VERSION: '3530400'
+      SQLITE_AMALGAMATION_SHA3_256: 628a44cfe82c66aed1ccbbe85a562d2e33ebe64b3288981ed76285612227934e
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+    - name: Runner info
+      run: 'set -euo pipefail
+
+        uname -a
+
+        uname -m
+
+        swift --version
+
+        '
+    - name: Install Swift ${{ env.SWIFT_VERSION }} via swiftly
+      shell: bash
+      run: "set -euo pipefail\n\nif ! command -v gpg >/dev/null 2>&1; then\n  sudo apt-get update\n  sudo apt-get install\
+        \ -y ca-certificates gpg\nfi\n\nSWIFTLY_ARCH=\"$(uname -m)\"\nSWIFTLY_ARCHIVE=\"$RUNNER_TEMP/swiftly-${SWIFTLY_VERSION}-${SWIFTLY_ARCH}.tar.gz\"\
+        \nSWIFTLY_SIGNATURE=\"${SWIFTLY_ARCHIVE}.sig\"\nSWIFTLY_HOME_DIR=\"$HOME/.local/share/swiftly\"\nSWIFTLY_BIN_DIR=\"\
+        $HOME/.local/bin\"\nSWIFT_GNUPGHOME=\"$(mktemp -d)\"\nSWIFT_KEYS=\"$RUNNER_TEMP/swift-signing-keys.asc\"\nPOST_INSTALL_SCRIPT=\"\
+        $(mktemp)\"\n\nmkdir -p \"$SWIFTLY_BIN_DIR\"\nchmod 700 \"$SWIFT_GNUPGHOME\"\ncurl -fsSL \"https://download.swift.org/swiftly/linux/swiftly-${SWIFTLY_VERSION}-${SWIFTLY_ARCH}.tar.gz\"\
+        \ -o \"$SWIFTLY_ARCHIVE\"\ncurl -fsSL \"https://download.swift.org/swiftly/linux/swiftly-${SWIFTLY_VERSION}-${SWIFTLY_ARCH}.tar.gz.sig\"\
+        \ -o \"$SWIFTLY_SIGNATURE\"\ncurl -fsSL --compressed \"https://www.swift.org/keys/all-keys.asc\" -o \"$SWIFT_KEYS\"\
+        \nGNUPGHOME=\"$SWIFT_GNUPGHOME\" gpg --batch --import \"$SWIFT_KEYS\"\nSIGNATURE_STATUS=\"$(GNUPGHOME=\"$SWIFT_GNUPGHOME\"\
+        \ gpg --batch --status-fd=1 \\\n  --verify \"$SWIFTLY_SIGNATURE\" \"$SWIFTLY_ARCHIVE\" 2>&1)\"\nprintf '%s\\n' \"\
+        $SIGNATURE_STATUS\"\ngrep -Fq \"[GNUPG:] VALIDSIG ${SWIFTLY_SIGNING_FINGERPRINT} \" <<< \"$SIGNATURE_STATUS\"\ntar\
+        \ -xzf \"$SWIFTLY_ARCHIVE\" -C /tmp\n/tmp/swiftly init --assume-yes --skip-install\n\n. \"$SWIFTLY_HOME_DIR/env.sh\"\
+        \necho \"$SWIFTLY_BIN_DIR\" >> \"$GITHUB_PATH\"\necho \"SWIFTLY_HOME_DIR=$SWIFTLY_HOME_DIR\" >> \"$GITHUB_ENV\"\n\
+        echo \"SWIFTLY_BIN_DIR=$SWIFTLY_BIN_DIR\" >> \"$GITHUB_ENV\"\n\nswiftly install \"$SWIFT_VERSION\" --use --assume-yes\
+        \ --verify --post-install-file \"$POST_INSTALL_SCRIPT\"\nif [[ -s \"$POST_INSTALL_SCRIPT\" ]]; then\n  sudo apt-get\
+        \ update\n  sudo bash \"$POST_INSTALL_SCRIPT\"\nfi\n\nhash -r\nswift --version\n"
+    - name: Install Swift Static Linux SDK
+      shell: bash
+      run: "set -euo pipefail\n./Scripts/install_swift_static_sdk.sh\nswift sdk list | grep -Fx \"$SWIFT_STATIC_LINUX_SDK\"\
+        \n\nsdk_root=\"$(\n  find \"$HOME\" -type d -path \"*/${SWIFT_STATIC_LINUX_SDK}.artifactbundle/${SWIFT_STATIC_LINUX_SDK}/swift-linux-musl\"\
+        \ | head -n1\n)\"\nif [[ -z \"$sdk_root\" ]]; then\n  echo \"Swift SDK root not found.\" >&2\n  exit 1\nfi\n\npython3\
+        \ - \"$sdk_root/swift-sdk.json\" \"$SWIFT_STATIC_LINUX_SDK_TRIPLE\" <<'PY'\nimport json\nimport sys\n\nsdk_json_path,\
+        \ target_triple = sys.argv[1], sys.argv[2]\nwith open(sdk_json_path, encoding=\"utf-8\") as handle:\n    sdk_json\
+        \ = json.load(handle)\n\ntarget_triples = sdk_json.get(\"targetTriples\", {})\nif target_triple not in target_triples:\n\
+        \    raise SystemExit(f\"Swift SDK target triple not found: {target_triple}\")\n\nsdk_json[\"targetTriples\"] = {target_triple:\
+        \ target_triples[target_triple]}\nwith open(sdk_json_path, \"w\", encoding=\"utf-8\") as handle:\n    json.dump(sdk_json,\
+        \ handle, indent=2)\n    handle.write(\"\\n\")\nPY\n\nfor sdk_arch in \"$sdk_root\"/musl-1.2.5.sdk/*; do\n  if [[\
+        \ \"$(basename \"$sdk_arch\")\" != \"$SWIFT_STATIC_LINUX_SDK_ARCH\" ]]; then\n    rm -rf \"$sdk_arch\"\n  fi\ndone\n"
+    - name: Build static SQLite for musl SDK
+      shell: bash
+      run: "set -euo pipefail\n\nmissing_packages=()\nfor tool in clang openssl unzip; do\n  if ! command -v \"$tool\" >/dev/null\
+        \ 2>&1; then\n    missing_packages+=(\"$tool\")\n  fi\ndone\nif [[ \"${#missing_packages[@]}\" -gt 0 ]]; then\n  sudo\
+        \ apt-get update\n  sudo apt-get install -y \"${missing_packages[@]}\"\nfi\n\nsqlite_zip=\"$RUNNER_TEMP/sqlite-amalgamation-${SQLITE_AMALGAMATION_VERSION}.zip\"\
+        \nsqlite_src=\"$RUNNER_TEMP/sqlite-src\"\nsqlite_out=\"$RUNNER_TEMP/sqlite-${SWIFT_STATIC_LINUX_SDK_TRIPLE}\"\n\n\
+        curl -fsSL \"https://www.sqlite.org/2026/sqlite-amalgamation-${SQLITE_AMALGAMATION_VERSION}.zip\" -o \"$sqlite_zip\"\
+        \nactual_sha3=\"$(openssl dgst -sha3-256 \"$sqlite_zip\" | awk '{print $NF}')\"\nif [[ \"$actual_sha3\" != \"$SQLITE_AMALGAMATION_SHA3_256\"\
+        \ ]]; then\n  echo \"SQLite amalgamation checksum mismatch: $actual_sha3\" >&2\n  exit 1\nfi\n\nrm -rf \"$sqlite_src\"\
+        \ \"$sqlite_out\"\nmkdir -p \"$sqlite_src\" \"$sqlite_out/build\" \"$sqlite_out/lib\"\nunzip -q \"$sqlite_zip\" -d\
+        \ \"$sqlite_src\"\n\nsdk_bundle=\"$(\n  find \"$HOME\" -type d -name \"${SWIFT_STATIC_LINUX_SDK}.artifactbundle\"\
+        \ | head -n1\n)\"\nif [[ -z \"$sdk_bundle\" ]]; then\n  echo \"Swift SDK artifact bundle not found.\" >&2\n  exit\
+        \ 1\nfi\nsysroot=\"$sdk_bundle/$SWIFT_STATIC_LINUX_SDK/swift-linux-musl/musl-1.2.5.sdk/$SWIFT_STATIC_LINUX_SDK_ARCH\"\
+        \nif [[ ! -d \"$sysroot\" ]]; then\n  echo \"Swift SDK sysroot not found: $sysroot\" >&2\n  exit 1\nfi\n\nsqlite_amalgamation=\"\
+        $sqlite_src/sqlite-amalgamation-${SQLITE_AMALGAMATION_VERSION}\"\nmkdir -p \"$sysroot/usr/include\"\ninstall -m 0644\
+        \ \"$sqlite_amalgamation/sqlite3.h\" \"$sysroot/usr/include/sqlite3.h\"\n\nclang \\\n  -target \"$SWIFT_STATIC_LINUX_SDK_TRIPLE\"\
+        \ \\\n  --sysroot=\"$sysroot\" \\\n  -O2 \\\n  -DSQLITE_OMIT_LOAD_EXTENSION=1 \\\n  -c \"$sqlite_amalgamation/sqlite3.c\"\
+        \ \\\n  -o \"$sqlite_out/build/sqlite3.o\"\nllvm-ar crs \"$sqlite_out/lib/libsqlite3.a\" \"$sqlite_out/build/sqlite3.o\"\
+        \n\necho \"CODEXBAR_SQLITE3_LIB_DIR=$sqlite_out/lib\" >> \"$GITHUB_ENV\"\n"
+    - name: Build CodexBarCLI (release, Linux musl x86_64)
+      run: swift build -c release --product CodexBarCLI --swift-sdk "$SWIFT_STATIC_LINUX_SDK" --triple "$SWIFT_STATIC_LINUX_SDK_TRIPLE"
+  verify-native-scheduling:
+    needs:
+    - changes
+    - build-linux-musl-cli
+    if: ${{ always() && needs.changes.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+    - name: Verify required musl CLI job actually succeeded
+      env:
+        REQUIRED: ${{ needs.changes.outputs.linux-musl-build }}
+        RESULT: ${{ needs.build-linux-musl-cli.result }}
+      run: 'set -euo pipefail
+
+        test "$REQUIRED" = true
+
+        test "$RESULT" = success
+
+        printf ''Native-only edit required musl=%s; musl CLI build result=%s\n'' "$REQUIRED" "$RESULT"
+
+        '
