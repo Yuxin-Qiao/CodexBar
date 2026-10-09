@@ -1757,3 +1757,15 @@
 "spend_harness_score_rule" = "Regras experimentais: caché 35 (obxectivo 90%); resposta 25 (máximo a ≤1 s, cero a ≥10 s); saída da quenda 20 (máximo a ≥20 tok/s); espera 20 (máximo a ≤30 s, cero a ≥300 s). Escala lineal arredondada a enteiros. Polo menos cinco observacións por dimensión e as catro para o total.";
 "spend_harness_no_rating" = "Aínda sen puntuación";
 "spend_harness_no_rating_help" = "Os rexistros dispoñibles non conteñen datos suficientes para puntuar a experiencia.";
+
+/* Clickable rating evidence. */
+"spend_harness_details_title" = "Criterios da puntuación";
+"spend_harness_open_details" = "Preme para ver os criterios da puntuación";
+"spend_harness_experimental" = "Provisional";
+"spend_harness_evidence_coverage" = "Datos de %@/%@ quendas";
+"spend_harness_cache_rule" = "Unha reutilización da caché do %@ dá os %@ puntos; por debaixo puntúase proporcionalmente.";
+"spend_harness_time_rule" = "Ata %@ obtéñense os %@ puntos; desde %@ a puntuación é cero.";
+"spend_harness_output_rule" = "Desde %@ obtéñense os %@ puntos; por debaixo puntúase proporcionalmente á saída da quenda completa.";
+"spend_harness_method" = "Os valores intermedios interpólanse e arredóndanse. Cada dimensión require %@ observacións válidas; fan falta as catro para o total.";
+"spend_harness_experimental_help" = "Cómpre calibrar os pesos e limiares. O tempo inclúe razoamento, ferramentas e espera; saída e duración solápanse. Aplícanse os filtros actuais de data e orixe.";
+"spend_harness_rule_version" = "Regra %@";

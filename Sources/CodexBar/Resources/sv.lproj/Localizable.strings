@@ -1757,3 +1757,15 @@
 "spend_harness_score_rule" = "Experimentella regler: cache 35 (mål 90%); svar 25 (fullt vid ≤1 s, noll vid ≥10 s); turutdata 20 (fullt vid ≥20 tok/s); väntan 20 (fullt vid ≤30 s, noll vid ≥300 s). Linjär skala avrundad till heltal. Minst fem observationer per del; alla fyra behövs för totalen.";
 "spend_harness_no_rating" = "Inget betyg ännu";
 "spend_harness_no_rating_help" = "Tillgängliga uppgifter räcker inte för att betygsätta användarupplevelsen.";
+
+/* Clickable rating evidence. */
+"spend_harness_details_title" = "Underlag för betyget";
+"spend_harness_open_details" = "Klicka för att se betygsunderlaget";
+"spend_harness_experimental" = "Försöksvis";
+"spend_harness_evidence_coverage" = "Data för %@/%@ turer";
+"spend_harness_cache_rule" = "%@ cacheåteranvändning ger alla %@ poäng; därunder är poängen proportionella.";
+"spend_harness_time_rule" = "Upp till %@ ges alla %@ poäng; från %@ är poängen noll.";
+"spend_harness_output_rule" = "Från %@ ges alla %@ poäng; därunder är poängen proportionella mot hela turens utdata.";
+"spend_harness_method" = "Mellanvärden skalas linjärt och avrundas. Varje dimension kräver %@ giltiga observationer; alla fyra behövs för totalpoängen.";
+"spend_harness_experimental_help" = "Vikter och trösklar behöver kalibreras. Turtiden omfattar resonemang, verktyg och väntan; utdata och varaktighet överlappar. Aktuella datum- och källfilter gäller.";
+"spend_harness_rule_version" = "Regel %@";

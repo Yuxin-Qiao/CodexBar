@@ -1757,3 +1757,15 @@
 "spend_harness_score_rule" = "Règles expérimentales : cache 35 (cible 90 %) ; réponse 25 (maximum à ≤1 s, zéro à ≥10 s) ; sortie du tour 20 (maximum à ≥20 tok/s) ; attente 20 (maximum à ≤30 s, zéro à ≥300 s). Échelle linéaire arrondie à l’entier. Au moins cinq observations par dimension ; les quatre sont requises pour le total.";
 "spend_harness_no_rating" = "Pas encore de note";
 "spend_harness_no_rating_help" = "Les données disponibles ne suffisent pas pour attribuer une note à l’expérience.";
+
+/* Clickable rating evidence. */
+"spend_harness_details_title" = "Base de la note";
+"spend_harness_open_details" = "Cliquer pour voir la base de la note";
+"spend_harness_experimental" = "Expérimental";
+"spend_harness_evidence_coverage" = "Données pour %@/%@ tours";
+"spend_harness_cache_rule" = "%@ de réutilisation du cache donne les %@ points ; en dessous, la note est proportionnelle.";
+"spend_harness_time_rule" = "Jusqu’à %@, les %@ points sont attribués ; à partir de %@, la note est nulle.";
+"spend_harness_output_rule" = "À partir de %@, les %@ points sont attribués ; en dessous, la note est proportionnelle au débit du tour complet.";
+"spend_harness_method" = "Les valeurs sont interpolées puis arrondies. Chaque dimension exige %@ observations valides ; les quatre sont nécessaires pour une note globale.";
+"spend_harness_experimental_help" = "Poids et seuils restent à calibrer. La durée inclut raisonnement, outils et attente ; débit et durée se recoupent. Les filtres de dates et de sources actuels s’appliquent.";
+"spend_harness_rule_version" = "Règle %@";

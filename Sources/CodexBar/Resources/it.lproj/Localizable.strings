@@ -1761,3 +1761,15 @@
 "spend_harness_score_rule" = "Regole sperimentali: cache 35 (obiettivo 90%); risposta 25 (massimo a ≤1 s, zero a ≥10 s); emissione del turno 20 (massimo a ≥20 tok/s); attesa 20 (massimo a ≤30 s, zero a ≥300 s). Scala lineare arrotondata a interi. Almeno cinque osservazioni per dimensione; tutte e quattro per il totale.";
 "spend_harness_no_rating" = "Valutazione non disponibile";
 "spend_harness_no_rating_help" = "I dati disponibili non sono sufficienti per valutare l’esperienza d’uso.";
+
+/* Clickable rating evidence. */
+"spend_harness_details_title" = "Criteri della valutazione";
+"spend_harness_open_details" = "Fai clic per vedere i criteri della valutazione";
+"spend_harness_experimental" = "Sperimentale";
+"spend_harness_evidence_coverage" = "Dati per %@/%@ turni";
+"spend_harness_cache_rule" = "Un riutilizzo della cache del %@ assegna tutti i %@ punti; sotto la soglia il punteggio è proporzionale.";
+"spend_harness_time_rule" = "Fino a %@ si ottengono tutti i %@ punti; da %@ il punteggio è zero.";
+"spend_harness_output_rule" = "Da %@ si ottengono tutti i %@ punti; sotto la soglia il punteggio è proporzionale alla produzione dell’intero turno.";
+"spend_harness_method" = "I valori intermedi sono interpolati e arrotondati. Ogni dimensione richiede %@ osservazioni valide; servono tutte e quattro per il totale.";
+"spend_harness_experimental_help" = "Pesi e soglie devono essere calibrati. Il tempo include ragionamento, strumenti e attesa; produzione e durata si sovrappongono. Si applicano i filtri correnti di data e fonte.";
+"spend_harness_rule_version" = "Regola %@";

@@ -1758,3 +1758,15 @@
 "spend_harness_score_rule" = "Experimentelle Regeln: Cache 35 (Ziel 90%); Antwort 25 (voll bei ≤1 s, null bei ≥10 s); Rundenausgabe 20 (voll bei ≥20 tok/s); Wartezeit 20 (voll bei ≤30 s, null bei ≥300 s). Linear skaliert und auf ganze Punkte gerundet. Mindestens fünf Beobachtungen je Bereich; alle vier für den Gesamtwert.";
 "spend_harness_no_rating" = "Noch keine Bewertung";
 "spend_harness_no_rating_help" = "Die verfügbaren Aufzeichnungen enthalten nicht genug Daten für eine Bewertung der Nutzungserfahrung.";
+
+/* Clickable rating evidence. */
+"spend_harness_details_title" = "Bewertungsgrundlage";
+"spend_harness_open_details" = "Klicken, um die Bewertungsgrundlage anzuzeigen";
+"spend_harness_experimental" = "Experimentell";
+"spend_harness_evidence_coverage" = "Daten für %@/%@ Runden";
+"spend_harness_cache_rule" = "%@ Cache-Wiederverwendung ergibt alle %@ Punkte; darunter wird proportional bewertet.";
+"spend_harness_time_rule" = "Bis %@ gibt es alle %@ Punkte; ab %@ gibt es null Punkte.";
+"spend_harness_output_rule" = "Ab %@ gibt es alle %@ Punkte; darunter wird die Ausgabe pro Gesamtrunde proportional bewertet.";
+"spend_harness_method" = "Zwischenwerte werden linear skaliert und gerundet. Jede Dimension braucht %@ gültige Beobachtungen; für eine Gesamtnote sind alle vier nötig.";
+"spend_harness_experimental_help" = "Gewichte und Schwellen müssen kalibriert werden. Rundenzeit enthält Denken, Werkzeuge und Warten; Ausgabe und Dauer überschneiden sich. Aktuelle Datums- und Quellenfilter gelten.";
+"spend_harness_rule_version" = "Regel %@";

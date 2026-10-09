@@ -1758,3 +1758,15 @@
 "spend_harness_score_rule" = "Regras experimentais: cache 35 (meta 90%); resposta 25 (máximo em ≤1 s, zero em ≥10 s); saída do turno 20 (máximo em ≥20 tok/s); espera 20 (máximo em ≤30 s, zero em ≥300 s). Escala linear arredondada a inteiros. Pelo menos cinco observações por dimensão e todas as quatro para o total.";
 "spend_harness_no_rating" = "Ainda sem avaliação";
 "spend_harness_no_rating_help" = "Os registros disponíveis não contêm dados suficientes para avaliar a experiência.";
+
+/* Clickable rating evidence. */
+"spend_harness_details_title" = "Base da avaliação";
+"spend_harness_open_details" = "Clique para ver a base da avaliação";
+"spend_harness_experimental" = "Provisório";
+"spend_harness_evidence_coverage" = "Dados de %@/%@ turnos";
+"spend_harness_cache_rule" = "%@ de reutilização do cache concede todos os %@ pontos; abaixo disso a nota é proporcional.";
+"spend_harness_time_rule" = "Até %@ são concedidos todos os %@ pontos; a partir de %@ a nota é zero.";
+"spend_harness_output_rule" = "A partir de %@ são concedidos todos os %@ pontos; abaixo disso a nota é proporcional à saída do turno completo.";
+"spend_harness_method" = "Os valores intermediários são interpolados e arredondados. Cada dimensão exige %@ observações válidas; as quatro são necessárias para o total.";
+"spend_harness_experimental_help" = "Pesos e limites precisam de calibração. O tempo inclui raciocínio, ferramentas e espera; saída e duração se sobrepõem. Os filtros atuais de data e origem se aplicam.";
+"spend_harness_rule_version" = "Regra %@";

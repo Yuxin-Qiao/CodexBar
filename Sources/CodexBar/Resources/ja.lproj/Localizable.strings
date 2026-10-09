@@ -1758,3 +1758,15 @@
 "spend_harness_score_rule" = "実験ルール：キャッシュ35点（目標90%）、応答25点（≤1秒で満点、≥10秒で0）、ターン全体の出力20点（≥20 tok/sで満点）、待ち時間20点（≤30秒で満点、≥300秒で0）。線形に配点し整数へ丸めます。各項目に5件以上の観測が必要で、総合点には全4項目が必要です。";
 "spend_harness_no_rating" = "まだ評価できません";
 "spend_harness_no_rating_help" = "利用可能な記録には、体験を評価するための十分なデータがありません。";
+
+/* Clickable rating evidence. */
+"spend_harness_details_title" = "評価の根拠";
+"spend_harness_open_details" = "クリックして評価の根拠を表示";
+"spend_harness_experimental" = "試験的";
+"spend_harness_evidence_coverage" = "%@/%@ターンのデータ";
+"spend_harness_cache_rule" = "キャッシュ再利用率%@で満点%@点。目標未満は比例配点です。";
+"spend_harness_time_rule" = "%@以下で満点%@点、%@以上で0点です。";
+"spend_harness_output_rule" = "%@以上で満点%@点。目標未満はターン全体の出力に比例して配点します。";
+"spend_harness_method" = "中間値は線形配点し整数に丸めます。各項目に%@件以上の有効な観測が必要で、4項目すべてで総合点を算出します。";
+"spend_harness_experimental_help" = "重みと閾値は要調整です。ターン時間には推論・ツール・待機が含まれ、出力と所要時間は重複します。現在の日付・ソースの絞り込みを適用します。";
+"spend_harness_rule_version" = "ルール %@";

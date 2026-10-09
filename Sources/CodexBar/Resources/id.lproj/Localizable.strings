@@ -1761,3 +1761,15 @@
 "spend_harness_score_rule" = "Aturan eksperimen: cache 35 (target 90%); respons 25 (penuh pada ≤1 dtk, nol pada ≥10 dtk); keluaran giliran 20 (penuh pada ≥20 tok/s); tunggu 20 (penuh pada ≤30 dtk, nol pada ≥300 dtk). Skala linear dibulatkan ke bilangan bulat. Minimal lima observasi per dimensi dan keempatnya untuk total.";
 "spend_harness_no_rating" = "Belum ada nilai";
 "spend_harness_no_rating_help" = "Catatan yang tersedia belum memuat cukup data untuk menghitung nilai pengalaman.";
+
+/* Clickable rating evidence. */
+"spend_harness_details_title" = "Dasar penilaian";
+"spend_harness_open_details" = "Klik untuk melihat dasar penilaian";
+"spend_harness_experimental" = "Eksperimental";
+"spend_harness_evidence_coverage" = "Data untuk %@/%@ giliran";
+"spend_harness_cache_rule" = "Penggunaan ulang cache %@ mendapat seluruh %@ poin; di bawahnya dihitung proporsional.";
+"spend_harness_time_rule" = "Hingga %@ mendapat seluruh %@ poin; mulai %@ nilainya nol.";
+"spend_harness_output_rule" = "Mulai %@ mendapat seluruh %@ poin; di bawahnya dihitung proporsional terhadap keluaran seluruh giliran.";
+"spend_harness_method" = "Nilai antara diskalakan linear dan dibulatkan. Setiap dimensi memerlukan %@ pengamatan valid; keempatnya diperlukan untuk nilai total.";
+"spend_harness_experimental_help" = "Bobot dan ambang perlu dikalibrasi. Waktu mencakup penalaran, alat, dan menunggu; keluaran dan durasi saling tumpang tindih. Filter tanggal dan sumber saat ini berlaku.";
+"spend_harness_rule_version" = "Aturan %@";

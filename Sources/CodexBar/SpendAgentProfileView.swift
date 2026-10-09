@@ -6,20 +6,39 @@ struct SpendHarnessPerformanceText: View {
     let performance: CostUsageTurnPerformanceSummary
     let cacheSampleCount: Int
     let historyScanIsPartial: Bool
+    @State private var showsRatingDetails = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(self.ratingText)
+            Button {
+                self.showsRatingDetails = true
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    Text(self.ratingText)
+                    Image(systemName: "info.circle")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .buttonStyle(.plain)
+            .help(L("spend_harness_open_details"))
+            .accessibilityLabel(self.scoreText + " · " + self.dimensionsText)
+            .accessibilityHint(L("spend_harness_open_details"))
+            .popover(isPresented: self.$showsRatingDetails, arrowEdge: .bottom) {
+                SpendHarnessRatingDetailsView(
+                    performance: self.performance,
+                    cacheSampleCount: self.cacheSampleCount,
+                    historyScanIsPartial: self.historyScanIsPartial)
+            }
             Text(self.observationsText)
                 .foregroundStyle(.secondary)
         }
         .font(.caption)
         .monospacedDigit()
-        .help(self.evidenceText)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(self.scoreText + " · " + self.dimensionsText + "\n" +
-            self.observationsText + "\n" + self.evidenceText)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("spend-harness-performance")
+        .onChange(of: self.performance) { _, _ in self.showsRatingDetails = false }
+        .onChange(of: self.cacheSampleCount) { _, _ in self.showsRatingDetails = false }
+        .onChange(of: self.historyScanIsPartial) { _, _ in self.showsRatingDetails = false }
     }
 
     private var rating: SpendHarnessRating {

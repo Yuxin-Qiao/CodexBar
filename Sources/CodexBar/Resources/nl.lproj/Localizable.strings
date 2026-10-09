@@ -1757,3 +1757,15 @@
 "spend_harness_score_rule" = "Experimentele regels: cache 35 (doel 90%); reactie 25 (vol bij ≤1 s, nul bij ≥10 s); beurtuitvoer 20 (vol bij ≥20 tok/s); wachten 20 (vol bij ≤30 s, nul bij ≥300 s). Lineair geschaald en afgerond op hele punten. Minstens vijf observaties per onderdeel; alle vier voor het totaal.";
 "spend_harness_no_rating" = "Nog geen beoordeling";
 "spend_harness_no_rating_help" = "De beschikbare gegevens zijn onvoldoende voor een ervaringsscore.";
+
+/* Clickable rating evidence. */
+"spend_harness_details_title" = "Onderbouwing van de score";
+"spend_harness_open_details" = "Klik om de onderbouwing te bekijken";
+"spend_harness_experimental" = "Experimenteel";
+"spend_harness_evidence_coverage" = "Gegevens voor %@/%@ beurten";
+"spend_harness_cache_rule" = "%@ cachehergebruik levert alle %@ punten op; daaronder is de score evenredig.";
+"spend_harness_time_rule" = "Tot %@ worden alle %@ punten toegekend; vanaf %@ is de score nul.";
+"spend_harness_output_rule" = "Vanaf %@ worden alle %@ punten toegekend; daaronder is de score evenredig aan de uitvoer van de hele beurt.";
+"spend_harness_method" = "Tussenwaarden worden lineair geschaald en afgerond. Elke dimensie vereist %@ geldige waarnemingen; alle vier zijn nodig voor een totaalscore.";
+"spend_harness_experimental_help" = "Gewichten en drempels moeten worden gekalibreerd. De beurtduur omvat denken, hulpmiddelen en wachten; uitvoer en duur overlappen. De huidige datum- en bronfilters gelden.";
+"spend_harness_rule_version" = "Regel %@";

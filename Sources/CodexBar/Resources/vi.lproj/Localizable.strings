@@ -1759,3 +1759,15 @@
 "spend_harness_score_rule" = "Quy tắc thử nghiệm: bộ nhớ đệm 35 (mục tiêu 90%); phản hồi 25 (tối đa khi ≤1 giây, không điểm khi ≥10 giây); đầu ra toàn lượt 20 (tối đa khi ≥20 tok/s); chờ 20 (tối đa khi ≤30 giây, không điểm khi ≥300 giây). Thang tuyến tính làm tròn số nguyên. Mỗi mục cần ít nhất năm quan sát và tổng điểm cần đủ bốn mục.";
 "spend_harness_no_rating" = "Chưa có điểm";
 "spend_harness_no_rating_help" = "Các bản ghi hiện có chưa chứa đủ dữ liệu để tính điểm trải nghiệm.";
+
+/* Clickable rating evidence. */
+"spend_harness_details_title" = "Cơ sở chấm điểm";
+"spend_harness_open_details" = "Nhấn để xem cơ sở chấm điểm";
+"spend_harness_experimental" = "Thử nghiệm";
+"spend_harness_evidence_coverage" = "Dữ liệu của %@/%@ lượt";
+"spend_harness_cache_rule" = "Tái sử dụng bộ nhớ đệm %@ đạt đủ %@ điểm; thấp hơn được chấm theo tỷ lệ.";
+"spend_harness_time_rule" = "Không quá %@ đạt đủ %@ điểm; từ %@ trở lên được 0 điểm.";
+"spend_harness_output_rule" = "Từ %@ trở lên đạt đủ %@ điểm; thấp hơn được chấm theo tỷ lệ đầu ra của toàn lượt.";
+"spend_harness_method" = "Giá trị giữa các mốc được nội suy tuyến tính và làm tròn. Mỗi mục cần %@ quan sát hợp lệ; phải đủ cả bốn để có tổng điểm.";
+"spend_harness_experimental_help" = "Trọng số và ngưỡng cần hiệu chỉnh. Thời gian gồm suy luận, công cụ và chờ; đầu ra và thời lượng chồng lấp. Áp dụng bộ lọc ngày và nguồn hiện tại.";
+"spend_harness_rule_version" = "Quy tắc %@";

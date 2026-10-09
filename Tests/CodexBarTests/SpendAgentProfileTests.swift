@@ -208,6 +208,53 @@ struct SpendAgentProfileTests {
     }
 
     @Test
+    func `rating evidence uses actual component coverage and the scoring thresholds`() throws {
+        let measured = try Self.sample(input: 100, cached: 80, firstToken: 200)
+        let missing = try Self.sample()
+        let performance = try #require(CostUsageTurnPerformanceSummary(samples:
+            Array(repeating: measured, count: 5) + Array(repeating: missing, count: 3)))
+        let evidence = SpendHarnessRatingEvidence(performance: performance, cacheSampleCount: 5)
+        CodexBarLocalizationOverride.$appLanguage.withValue("en") {
+            #expect(evidence.observation(.cache) == "80% · Data for 5/8 turns")
+            #expect(evidence.observation(.response).contains("5/8"))
+            #expect(evidence.observation(.output).contains("8/8"))
+            #expect(evidence.observation(.duration).contains("8/8"))
+            #expect(evidence.rule(.cache) == "90% cache reuse earns all 35 points; " +
+                "lower reuse is scored proportionally.")
+            #expect(evidence.rule(.response) == "1 s or less earns all 25 points; 10 s or more earns zero.")
+            #expect(evidence.rule(.output) == "20 tok/s or more earns all 20 points; " +
+                "lower whole-turn output is scored proportionally.")
+            #expect(evidence.rule(.duration) == "30 s or less earns all 20 points; 300 s or more earns zero.")
+        }
+        CodexBarLocalizationOverride.$appLanguage.withValue("zh-Hans") {
+            #expect(evidence.observation(.cache) == "80% · 有效数据 5/8 轮")
+            #expect(evidence.rule(.response).contains("1 秒"))
+            #expect(evidence.rule(.duration).contains("300 秒"))
+        }
+    }
+
+    @Test
+    func `rating evidence distinguishes unavailable data from observations below the threshold`() throws {
+        let missing = try Self.sample()
+        let measured = try Self.sample(input: 100, cached: 80, firstToken: 200)
+        try CodexBarLocalizationOverride.$appLanguage.withValue("en") {
+            for measuredCount in 0...4 {
+                let performance = try #require(CostUsageTurnPerformanceSummary(samples:
+                    Array(repeating: measured, count: measuredCount) +
+                        Array(repeating: missing, count: 5 - measuredCount)))
+                let evidence = SpendHarnessRatingEvidence(performance: performance, cacheSampleCount: measuredCount)
+                let rating = SpendHarnessRating(performance: performance, cacheSampleCount: measuredCount)
+                #expect(evidence.status(rating.items[0]) == (measuredCount == 0 ? "Unavailable" : "Observing"))
+                #expect(evidence.status(rating.items[1]) == (measuredCount == 0 ? "Unavailable" : "Observing"))
+                #expect(evidence.observation(.cache).contains("\(measuredCount)/5"))
+                #expect(evidence.observation(.response).contains("\(measuredCount)/5"))
+                #expect(evidence.status(rating.items[2]) == "Fast")
+                #expect(rating.totalPoints == nil)
+            }
+        }
+    }
+
+    @Test
     func `sources model and effort remain distinct and hidden or unsupported providers never contribute`() throws {
         let high = try Self.sample(input: 100, cached: 80)
         let low = try Self.sample(input: 100, cached: 10, effort: "low")
@@ -329,6 +376,17 @@ struct SpendAgentProfileTests {
         for language in ["en", "zh-Hans"] {
             for dark in [false, true] {
                 try CodexBarLocalizationOverride.$appLanguage.withValue(language) {
+                    let performance = try #require(spendDashboardProviderBreakdowns(group)
+                        .first { $0.provider == .codex }?.performance)
+                    try Self.render(
+                        SpendHarnessRatingDetailsView(
+                            performance: performance,
+                            cacheSampleCount: 28,
+                            historyScanIsPartial: false),
+                        root: root,
+                        name: "rating-details-\(language)-\(dark ? "dark" : "light")",
+                        width: 480,
+                        dark: dark)
                     for width in [520.0, 980.0] {
                         let view = VStack(alignment: .leading, spacing: 18) {
                             Text(L("Usage & Spend")).font(.title2.bold())

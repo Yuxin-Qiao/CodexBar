@@ -1760,3 +1760,15 @@
 "spend_harness_score_rule" = "Deneysel kurallar: önbellek 35 (hedef 90%); yanıt 25 (≤1 sn tam, ≥10 sn sıfır); tur çıktısı 20 (≥20 tok/s tam); bekleme 20 (≤30 sn tam, ≥300 sn sıfır). Doğrusal ölçek ve tam sayıya yuvarlama. Boyut başına en az beş gözlem, toplam için dört boyut da gerekir.";
 "spend_harness_no_rating" = "Henüz puan yok";
 "spend_harness_no_rating_help" = "Mevcut kayıtlar, kullanım deneyimini puanlamak için yeterli veri içermiyor.";
+
+/* Clickable rating evidence. */
+"spend_harness_details_title" = "Puanın dayanağı";
+"spend_harness_open_details" = "Puanın dayanağını görmek için tıklayın";
+"spend_harness_experimental" = "Deneysel";
+"spend_harness_evidence_coverage" = "%@/%@ tur için veri";
+"spend_harness_cache_rule" = "%@ önbellek yeniden kullanımı tam %@ puan getirir; altında orantılı puanlanır.";
+"spend_harness_time_rule" = "%@ veya altında tam %@ puan verilir; %@ veya üzerinde sıfır puan verilir.";
+"spend_harness_output_rule" = "%@ veya üzerinde tam %@ puan verilir; altında tüm turun çıktısıyla orantılı puanlanır.";
+"spend_harness_method" = "Ara değerler doğrusal ölçeklenir ve yuvarlanır. Her boyut %@ geçerli gözlem gerektirir; toplam için dördü de gereklidir.";
+"spend_harness_experimental_help" = "Ağırlıklar ve eşikler kalibre edilmelidir. Tur süresi düşünme, araç ve beklemeyi içerir; çıktı ve süre örtüşür. Geçerli tarih ve kaynak filtreleri uygulanır.";
+"spend_harness_rule_version" = "Kural %@";

@@ -1789,3 +1789,15 @@
 "spend_harness_score_rule" = "實驗規則：快取35分（目標90%）；回應25分（≤1秒滿分，≥10秒零分）；整輪輸出20分（≥20 tok/s滿分）；等待20分（≤30秒滿分，≥300秒零分）。中間值線性計分並取整。每項至少五個有效樣本，四項齊全才有總分。";
 "spend_harness_no_rating" = "暫無評分";
 "spend_harness_no_rating_help" = "目前紀錄缺少計算體驗分所需的資料。";
+
+/* Clickable rating evidence. */
+"spend_harness_details_title" = "評分依據";
+"spend_harness_open_details" = "點擊查看評分依據";
+"spend_harness_experimental" = "實驗性";
+"spend_harness_evidence_coverage" = "有效資料 %@/%@ 輪";
+"spend_harness_cache_rule" = "重用達到%@可得滿分%@分；低於目標按比例計分。";
+"spend_harness_time_rule" = "不超過%@得滿分%@分；達到%@或更長得零分。";
+"spend_harness_output_rule" = "達到%@可得滿分%@分；低於目標按整輪輸出比例計分。";
+"spend_harness_method" = "中間值線性計分並取整。每項至少%@個有效樣本，四項齊全才有總分。";
+"spend_harness_experimental_help" = "權重和閾值仍需校準。整輪時間包含推理、工具與等待，輸出和耗時存在重疊。沿用目前日期和來源篩選。";
+"spend_harness_rule_version" = "規則 %@";
