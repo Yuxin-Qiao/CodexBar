@@ -1,0 +1,43 @@
+name: Compiled cache boundary proof
+
+on:
+  push:
+    branches: [ci/cache-benchmark]
+    paths: [.github/workflows/cache-edge-proof.yml, Scripts/benchmark_cache_edges.py]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    if: ${{ github.repository == 'Yuxin-Qiao/CodexBar' }}
+    name: Compiled input boundaries Xcode ${{ matrix.xcode }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - xcode: '26.6'
+            runner: macos-26
+          - xcode: '26.3'
+            runner: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Select fixed Xcode
+        run: |
+          set -euo pipefail
+          sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode }}.app/Contents/Developer
+          echo "DEVELOPER_DIR=/Applications/Xcode_${{ matrix.xcode }}.app/Contents/Developer" >> "$GITHUB_ENV"
+          echo "CI_CACHE_BENCH_DIR=$RUNNER_TEMP/cache-boundaries" >> "$GITHUB_ENV"
+      - name: Check metadata and actual compiled source and resources
+        run: |
+          python3 Scripts/test_ci_swiftpm_cache.py
+          python3 Scripts/benchmark_cache_edges.py
+      - name: Retain actual compiled behavior
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: cache-boundaries-xcode${{ matrix.xcode }}
+          path: ${{ env.CI_CACHE_BENCH_DIR }}
+          retention-days: 14
