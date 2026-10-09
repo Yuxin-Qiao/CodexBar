@@ -9,6 +9,26 @@ struct WidgetAccountCompatibilityTests {
     private let measuredAt = Date(timeIntervalSince1970: 1_782_000_000)
 
     @Test
+    func `Claude Swap widget labels do not inherit the app language`() throws {
+        let (settings, store) = self.makeStore(provider: .claude)
+        settings.claudeSwapEnabled = true
+        settings.claudeSwapShowSingleAccount = true
+        store.claudeSwapAccountSnapshots = self.swapAccounts([
+            self.swapRow(number: 1, email: "fixture@example.com", usedPercent: 20),
+        ])
+        let english = CodexBarLocalizationOverride.$appLanguage.withValue("en") {
+            store.makeWidgetAccountEntries(now: self.measuredAt)
+        }
+        let chinese = CodexBarLocalizationOverride.$appLanguage.withValue("zh-Hans") {
+            store.makeWidgetAccountEntries(now: self.measuredAt)
+        }
+        let expected = try #require(english.first)
+        let actual = try #require(chinese.first)
+        #expect(actual.id == expected.id)
+        #expect(actual.label == expected.label)
+    }
+
+    @Test
     func `removing a Claude Swap sibling preserves the remaining pinned widget`() throws {
         let (settings, store) = self.makeStore(provider: .claude)
         settings.claudeSwapEnabled = true
