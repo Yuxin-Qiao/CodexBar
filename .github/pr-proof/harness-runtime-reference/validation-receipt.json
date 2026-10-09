@@ -1,0 +1,118 @@
+{
+  "source_revision": "8aa11bba3649799071c6554d78ca65f8f56fe72c",
+  "synchronized_upstream_base": "81438267faa935f699578c0195b7e38c314f2596",
+  "sources_sha256": {
+    "Sources/CodexBar/PreferencesSpendDashboardPane.swift": "f6eb77813e38f82b29b42d2a52cd80c5c8620f970186ab1898500e60754b386d",
+    "Sources/CodexBar/Resources/ar.lproj/Localizable.strings": "aa2286748180b7a044e17e6ce22b73ab7922bc8c07310ebc35c2b8f40b461443",
+    "Sources/CodexBar/Resources/ca.lproj/Localizable.strings": "9044f345c1e51b044e027b1b339c4c70a6a870c309a62cfa2795f9555b006898",
+    "Sources/CodexBar/Resources/de.lproj/Localizable.strings": "63237b6a0d363319c5dd40d7c826a6ec8ae2968d2215e393ba39333620db4135",
+    "Sources/CodexBar/Resources/en.lproj/Localizable.strings": "c2e865c830f251e06c60ece3b45892d55e08c7f6c6b79160ab5c2581f15fc0a1",
+    "Sources/CodexBar/Resources/es.lproj/Localizable.strings": "8469de10f868df621cab896a0f66943046f8989670be14faf73c60e356ca2a41",
+    "Sources/CodexBar/Resources/fa.lproj/Localizable.strings": "33fb77450881d54f63f6d4acb17bc146d8c1ea2f8d120b5249618cfedf960c36",
+    "Sources/CodexBar/Resources/fr.lproj/Localizable.strings": "6417e152776627f36ffbea467035cda24b1e3dc747eb1f25332a06e32b5ef921",
+    "Sources/CodexBar/Resources/gl.lproj/Localizable.strings": "aa748c7bb7dcc8c10b19afdfd125791e05c6171acd4bbf53b999b05c30fe6304",
+    "Sources/CodexBar/Resources/id.lproj/Localizable.strings": "b8b92958bd029966c858cdf46c63e954132b46aa2ce880f1a9535f85ba4d7276",
+    "Sources/CodexBar/Resources/it.lproj/Localizable.strings": "03058a66d790267f689b54d1226f8e68d6b3c4325b7cd5a9d0e1c586b720ea7d",
+    "Sources/CodexBar/Resources/ja.lproj/Localizable.strings": "08d90f9e9e9b5f9ebf42e9a91ee7d4f583979c98293ad09bde4fda58c853a085",
+    "Sources/CodexBar/Resources/ko.lproj/Localizable.strings": "f28cbd72cd9ad78f7c2a7c359436b21926d1894ae233b4642654553b0732a7bd",
+    "Sources/CodexBar/Resources/nl.lproj/Localizable.strings": "5bd15fb273949f56373f25541504cbb52120e4af9341cdf929f62ad9a1b419a2",
+    "Sources/CodexBar/Resources/pl.lproj/Localizable.strings": "7e501b4c31a60377deaefd018690e10a8555c8ca4217f2caa43fbdebf94d1cee",
+    "Sources/CodexBar/Resources/pt-BR.lproj/Localizable.strings": "23270fdd042034c1ade00128f2b6b8d5019ab22a95d21f9b52c9437dee9e8178",
+    "Sources/CodexBar/Resources/ru.lproj/Localizable.strings": "afb4cd51b3c88a976b9705ef8988930fcc9ae66c55a7d3f8d6cbbfc8a093d430",
+    "Sources/CodexBar/Resources/sv.lproj/Localizable.strings": "027b1dfaf7ff6f7ca7ff3d4cb7713833bd504a375cf7b7494e93a8c89861f49c",
+    "Sources/CodexBar/Resources/th.lproj/Localizable.strings": "0b51c98a2fd95456d3efd7f678ec3bdcfdde30a7598d3ea51c0a176bc45eabf8",
+    "Sources/CodexBar/Resources/tr.lproj/Localizable.strings": "e4d33bcad082d980143703f75436b1e7122f6da0211006ff6f79653ce9fa3643",
+    "Sources/CodexBar/Resources/uk.lproj/Localizable.strings": "706e9fd6fb486058561eb1b4619a2455a85464bc96ccfe3b10f9d9bc6a6f4d41",
+    "Sources/CodexBar/Resources/vi.lproj/Localizable.strings": "e8f781e4c43be8e6ce25677b1f0200bede61aadcdf066648bbef1ab9d23197c0",
+    "Sources/CodexBar/Resources/zh-Hans.lproj/Localizable.strings": "07d7b62031260bec7bc2e4da9e5a951a9606996250f526ea2b1c2fdfda905e55",
+    "Sources/CodexBar/Resources/zh-Hant.lproj/Localizable.strings": "2d9fda19a98d30f3725914557d7168ff7f87e7dd65bc84a4df0d0033d65668f6",
+    "Sources/CodexBar/SpendAgentProfile.swift": "b983f2b703115dd528a263957179bcd887615f67327405d616a30c1dc414fc97",
+    "Sources/CodexBar/SpendAgentProfileView.swift": "98f1d3a276b06ae03f8a1dcf5e04ffebaeea46a3487507cdaba3e659de3edd3d",
+    "Sources/CodexBar/SpendDashboardController.swift": "bba217ac0d02016f0434ee46cc3ebb4bfef8b90b23af5a5956a8675991dc8347",
+    "Sources/CodexBar/SpendDashboardModel.swift": "09b71c3a4824aed8a74fc29ab02e202c5006acb69fa9077872b2116454fe14c5",
+    "Sources/CodexBar/SpendDashboardProjection.swift": "2ce04ccfba006717252a4494bfdce325f992dd28d90e86d204e1987917ea18a1",
+    "Sources/CodexBar/SpendDashboardProviderBreakdown.swift": "fc0193faa5aac59efa0f179443a05e5b55a7a81cc4e3bc36fa5d80448051ecb5",
+    "Sources/CodexBar/SpendHarnessRating.swift": "374c42394796fc41e39194eba244f57f32df32f6f35ce768c7dffbd3d532f260",
+    "Sources/CodexBar/SpendHarnessRatingDetailsView.swift": "646c9abe98138b079915b782a957fef298dd4d34fbfc3b3d20d919891efa3333",
+    "Sources/CodexBar/SpendHarnessRatingStyle.swift": "fb6bd5926386b875970cf261f24d552c9194872e74213a48b7ed516b0ffc4cd8",
+    "Sources/CodexBarCore/CostUsageTurnPerformance.swift": "711f8c6037d84cd2f97645a78a7f4667e25f4125c8c5acf82ee72a8ab45f9718",
+    "Sources/CodexBarCore/CostUsageTurnPerformanceDetails.swift": "5170c7ce9d1f39bca4428b185788f417bf42e57327ca779872dc6fbf0a3f480c",
+    "Tests/CodexBarTests/CostUsageTurnPerformanceDetailsTests.swift": "5146ee32372fb6df454eba8579feeb4255fc490c9460a7fc10e62ed677349b3c",
+    "Tests/CodexBarTests/SpendAgentProfileTests.swift": "9a2d8572a3799c83ed3c54e50c94b8ada96adb11ebc282e262bec522b86a556b",
+    "Tests/CodexBarTests/SpendDashboardCachedPresentationTests.swift": "a4951656d3bcff090ed28f5156f27bb2790dcbb694c54f1ce33b9ace2217a5e1",
+    "Tests/CodexBarTests/SpendDashboardControllerTests.swift": "728c52d383908e0b7f9337cff0f13e9a05e089d72d95a4c92fb47cd1628c9b6a",
+    "Tests/CodexBarTests/SpendDashboardNativeProofTests.swift": "803707dd5ccddd439870e45137c94e8addc5730aa2370e276821971d3d5faff1",
+    "Tests/CodexBarTests/SpendDashboardProjectionTests.swift": "0545600bf52113a12b3ffa8bdc65a4b69a670fdb5923ee01517d4c073b27a1cd",
+    "Tests/CodexBarTests/SpendDashboardSourceConcurrencyTests.swift": "781f09eeb50b47b76cc3232b9ec02d31dc6e510afa7221199c27de5417a2dcfb"
+  },
+  "native_build": {
+    "completed": true,
+    "seconds": 405.49,
+    "test_build_system": "native",
+    "test_binary": ".build/arm64-apple-macosx/debug/CodexBarPackageTests.xctest/Contents/MacOS/CodexBarPackageTests",
+    "sha256": "5c56a97834e47e481988883186744973bf1c00a195479594520fa496a4ffcc45"
+  },
+  "focused_scoring_and_native_previews": {
+    "passed": true,
+    "tests": 16,
+    "seconds": 7.042,
+    "generated_images": 40
+  },
+  "focused_projection_data_and_provider_inventory": {
+    "passed": true,
+    "tests": 10,
+    "seconds": 0.032
+  },
+  "focused_new_provider_resources": {
+    "passed": true,
+    "tests": 33,
+    "seconds": 0.126
+  },
+  "make_check": {
+    "passed": true,
+    "swift_files": 2937,
+    "violations": 0
+  },
+  "catalogs": {
+    "passed": true,
+    "catalogs_compared_to_english": 22,
+    "english_keys": 2471
+  },
+  "full_suite": {
+    "passed": false,
+    "exit_code": 1,
+    "selections": 1644,
+    "groups": 148,
+    "first_pass_successful_groups": 146,
+    "first_pass_failed_groups": 2,
+    "recovered_groups": 1,
+    "timed_out_groups": 1,
+    "isolated_selection_retries": 12,
+    "full_group_retries": 0,
+    "total_seconds": 701.2,
+    "unresolved": "WidgetHeadlineLocalizationTests OCR throws system e5rtError code 13 in both parameter cases; independently reproduced",
+    "widget_test_unchanged_from_upstream": true
+  },
+  "validation_logs_sha256": {
+    "focused.log": "014eacd7848ca86d2c065f9a4131076e8e104c9a3e85294532e2ba0ae43bbf61",
+    "focused-native-final.log": "33105bf5f0817ce2a411770b1f9e50221fdb8a0e6e694a88e909d8ef65394e44",
+    "native-resources.log": "73e3763c03113600d04a58faac12fff0a228f8682721cdb0539e93ec5d8e7bab",
+    "native-preview-final.log": "c0015e40c59c4fb8a395265873dcdc49a145c1a116eea83da05636e9ad0e021d",
+    "check-final.log": "e99ef6715c0aec7cbf4f1bf82be9047c8881d14a47c64d6b7278c0cc7740ac31",
+    "locales-final.log": "c450ac61d5294fb9afad914cdb85b9d78fdca52af6531abed064b701c2764a33",
+    "full-final.log": "118486704d5c1cbcbc694910fd076c7437a3dbd28343798e69f72874131d4073",
+    "widget-localization-isolated.log": "668ea6394c62f8144b9a1d47c38f270db0ed3dedcc83e674872e257e893643bb"
+  },
+  "synthetic_previews_only": true,
+  "installed_app_verified": false,
+  "real_accounts_verified": false,
+  "frame_rate_verified": false,
+  "task_feedback_persistence_implemented": false,
+  "excluded_attempts": [
+    "A combined opt-in native-render/concurrency invocation timed out while rendering occupied the main actor",
+    "An invocation selected older default-build-system products",
+    "A native direct-runtime attempt was refused before running tests because binary inventory used the other build system",
+    "A native direct attempt loaded stale resources through the prior build-directory symlink"
+  ],
+  "publication_private_data_scan_findings": 0
+}

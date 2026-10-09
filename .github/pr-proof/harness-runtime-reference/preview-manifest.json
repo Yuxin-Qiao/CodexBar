@@ -1,0 +1,45 @@
+{
+  "kind": "SwiftUI/AppKit component renders",
+  "synthetic": true,
+  "generated_preview_count": 40,
+  "published_preview_count": 4,
+  "installed_app_verified": false,
+  "frame_rate_verified": false,
+  "previews": [
+    {
+      "file": "providers-light.png",
+      "native_fixture": "providers-inline-en-light-980.png",
+      "width": 1960,
+      "height": 876,
+      "sha256": "16eba366dabb93d4afc493fb962f68ccb253af4c37933b09e8a53533a3f7fcee",
+      "data": "synthetic"
+    },
+    {
+      "file": "rating-basis-dark.png",
+      "native_fixture": "rating-details-en-dark.png",
+      "width": 960,
+      "height": 1380,
+      "sha256": "42e02d9032127af5b0cc08778d94754afa63a0cd820030284640d122df3d5d18",
+      "data": "synthetic"
+    },
+    {
+      "file": "long-amounts-narrow.png",
+      "native_fixture": "providers-long-metrics-zh-Hans-light-360.png",
+      "width": 720,
+      "height": 684,
+      "sha256": "94884731a6f336f4977926c55760de8507c2445c565f6a140679b63763882108",
+      "data": "synthetic"
+    },
+    {
+      "file": "unavailable.png",
+      "native_fixture": "rating-unavailable-en-light.png",
+      "width": 960,
+      "height": 752,
+      "sha256": "43c339964740f89bdb8cde84c149ed1cbf8b616ffb79ba29ee195d41138decb1",
+      "data": "synthetic"
+    }
+  ],
+  "test_build_system": "native",
+  "source_revision": "8aa11bba3649799071c6554d78ca65f8f56fe72c",
+  "resource_directory_aligned": true
+}
