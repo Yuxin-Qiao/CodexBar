@@ -1747,12 +1747,28 @@
 "Session costs cover entire sessions." = "费用统计覆盖整个会话。";
 
 /* Inline harness score and diagnostics. */
-"spend_harness_measured_score" = "%@/%@ 分 · 已测 %@/4 项";
 "spend_harness_observing" = "观察中";
 "spend_harness_cache" = "缓存";
-"spend_harness_start" = "起步";
-"spend_harness_growth" = "增长";
-"spend_harness_reliability" = "可靠性";
-"spend_harness_not_collected" = "待采集";
-"spend_harness_score_rule" = "缓存分 = round(35 × min(缓存输入比例 / 90%, 1))，至少五个有效回合。部分评分仅使用已测项的权重，四项齐全才显示百分制总分。这是实验性上下文诊断。";
-"spend_harness_missing_help" = "起步需要提示词构成与实际窗口；增长需要逐请求上下文；可靠性需要完整请求与错误记录。仅成功计时回合无法得出错误率。";
+
+/* Plain-language experience rating. */
+"spend_harness_total_score" = "体验%@分";
+"spend_harness_pending_score" = "评分观察中 · 已测%@/4项";
+"spend_harness_response" = "响应";
+"spend_harness_output" = "输出";
+"spend_harness_duration" = "等待";
+"spend_harness_samples" = "%@轮数据";
+"spend_harness_good" = "表现良好";
+"spend_harness_moderate" = "有优化空间";
+"spend_harness_poor" = "需要关注";
+"spend_harness_reuse_high" = "复用好";
+"spend_harness_reuse_moderate" = "复用一般";
+"spend_harness_reuse_low" = "复用少";
+"spend_harness_fast" = "快";
+"spend_harness_average" = "一般";
+"spend_harness_slow" = "慢";
+"spend_harness_wait_short" = "等待短";
+"spend_harness_wait_moderate" = "等待一般";
+"spend_harness_wait_long" = "等待长";
+"spend_harness_score_rule" = "实验规则：缓存35分（目标90%）；响应25分（≤1秒满分，≥10秒零分）；整轮输出20分（≥20 tok/s满分）；等待20分（≤30秒满分，≥300秒零分）。中间值线性计分并取整。每项至少五个有效样本，四项齐全才有总分。";
+"spend_harness_no_rating" = "暂无评分";
+"spend_harness_no_rating_help" = "当前记录缺少计算体验分所需的数据。";

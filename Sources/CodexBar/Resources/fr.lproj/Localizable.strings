@@ -1732,12 +1732,28 @@
 "Session costs cover entire sessions." = "Les coûts couvrent les sessions entières.";
 
 /* Inline harness score and diagnostics. */
-"spend_harness_measured_score" = "%@/%@ · %@/4 dimensions évaluées";
 "spend_harness_observing" = "En observation";
 "spend_harness_cache" = "Cache";
-"spend_harness_start" = "Charge initiale";
-"spend_harness_growth" = "Croissance";
-"spend_harness_reliability" = "Fiabilité";
-"spend_harness_not_collected" = "Non collecté";
-"spend_harness_score_rule" = "Cache = round(35 × min(part des entrées en cache / 90%, 1)), avec au moins cinq tours mesurés. Le score partiel utilise uniquement les poids mesurés ; /100 exige les quatre dimensions. Diagnostic expérimental du contexte.";
-"spend_harness_missing_help" = "La charge initiale nécessite la composition du prompt et la fenêtre effective ; la croissance, le contexte par requête ; la fiabilité, les requêtes et erreurs complètes. Les tours mesurés terminés ne permettent pas de calculer le taux d’erreur.";
+
+/* Plain-language experience rating. */
+"spend_harness_total_score" = "Expérience %@/100";
+"spend_harness_pending_score" = "Score en attente · %@/4 évalués";
+"spend_harness_response" = "Réponse";
+"spend_harness_output" = "Sortie";
+"spend_harness_duration" = "Attente";
+"spend_harness_samples" = "%@ tours observés";
+"spend_harness_good" = "Bon";
+"spend_harness_moderate" = "Peut être amélioré";
+"spend_harness_poor" = "À surveiller";
+"spend_harness_reuse_high" = "Forte réutilisation";
+"spend_harness_reuse_moderate" = "Réutilisation moyenne";
+"spend_harness_reuse_low" = "Faible réutilisation";
+"spend_harness_fast" = "Rapide";
+"spend_harness_average" = "Moyen";
+"spend_harness_slow" = "Lent";
+"spend_harness_wait_short" = "Attente courte";
+"spend_harness_wait_moderate" = "Attente moyenne";
+"spend_harness_wait_long" = "Attente longue";
+"spend_harness_score_rule" = "Règles expérimentales : cache 35 (cible 90 %) ; réponse 25 (maximum à ≤1 s, zéro à ≥10 s) ; sortie du tour 20 (maximum à ≥20 tok/s) ; attente 20 (maximum à ≤30 s, zéro à ≥300 s). Échelle linéaire arrondie à l’entier. Au moins cinq observations par dimension ; les quatre sont requises pour le total.";
+"spend_harness_no_rating" = "Pas encore de note";
+"spend_harness_no_rating_help" = "Les données disponibles ne suffisent pas pour attribuer une note à l’expérience.";

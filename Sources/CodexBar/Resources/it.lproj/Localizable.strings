@@ -1736,12 +1736,28 @@
 "Session costs cover entire sessions." = "I costi coprono le sessioni complete.";
 
 /* Inline harness score and diagnostics. */
-"spend_harness_measured_score" = "%@/%@ · %@/4 dimensioni valutate";
 "spend_harness_observing" = "In osservazione";
 "spend_harness_cache" = "Riutilizzo cache";
-"spend_harness_start" = "Carico iniziale";
-"spend_harness_growth" = "Crescita";
-"spend_harness_reliability" = "Affidabilità";
-"spend_harness_not_collected" = "Non raccolto";
-"spend_harness_score_rule" = "Cache = round(35 × min(quota di input in cache / 90%, 1)), con almeno cinque turni misurati. Il punteggio parziale usa solo i pesi misurati; /100 richiede tutte e quattro le dimensioni. Diagnostica sperimentale del contesto.";
-"spend_harness_missing_help" = "Il carico iniziale richiede composizione del prompt e finestra effettiva; la crescita, contesto per richiesta; l’affidabilità, registri completi di richieste ed errori. I soli turni misurati completati non stabiliscono un tasso di errore.";
+
+/* Plain-language experience rating. */
+"spend_harness_total_score" = "Esperienza %@/100";
+"spend_harness_pending_score" = "Punteggio in attesa · %@/4 valutati";
+"spend_harness_response" = "Risposta";
+"spend_harness_output" = "Emissione";
+"spend_harness_duration" = "Attesa";
+"spend_harness_samples" = "%@ turni osservati";
+"spend_harness_good" = "Buono";
+"spend_harness_moderate" = "Migliorabile";
+"spend_harness_poor" = "Da verificare";
+"spend_harness_reuse_high" = "Riutilizzo elevato";
+"spend_harness_reuse_moderate" = "Riutilizzo medio";
+"spend_harness_reuse_low" = "Riutilizzo basso";
+"spend_harness_fast" = "Veloce";
+"spend_harness_average" = "Normale";
+"spend_harness_slow" = "Lento";
+"spend_harness_wait_short" = "Attesa breve";
+"spend_harness_wait_moderate" = "Attesa media";
+"spend_harness_wait_long" = "Attesa lunga";
+"spend_harness_score_rule" = "Regole sperimentali: cache 35 (obiettivo 90%); risposta 25 (massimo a ≤1 s, zero a ≥10 s); emissione del turno 20 (massimo a ≥20 tok/s); attesa 20 (massimo a ≤30 s, zero a ≥300 s). Scala lineare arrotondata a interi. Almeno cinque osservazioni per dimensione; tutte e quattro per il totale.";
+"spend_harness_no_rating" = "Valutazione non disponibile";
+"spend_harness_no_rating_help" = "I dati disponibili non sono sufficienti per valutare l’esperienza d’uso.";

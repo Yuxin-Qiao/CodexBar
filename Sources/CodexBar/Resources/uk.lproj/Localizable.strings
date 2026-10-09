@@ -1733,12 +1733,28 @@
 "Session costs cover entire sessions." = "Вартість охоплює цілі сеанси.";
 
 /* Inline harness score and diagnostics. */
-"spend_harness_measured_score" = "%@/%@ · оцінено %@/4 показників";
 "spend_harness_observing" = "Спостереження";
 "spend_harness_cache" = "Кеш";
-"spend_harness_start" = "Початкове навантаження";
-"spend_harness_growth" = "Зростання";
-"spend_harness_reliability" = "Надійність";
-"spend_harness_not_collected" = "Немає даних";
-"spend_harness_score_rule" = "Кеш = round(35 × min(частка кешованого вводу / 90%, 1)), щонайменше п’ять виміряних ходів. Часткова оцінка використовує лише виміряні ваги; /100 потребує всіх чотирьох показників. Експериментальна діагностика контексту.";
-"spend_harness_missing_help" = "Початковому навантаженню потрібні склад промпту й фактичне вікно; зростанню — контекст кожного запиту; надійності — повні записи запитів і помилок. Завершені виміряні ходи не визначають частоту помилок.";
+
+/* Plain-language experience rating. */
+"spend_harness_total_score" = "Враження %@/100";
+"spend_harness_pending_score" = "Оцінювання триває · %@/4 оцінено";
+"spend_harness_response" = "Відповідь";
+"spend_harness_output" = "Вивід";
+"spend_harness_duration" = "Очікування";
+"spend_harness_samples" = "Спостережено %@ ходів";
+"spend_harness_good" = "Добре";
+"spend_harness_moderate" = "Можна покращити";
+"spend_harness_poor" = "Потребує уваги";
+"spend_harness_reuse_high" = "Багато повторного використання";
+"spend_harness_reuse_moderate" = "Середнє повторне використання";
+"spend_harness_reuse_low" = "Мало повторного використання";
+"spend_harness_fast" = "Швидко";
+"spend_harness_average" = "Звичайно";
+"spend_harness_slow" = "Повільно";
+"spend_harness_wait_short" = "Коротке очікування";
+"spend_harness_wait_moderate" = "Середнє очікування";
+"spend_harness_wait_long" = "Довге очікування";
+"spend_harness_score_rule" = "Експериментальні правила: кеш 35 (ціль 90%); відповідь 25 (максимум за ≤1 с, нуль за ≥10 с); вивід за хід 20 (максимум за ≥20 tok/s); очікування 20 (максимум за ≤30 с, нуль за ≥300 с). Лінійна шкала з округленням до цілого. Щонайменше п’ять спостережень на показник; для суми потрібні всі чотири.";
+"spend_harness_no_rating" = "Оцінки ще немає";
+"spend_harness_no_rating_help" = "У наявних записах недостатньо даних для оцінки досвіду користування.";

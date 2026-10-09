@@ -1736,12 +1736,28 @@
 "Session costs cover entire sessions." = "Biaya mencakup seluruh sesi.";
 
 /* Inline harness score and diagnostics. */
-"spend_harness_measured_score" = "%@/%@ · %@/4 dimensi dinilai";
 "spend_harness_observing" = "Mengamati";
 "spend_harness_cache" = "Cache";
-"spend_harness_start" = "Beban awal";
-"spend_harness_growth" = "Pertumbuhan";
-"spend_harness_reliability" = "Keandalan";
-"spend_harness_not_collected" = "Belum dikumpulkan";
-"spend_harness_score_rule" = "Cache = round(35 × min(porsi input tersimpan / 90%, 1)), dengan minimal lima giliran terukur. Skor sebagian hanya memakai bobot terukur; /100 memerlukan keempat dimensi. Diagnostik konteks eksperimental.";
-"spend_harness_missing_help" = "Beban awal memerlukan komposisi prompt dan jendela efektif; pertumbuhan memerlukan konteks per permintaan; keandalan memerlukan catatan lengkap permintaan dan kesalahan. Giliran terukur yang selesai tidak menentukan tingkat kesalahan.";
+
+/* Plain-language experience rating. */
+"spend_harness_total_score" = "Pengalaman %@/100";
+"spend_harness_pending_score" = "Skor menunggu · %@/4 dinilai";
+"spend_harness_response" = "Respons";
+"spend_harness_output" = "Keluaran";
+"spend_harness_duration" = "Tunggu";
+"spend_harness_samples" = "%@ giliran diamati";
+"spend_harness_good" = "Baik";
+"spend_harness_moderate" = "Bisa ditingkatkan";
+"spend_harness_poor" = "Perlu perhatian";
+"spend_harness_reuse_high" = "Penggunaan ulang tinggi";
+"spend_harness_reuse_moderate" = "Penggunaan ulang sedang";
+"spend_harness_reuse_low" = "Penggunaan ulang rendah";
+"spend_harness_fast" = "Cepat";
+"spend_harness_average" = "Sedang";
+"spend_harness_slow" = "Lambat";
+"spend_harness_wait_short" = "Tunggu singkat";
+"spend_harness_wait_moderate" = "Tunggu sedang";
+"spend_harness_wait_long" = "Tunggu lama";
+"spend_harness_score_rule" = "Aturan eksperimen: cache 35 (target 90%); respons 25 (penuh pada ≤1 dtk, nol pada ≥10 dtk); keluaran giliran 20 (penuh pada ≥20 tok/s); tunggu 20 (penuh pada ≤30 dtk, nol pada ≥300 dtk). Skala linear dibulatkan ke bilangan bulat. Minimal lima observasi per dimensi dan keempatnya untuk total.";
+"spend_harness_no_rating" = "Belum ada nilai";
+"spend_harness_no_rating_help" = "Catatan yang tersedia belum memuat cukup data untuk menghitung nilai pengalaman.";

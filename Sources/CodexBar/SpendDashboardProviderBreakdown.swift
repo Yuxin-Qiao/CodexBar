@@ -304,6 +304,11 @@ struct SpendProviderBreakdownRows: View {
                 performance: performance,
                 cacheSampleCount: breakdown.cacheSampleCount,
                 historyScanIsPartial: breakdown.historyScanIsPartial)
+        } else {
+            Text(L("spend_harness_no_rating"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .help(L("spend_harness_no_rating_help"))
         }
     }
 

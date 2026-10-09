@@ -1731,12 +1731,28 @@
 "Session costs cover entire sessions." = "Los costes corresponden a sesiones completas.";
 
 /* Inline harness score and diagnostics. */
-"spend_harness_measured_score" = "%@/%@ · %@/4 dimensiones evaluadas";
 "spend_harness_observing" = "En observación";
 "spend_harness_cache" = "Caché";
-"spend_harness_start" = "Carga inicial";
-"spend_harness_growth" = "Crecimiento";
-"spend_harness_reliability" = "Fiabilidad";
-"spend_harness_not_collected" = "Sin recopilar";
-"spend_harness_score_rule" = "Caché = round(35 × min(proporción de entrada en caché / 90%, 1)), con al menos cinco turnos medidos. La puntuación parcial usa solo los pesos medidos; /100 requiere las cuatro dimensiones. Diagnóstico experimental del contexto.";
-"spend_harness_missing_help" = "La carga inicial necesita la composición del prompt y la ventana efectiva; el crecimiento, contexto por solicitud; la fiabilidad, registros completos de solicitudes y errores. Los turnos medidos completados no permiten determinar la tasa de errores.";
+
+/* Plain-language experience rating. */
+"spend_harness_total_score" = "Experiencia %@/100";
+"spend_harness_pending_score" = "Puntuación pendiente · %@/4 evaluados";
+"spend_harness_response" = "Respuesta";
+"spend_harness_output" = "Salida";
+"spend_harness_duration" = "Espera";
+"spend_harness_samples" = "%@ turnos observados";
+"spend_harness_good" = "Bueno";
+"spend_harness_moderate" = "Se puede mejorar";
+"spend_harness_poor" = "Requiere atención";
+"spend_harness_reuse_high" = "Reutilización alta";
+"spend_harness_reuse_moderate" = "Reutilización media";
+"spend_harness_reuse_low" = "Reutilización baja";
+"spend_harness_fast" = "Rápido";
+"spend_harness_average" = "Normal";
+"spend_harness_slow" = "Lento";
+"spend_harness_wait_short" = "Espera corta";
+"spend_harness_wait_moderate" = "Espera media";
+"spend_harness_wait_long" = "Espera larga";
+"spend_harness_score_rule" = "Reglas experimentales: caché 35 (objetivo 90%); respuesta 25 (máximo a ≤1 s, cero a ≥10 s); salida del turno 20 (máximo a ≥20 tok/s); espera 20 (máximo a ≤30 s, cero a ≥300 s). Escala lineal redondeada a enteros. Al menos cinco observaciones por dimensión y las cuatro para un total.";
+"spend_harness_no_rating" = "Aún sin puntuación";
+"spend_harness_no_rating_help" = "Los registros disponibles no contienen datos suficientes para puntuar la experiencia.";

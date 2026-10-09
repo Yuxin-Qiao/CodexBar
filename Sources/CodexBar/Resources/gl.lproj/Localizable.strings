@@ -1732,12 +1732,28 @@
 "Session costs cover entire sessions." = "Os custos corresponden ás sesións completas.";
 
 /* Inline harness score and diagnostics. */
-"spend_harness_measured_score" = "%@/%@ · %@/4 dimensións avaliadas";
 "spend_harness_observing" = "En observación";
 "spend_harness_cache" = "Caché";
-"spend_harness_start" = "Carga inicial";
-"spend_harness_growth" = "Crecemento";
-"spend_harness_reliability" = "Fiabilidade";
-"spend_harness_not_collected" = "Sen recoller";
-"spend_harness_score_rule" = "Caché = round(35 × min(proporción de entrada en caché / 90%, 1)), con polo menos cinco quendas medidas. A puntuación parcial usa só pesos medidos; /100 require as catro dimensións. Diagnóstico experimental do contexto.";
-"spend_harness_missing_help" = "A carga inicial precisa a composición do prompt e a xanela efectiva; o crecemento, contexto por solicitude; a fiabilidade, rexistros completos de solicitudes e erros. As quendas medidas completadas non determinan a taxa de erros.";
+
+/* Plain-language experience rating. */
+"spend_harness_total_score" = "Experiencia %@/100";
+"spend_harness_pending_score" = "Puntuación pendente · %@/4 avaliados";
+"spend_harness_response" = "Resposta";
+"spend_harness_output" = "Saída";
+"spend_harness_duration" = "Espera";
+"spend_harness_samples" = "%@ quendas observadas";
+"spend_harness_good" = "Bo";
+"spend_harness_moderate" = "Pode mellorar";
+"spend_harness_poor" = "Require atención";
+"spend_harness_reuse_high" = "Reutilización alta";
+"spend_harness_reuse_moderate" = "Reutilización media";
+"spend_harness_reuse_low" = "Reutilización baixa";
+"spend_harness_fast" = "Rápido";
+"spend_harness_average" = "Normal";
+"spend_harness_slow" = "Lento";
+"spend_harness_wait_short" = "Espera curta";
+"spend_harness_wait_moderate" = "Espera media";
+"spend_harness_wait_long" = "Espera longa";
+"spend_harness_score_rule" = "Regras experimentais: caché 35 (obxectivo 90%); resposta 25 (máximo a ≤1 s, cero a ≥10 s); saída da quenda 20 (máximo a ≥20 tok/s); espera 20 (máximo a ≤30 s, cero a ≥300 s). Escala lineal arredondada a enteiros. Polo menos cinco observacións por dimensión e as catro para o total.";
+"spend_harness_no_rating" = "Aínda sen puntuación";
+"spend_harness_no_rating_help" = "Os rexistros dispoñibles non conteñen datos suficientes para puntuar a experiencia.";

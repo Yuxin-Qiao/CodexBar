@@ -1732,12 +1732,28 @@
 "Session costs cover entire sessions." = "De kosten gelden voor volledige sessies.";
 
 /* Inline harness score and diagnostics. */
-"spend_harness_measured_score" = "%@/%@ · %@/4 onderdelen beoordeeld";
 "spend_harness_observing" = "In observatie";
 "spend_harness_cache" = "Cache";
-"spend_harness_start" = "Startbelasting";
-"spend_harness_growth" = "Groei";
-"spend_harness_reliability" = "Betrouwbaarheid";
-"spend_harness_not_collected" = "Niet verzameld";
-"spend_harness_score_rule" = "Cache = round(35 × min(aandeel gecachte invoer / 90%, 1)), met minstens vijf gemeten beurten. De deelscore gebruikt alleen gemeten gewichten; /100 vereist alle vier onderdelen. Experimentele contextdiagnose.";
-"spend_harness_missing_help" = "Startbelasting vereist promptopbouw en het effectieve venster; groei vereist context per verzoek; betrouwbaarheid vereist volledige verzoek- en foutregistraties. Voltooide gemeten beurten bepalen geen foutpercentage.";
+
+/* Plain-language experience rating. */
+"spend_harness_total_score" = "Ervaring %@/100";
+"spend_harness_pending_score" = "Score volgt · %@/4 beoordeeld";
+"spend_harness_response" = "Reactie";
+"spend_harness_output" = "Uitvoer";
+"spend_harness_duration" = "Wachttijd";
+"spend_harness_samples" = "%@ beurten waargenomen";
+"spend_harness_good" = "Goed";
+"spend_harness_moderate" = "Kan beter";
+"spend_harness_poor" = "Aandacht nodig";
+"spend_harness_reuse_high" = "Veel hergebruik";
+"spend_harness_reuse_moderate" = "Gemiddeld hergebruik";
+"spend_harness_reuse_low" = "Weinig hergebruik";
+"spend_harness_fast" = "Snel";
+"spend_harness_average" = "Gemiddeld";
+"spend_harness_slow" = "Traag";
+"spend_harness_wait_short" = "Korte wachttijd";
+"spend_harness_wait_moderate" = "Gemiddelde wachttijd";
+"spend_harness_wait_long" = "Lange wachttijd";
+"spend_harness_score_rule" = "Experimentele regels: cache 35 (doel 90%); reactie 25 (vol bij ≤1 s, nul bij ≥10 s); beurtuitvoer 20 (vol bij ≥20 tok/s); wachten 20 (vol bij ≤30 s, nul bij ≥300 s). Lineair geschaald en afgerond op hele punten. Minstens vijf observaties per onderdeel; alle vier voor het totaal.";
+"spend_harness_no_rating" = "Nog geen beoordeling";
+"spend_harness_no_rating_help" = "De beschikbare gegevens zijn onvoldoende voor een ervaringsscore.";

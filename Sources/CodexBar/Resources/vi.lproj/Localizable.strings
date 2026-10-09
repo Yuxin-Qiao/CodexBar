@@ -1734,12 +1734,28 @@
 "Session costs cover entire sessions." = "Chi phí bao gồm toàn bộ phiên.";
 
 /* Inline harness score and diagnostics. */
-"spend_harness_measured_score" = "%@/%@ · đã chấm %@/4 mục";
 "spend_harness_observing" = "Đang quan sát";
 "spend_harness_cache" = "Bộ nhớ đệm";
-"spend_harness_start" = "Tải ban đầu";
-"spend_harness_growth" = "Tăng trưởng";
-"spend_harness_reliability" = "Độ tin cậy";
-"spend_harness_not_collected" = "Chưa thu thập";
-"spend_harness_score_rule" = "Bộ nhớ đệm = round(35 × min(tỷ lệ đầu vào được lưu đệm / 90%, 1)), với ít nhất năm lượt được đo. Điểm một phần chỉ dùng trọng số đã đo; /100 cần đủ bốn mục. Chẩn đoán ngữ cảnh thử nghiệm.";
-"spend_harness_missing_help" = "Tải ban đầu cần thành phần lời nhắc và cửa sổ thực tế; tăng trưởng cần ngữ cảnh từng yêu cầu; độ tin cậy cần đầy đủ bản ghi yêu cầu và lỗi. Các lượt đã đo hoàn tất không xác định tỷ lệ lỗi.";
+
+/* Plain-language experience rating. */
+"spend_harness_total_score" = "Trải nghiệm %@/100";
+"spend_harness_pending_score" = "Đang chờ điểm · %@/4 đã chấm";
+"spend_harness_response" = "Phản hồi";
+"spend_harness_output" = "Đầu ra";
+"spend_harness_duration" = "Chờ";
+"spend_harness_samples" = "Đã quan sát %@ lượt";
+"spend_harness_good" = "Tốt";
+"spend_harness_moderate" = "Có thể cải thiện";
+"spend_harness_poor" = "Cần chú ý";
+"spend_harness_reuse_high" = "Tái sử dụng cao";
+"spend_harness_reuse_moderate" = "Tái sử dụng vừa";
+"spend_harness_reuse_low" = "Tái sử dụng thấp";
+"spend_harness_fast" = "Nhanh";
+"spend_harness_average" = "Bình thường";
+"spend_harness_slow" = "Chậm";
+"spend_harness_wait_short" = "Chờ ngắn";
+"spend_harness_wait_moderate" = "Chờ vừa";
+"spend_harness_wait_long" = "Chờ lâu";
+"spend_harness_score_rule" = "Quy tắc thử nghiệm: bộ nhớ đệm 35 (mục tiêu 90%); phản hồi 25 (tối đa khi ≤1 giây, không điểm khi ≥10 giây); đầu ra toàn lượt 20 (tối đa khi ≥20 tok/s); chờ 20 (tối đa khi ≤30 giây, không điểm khi ≥300 giây). Thang tuyến tính làm tròn số nguyên. Mỗi mục cần ít nhất năm quan sát và tổng điểm cần đủ bốn mục.";
+"spend_harness_no_rating" = "Chưa có điểm";
+"spend_harness_no_rating_help" = "Các bản ghi hiện có chưa chứa đủ dữ liệu để tính điểm trải nghiệm.";

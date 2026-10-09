@@ -1736,12 +1736,28 @@
 "Session costs cover entire sessions." = "Koszty dotyczą całych sesji.";
 
 /* Inline harness score and diagnostics. */
-"spend_harness_measured_score" = "%@/%@ · oceniono %@/4 wymiary";
 "spend_harness_observing" = "Obserwacja";
 "spend_harness_cache" = "Pamięć podręczna";
-"spend_harness_start" = "Obciążenie początkowe";
-"spend_harness_growth" = "Przyrost";
-"spend_harness_reliability" = "Niezawodność";
-"spend_harness_not_collected" = "Nie zebrano";
-"spend_harness_score_rule" = "Pamięć podręczna = round(35 × min(udział wejścia z pamięci / 90%, 1)), od pięciu zmierzonych tur. Wynik częściowy używa tylko zmierzonych wag; /100 wymaga wszystkich czterech wymiarów. Eksperymentalna diagnostyka kontekstu.";
-"spend_harness_missing_help" = "Obciążenie początkowe wymaga składu promptu i rzeczywistego okna; przyrost wymaga kontekstu dla każdego żądania; niezawodność wymaga pełnych danych żądań i błędów. Ukończone zmierzone tury nie ustalają częstości błędów.";
+
+/* Plain-language experience rating. */
+"spend_harness_total_score" = "Wrażenia %@/100";
+"spend_harness_pending_score" = "Ocena w toku · %@/4 ocenione";
+"spend_harness_response" = "Odpowiedź";
+"spend_harness_output" = "Wynik";
+"spend_harness_duration" = "Oczekiwanie";
+"spend_harness_samples" = "%@ tur zaobserwowano";
+"spend_harness_good" = "Dobrze";
+"spend_harness_moderate" = "Można poprawić";
+"spend_harness_poor" = "Wymaga uwagi";
+"spend_harness_reuse_high" = "Wysokie ponowne użycie";
+"spend_harness_reuse_moderate" = "Średnie ponowne użycie";
+"spend_harness_reuse_low" = "Niskie ponowne użycie";
+"spend_harness_fast" = "Szybko";
+"spend_harness_average" = "Przeciętnie";
+"spend_harness_slow" = "Wolno";
+"spend_harness_wait_short" = "Krótki czas";
+"spend_harness_wait_moderate" = "Średni czas";
+"spend_harness_wait_long" = "Długi czas";
+"spend_harness_score_rule" = "Reguły eksperymentalne: pamięć podręczna 35 (cel 90%); odpowiedź 25 (maksimum przy ≤1 s, zero przy ≥10 s); wynik tury 20 (maksimum przy ≥20 tok/s); oczekiwanie 20 (maksimum przy ≤30 s, zero przy ≥300 s). Skala liniowa zaokrąglona do liczb całkowitych. Minimum pięć obserwacji na wymiar, a do sumy wszystkie cztery.";
+"spend_harness_no_rating" = "Brak oceny";
+"spend_harness_no_rating_help" = "Dostępne zapisy nie zawierają wystarczających danych do oceny doświadczenia.";

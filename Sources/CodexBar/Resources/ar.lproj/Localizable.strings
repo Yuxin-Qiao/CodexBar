@@ -1737,12 +1737,28 @@
 "Session costs cover entire sessions." = "تشمل التكاليف الجلسات بأكملها.";
 
 /* Inline harness score and diagnostics. */
-"spend_harness_measured_score" = "%@/%@ · تقييم %@/4 جوانب";
 "spend_harness_observing" = "قيد الرصد";
 "spend_harness_cache" = "التخزين المؤقت";
-"spend_harness_start" = "عبء البداية";
-"spend_harness_growth" = "النمو";
-"spend_harness_reliability" = "الموثوقية";
-"spend_harness_not_collected" = "لم تُجمع البيانات";
-"spend_harness_score_rule" = "التخزين المؤقت = round(35 × min(نسبة الإدخال المخزّن / 90%, 1))، مع خمس جولات مقاسة على الأقل. التقييم الجزئي يستخدم أوزان الجوانب المقاسة فقط؛ ويتطلب /100 الجوانب الأربعة. تشخيص تجريبي للسياق.";
-"spend_harness_missing_help" = "عبء البداية يحتاج تكوين التعليمات والنافذة الفعلية؛ والنمو يحتاج سياق كل طلب؛ والموثوقية تحتاج سجلات كاملة للطلبات والأخطاء. الجولات المقاسة المكتملة لا تثبت معدل الأخطاء.";
+
+/* Plain-language experience rating. */
+"spend_harness_total_score" = "التجربة %@/١٠٠";
+"spend_harness_pending_score" = "التقييم قيد الرصد · %@/٤ جوانب";
+"spend_harness_response" = "الاستجابة";
+"spend_harness_output" = "الإخراج";
+"spend_harness_duration" = "الانتظار";
+"spend_harness_samples" = "رصد %@ جولات";
+"spend_harness_good" = "جيد";
+"spend_harness_moderate" = "يمكن تحسينه";
+"spend_harness_poor" = "يحتاج انتباهًا";
+"spend_harness_reuse_high" = "إعادة استخدام عالية";
+"spend_harness_reuse_moderate" = "إعادة استخدام متوسطة";
+"spend_harness_reuse_low" = "إعادة استخدام قليلة";
+"spend_harness_fast" = "سريع";
+"spend_harness_average" = "متوسط";
+"spend_harness_slow" = "بطيء";
+"spend_harness_wait_short" = "انتظار قصير";
+"spend_harness_wait_moderate" = "انتظار متوسط";
+"spend_harness_wait_long" = "انتظار طويل";
+"spend_harness_score_rule" = "قواعد تجريبية: التخزين المؤقت 35 (هدف 90%)؛ الاستجابة 25 (كاملة عند ≤1 ث، صفر عند ≥10 ث)؛ إخراج الجولة 20 (كاملة عند ≥20 tok/s)؛ الانتظار 20 (كاملة عند ≤30 ث، صفر عند ≥300 ث). مقياس خطي مقرب لأعداد صحيحة. خمس ملاحظات لكل جانب على الأقل، والجوانب الأربعة مطلوبة للمجموع.";
+"spend_harness_no_rating" = "لا يوجد تقييم بعد";
+"spend_harness_no_rating_help" = "لا تحتوي السجلات المتاحة على بيانات كافية لحساب تقييم التجربة.";

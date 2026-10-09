@@ -1736,12 +1736,28 @@
 "Session costs cover entire sessions." = "Els costos corresponen a sessions completes.";
 
 /* Inline harness score and diagnostics. */
-"spend_harness_measured_score" = "%@/%@ · %@/4 dimensions avaluades";
 "spend_harness_observing" = "En observació";
 "spend_harness_cache" = "Memòria cau";
-"spend_harness_start" = "Càrrega inicial";
-"spend_harness_growth" = "Creixement";
-"spend_harness_reliability" = "Fiabilitat";
-"spend_harness_not_collected" = "Sense recollir";
-"spend_harness_score_rule" = "Memòria cau = round(35 × min(proporció d’entrada en memòria cau / 90%, 1)), amb almenys cinc torns mesurats. La puntuació parcial només usa pesos mesurats; /100 requereix les quatre dimensions. Diagnòstic experimental del context.";
-"spend_harness_missing_help" = "La càrrega inicial necessita composició del prompt i finestra efectiva; el creixement, context per petició; la fiabilitat, registres complets de peticions i errors. Els torns mesurats completats no determinen la taxa d’errors.";
+
+/* Plain-language experience rating. */
+"spend_harness_total_score" = "Experiència %@/100";
+"spend_harness_pending_score" = "Puntuació pendent · %@/4 avaluats";
+"spend_harness_response" = "Resposta";
+"spend_harness_output" = "Sortida";
+"spend_harness_duration" = "Espera";
+"spend_harness_samples" = "%@ torns observats";
+"spend_harness_good" = "Bo";
+"spend_harness_moderate" = "Es pot millorar";
+"spend_harness_poor" = "Cal atenció";
+"spend_harness_reuse_high" = "Reutilització alta";
+"spend_harness_reuse_moderate" = "Reutilització mitjana";
+"spend_harness_reuse_low" = "Reutilització baixa";
+"spend_harness_fast" = "Ràpid";
+"spend_harness_average" = "Normal";
+"spend_harness_slow" = "Lent";
+"spend_harness_wait_short" = "Espera curta";
+"spend_harness_wait_moderate" = "Espera mitjana";
+"spend_harness_wait_long" = "Espera llarga";
+"spend_harness_score_rule" = "Regles experimentals: memòria cau 35 (objectiu 90%); resposta 25 (màxim a ≤1 s, zero a ≥10 s); sortida del torn 20 (màxim a ≥20 tok/s); espera 20 (màxim a ≤30 s, zero a ≥300 s). Escala lineal arrodonida a enters. Almenys cinc observacions per dimensió i les quatre per al total.";
+"spend_harness_no_rating" = "Encara sense puntuació";
+"spend_harness_no_rating_help" = "Els registres disponibles no contenen prou dades per puntuar l’experiència.";

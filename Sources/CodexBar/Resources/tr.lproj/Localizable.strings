@@ -1735,12 +1735,28 @@
 "Session costs cover entire sessions." = "Maliyetler oturumların tamamını kapsar.";
 
 /* Inline harness score and diagnostics. */
-"spend_harness_measured_score" = "%@/%@ · %@/4 boyut puanlandı";
 "spend_harness_observing" = "Gözlemleniyor";
 "spend_harness_cache" = "Önbellek";
-"spend_harness_start" = "Başlangıç yükü";
-"spend_harness_growth" = "Büyüme";
-"spend_harness_reliability" = "Güvenilirlik";
-"spend_harness_not_collected" = "Toplanmadı";
-"spend_harness_score_rule" = "Önbellek = round(35 × min(önbellekteki girdi oranı / 90%, 1)), en az beş ölçülen turla. Kısmi puan yalnızca ölçülen ağırlıkları kullanır; /100 için dört boyut da gerekir. Deneysel bağlam tanılaması.";
-"spend_harness_missing_help" = "Başlangıç yükü istem bileşimini ve etkin pencereyi; büyüme istek başına bağlamı; güvenilirlik tüm istek ve hata kayıtlarını gerektirir. Tamamlanan ölçülen turlar hata oranını belirleyemez.";
+
+/* Plain-language experience rating. */
+"spend_harness_total_score" = "Deneyim %@/100";
+"spend_harness_pending_score" = "Puan bekleniyor · %@/4 değerlendirildi";
+"spend_harness_response" = "Yanıt";
+"spend_harness_output" = "Çıktı";
+"spend_harness_duration" = "Bekleme";
+"spend_harness_samples" = "%@ tur gözlemlendi";
+"spend_harness_good" = "İyi";
+"spend_harness_moderate" = "İyileştirilebilir";
+"spend_harness_poor" = "Dikkat gerekiyor";
+"spend_harness_reuse_high" = "Yüksek yeniden kullanım";
+"spend_harness_reuse_moderate" = "Orta yeniden kullanım";
+"spend_harness_reuse_low" = "Düşük yeniden kullanım";
+"spend_harness_fast" = "Hızlı";
+"spend_harness_average" = "Orta";
+"spend_harness_slow" = "Yavaş";
+"spend_harness_wait_short" = "Kısa bekleme";
+"spend_harness_wait_moderate" = "Orta bekleme";
+"spend_harness_wait_long" = "Uzun bekleme";
+"spend_harness_score_rule" = "Deneysel kurallar: önbellek 35 (hedef 90%); yanıt 25 (≤1 sn tam, ≥10 sn sıfır); tur çıktısı 20 (≥20 tok/s tam); bekleme 20 (≤30 sn tam, ≥300 sn sıfır). Doğrusal ölçek ve tam sayıya yuvarlama. Boyut başına en az beş gözlem, toplam için dört boyut da gerekir.";
+"spend_harness_no_rating" = "Henüz puan yok";
+"spend_harness_no_rating_help" = "Mevcut kayıtlar, kullanım deneyimini puanlamak için yeterli veri içermiyor.";

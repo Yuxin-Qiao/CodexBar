@@ -1732,12 +1732,28 @@
 "Session costs cover entire sessions." = "Kostnaderna avser hela sessioner.";
 
 /* Inline harness score and diagnostics. */
-"spend_harness_measured_score" = "%@/%@ · %@/4 delar bedömda";
 "spend_harness_observing" = "Observeras";
 "spend_harness_cache" = "Cache";
-"spend_harness_start" = "Startbelastning";
-"spend_harness_growth" = "Tillväxt";
-"spend_harness_reliability" = "Tillförlitlighet";
-"spend_harness_not_collected" = "Ej insamlat";
-"spend_harness_score_rule" = "Cache = round(35 × min(andel cachad indata / 90%, 1)), med minst fem uppmätta turer. Delpoäng använder bara uppmätta vikter; /100 kräver alla fyra delar. Experimentell kontextdiagnostik.";
-"spend_harness_missing_help" = "Startbelastning kräver promptens sammansättning och effektivt fönster; tillväxt kräver kontext per begäran; tillförlitlighet kräver fullständiga begäran- och felloggar. Slutförda uppmätta turer fastställer ingen felfrekvens.";
+
+/* Plain-language experience rating. */
+"spend_harness_total_score" = "Upplevelse %@/100";
+"spend_harness_pending_score" = "Poäng inväntas · %@/4 bedömda";
+"spend_harness_response" = "Svar";
+"spend_harness_output" = "Utdata";
+"spend_harness_duration" = "Väntan";
+"spend_harness_samples" = "%@ turer observerade";
+"spend_harness_good" = "Bra";
+"spend_harness_moderate" = "Kan förbättras";
+"spend_harness_poor" = "Behöver granskas";
+"spend_harness_reuse_high" = "Hög återanvändning";
+"spend_harness_reuse_moderate" = "Måttlig återanvändning";
+"spend_harness_reuse_low" = "Låg återanvändning";
+"spend_harness_fast" = "Snabb";
+"spend_harness_average" = "Medel";
+"spend_harness_slow" = "Långsam";
+"spend_harness_wait_short" = "Kort väntan";
+"spend_harness_wait_moderate" = "Måttlig väntan";
+"spend_harness_wait_long" = "Lång väntan";
+"spend_harness_score_rule" = "Experimentella regler: cache 35 (mål 90%); svar 25 (fullt vid ≤1 s, noll vid ≥10 s); turutdata 20 (fullt vid ≥20 tok/s); väntan 20 (fullt vid ≤30 s, noll vid ≥300 s). Linjär skala avrundad till heltal. Minst fem observationer per del; alla fyra behövs för totalen.";
+"spend_harness_no_rating" = "Inget betyg ännu";
+"spend_harness_no_rating_help" = "Tillgängliga uppgifter räcker inte för att betygsätta användarupplevelsen.";

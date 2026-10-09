@@ -1736,12 +1736,28 @@
 "Session costs cover entire sessions." = "Session costs cover entire sessions.";
 
 /* Inline harness score and diagnostics. */
-"spend_harness_measured_score" = "%@/%@ · %@/4 dimensions rated";
 "spend_harness_observing" = "Observing";
 "spend_harness_cache" = "Cache";
-"spend_harness_start" = "Lean start";
-"spend_harness_growth" = "Growth";
-"spend_harness_reliability" = "Reliability";
-"spend_harness_not_collected" = "Not collected";
-"spend_harness_score_rule" = "Cache = round(35 × min(cached input share / 90%, 1)), with at least five measured turns. Partial scores use measured weights only; /100 requires all four dimensions. Experimental context diagnostics.";
-"spend_harness_missing_help" = "Lean start needs prompt composition and the effective window; growth needs per-request context; reliability needs complete request and error records. Completed timed turns cannot establish an error rate.";
+
+/* Plain-language experience rating. */
+"spend_harness_total_score" = "Experience %@/100";
+"spend_harness_pending_score" = "Score pending · %@/4 rated";
+"spend_harness_response" = "Response";
+"spend_harness_output" = "Output";
+"spend_harness_duration" = "Wait";
+"spend_harness_samples" = "%@ turns observed";
+"spend_harness_good" = "Good";
+"spend_harness_moderate" = "Room to improve";
+"spend_harness_poor" = "Needs attention";
+"spend_harness_reuse_high" = "High reuse";
+"spend_harness_reuse_moderate" = "Moderate reuse";
+"spend_harness_reuse_low" = "Low reuse";
+"spend_harness_fast" = "Fast";
+"spend_harness_average" = "Average";
+"spend_harness_slow" = "Slow";
+"spend_harness_wait_short" = "Short wait";
+"spend_harness_wait_moderate" = "Moderate wait";
+"spend_harness_wait_long" = "Long wait";
+"spend_harness_score_rule" = "Experimental rules: cache 35 (90% target); response 25 (full at ≤1 s, zero at ≥10 s); whole-turn output 20 (full at ≥20 tok/s); wait 20 (full at ≤30 s, zero at ≥300 s). Values scale linearly and round to integer points. At least five observations per dimension; all four are needed for a total.";
+"spend_harness_no_rating" = "No rating yet";
+"spend_harness_no_rating_help" = "The available records do not contain enough data for an experience score.";

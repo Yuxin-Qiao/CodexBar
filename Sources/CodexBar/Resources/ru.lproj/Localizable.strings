@@ -1734,12 +1734,28 @@
 "Session costs cover entire sessions." = "Стоимость относится к полным сессиям.";
 
 /* Inline harness score and diagnostics. */
-"spend_harness_measured_score" = "%@/%@ · оценено %@/4 показателей";
 "spend_harness_observing" = "Наблюдение";
 "spend_harness_cache" = "Кэш";
-"spend_harness_start" = "Начальная нагрузка";
-"spend_harness_growth" = "Рост";
-"spend_harness_reliability" = "Надёжность";
-"spend_harness_not_collected" = "Нет данных";
-"spend_harness_score_rule" = "Кэш = round(35 × min(доля кэшированного ввода / 90%, 1)), минимум пять измеренных ходов. Частичная оценка использует только измеренные веса; /100 требует все четыре показателя. Экспериментальная диагностика контекста.";
-"spend_harness_missing_help" = "Начальной нагрузке нужны состав промпта и фактическое окно; росту — контекст каждого запроса; надёжности — полные записи запросов и ошибок. По завершённым измеренным ходам нельзя определить частоту ошибок.";
+
+/* Plain-language experience rating. */
+"spend_harness_total_score" = "Ощущения %@/100";
+"spend_harness_pending_score" = "Оценка ожидается · %@/4 оценено";
+"spend_harness_response" = "Ответ";
+"spend_harness_output" = "Вывод";
+"spend_harness_duration" = "Ожидание";
+"spend_harness_samples" = "Наблюдалось %@ ходов";
+"spend_harness_good" = "Хорошо";
+"spend_harness_moderate" = "Можно улучшить";
+"spend_harness_poor" = "Требует внимания";
+"spend_harness_reuse_high" = "Много повторного использования";
+"spend_harness_reuse_moderate" = "Среднее повторное использование";
+"spend_harness_reuse_low" = "Мало повторного использования";
+"spend_harness_fast" = "Быстро";
+"spend_harness_average" = "Обычно";
+"spend_harness_slow" = "Медленно";
+"spend_harness_wait_short" = "Короткое ожидание";
+"spend_harness_wait_moderate" = "Среднее ожидание";
+"spend_harness_wait_long" = "Долгое ожидание";
+"spend_harness_score_rule" = "Экспериментальные правила: кэш 35 (цель 90%); ответ 25 (максимум при ≤1 с, ноль при ≥10 с); вывод за ход 20 (максимум при ≥20 tok/s); ожидание 20 (максимум при ≤30 с, ноль при ≥300 с). Линейная шкала с округлением до целого. Не менее пяти наблюдений на показатель; для суммы нужны все четыре.";
+"spend_harness_no_rating" = "Оценки пока нет";
+"spend_harness_no_rating_help" = "В доступных записях недостаточно данных для оценки опыта использования.";

@@ -1764,12 +1764,28 @@
 "Session costs cover entire sessions." = "費用統計涵蓋整個工作階段。";
 
 /* Inline harness score and diagnostics. */
-"spend_harness_measured_score" = "%@/%@ 分 · 已測 %@/4 項";
 "spend_harness_observing" = "觀察中";
 "spend_harness_cache" = "快取";
-"spend_harness_start" = "起步";
-"spend_harness_growth" = "增長";
-"spend_harness_reliability" = "可靠性";
-"spend_harness_not_collected" = "待收集";
-"spend_harness_score_rule" = "快取分 = round(35 × min(快取輸入比例 / 90%, 1))，至少五個有效回合。部分評分僅使用已測項權重，四項齊全才顯示百分制總分。這是實驗性上下文診斷。";
-"spend_harness_missing_help" = "起步需要提示詞組成與實際視窗；增長需要逐請求上下文；可靠性需要完整請求與錯誤記錄。僅成功計時回合無法得出錯誤率。";
+
+/* Plain-language experience rating. */
+"spend_harness_total_score" = "體驗%@分";
+"spend_harness_pending_score" = "評分觀察中 · 已測%@/4項";
+"spend_harness_response" = "回應";
+"spend_harness_output" = "輸出";
+"spend_harness_duration" = "等待";
+"spend_harness_samples" = "%@輪資料";
+"spend_harness_good" = "表現良好";
+"spend_harness_moderate" = "有改善空間";
+"spend_harness_poor" = "需要關注";
+"spend_harness_reuse_high" = "重用佳";
+"spend_harness_reuse_moderate" = "重用一般";
+"spend_harness_reuse_low" = "重用少";
+"spend_harness_fast" = "快";
+"spend_harness_average" = "一般";
+"spend_harness_slow" = "慢";
+"spend_harness_wait_short" = "等待短";
+"spend_harness_wait_moderate" = "等待一般";
+"spend_harness_wait_long" = "等待長";
+"spend_harness_score_rule" = "實驗規則：快取35分（目標90%）；回應25分（≤1秒滿分，≥10秒零分）；整輪輸出20分（≥20 tok/s滿分）；等待20分（≤30秒滿分，≥300秒零分）。中間值線性計分並取整。每項至少五個有效樣本，四項齊全才有總分。";
+"spend_harness_no_rating" = "暫無評分";
+"spend_harness_no_rating_help" = "目前紀錄缺少計算體驗分所需的資料。";

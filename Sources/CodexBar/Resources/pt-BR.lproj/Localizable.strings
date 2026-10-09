@@ -1733,12 +1733,28 @@
 "Session costs cover entire sessions." = "Os custos cobrem as sessões completas.";
 
 /* Inline harness score and diagnostics. */
-"spend_harness_measured_score" = "%@/%@ · %@/4 dimensões avaliadas";
 "spend_harness_observing" = "Em observação";
 "spend_harness_cache" = "Cache";
-"spend_harness_start" = "Carga inicial";
-"spend_harness_growth" = "Crescimento";
-"spend_harness_reliability" = "Confiabilidade";
-"spend_harness_not_collected" = "Não coletado";
-"spend_harness_score_rule" = "Cache = round(35 × min(proporção de entrada em cache / 90%, 1)), com ao menos cinco turnos medidos. A pontuação parcial usa apenas pesos medidos; /100 exige as quatro dimensões. Diagnóstico experimental do contexto.";
-"spend_harness_missing_help" = "A carga inicial precisa da composição do prompt e da janela efetiva; o crescimento, do contexto por solicitação; a confiabilidade, de registros completos de solicitações e erros. Turnos medidos concluídos não estabelecem uma taxa de erros.";
+
+/* Plain-language experience rating. */
+"spend_harness_total_score" = "Experiência %@/100";
+"spend_harness_pending_score" = "Pontuação pendente · %@/4 avaliados";
+"spend_harness_response" = "Resposta";
+"spend_harness_output" = "Saída";
+"spend_harness_duration" = "Espera";
+"spend_harness_samples" = "%@ turnos observados";
+"spend_harness_good" = "Bom";
+"spend_harness_moderate" = "Pode melhorar";
+"spend_harness_poor" = "Requer atenção";
+"spend_harness_reuse_high" = "Reutilização alta";
+"spend_harness_reuse_moderate" = "Reutilização média";
+"spend_harness_reuse_low" = "Reutilização baixa";
+"spend_harness_fast" = "Rápido";
+"spend_harness_average" = "Normal";
+"spend_harness_slow" = "Lento";
+"spend_harness_wait_short" = "Espera curta";
+"spend_harness_wait_moderate" = "Espera média";
+"spend_harness_wait_long" = "Espera longa";
+"spend_harness_score_rule" = "Regras experimentais: cache 35 (meta 90%); resposta 25 (máximo em ≤1 s, zero em ≥10 s); saída do turno 20 (máximo em ≥20 tok/s); espera 20 (máximo em ≤30 s, zero em ≥300 s). Escala linear arredondada a inteiros. Pelo menos cinco observações por dimensão e todas as quatro para o total.";
+"spend_harness_no_rating" = "Ainda sem avaliação";
+"spend_harness_no_rating_help" = "Os registros disponíveis não contêm dados suficientes para avaliar a experiência.";

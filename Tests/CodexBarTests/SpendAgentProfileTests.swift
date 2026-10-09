@@ -9,6 +9,12 @@ import Testing
 struct SpendAgentProfileTests {
     private static let now = Date(timeIntervalSince1970: 1_778_414_400)
 
+    private struct RatingExample {
+        let sample: CostUsageTurnPerformanceSample
+        let points: [Int]
+        let band: SpendHarnessRating.Band
+    }
+
     @Test
     func `profiles aggregate raw turns with token weighted cache and time weighted throughput`() throws {
         let small = try Self.sample(input: 10, cached: 0, duration: 1000)
@@ -85,18 +91,20 @@ struct SpendAgentProfileTests {
     }
 
     @Test
-    func `cache points follow the ninety percent target and partial totals never become out of one hundred`() throws {
+    func `cache points follow the ninety percent target and missing response keeps the total unscored`() throws {
         for (cached, expected) in [(0, 0), (45, 18), (79, 31), (80, 31), (88, 34), (90, 35), (100, 35)] {
             let sample = try Self.sample(input: 100, cached: cached)
             let performance = try #require(CostUsageTurnPerformanceSummary(samples: Array(repeating: sample, count: 5)))
             let rating = SpendHarnessRating(performance: performance, cacheSampleCount: 5)
             #expect(rating.cachePoints == expected)
-            #expect(rating.measuredPoints == expected)
-            #expect(rating.measuredMaximumPoints == 35)
-            #expect(rating.ratedDimensionCount == 1)
+            #expect(rating.measuredPoints == expected + 40)
+            #expect(rating.measuredMaximumPoints == 75)
+            #expect(rating.ratedDimensionCount == 3)
             #expect(rating.totalPoints == nil)
             #expect(rating.items.map(\.dimension.maximumPoints) == [35, 25, 20, 20])
-            #expect(rating.items.dropFirst().allSatisfy { $0.points == nil })
+            #expect(rating.items[1].points == nil)
+            #expect(rating.items[2].points == 20)
+            #expect(rating.items[3].points == 20)
         }
         let sample = try Self.sample(input: 100, cached: 80)
         for count in 1...4 {
@@ -111,6 +119,62 @@ struct SpendAgentProfileTests {
     }
 
     @Test
+    func `complete experience scores clamp to zero and one hundred with interpretable components`() throws {
+        let cases: [RatingExample] = try [
+            .init(
+                sample: Self.sample(input: 100, cached: 90, duration: 30000, output: 600, firstToken: 1000),
+                points: [35, 25, 20, 20],
+                band: .good),
+            .init(
+                sample: Self.sample(input: 100, cached: 100, duration: 1000, output: 1000, firstToken: 0),
+                points: [35, 25, 20, 20],
+                band: .good),
+            .init(
+                sample: Self.sample(input: 100, cached: 0, duration: 300_000, output: 1, firstToken: 10000),
+                points: [0, 0, 0, 0],
+                band: .poor),
+            .init(
+                sample: Self.sample(input: 100, cached: 45, duration: 165_000, output: 1650, firstToken: 5500),
+                points: [18, 13, 10, 10],
+                band: .poor),
+            .init(
+                sample: Self.sample(input: 100, cached: 90, duration: 30000, output: 300, firstToken: 5500),
+                points: [35, 13, 10, 20],
+                band: .moderate),
+        ]
+        for example in cases {
+            let performance = try #require(CostUsageTurnPerformanceSummary(samples: Array(
+                repeating: example.sample,
+                count: 5)))
+            let rating = SpendHarnessRating(performance: performance, cacheSampleCount: 5)
+            #expect(rating.items.compactMap(\.points) == example.points)
+            #expect(rating.totalPoints == example.points.reduce(0, +))
+            #expect(rating.totalBand == example.band)
+            #expect(rating.measuredMaximumPoints == 100)
+            #expect(rating.ratedDimensionCount == 4)
+        }
+    }
+
+    @Test
+    func `experience scores need five measured samples for each component without filling missing data`() throws {
+        let measured = try Self.sample(input: 100, cached: 80, firstToken: 700)
+        let missing = try Self.sample()
+        for measuredCount in 0...4 {
+            let samples = Array(repeating: measured, count: measuredCount) +
+                Array(repeating: missing, count: 5 - measuredCount)
+            let performance = try #require(CostUsageTurnPerformanceSummary(samples: samples))
+            let rating = SpendHarnessRating(performance: performance, cacheSampleCount: measuredCount)
+            #expect(rating.items[0].points == nil)
+            #expect(rating.items[1].points == nil)
+            #expect(rating.items[2].points == 20)
+            #expect(rating.items[3].points == 20)
+            #expect(rating.ratedDimensionCount == 2)
+            #expect(rating.totalPoints == nil)
+            #expect(rating.totalBand == nil)
+        }
+    }
+
+    @Test
     func `score and four dimension statuses are visible without opening another menu`() throws {
         let measured = try Self.sample(input: 100, cached: 80, firstToken: 200)
         let missing = try Self.sample()
@@ -121,17 +185,24 @@ struct SpendAgentProfileTests {
             cacheSampleCount: 5,
             historyScanIsPartial: true)
         CodexBarLocalizationOverride.$appLanguage.withValue("en") {
-            #expect(text.scoreText == "31/35 · 1/4 dimensions rated")
-            #expect(text.dimensionsText == "Cache 31/35 · Lean start Not collected · " +
-                "Growth Not collected · Reliability Not collected")
-            #expect(text.observationsText.contains("80.0%"))
-            #expect(text.observationsText.contains("Cache: 5/8 turns"))
+            #expect(text.scoreText == "Experience 96/100 · Good")
+            #expect(text.dimensionsText == "Cache High reuse · Response Fast · Output Fast · Short wait")
+            #expect(text.componentScoresText == "Cache 31/35 (High reuse) · Response 25/25 (Fast) · " +
+                "Output 20/20 (Fast) · Wait 20/20 (Short wait)")
+            #expect(text.evidenceText.contains(text.componentScoresText))
+            #expect(text.rawMetricsText.contains("80.0%"))
+            #expect(text.rawMetricsText.contains("Cache: 5/8 turns"))
+            #expect(text.evidenceText.contains(text.rawMetricsText))
+            #expect(!text.observationsText.contains("tok/s"))
             #expect(text.observationsText.contains("Partial history"))
         }
         CodexBarLocalizationOverride.$appLanguage.withValue("zh-Hans") {
-            #expect(text.scoreText == "31/35 分 · 已测 1/4 项")
-            #expect(text.dimensionsText == "缓存 31/35 · 起步 待采集 · 增长 待采集 · 可靠性 待采集")
-            #expect(text.observationsText.contains("缓存数据：5/8 个回合"))
+            #expect(text.scoreText == "体验96分 · 表现良好")
+            #expect(text.dimensionsText == "缓存 复用好 · 响应 快 · 输出 快 · 等待短")
+            #expect(text.componentScoresText == "缓存 31/35 (复用好) · 响应 25/25 (快) · " +
+                "输出 20/20 (快) · 等待 20/20 (等待短)")
+            #expect(text.rawMetricsText.contains("缓存数据：5/8 个回合"))
+            #expect(text.observationsText.contains("8轮数据"))
             #expect(text.observationsText.contains("历史记录不完整"))
         }
     }
@@ -321,6 +392,7 @@ struct SpendAgentProfileTests {
         input: Int? = nil,
         cached: Int? = nil,
         duration: Int = 1000,
+        output: Int = 100,
         firstToken: Int? = nil,
         model: String? = "gpt-5.4",
         effort: String? = "high") throws
@@ -328,7 +400,7 @@ struct SpendAgentProfileTests {
     {
         try #require(CostUsageTurnPerformanceSample(
             completedAt: date,
-            outputTokens: 100,
+            outputTokens: output,
             durationMilliseconds: duration,
             firstTokenMilliseconds: firstToken,
             model: model,

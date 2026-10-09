@@ -1737,12 +1737,28 @@
 "Session costs cover entire sessions." = "هزینه‌ها کل نشست‌ها را پوشش می‌دهند.";
 
 /* Inline harness score and diagnostics. */
-"spend_harness_measured_score" = "%@/%@ · %@/4 بُعد ارزیابی‌شده";
 "spend_harness_observing" = "در حال مشاهده";
 "spend_harness_cache" = "حافظهٔ نهان";
-"spend_harness_start" = "بار اولیه";
-"spend_harness_growth" = "رشد";
-"spend_harness_reliability" = "قابلیت اعتماد";
-"spend_harness_not_collected" = "جمع‌آوری نشده";
-"spend_harness_score_rule" = "حافظهٔ نهان = round(35 × min(سهم ورودی ذخیره‌شده / 90%, 1))، با دست‌کم پنج نوبت اندازه‌گیری‌شده. امتیاز جزئی فقط از وزن‌های اندازه‌گیری‌شده استفاده می‌کند؛ /100 به هر چهار بُعد نیاز دارد. تشخیص آزمایشی زمینه است.";
-"spend_harness_missing_help" = "بار اولیه به ترکیب دستور و پنجرهٔ مؤثر نیاز دارد؛ رشد به زمینهٔ هر درخواست؛ و قابلیت اعتماد به ثبت کامل درخواست‌ها و خطاها. نوبت‌های اندازه‌گیری‌شدهٔ تکمیل‌شده نرخ خطا را مشخص نمی‌کنند.";
+
+/* Plain-language experience rating. */
+"spend_harness_total_score" = "تجربه %@/۱۰۰";
+"spend_harness_pending_score" = "امتیاز در انتظار · %@/۴ بُعد";
+"spend_harness_response" = "پاسخ";
+"spend_harness_output" = "خروجی";
+"spend_harness_duration" = "انتظار";
+"spend_harness_samples" = "%@ نوبت مشاهده‌شده";
+"spend_harness_good" = "خوب";
+"spend_harness_moderate" = "قابل بهبود";
+"spend_harness_poor" = "نیازمند توجه";
+"spend_harness_reuse_high" = "استفادهٔ مجدد زیاد";
+"spend_harness_reuse_moderate" = "استفادهٔ مجدد متوسط";
+"spend_harness_reuse_low" = "استفادهٔ مجدد کم";
+"spend_harness_fast" = "سریع";
+"spend_harness_average" = "متوسط";
+"spend_harness_slow" = "کند";
+"spend_harness_wait_short" = "انتظار کوتاه";
+"spend_harness_wait_moderate" = "انتظار متوسط";
+"spend_harness_wait_long" = "انتظار طولانی";
+"spend_harness_score_rule" = "قواعد آزمایشی: حافظهٔ نهان 35 (هدف 90%)؛ پاسخ 25 (کامل در ≤1 ثانیه، صفر در ≥10 ثانیه)؛ خروجی نوبت 20 (کامل در ≥20 tok/s)؛ انتظار 20 (کامل در ≤30 ثانیه، صفر در ≥300 ثانیه). مقیاس خطی با گردکردن به عدد صحیح. دست‌کم پنج مشاهده برای هر بُعد و هر چهار بُعد برای مجموع لازم است.";
+"spend_harness_no_rating" = "هنوز امتیازی وجود ندارد";
+"spend_harness_no_rating_help" = "سوابق موجود داده‌های کافی برای محاسبه امتیاز تجربه ندارند.";
