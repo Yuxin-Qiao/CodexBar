@@ -452,6 +452,8 @@ enum CostUsageClaudeCacheIO {
     }
 
     #if DEBUG
+    @TaskLocal static var observeWrittenBytesForTesting: (@Sendable (Int) -> Void)?
+
     @TaskLocal static var readForTesting: (@Sendable (URL, Data.ReadingOptions) -> Data?)?
 
     static func withIsolatedCachesForTesting(operation: @Sendable () async throws -> Void) async throws {
@@ -568,29 +570,32 @@ enum CostUsageClaudeCacheIO {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let temporaryURL = directory.appendingPathComponent(".claude-cache-\(UUID().uuidString).tmp")
         defer { try? FileManager.default.removeItem(at: temporaryURL) }
-        guard let output = fopen(temporaryURL.path, "wb") else { return nil }
-        defer { fclose(output) }
+        guard let output = CostUsageClaudeArtifactWriter(temporaryURL: temporaryURL, replacing: url) else {
+            return nil
+        }
         var hasher = SHA256()
         func append(_ data: Data?) throws {
             guard let data else {
-                rewind(output)
-                guard ftruncate(fileno(output), 0) == 0 else { throw CocoaError(.fileWriteUnknown) }
+                try output.reset()
                 hasher = SHA256()
                 return
             }
-            guard data.withUnsafeBytes({ fwrite($0.baseAddress, 1, $0.count, output) }) == data.count else {
-                throw CocoaError(.fileWriteUnknown)
-            }
+            #if DEBUG
+            let written = try output.append(data)
+            self.observeWrittenBytesForTesting?(written)
+            #else
+            _ = try output.append(data)
+            #endif
             hasher.update(data: data)
         }
         func commit() throws -> CostUsageClaudeFileStamp? {
             try checkCancellation?()
-            guard fflush(output) == 0 else { return nil }
             let digest = hasher.finalize()
             if let identity, identity.digest == digest, CostUsageClaudeFileStamp.read(at: url) == identity.stamp {
                 ArtifactMemo.shared.remember(at: key, stamp: identity.stamp, digest: digest, contentID: contentID)
                 return identity.stamp
             }
+            try output.finish()
             guard let stamp = CostUsageClaudeFileStamp.read(at: temporaryURL),
                   rename(temporaryURL.path, url.path) == 0 else { return nil }
             ArtifactMemo.shared.remember(at: key, stamp: stamp, digest: digest, contentID: contentID)
