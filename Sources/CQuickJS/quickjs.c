@@ -1,3 +1,4 @@
+/* Fork-only proof: native source changes require the musl CLI build. */
 /*
  * QuickJS Javascript Engine
  *
