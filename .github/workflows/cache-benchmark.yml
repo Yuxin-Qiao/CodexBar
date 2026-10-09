@@ -1,0 +1,111 @@
+name: SwiftPM cache experiment
+
+on:
+  push:
+    branches: [ci/cache-benchmark]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cache-experiment-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CI_CACHE_PRODUCT_BASE: 93fd95b1cbab995d994c4f66759d0c2525c22383
+
+jobs:
+  seed:
+    if: ${{ github.repository == 'Yuxin-Qiao/CodexBar' }}
+    name: Seed Xcode ${{ matrix.xcode }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - xcode: '26.6'
+            runner: macos-26
+          - xcode: '26.3'
+            runner: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Select fixed Xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode }}.app/Contents/Developer
+          echo "DEVELOPER_DIR=/Applications/Xcode_${{ matrix.xcode }}.app/Contents/Developer" >> "$GITHUB_ENV"
+          echo "CI_CACHE_BENCH_DIR=$RUNNER_TEMP/cache-experiment" >> "$GITHUB_ENV"
+      - name: Verify input-cache regressions
+        run: python3 Scripts/test_ci_swiftpm_cache.py
+      - name: Prepare offline behavior probe and toolchain identity
+        id: context
+        run: python3 Scripts/benchmark_swiftpm_cache.py prepare --mode seed
+      - name: Build complete project and record input metadata
+        timeout-minutes: 60
+        run: python3 Scripts/benchmark_swiftpm_cache.py seed
+      - name: Start cache-save timing
+        run: python3 Scripts/benchmark_swiftpm_cache.py marker --name cache-save
+      - name: Save identical baseline for all three cases
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .build
+          key: cache-experiment-${{ github.run_id }}-xcode${{ matrix.xcode }}-${{ steps.context.outputs.context }}
+      - name: Finish cache-save timing
+        run: python3 Scripts/benchmark_swiftpm_cache.py marker --name cache-save --finish
+      - name: Retain baseline proof
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: cache-seed-xcode${{ matrix.xcode }}
+          path: ${{ env.CI_CACHE_BENCH_DIR }}
+          retention-days: 14
+
+  measure:
+    needs: seed
+    name: Xcode ${{ matrix.xcode }} / ${{ matrix.mode }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 125
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [control, restored, changed]
+        xcode: ['26.6', '26.3']
+        include:
+          - xcode: '26.6'
+            runner: macos-26
+          - xcode: '26.3'
+            runner: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Select fixed Xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode }}.app/Contents/Developer
+          echo "DEVELOPER_DIR=/Applications/Xcode_${{ matrix.xcode }}.app/Contents/Developer" >> "$GITHUB_ENV"
+          echo "CI_CACHE_BENCH_DIR=$RUNNER_TEMP/cache-experiment" >> "$GITHUB_ENV"
+      - name: Prepare the same code or actual changed behavior
+        id: context
+        run: python3 Scripts/benchmark_swiftpm_cache.py prepare --mode ${{ matrix.mode }}
+      - name: Start cache-restore timing
+        run: python3 Scripts/benchmark_swiftpm_cache.py marker --name cache-restore
+      - name: Restore exact baseline cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .build
+          key: cache-experiment-${{ github.run_id }}-xcode${{ matrix.xcode }}-${{ steps.context.outputs.context }}
+          fail-on-cache-miss: true
+      - name: Finish cache-restore timing
+        run: python3 Scripts/benchmark_swiftpm_cache.py marker --name cache-restore --finish
+      - name: Measure build and full test inventory
+        timeout-minutes: 110
+        run: python3 Scripts/benchmark_swiftpm_cache.py case --mode ${{ matrix.mode }}
+      - name: Retain complete timing and behavior proof
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: cache-proof-xcode${{ matrix.xcode }}-${{ matrix.mode }}
+          path: ${{ env.CI_CACHE_BENCH_DIR }}
+          retention-days: 14
