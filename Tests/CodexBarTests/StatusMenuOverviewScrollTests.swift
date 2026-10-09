@@ -7,10 +7,12 @@ import Testing
 private final class OverviewScrollEvent: NSEvent {
     private let delta: CGFloat
     private let precise: Bool
+    private let momentum: NSEvent.Phase
 
-    init(deltaY: CGFloat, precise: Bool) {
+    init(deltaY: CGFloat, precise: Bool, momentumPhase: NSEvent.Phase = []) {
         self.delta = deltaY
         self.precise = precise
+        self.momentum = momentumPhase
         super.init()
     }
 
@@ -31,7 +33,7 @@ private final class OverviewScrollEvent: NSEvent {
     }
 
     override var momentumPhase: NSEvent.Phase {
-        []
+        self.momentum
     }
 }
 
@@ -87,10 +89,34 @@ struct StatusMenuOverviewScrollTests {
         return menu
     }
 
-    private func makeScrollEvent(deltaY: CGFloat, precise: Bool) -> NSEvent {
+    private func makeScrollEvent(
+        deltaY: CGFloat,
+        precise: Bool,
+        momentumPhase: NSEvent.Phase = []) -> NSEvent
+    {
         // CGEvent line-scroll conversion can yield zero deltas depending on host state.
         // Supply the handler's NSEvent inputs directly without posting an event.
-        OverviewScrollEvent(deltaY: deltaY, precise: precise)
+        OverviewScrollEvent(deltaY: deltaY, precise: precise, momentumPhase: momentumPhase)
+    }
+
+    private func attachMenuViewport(
+        to menu: NSMenu,
+        horizontalOverflow: Bool = false,
+        verticalOverflow: Bool = false) -> NSScrollView
+    {
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 200, height: 100))
+        let clipSize = scrollView.contentView.bounds.size
+        let documentView = NSView(frame: NSRect(
+            origin: .zero,
+            size: NSSize(
+                width: clipSize.width + (horizontalOverflow ? 200 : 0),
+                height: clipSize.height + (verticalOverflow ? 400 : 0))))
+        scrollView.documentView = documentView
+
+        let hostedItemView = NSView(frame: NSRect(x: 0, y: 0, width: 20, height: 20))
+        menu.items[0].view = hostedItemView
+        documentView.addSubview(hostedItemView)
+        return scrollView
     }
 
     @Test(arguments: [CGFloat(-1), 0, 0.5, 1, 30, 500], [false, true])
@@ -208,6 +234,111 @@ struct StatusMenuOverviewScrollTests {
         let handled = controller.handleOverviewScrollWheel(flick, menu: menu)
         #expect(handled)
         #expect(steps == [.up, .up, .up])
+    }
+
+    @Test
+    func `overflowing menu leaves coarse wheel events unhandled`() throws {
+        let controller = try self.makeController(suiteName: "OverviewScroll-OverflowWheel")
+        defer { controller.releaseStatusItemsForTesting() }
+        let menu = self.makeOverviewMenu()
+        let scrollView = self.attachMenuViewport(to: menu, verticalOverflow: true)
+        #expect(StatusItemController.attachedMenuScrollView(in: menu) === scrollView)
+
+        var steps: [OverviewScrollStep] = []
+        controller.overviewScrollNavigationHandlerForTesting = { steps.append($0) }
+
+        let wheelNotch = self.makeScrollEvent(deltaY: -1, precise: false)
+        #expect(!controller.handleOverviewScrollWheel(wheelNotch, menu: menu))
+        #expect(steps.isEmpty)
+        #expect(StatusItemController.attachedMenuScrollView(in: menu) === scrollView)
+    }
+
+    @Test
+    func `overflowing menu leaves coarse momentum events unhandled`() throws {
+        let controller = try self.makeController(suiteName: "OverviewScroll-OverflowMomentum")
+        defer { controller.releaseStatusItemsForTesting() }
+        let menu = self.makeOverviewMenu()
+        let scrollView = self.attachMenuViewport(to: menu, verticalOverflow: true)
+
+        var steps: [OverviewScrollStep] = []
+        controller.overviewScrollNavigationHandlerForTesting = { steps.append($0) }
+
+        let momentum = self.makeScrollEvent(deltaY: -1, precise: false, momentumPhase: .changed)
+        #expect(!controller.handleOverviewScrollWheel(momentum, menu: menu))
+        #expect(steps.isEmpty)
+        #expect(StatusItemController.attachedMenuScrollView(in: menu) === scrollView)
+    }
+
+    @Test
+    func `non overflowing menu keeps coarse wheel highlight navigation`() throws {
+        let controller = try self.makeController(suiteName: "OverviewScroll-NoOverflow")
+        defer { controller.releaseStatusItemsForTesting() }
+        let menu = self.makeOverviewMenu()
+        let scrollView = self.attachMenuViewport(to: menu)
+
+        var steps: [OverviewScrollStep] = []
+        controller.overviewScrollNavigationHandlerForTesting = { steps.append($0) }
+
+        let wheelNotch = self.makeScrollEvent(deltaY: -1, precise: false)
+        #expect(controller.handleOverviewScrollWheel(wheelNotch, menu: menu))
+        #expect(steps == [.down])
+        #expect(StatusItemController.attachedMenuScrollView(in: menu) === scrollView)
+    }
+
+    @Test
+    func `non overflowing menu keeps coarse momentum swallowed`() throws {
+        let controller = try self.makeController(suiteName: "OverviewScroll-NoOverflowMomentum")
+        defer { controller.releaseStatusItemsForTesting() }
+        let menu = self.makeOverviewMenu()
+        let scrollView = self.attachMenuViewport(to: menu)
+
+        var steps: [OverviewScrollStep] = []
+        controller.overviewScrollNavigationHandlerForTesting = { steps.append($0) }
+
+        let momentum = self.makeScrollEvent(deltaY: -1, precise: false, momentumPhase: .changed)
+        #expect(controller.handleOverviewScrollWheel(momentum, menu: menu))
+        #expect(steps.isEmpty)
+        #expect(StatusItemController.attachedMenuScrollView(in: menu) === scrollView)
+    }
+
+    @Test
+    func `horizontal overflow keeps coarse wheel highlight navigation`() throws {
+        let controller = try self.makeController(suiteName: "OverviewScroll-HorizontalOverflow")
+        defer { controller.releaseStatusItemsForTesting() }
+        let menu = self.makeOverviewMenu()
+        let scrollView = self.attachMenuViewport(to: menu, horizontalOverflow: true)
+
+        var steps: [OverviewScrollStep] = []
+        controller.overviewScrollNavigationHandlerForTesting = { steps.append($0) }
+
+        let wheelNotch = self.makeScrollEvent(deltaY: -1, precise: false)
+        #expect(controller.handleOverviewScrollWheel(wheelNotch, menu: menu))
+        #expect(steps == [.down])
+        #expect(StatusItemController.attachedMenuScrollView(in: menu) === scrollView)
+    }
+
+    @Test
+    func `becoming vertically overflowed clears accumulated wheel distance`() throws {
+        let controller = try self.makeController(suiteName: "OverviewScroll-OverflowTransition")
+        defer { controller.releaseStatusItemsForTesting() }
+        let menu = self.makeOverviewMenu()
+        let scrollView = self.attachMenuViewport(to: menu)
+
+        var steps: [OverviewScrollStep] = []
+        controller.overviewScrollNavigationHandlerForTesting = { steps.append($0) }
+
+        let partialNotch = self.makeScrollEvent(deltaY: -0.5, precise: false)
+        #expect(controller.handleOverviewScrollWheel(partialNotch, menu: menu))
+        #expect(controller.overviewScrollAccumulatedDelta == -0.5)
+        #expect(steps.isEmpty)
+
+        let clipHeight = scrollView.contentView.bounds.height
+        scrollView.documentView?.setFrameSize(NSSize(width: 200, height: clipHeight + 400))
+
+        let overflowNotch = self.makeScrollEvent(deltaY: -1, precise: false)
+        #expect(!controller.handleOverviewScrollWheel(overflowNotch, menu: menu))
+        #expect(controller.overviewScrollAccumulatedDelta == 0)
+        #expect(steps.isEmpty)
     }
 
     @Test
