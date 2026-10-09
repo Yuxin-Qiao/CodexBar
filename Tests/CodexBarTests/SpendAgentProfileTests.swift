@@ -508,6 +508,16 @@ struct SpendAgentProfileTests {
             includeModelHistory: true,
             displayName: "Claude")
         let group = try Self.group(inputs: [input, cursor, claude])
+        let longMetrics = try Self.group(inputs: [Self.input(
+            sampleSets: [high],
+            partial: true,
+            dailyCost: 12345.67,
+            dailyTokens: 7_800_000_000,
+            unpricedRequestCount: 3)])
+        let longBreakdown = try #require(spendDashboardProviderBreakdowns(longMetrics).first)
+        #expect(longBreakdown.totalCost == 12345.67)
+        #expect(longBreakdown.totalTokens == 7_800_000_000)
+        #expect(longBreakdown.incompleteRequestCount == 3)
         for language in ["en", "zh-Hans"] {
             for dark in [false, true] {
                 try CodexBarLocalizationOverride.$appLanguage.withValue(language) {
@@ -550,6 +560,16 @@ struct SpendAgentProfileTests {
                             view,
                             root: root,
                             name: "providers-inline-\(language)-\(dark ? "dark" : "light")-\(Int(width))",
+                            width: width,
+                            dark: dark)
+                    }
+                    for width in [360.0, 520.0, 980.0] {
+                        try Self.render(
+                            SpendDashboardPanel {
+                                SpendProviderBreakdownRows(group: longMetrics)
+                            },
+                            root: root,
+                            name: "providers-long-metrics-\(language)-\(dark ? "dark" : "light")-\(Int(width))",
                             width: width,
                             dark: dark)
                     }
@@ -626,16 +646,26 @@ struct SpendAgentProfileTests {
         partial: Bool = false,
         lastActivity: Date? = nil,
         includeModelHistory: Bool = false,
-        displayName: String? = nil) -> SpendDashboardModel.ProviderInput
+        displayName: String? = nil,
+        dailyCost: Double = 0.1,
+        dailyTokens: Int = 3000,
+        unpricedRequestCount: Int? = nil) -> SpendDashboardModel.ProviderInput
     {
         let samples = sampleSets.flatMap(\.self)
-        let models: [CostUsageDailyReport.ModelBreakdown]? = includeModelHistory && !samples.isEmpty
+        var models: [CostUsageDailyReport.ModelBreakdown]? = includeModelHistory && !samples.isEmpty
             ? Dictionary(grouping: samples, by: { $0.model ?? "example-test-model" }).map { model, observations in
                 .init(
                     modelName: model,
                     costUSD: 0.1 * Double(observations.count) / Double(samples.count),
                     totalTokens: 3000 * observations.count / samples.count)
             } : nil
+        if let unpricedRequestCount {
+            models = (models ?? []) + [.init(
+                modelName: "example-unpriced-model",
+                costUSD: nil,
+                totalTokens: nil,
+                incompleteRequestCount: unpricedRequestCount)]
+        }
         let sessions = sampleSets.enumerated().map { index, samples in
             CostUsageSessionBreakdown(
                 sessionID: "synthetic-\(index)",
@@ -655,17 +685,18 @@ struct SpendAgentProfileTests {
         let snapshot = CostUsageTokenSnapshot(
             sessionTokens: 3000,
             sessionCostUSD: 0.1,
-            last30DaysTokens: 3000,
-            last30DaysCostUSD: 0.1,
+            last30DaysTokens: dailyTokens,
+            last30DaysCostUSD: dailyCost,
             historyScanIsPartial: partial,
             daily: [.init(
                 date: "2026-05-10",
                 inputTokens: 2000,
                 outputTokens: 1000,
-                totalTokens: 3000,
-                costUSD: 0.1,
+                totalTokens: dailyTokens,
+                costUSD: dailyCost,
                 modelsUsed: nil,
-                modelBreakdowns: models)],
+                modelBreakdowns: models,
+                unpricedRequestCount: unpricedRequestCount)],
             sessions: sessions,
             updatedAt: Self.now)
         return .init(

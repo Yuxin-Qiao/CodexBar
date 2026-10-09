@@ -176,17 +176,18 @@ struct SpendProviderBreakdownRows: View {
                     if index > 0 {
                         self.childDivider
                     }
-                    HStack(spacing: 9) {
-                        SpendProviderIcon(
-                            provider: row.provider,
-                            sourceKind: row.sourceKind,
-                            style: .monochrome)
-                            .opacity(0.76)
-                        Text(row.displayName)
-                            .lineLimit(1)
-                            .help(row.displayName)
-                        Spacer()
-                        Text(spendDashboardMetricText(
+                    self.metricRow(
+                        title: HStack(spacing: 9) {
+                            SpendProviderIcon(
+                                provider: row.provider,
+                                sourceKind: row.sourceKind,
+                                style: .monochrome)
+                                .opacity(0.76)
+                            Text(row.displayName)
+                                .lineLimit(1)
+                                .help(row.displayName)
+                        },
+                        value: Text(spendDashboardMetricText(
                             cost: row.totalCost,
                             tokens: row.totalTokens,
                             currencyCode: self.currencyCode,
@@ -194,12 +195,10 @@ struct SpendProviderBreakdownRows: View {
                             costIsLowerBound: row.costIsLowerBound,
                             tokensAreLowerBound: row.tokensAreLowerBound))
                             .foregroundStyle(row.totalCost == nil && row.totalTokens == nil ? .secondary : .primary)
-                            .monospacedDigit()
-                            .fixedSize(horizontal: true, vertical: false)
-                    }
-                    .font(.subheadline)
-                    .padding(.leading, 32)
-                    .padding(.vertical, 4)
+                            .monospacedDigit())
+                        .font(.subheadline)
+                        .padding(.leading, 32)
+                        .padding(.vertical, 4)
                 }
             }
 
@@ -215,29 +214,28 @@ struct SpendProviderBreakdownRows: View {
                     if index > 0 {
                         self.childDivider
                     }
-                    HStack(spacing: 9) {
-                        SpendProviderIcon(provider: row.provider, style: .monochrome)
-                            .opacity(0.76)
-                        Text(row.modelName)
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                            .help(row.modelName)
-                            .accessibilityLabel(L("Models") + ": " + row.modelName)
-                        Spacer()
-                        Text(spendDashboardMetricText(
+                    self.metricRow(
+                        title: HStack(spacing: 9) {
+                            SpendProviderIcon(provider: row.provider, style: .monochrome)
+                                .opacity(0.76)
+                            Text(row.modelName)
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .help(row.modelName)
+                                .accessibilityLabel(L("Models") + ": " + row.modelName)
+                        },
+                        value: Text(spendDashboardMetricText(
                             cost: row.totalCost,
                             tokens: row.totalTokens,
                             currencyCode: self.currencyCode,
                             incompleteRequestCount: row.incompleteRequestCount))
                             .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                            .fixedSize(horizontal: true, vertical: false)
-                    }
-                    .font(.subheadline)
-                    .padding(.leading, 32)
-                    .padding(.vertical, 4)
-                    .accessibilityElement(children: .combine)
+                            .monospacedDigit())
+                        .font(.subheadline)
+                        .padding(.leading, 32)
+                        .padding(.vertical, 4)
+                        .accessibilityElement(children: .combine)
                 }
                 if breakdown.modelCount > spendProviderModelDisplayLimit {
                     let isExpanded = self.expandedProviders.contains(breakdown.provider)
@@ -269,17 +267,37 @@ struct SpendProviderBreakdownRows: View {
                 self.providerTitle(breakdown)
                 self.performanceText(breakdown).fixedSize()
                 Spacer(minLength: 12)
-                self.providerCost(breakdown)
+                self.providerCost(breakdown).fixedSize()
             }
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 10) {
-                    self.providerTitle(breakdown)
-                    Spacer(minLength: 12)
-                    self.providerCost(breakdown)
-                }
+                self.metricRow(
+                    title: self.providerTitle(breakdown),
+                    value: self.providerCost(breakdown),
+                    valueLeadingInset: 32)
                 self.performanceText(breakdown)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.leading, 32)
+            }
+        }
+    }
+
+    /// Preserve both identity and amounts when a long price or coverage label cannot fit beside the name.
+    private func metricRow(
+        title: some View,
+        value: some View,
+        valueLeadingInset: CGFloat = 29) -> some View
+    {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 9) {
+                title.fixedSize()
+                Spacer(minLength: 12)
+                value.fixedSize()
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                title
+                value
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, valueLeadingInset)
             }
         }
     }
@@ -305,7 +323,7 @@ struct SpendProviderBreakdownRows: View {
             tokensAreLowerBound: breakdown.tokensAreLowerBound))
             .font(.subheadline.weight(.medium))
             .foregroundStyle(breakdown.totalCost == nil && breakdown.totalTokens == nil ? .secondary : .primary)
-            .monospacedDigit().fixedSize(horizontal: true, vertical: false)
+            .monospacedDigit()
     }
 
     @ViewBuilder
