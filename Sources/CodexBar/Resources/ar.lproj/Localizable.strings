@@ -1734,5 +1734,15 @@
 "Not evaluated" = "لم يُقيَّم";
 "View sessions" = "عرض الجلسات";
 "Cache reuse score" = "درجة إعادة استخدام التخزين المؤقت";
-"Score = cached input share × 25. Experimental; not a task quality score." = "الدرجة = نسبة الإدخال المخزن مؤقتًا × 25. تجريبية؛ لا تقيس جودة المهام.";
 "Session costs cover entire sessions." = "تشمل التكاليف الجلسات بأكملها.";
+
+/* Inline harness score and diagnostics. */
+"spend_harness_measured_score" = "%@/%@ · تقييم %@/4 جوانب";
+"spend_harness_observing" = "قيد الرصد";
+"spend_harness_cache" = "التخزين المؤقت";
+"spend_harness_start" = "عبء البداية";
+"spend_harness_growth" = "النمو";
+"spend_harness_reliability" = "الموثوقية";
+"spend_harness_not_collected" = "لم تُجمع البيانات";
+"spend_harness_score_rule" = "التخزين المؤقت = round(35 × min(نسبة الإدخال المخزّن / 90%, 1))، مع خمس جولات مقاسة على الأقل. التقييم الجزئي يستخدم أوزان الجوانب المقاسة فقط؛ ويتطلب /100 الجوانب الأربعة. تشخيص تجريبي للسياق.";
+"spend_harness_missing_help" = "عبء البداية يحتاج تكوين التعليمات والنافذة الفعلية؛ والنمو يحتاج سياق كل طلب؛ والموثوقية تحتاج سجلات كاملة للطلبات والأخطاء. الجولات المقاسة المكتملة لا تثبت معدل الأخطاء.";

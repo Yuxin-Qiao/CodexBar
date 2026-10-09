@@ -1733,5 +1733,15 @@
 "Not evaluated" = "Not evaluated";
 "View sessions" = "View sessions";
 "Cache reuse score" = "Cache reuse score";
-"Score = cached input share × 25. Experimental; not a task quality score." = "Score = cached input share × 25. Experimental; not a task quality score.";
 "Session costs cover entire sessions." = "Session costs cover entire sessions.";
+
+/* Inline harness score and diagnostics. */
+"spend_harness_measured_score" = "%@/%@ · %@/4 dimensions rated";
+"spend_harness_observing" = "Observing";
+"spend_harness_cache" = "Cache";
+"spend_harness_start" = "Lean start";
+"spend_harness_growth" = "Growth";
+"spend_harness_reliability" = "Reliability";
+"spend_harness_not_collected" = "Not collected";
+"spend_harness_score_rule" = "Cache = round(35 × min(cached input share / 90%, 1)), with at least five measured turns. Partial scores use measured weights only; /100 requires all four dimensions. Experimental context diagnostics.";
+"spend_harness_missing_help" = "Lean start needs prompt composition and the effective window; growth needs per-request context; reliability needs complete request and error records. Completed timed turns cannot establish an error rate.";

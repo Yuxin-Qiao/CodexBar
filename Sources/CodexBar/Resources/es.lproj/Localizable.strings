@@ -1728,5 +1728,15 @@
 "Not evaluated" = "Sin evaluar";
 "View sessions" = "Ver sesiones";
 "Cache reuse score" = "Puntuación de reutilización de caché";
-"Score = cached input share × 25. Experimental; not a task quality score." = "Puntuación = proporción de entrada en caché × 25. Experimental; no mide la calidad de las tareas.";
 "Session costs cover entire sessions." = "Los costes corresponden a sesiones completas.";
+
+/* Inline harness score and diagnostics. */
+"spend_harness_measured_score" = "%@/%@ · %@/4 dimensiones evaluadas";
+"spend_harness_observing" = "En observación";
+"spend_harness_cache" = "Caché";
+"spend_harness_start" = "Carga inicial";
+"spend_harness_growth" = "Crecimiento";
+"spend_harness_reliability" = "Fiabilidad";
+"spend_harness_not_collected" = "Sin recopilar";
+"spend_harness_score_rule" = "Caché = round(35 × min(proporción de entrada en caché / 90%, 1)), con al menos cinco turnos medidos. La puntuación parcial usa solo los pesos medidos; /100 requiere las cuatro dimensiones. Diagnóstico experimental del contexto.";
+"spend_harness_missing_help" = "La carga inicial necesita la composición del prompt y la ventana efectiva; el crecimiento, contexto por solicitud; la fiabilidad, registros completos de solicitudes y errores. Los turnos medidos completados no permiten determinar la tasa de errores.";

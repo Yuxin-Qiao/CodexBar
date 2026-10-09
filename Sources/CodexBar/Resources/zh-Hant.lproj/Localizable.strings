@@ -1761,5 +1761,15 @@
 "Not evaluated" = "尚未評估";
 "View sessions" = "查看工作階段";
 "Cache reuse score" = "快取重用分數";
-"Score = cached input share × 25. Experimental; not a task quality score." = "分數 = 快取輸入占比 × 25。實驗性指標，不代表任務品質。";
 "Session costs cover entire sessions." = "費用統計涵蓋整個工作階段。";
+
+/* Inline harness score and diagnostics. */
+"spend_harness_measured_score" = "%@/%@ 分 · 已測 %@/4 項";
+"spend_harness_observing" = "觀察中";
+"spend_harness_cache" = "快取";
+"spend_harness_start" = "起步";
+"spend_harness_growth" = "增長";
+"spend_harness_reliability" = "可靠性";
+"spend_harness_not_collected" = "待收集";
+"spend_harness_score_rule" = "快取分 = round(35 × min(快取輸入比例 / 90%, 1))，至少五個有效回合。部分評分僅使用已測項權重，四項齊全才顯示百分制總分。這是實驗性上下文診斷。";
+"spend_harness_missing_help" = "起步需要提示詞組成與實際視窗；增長需要逐請求上下文；可靠性需要完整請求與錯誤記錄。僅成功計時回合無法得出錯誤率。";

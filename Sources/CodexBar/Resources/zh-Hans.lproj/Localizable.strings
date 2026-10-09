@@ -1744,5 +1744,15 @@
 "Not evaluated" = "尚未评价";
 "View sessions" = "查看会话";
 "Cache reuse score" = "缓存复用分";
-"Score = cached input share × 25. Experimental; not a task quality score." = "分数 = 缓存输入占比 × 25。实验性指标，不代表任务质量。";
 "Session costs cover entire sessions." = "费用统计覆盖整个会话。";
+
+/* Inline harness score and diagnostics. */
+"spend_harness_measured_score" = "%@/%@ 分 · 已测 %@/4 项";
+"spend_harness_observing" = "观察中";
+"spend_harness_cache" = "缓存";
+"spend_harness_start" = "起步";
+"spend_harness_growth" = "增长";
+"spend_harness_reliability" = "可靠性";
+"spend_harness_not_collected" = "待采集";
+"spend_harness_score_rule" = "缓存分 = round(35 × min(缓存输入比例 / 90%, 1))，至少五个有效回合。部分评分仅使用已测项的权重，四项齐全才显示百分制总分。这是实验性上下文诊断。";
+"spend_harness_missing_help" = "起步需要提示词构成与实际窗口；增长需要逐请求上下文；可靠性需要完整请求与错误记录。仅成功计时回合无法得出错误率。";

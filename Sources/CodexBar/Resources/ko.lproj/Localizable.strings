@@ -1699,5 +1699,15 @@
 "Not evaluated" = "평가되지 않음";
 "View sessions" = "세션 보기";
 "Cache reuse score" = "캐시 재사용 점수";
-"Score = cached input share × 25. Experimental; not a task quality score." = "점수 = 캐시된 입력 비율 × 25. 실험적 지표이며 작업 품질 점수가 아닙니다.";
 "Session costs cover entire sessions." = "비용은 전체 세션을 포함합니다.";
+
+/* Inline harness score and diagnostics. */
+"spend_harness_measured_score" = "%@/%@ · %@/4 항목 평가";
+"spend_harness_observing" = "관찰 중";
+"spend_harness_cache" = "캐시";
+"spend_harness_start" = "시작 부하";
+"spend_harness_growth" = "증가";
+"spend_harness_reliability" = "신뢰성";
+"spend_harness_not_collected" = "미수집";
+"spend_harness_score_rule" = "캐시 점수 = round(35 × min(캐시 입력 비율 / 90%, 1)). 측정된 턴이 최소 5개 필요합니다. 부분 점수는 측정 항목의 배점만 사용하며 100점 총점에는 네 항목이 모두 필요합니다. 실험적 컨텍스트 진단입니다.";
+"spend_harness_missing_help" = "시작 부하는 프롬프트 구성과 실제 창, 증가는 요청별 컨텍스트, 신뢰성은 전체 요청과 오류 기록이 필요합니다. 완료된 측정 턴만으로는 오류율을 알 수 없습니다.";

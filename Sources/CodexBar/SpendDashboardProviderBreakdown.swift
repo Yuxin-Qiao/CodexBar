@@ -254,7 +254,7 @@ struct SpendProviderBreakdownRows: View {
 
     private func providerHeader(_ breakdown: SpendProviderBreakdown) -> some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
                 self.providerTitle(breakdown)
                 self.performanceText(breakdown).fixedSize()
                 Spacer(minLength: 12)

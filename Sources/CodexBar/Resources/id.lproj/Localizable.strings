@@ -1733,5 +1733,15 @@
 "Not evaluated" = "Belum dievaluasi";
 "View sessions" = "Lihat sesi";
 "Cache reuse score" = "Skor penggunaan ulang cache";
-"Score = cached input share × 25. Experimental; not a task quality score." = "Skor = proporsi input dalam cache × 25. Eksperimental; bukan skor kualitas tugas.";
 "Session costs cover entire sessions." = "Biaya mencakup seluruh sesi.";
+
+/* Inline harness score and diagnostics. */
+"spend_harness_measured_score" = "%@/%@ · %@/4 dimensi dinilai";
+"spend_harness_observing" = "Mengamati";
+"spend_harness_cache" = "Cache";
+"spend_harness_start" = "Beban awal";
+"spend_harness_growth" = "Pertumbuhan";
+"spend_harness_reliability" = "Keandalan";
+"spend_harness_not_collected" = "Belum dikumpulkan";
+"spend_harness_score_rule" = "Cache = round(35 × min(porsi input tersimpan / 90%, 1)), dengan minimal lima giliran terukur. Skor sebagian hanya memakai bobot terukur; /100 memerlukan keempat dimensi. Diagnostik konteks eksperimental.";
+"spend_harness_missing_help" = "Beban awal memerlukan komposisi prompt dan jendela efektif; pertumbuhan memerlukan konteks per permintaan; keandalan memerlukan catatan lengkap permintaan dan kesalahan. Giliran terukur yang selesai tidak menentukan tingkat kesalahan.";

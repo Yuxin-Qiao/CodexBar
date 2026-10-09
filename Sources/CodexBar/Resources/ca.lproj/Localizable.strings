@@ -1733,5 +1733,15 @@
 "Not evaluated" = "Sense avaluar";
 "View sessions" = "Mostra les sessions";
 "Cache reuse score" = "Puntuació de reutilització de memòria cau";
-"Score = cached input share × 25. Experimental; not a task quality score." = "Puntuació = proporció d’entrada en memòria cau × 25. Experimental; no mesura la qualitat de les tasques.";
 "Session costs cover entire sessions." = "Els costos corresponen a sessions completes.";
+
+/* Inline harness score and diagnostics. */
+"spend_harness_measured_score" = "%@/%@ · %@/4 dimensions avaluades";
+"spend_harness_observing" = "En observació";
+"spend_harness_cache" = "Memòria cau";
+"spend_harness_start" = "Càrrega inicial";
+"spend_harness_growth" = "Creixement";
+"spend_harness_reliability" = "Fiabilitat";
+"spend_harness_not_collected" = "Sense recollir";
+"spend_harness_score_rule" = "Memòria cau = round(35 × min(proporció d’entrada en memòria cau / 90%, 1)), amb almenys cinc torns mesurats. La puntuació parcial només usa pesos mesurats; /100 requereix les quatre dimensions. Diagnòstic experimental del context.";
+"spend_harness_missing_help" = "La càrrega inicial necessita composició del prompt i finestra efectiva; el creixement, context per petició; la fiabilitat, registres complets de peticions i errors. Els torns mesurats completats no determinen la taxa d’errors.";

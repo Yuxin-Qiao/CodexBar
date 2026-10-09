@@ -1734,5 +1734,15 @@
 "Not evaluated" = "ยังไม่ได้ประเมิน";
 "View sessions" = "ดูเซสชัน";
 "Cache reuse score" = "คะแนนการใช้แคชซ้ำ";
-"Score = cached input share × 25. Experimental; not a task quality score." = "คะแนน = สัดส่วนอินพุตที่แคชไว้ × 25 เป็นการทดลอง ไม่ใช่คะแนนคุณภาพงาน";
 "Session costs cover entire sessions." = "ค่าใช้จ่ายครอบคลุมทั้งเซสชัน";
+
+/* Inline harness score and diagnostics. */
+"spend_harness_measured_score" = "%@/%@ · ประเมิน %@/4 ด้าน";
+"spend_harness_observing" = "กำลังสังเกต";
+"spend_harness_cache" = "แคช";
+"spend_harness_start" = "ภาระเริ่มต้น";
+"spend_harness_growth" = "การเพิ่มขึ้น";
+"spend_harness_reliability" = "ความน่าเชื่อถือ";
+"spend_harness_not_collected" = "ยังไม่ได้เก็บข้อมูล";
+"spend_harness_score_rule" = "แคช = round(35 × min(สัดส่วนอินพุตจากแคช / 90%, 1)) ต้องมีรอบที่วัดอย่างน้อยห้ารอบ คะแนนบางส่วนใช้เฉพาะน้ำหนักที่วัดได้ และ /100 ต้องครบทั้งสี่ด้าน เป็นการวินิจฉัยบริบทแบบทดลอง";
+"spend_harness_missing_help" = "ภาระเริ่มต้นต้องมีองค์ประกอบพรอมป์ต์และหน้าต่างจริง การเพิ่มขึ้นต้องมีบริบทแต่ละคำขอ ความน่าเชื่อถือต้องมีบันทึกคำขอและข้อผิดพลาดครบถ้วน รอบที่วัดและเสร็จแล้วอย่างเดียวไม่ระบุอัตราข้อผิดพลาด";

@@ -19,7 +19,7 @@ struct SpendAgentProfileTests {
         #expect(profile.performance.sampleCount == 5)
         #expect(profile.performance.medianDurationMilliseconds == 1000)
         #expect(abs(profile.performance.outputTokensPerSecond - 500.0 / 13) < 0.001)
-        #expect(try abs(#require(profile.cacheScore) - 25 * 990.0 / 1030) < 0.001)
+        #expect(profile.cacheScore == 35)
         #expect(profile.sessions.count == 2)
         #expect(profile.sessions.map(\.rank) == [1, 2])
         for _ in 0..<10 {
@@ -73,7 +73,7 @@ struct SpendAgentProfileTests {
             sampleSets: [Array(repeating: measured, count: 5) + Array(repeating: missing, count: 3)],
             partial: true)])
         let profile = try #require(group.agentProfiles.first)
-        #expect(profile.cacheScore == 20)
+        #expect(profile.cacheScore == 31)
         #expect(profile.cacheSampleCount == 5)
         #expect(profile.performance.sampleCount == 8)
         #expect(profile.performance.firstTokenSampleCount == 5)
@@ -82,6 +82,58 @@ struct SpendAgentProfileTests {
         let overflowGroup = try Self.group(inputs: [Self.input(sampleSets: [Array(repeating: overflow, count: 5)])])
         #expect(overflowGroup.agentProfiles.first?.cacheScore == nil)
         #expect(overflowGroup.agentProfiles.first?.performance.details.cachedInputFraction == nil)
+    }
+
+    @Test
+    func `cache points follow the ninety percent target and partial totals never become out of one hundred`() throws {
+        for (cached, expected) in [(0, 0), (45, 18), (79, 31), (80, 31), (88, 34), (90, 35), (100, 35)] {
+            let sample = try Self.sample(input: 100, cached: cached)
+            let performance = try #require(CostUsageTurnPerformanceSummary(samples: Array(repeating: sample, count: 5)))
+            let rating = SpendHarnessRating(performance: performance, cacheSampleCount: 5)
+            #expect(rating.cachePoints == expected)
+            #expect(rating.measuredPoints == expected)
+            #expect(rating.measuredMaximumPoints == 35)
+            #expect(rating.ratedDimensionCount == 1)
+            #expect(rating.totalPoints == nil)
+            #expect(rating.items.map(\.dimension.maximumPoints) == [35, 25, 20, 20])
+            #expect(rating.items.dropFirst().allSatisfy { $0.points == nil })
+        }
+        let sample = try Self.sample(input: 100, cached: 80)
+        for count in 1...4 {
+            let performance = try #require(CostUsageTurnPerformanceSummary(samples: Array(
+                repeating: sample,
+                count: count)))
+            let rating = SpendHarnessRating(performance: performance, cacheSampleCount: count)
+            #expect(rating.measuredPoints == nil)
+            #expect(rating.measuredMaximumPoints == 0)
+            #expect(rating.ratedDimensionCount == 0)
+        }
+    }
+
+    @Test
+    func `score and four dimension statuses are visible without opening another menu`() throws {
+        let measured = try Self.sample(input: 100, cached: 80, firstToken: 200)
+        let missing = try Self.sample()
+        let performance = try #require(CostUsageTurnPerformanceSummary(samples:
+            Array(repeating: measured, count: 5) + Array(repeating: missing, count: 3)))
+        let text = SpendHarnessPerformanceText(
+            performance: performance,
+            cacheSampleCount: 5,
+            historyScanIsPartial: true)
+        CodexBarLocalizationOverride.$appLanguage.withValue("en") {
+            #expect(text.scoreText == "31/35 · 1/4 dimensions rated")
+            #expect(text.dimensionsText == "Cache 31/35 · Lean start Not collected · " +
+                "Growth Not collected · Reliability Not collected")
+            #expect(text.observationsText.contains("80.0%"))
+            #expect(text.observationsText.contains("Cache: 5/8 turns"))
+            #expect(text.observationsText.contains("Partial history"))
+        }
+        CodexBarLocalizationOverride.$appLanguage.withValue("zh-Hans") {
+            #expect(text.scoreText == "31/35 分 · 已测 1/4 项")
+            #expect(text.dimensionsText == "缓存 31/35 · 起步 待采集 · 增长 待采集 · 可靠性 待采集")
+            #expect(text.observationsText.contains("缓存数据：5/8 个回合"))
+            #expect(text.observationsText.contains("历史记录不完整"))
+        }
     }
 
     @Test

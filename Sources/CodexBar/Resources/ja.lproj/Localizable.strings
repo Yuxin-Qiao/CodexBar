@@ -1730,5 +1730,15 @@
 "Not evaluated" = "未評価";
 "View sessions" = "セッションを表示";
 "Cache reuse score" = "キャッシュ再利用スコア";
-"Score = cached input share × 25. Experimental; not a task quality score." = "スコア = キャッシュ済み入力の割合 × 25。実験的な指標で、タスクの品質は示しません。";
 "Session costs cover entire sessions." = "費用はセッション全体のものです。";
+
+/* Inline harness score and diagnostics. */
+"spend_harness_measured_score" = "%@/%@ · %@/4 項目を評価";
+"spend_harness_observing" = "観測中";
+"spend_harness_cache" = "キャッシュ";
+"spend_harness_start" = "開始時負荷";
+"spend_harness_growth" = "増加";
+"spend_harness_reliability" = "信頼性";
+"spend_harness_not_collected" = "未収集";
+"spend_harness_score_rule" = "キャッシュ点 = round(35 × min(キャッシュ入力率 / 90%, 1))。計測済みターンが5件以上必要です。部分評価は計測項目の配点のみを使い、100点評価には全4項目が必要です。実験的なコンテキスト診断です。";
+"spend_harness_missing_help" = "開始時負荷にはプロンプト構成と有効ウィンドウ、増加にはリクエストごとのコンテキスト、信頼性には全リクエストとエラー記録が必要です。完了した計測ターンだけではエラー率は分かりません。";

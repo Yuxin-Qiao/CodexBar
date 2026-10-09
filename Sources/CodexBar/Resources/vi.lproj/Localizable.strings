@@ -1731,5 +1731,15 @@
 "Not evaluated" = "Chưa đánh giá";
 "View sessions" = "Xem phiên";
 "Cache reuse score" = "Điểm tái sử dụng bộ nhớ đệm";
-"Score = cached input share × 25. Experimental; not a task quality score." = "Điểm = tỷ lệ đầu vào được lưu đệm × 25. Thử nghiệm; không đánh giá chất lượng tác vụ.";
 "Session costs cover entire sessions." = "Chi phí bao gồm toàn bộ phiên.";
+
+/* Inline harness score and diagnostics. */
+"spend_harness_measured_score" = "%@/%@ · đã chấm %@/4 mục";
+"spend_harness_observing" = "Đang quan sát";
+"spend_harness_cache" = "Bộ nhớ đệm";
+"spend_harness_start" = "Tải ban đầu";
+"spend_harness_growth" = "Tăng trưởng";
+"spend_harness_reliability" = "Độ tin cậy";
+"spend_harness_not_collected" = "Chưa thu thập";
+"spend_harness_score_rule" = "Bộ nhớ đệm = round(35 × min(tỷ lệ đầu vào được lưu đệm / 90%, 1)), với ít nhất năm lượt được đo. Điểm một phần chỉ dùng trọng số đã đo; /100 cần đủ bốn mục. Chẩn đoán ngữ cảnh thử nghiệm.";
+"spend_harness_missing_help" = "Tải ban đầu cần thành phần lời nhắc và cửa sổ thực tế; tăng trưởng cần ngữ cảnh từng yêu cầu; độ tin cậy cần đầy đủ bản ghi yêu cầu và lỗi. Các lượt đã đo hoàn tất không xác định tỷ lệ lỗi.";

@@ -1733,5 +1733,15 @@
 "Not evaluated" = "Nie oceniono";
 "View sessions" = "Zobacz sesje";
 "Cache reuse score" = "Ocena ponownego użycia pamięci podręcznej";
-"Score = cached input share × 25. Experimental; not a task quality score." = "Ocena = udział wejścia z pamięci podręcznej × 25. Eksperymentalna; nie ocenia jakości zadań.";
 "Session costs cover entire sessions." = "Koszty dotyczą całych sesji.";
+
+/* Inline harness score and diagnostics. */
+"spend_harness_measured_score" = "%@/%@ · oceniono %@/4 wymiary";
+"spend_harness_observing" = "Obserwacja";
+"spend_harness_cache" = "Pamięć podręczna";
+"spend_harness_start" = "Obciążenie początkowe";
+"spend_harness_growth" = "Przyrost";
+"spend_harness_reliability" = "Niezawodność";
+"spend_harness_not_collected" = "Nie zebrano";
+"spend_harness_score_rule" = "Pamięć podręczna = round(35 × min(udział wejścia z pamięci / 90%, 1)), od pięciu zmierzonych tur. Wynik częściowy używa tylko zmierzonych wag; /100 wymaga wszystkich czterech wymiarów. Eksperymentalna diagnostyka kontekstu.";
+"spend_harness_missing_help" = "Obciążenie początkowe wymaga składu promptu i rzeczywistego okna; przyrost wymaga kontekstu dla każdego żądania; niezawodność wymaga pełnych danych żądań i błędów. Ukończone zmierzone tury nie ustalają częstości błędów.";

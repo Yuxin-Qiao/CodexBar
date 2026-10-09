@@ -1732,5 +1732,15 @@
 "Not evaluated" = "Değerlendirilmedi";
 "View sessions" = "Oturumları görüntüle";
 "Cache reuse score" = "Önbellek yeniden kullanım puanı";
-"Score = cached input share × 25. Experimental; not a task quality score." = "Puan = önbelleğe alınan girdi oranı × 25. Deneyseldir; görev kalitesini ölçmez.";
 "Session costs cover entire sessions." = "Maliyetler oturumların tamamını kapsar.";
+
+/* Inline harness score and diagnostics. */
+"spend_harness_measured_score" = "%@/%@ · %@/4 boyut puanlandı";
+"spend_harness_observing" = "Gözlemleniyor";
+"spend_harness_cache" = "Önbellek";
+"spend_harness_start" = "Başlangıç yükü";
+"spend_harness_growth" = "Büyüme";
+"spend_harness_reliability" = "Güvenilirlik";
+"spend_harness_not_collected" = "Toplanmadı";
+"spend_harness_score_rule" = "Önbellek = round(35 × min(önbellekteki girdi oranı / 90%, 1)), en az beş ölçülen turla. Kısmi puan yalnızca ölçülen ağırlıkları kullanır; /100 için dört boyut da gerekir. Deneysel bağlam tanılaması.";
+"spend_harness_missing_help" = "Başlangıç yükü istem bileşimini ve etkin pencereyi; büyüme istek başına bağlamı; güvenilirlik tüm istek ve hata kayıtlarını gerektirir. Tamamlanan ölçülen turlar hata oranını belirleyemez.";

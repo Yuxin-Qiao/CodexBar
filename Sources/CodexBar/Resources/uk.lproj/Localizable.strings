@@ -1730,5 +1730,15 @@
 "Not evaluated" = "Не оцінено";
 "View sessions" = "Переглянути сеанси";
 "Cache reuse score" = "Оцінка повторного використання кешу";
-"Score = cached input share × 25. Experimental; not a task quality score." = "Оцінка = частка кешованого введення × 25. Експериментальна; не оцінює якість завдань.";
 "Session costs cover entire sessions." = "Вартість охоплює цілі сеанси.";
+
+/* Inline harness score and diagnostics. */
+"spend_harness_measured_score" = "%@/%@ · оцінено %@/4 показників";
+"spend_harness_observing" = "Спостереження";
+"spend_harness_cache" = "Кеш";
+"spend_harness_start" = "Початкове навантаження";
+"spend_harness_growth" = "Зростання";
+"spend_harness_reliability" = "Надійність";
+"spend_harness_not_collected" = "Немає даних";
+"spend_harness_score_rule" = "Кеш = round(35 × min(частка кешованого вводу / 90%, 1)), щонайменше п’ять виміряних ходів. Часткова оцінка використовує лише виміряні ваги; /100 потребує всіх чотирьох показників. Експериментальна діагностика контексту.";
+"spend_harness_missing_help" = "Початковому навантаженню потрібні склад промпту й фактичне вікно; зростанню — контекст кожного запиту; надійності — повні записи запитів і помилок. Завершені виміряні ходи не визначають частоту помилок.";

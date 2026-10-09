@@ -1730,5 +1730,15 @@
 "Not evaluated" = "Nicht bewertet";
 "View sessions" = "Sitzungen anzeigen";
 "Cache reuse score" = "Cache-Wiederverwendungswert";
-"Score = cached input share × 25. Experimental; not a task quality score." = "Wert = Anteil gecachter Eingaben × 25. Experimentell; kein Maß für Aufgabenqualität.";
 "Session costs cover entire sessions." = "Sitzungskosten gelten für die gesamten Sitzungen.";
+
+/* Inline harness score and diagnostics. */
+"spend_harness_measured_score" = "%@/%@ · %@/4 Bereiche bewertet";
+"spend_harness_observing" = "In Beobachtung";
+"spend_harness_cache" = "Cache";
+"spend_harness_start" = "Startlast";
+"spend_harness_growth" = "Wachstum";
+"spend_harness_reliability" = "Zuverlässigkeit";
+"spend_harness_not_collected" = "Nicht erfasst";
+"spend_harness_score_rule" = "Cache = round(35 × min(Cache-Anteil der Eingabe / 90%, 1)), ab fünf gemessenen Runden. Teilwerte verwenden nur gemessene Gewichte; /100 erfordert alle vier Bereiche. Experimentelle Kontextdiagnose.";
+"spend_harness_missing_help" = "Die Startlast benötigt Prompt-Aufteilung und effektives Fenster, Wachstum den Kontext je Anfrage und Zuverlässigkeit vollständige Anfrage- und Fehlerdaten. Abgeschlossene gemessene Runden belegen keine Fehlerrate.";

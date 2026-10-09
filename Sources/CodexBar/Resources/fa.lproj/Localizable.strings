@@ -1734,5 +1734,15 @@
 "Not evaluated" = "ارزیابی نشده";
 "View sessions" = "نمایش نشست‌ها";
 "Cache reuse score" = "امتیاز استفادهٔ مجدد از حافظهٔ نهان";
-"Score = cached input share × 25. Experimental; not a task quality score." = "امتیاز = سهم ورودی ذخیره‌شده در حافظهٔ نهان × 25. آزمایشی است؛ کیفیت کار را نمی‌سنجد.";
 "Session costs cover entire sessions." = "هزینه‌ها کل نشست‌ها را پوشش می‌دهند.";
+
+/* Inline harness score and diagnostics. */
+"spend_harness_measured_score" = "%@/%@ · %@/4 بُعد ارزیابی‌شده";
+"spend_harness_observing" = "در حال مشاهده";
+"spend_harness_cache" = "حافظهٔ نهان";
+"spend_harness_start" = "بار اولیه";
+"spend_harness_growth" = "رشد";
+"spend_harness_reliability" = "قابلیت اعتماد";
+"spend_harness_not_collected" = "جمع‌آوری نشده";
+"spend_harness_score_rule" = "حافظهٔ نهان = round(35 × min(سهم ورودی ذخیره‌شده / 90%, 1))، با دست‌کم پنج نوبت اندازه‌گیری‌شده. امتیاز جزئی فقط از وزن‌های اندازه‌گیری‌شده استفاده می‌کند؛ /100 به هر چهار بُعد نیاز دارد. تشخیص آزمایشی زمینه است.";
+"spend_harness_missing_help" = "بار اولیه به ترکیب دستور و پنجرهٔ مؤثر نیاز دارد؛ رشد به زمینهٔ هر درخواست؛ و قابلیت اعتماد به ثبت کامل درخواست‌ها و خطاها. نوبت‌های اندازه‌گیری‌شدهٔ تکمیل‌شده نرخ خطا را مشخص نمی‌کنند.";

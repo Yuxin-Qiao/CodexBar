@@ -1731,5 +1731,15 @@
 "Not evaluated" = "Не оценена";
 "View sessions" = "Показать сессии";
 "Cache reuse score" = "Оценка повторного использования кэша";
-"Score = cached input share × 25. Experimental; not a task quality score." = "Оценка = доля кэшированного ввода × 25. Экспериментальная; не оценивает качество задач.";
 "Session costs cover entire sessions." = "Стоимость относится к полным сессиям.";
+
+/* Inline harness score and diagnostics. */
+"spend_harness_measured_score" = "%@/%@ · оценено %@/4 показателей";
+"spend_harness_observing" = "Наблюдение";
+"spend_harness_cache" = "Кэш";
+"spend_harness_start" = "Начальная нагрузка";
+"spend_harness_growth" = "Рост";
+"spend_harness_reliability" = "Надёжность";
+"spend_harness_not_collected" = "Нет данных";
+"spend_harness_score_rule" = "Кэш = round(35 × min(доля кэшированного ввода / 90%, 1)), минимум пять измеренных ходов. Частичная оценка использует только измеренные веса; /100 требует все четыре показателя. Экспериментальная диагностика контекста.";
+"spend_harness_missing_help" = "Начальной нагрузке нужны состав промпта и фактическое окно; росту — контекст каждого запроса; надёжности — полные записи запросов и ошибок. По завершённым измеренным ходам нельзя определить частоту ошибок.";

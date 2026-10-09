@@ -1729,5 +1729,15 @@
 "Not evaluated" = "Niet beoordeeld";
 "View sessions" = "Sessies bekijken";
 "Cache reuse score" = "Score voor cachehergebruik";
-"Score = cached input share × 25. Experimental; not a task quality score." = "Score = aandeel gecachete invoer × 25. Experimenteel; geen maat voor taakkwaliteit.";
 "Session costs cover entire sessions." = "De kosten gelden voor volledige sessies.";
+
+/* Inline harness score and diagnostics. */
+"spend_harness_measured_score" = "%@/%@ · %@/4 onderdelen beoordeeld";
+"spend_harness_observing" = "In observatie";
+"spend_harness_cache" = "Cache";
+"spend_harness_start" = "Startbelasting";
+"spend_harness_growth" = "Groei";
+"spend_harness_reliability" = "Betrouwbaarheid";
+"spend_harness_not_collected" = "Niet verzameld";
+"spend_harness_score_rule" = "Cache = round(35 × min(aandeel gecachte invoer / 90%, 1)), met minstens vijf gemeten beurten. De deelscore gebruikt alleen gemeten gewichten; /100 vereist alle vier onderdelen. Experimentele contextdiagnose.";
+"spend_harness_missing_help" = "Startbelasting vereist promptopbouw en het effectieve venster; groei vereist context per verzoek; betrouwbaarheid vereist volledige verzoek- en foutregistraties. Voltooide gemeten beurten bepalen geen foutpercentage.";

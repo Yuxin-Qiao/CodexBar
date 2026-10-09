@@ -1729,5 +1729,15 @@
 "Not evaluated" = "Inte utvärderad";
 "View sessions" = "Visa sessioner";
 "Cache reuse score" = "Poäng för cacheåteranvändning";
-"Score = cached input share × 25. Experimental; not a task quality score." = "Poäng = andel cachad indata × 25. Experimentell; mäter inte uppgifternas kvalitet.";
 "Session costs cover entire sessions." = "Kostnaderna avser hela sessioner.";
+
+/* Inline harness score and diagnostics. */
+"spend_harness_measured_score" = "%@/%@ · %@/4 delar bedömda";
+"spend_harness_observing" = "Observeras";
+"spend_harness_cache" = "Cache";
+"spend_harness_start" = "Startbelastning";
+"spend_harness_growth" = "Tillväxt";
+"spend_harness_reliability" = "Tillförlitlighet";
+"spend_harness_not_collected" = "Ej insamlat";
+"spend_harness_score_rule" = "Cache = round(35 × min(andel cachad indata / 90%, 1)), med minst fem uppmätta turer. Delpoäng använder bara uppmätta vikter; /100 kräver alla fyra delar. Experimentell kontextdiagnostik.";
+"spend_harness_missing_help" = "Startbelastning kräver promptens sammansättning och effektivt fönster; tillväxt kräver kontext per begäran; tillförlitlighet kräver fullständiga begäran- och felloggar. Slutförda uppmätta turer fastställer ingen felfrekvens.";

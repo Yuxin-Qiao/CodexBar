@@ -20,14 +20,8 @@ struct SpendAgentProfile: Identifiable, Equatable, Sendable {
     let cacheSampleCount: Int
     let historyScanIsPartial: Bool
 
-    static let minimumCacheSamples = 5
-    static let maximumCacheScore = 25.0
-    static let cacheScoreRuleVersion = "cache-reuse-v1"
-
-    var cacheScore: Double? {
-        guard self.cacheSampleCount >= Self.minimumCacheSamples,
-              let fraction = self.performance.details.cachedInputFraction else { return nil }
-        return fraction * Self.maximumCacheScore
+    var cacheScore: Int? {
+        SpendHarnessRating(performance: self.performance, cacheSampleCount: self.cacheSampleCount).cachePoints
     }
 
     var modelName: String {
