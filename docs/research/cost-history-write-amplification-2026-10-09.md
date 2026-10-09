@@ -27,3 +27,21 @@ Changes in serialized lengths can shift large suffixes, which the same-offset bl
 This is a local implementation on `fix/claude-history-incremental-writes`, not an installed or released app. No live provider, account, Keychain, or app restart probes ran. Missing usage tail #3316 and remote quota failures in the latest #3716 comment remain separate investigations.
 
 Full repository verification: `make check` passed, including script/packaging checks, SwiftFormat and SwiftLint (2,932 files, zero violations). `make test` passed all 148 groups covering 1,643 discovered selections on the first attempt, with zero retries or timeouts (26.4 minutes). The full suite repeated the append measurement at 89,073,644 versus 34,873,404 submitted bytes, preserving the same 60.85% reduction. Final recompilation and the affected 23 tests in two suites passed after correcting SwiftFormat's ambiguous multiple-closure rewrite with an explicitly typed callback. Targeted SwiftLint and SwiftFormat passed on the final test source; production source is unchanged from the full-suite run. Build concurrency is capped at two workers, using the repo's sanitized test environment. Evidence logs live beside the contribution audit.
+
+## PR follow-through — October 9
+
+PR #4396 is open. Linux glibc CI exposed a C-import nullability difference at `memcmp`; an explicit buffer unwrap now makes that boundary portable. The affected 23 macOS tests and `make check` passed after the fix. The earlier full local run covered the initial head; CI will verify the updated head on Linux and macOS.
+
+The built macOS `CodexBarCLI cost --provider claude --format json` was run as separate processes against synthetic history and isolated configuration/home/cache directories, with no inherited credential environment. After establishing an existing 24,000-row cache, 12 appends submitted 89,074,064 bytes through full-write fallback versus 34,874,180 with 24 successful artifact clones (60.85% less). Every CLI report matched between paths; final tokens were 360,180. A subsequent cold process submitted zero artifact bytes and matched the last report on both paths.
+
+A small DYLD observer counts successful `pwrite` bytes only for private Claude artifact files and can force `fclonefileat` to fail to exercise the full-write fallback. It changes no product code and records no transcript content or personal data. This is instrumented built-CLI evidence on a real clone-capable filesystem with synthetic records; it is not an installed app run, actual-account verification, or physical disk-wear measurement.
+
+Reproduce on macOS after building the CLI:
+
+```sh
+python3 docs/research/fixtures/claude-artifact-cli-proof.py \
+  --binary .build/debug/CodexBarCLI \
+  --output /tmp/codexbar-cli-write-proof-new
+```
+
+The output directory must be new; evidence and synthetic fixtures remain there. The probe compiles the adjacent observer with system Clang. No real home, account, Keychain, browser or app processes are used.

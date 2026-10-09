@@ -65,8 +65,9 @@ final class CostUsageClaudeArtifactWriter {
                 let count = min(self.comparison.count, incoming.count - consumed)
                 let next = base.advanced(by: consumed)
                 let equal = self.usesClone && self.comparison.withUnsafeMutableBytes { previous in
-                    pread(self.descriptor, previous.baseAddress, count, off_t(self.offset)) == count
-                        && memcmp(previous.baseAddress, next, count) == 0
+                    guard let previousBase = previous.baseAddress else { return false }
+                    return pread(self.descriptor, previousBase, count, off_t(self.offset)) == count
+                        && memcmp(previousBase, next, count) == 0
                 }
                 if !equal {
                     var remaining = count
