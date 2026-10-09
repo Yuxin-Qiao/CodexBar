@@ -559,6 +559,10 @@ CI and release builds install the static Linux SDK through `Scripts/install_swif
 FoundationNetworking/TLS teardown crash. Portable lint checks cover checksum rejection, download failures, and installer
 failure propagation without downloading an SDK.
 Changes to the installer require a musl CI build.
+The musl path gate also includes the native CLI inputs under `Sources/CQuickJS` and `Sources/CSQLite3`,
+including C sources, headers, and SQLite module maps. QuickJS's explicitly excluded `README.md` and `LICENSE`
+remain documentation-only changes. Rename and copy entries check both paths so moving a native input cannot
+silently skip the build.
 
 ### Format Code
 

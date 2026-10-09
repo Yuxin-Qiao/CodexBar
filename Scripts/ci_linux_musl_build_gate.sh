@@ -36,6 +36,12 @@ classify_path() {
     Sources/*.swift)
       require_linux_musl_build "$path" "changes Swift source code"
       ;;
+    Sources/CQuickJS/README.md|Sources/CQuickJS/LICENSE)
+      # Package.swift explicitly excludes these files from the native target.
+      ;;
+    Sources/CQuickJS/*|Sources/CSQLite3/*)
+      require_linux_musl_build "$path" "changes a native Linux CLI build input"
+      ;;
     Scripts/install_swift_static_sdk.sh)
       require_linux_musl_build "$path" "changes the Swift static SDK installer"
       ;;
@@ -86,7 +92,7 @@ fi
 if [[ "$linux_musl_build" == true ]]; then
   summary_reason="$linux_musl_build_reason"
 else
-  summary_reason="no Swift source, Package.swift, or static SDK installer changes"
+  summary_reason="no Swift source, native Linux CLI input, Package.swift, or static SDK installer changes"
 fi
 
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
