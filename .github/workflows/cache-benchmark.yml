@@ -3,6 +3,7 @@ name: SwiftPM cache experiment
 on:
   push:
     branches: [ci/cache-benchmark]
+    paths: [Scripts/benchmark_swiftpm_cache.py, 'Sources/**', 'Tests/**']
 
 permissions:
   contents: read
