@@ -508,7 +508,7 @@ struct SpendAgentProfileTests {
                         name: "rating-details-\(language)-\(dark ? "dark" : "light")",
                         width: 480,
                         dark: dark)
-                    for width in [520.0, 980.0] {
+                    for width in [360.0, 520.0, 980.0] {
                         let view = VStack(alignment: .leading, spacing: 18) {
                             Text(L("Usage & Spend")).font(.title2.bold())
                             Text(L("Providers")).font(.headline)

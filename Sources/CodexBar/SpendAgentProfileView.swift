@@ -11,17 +11,29 @@ struct SpendHarnessPerformanceText: View {
     let cacheSampleCount: Int
     let historyScanIsPartial: Bool
     @Environment(\.spendDashboardIsProjecting) private var isProjecting
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var contrast
     @State private var showsRatingDetails = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 6) {
             Button {
                 self.showsRatingDetails = true
             } label: {
-                HStack(alignment: .firstTextBaseline, spacing: 5) {
-                    Text(self.ratingText)
-                    Image(systemName: "info.circle")
-                        .foregroundStyle(.secondary)
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 7) {
+                        self.scoreBadge
+                        self.dimensionBadges
+                        self.detailsIcon
+                    }
+                    .fixedSize(horizontal: true, vertical: false)
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 7) {
+                            self.scoreBadge
+                            self.detailsIcon
+                        }
+                        self.dimensionBadges
+                    }
                 }
             }
             .buttonStyle(.plain)
@@ -36,7 +48,7 @@ struct SpendHarnessPerformanceText: View {
                     historyScanIsPartial: self.historyScanIsPartial)
             }
             Text(self.observationsText)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.primary.opacity(0.72))
         }
         .font(.caption)
         .monospacedDigit()
@@ -89,18 +101,56 @@ struct SpendHarnessPerformanceText: View {
             ? "Unavailable" : "spend_harness_observing")
     }
 
-    private var ratingText: AttributedString {
-        var score = AttributedString(self.scoreText)
-        score.font = .subheadline.weight(.semibold)
-        score.foregroundColor = switch self.rating.totalBand {
-        case .good: .green
-        case .moderate: .orange
-        case .poor: .red
-        case nil: .primary
+    private var style: SpendHarnessRatingStyle {
+        SpendHarnessRatingStyle(colorScheme: self.colorScheme, contrast: self.contrast)
+    }
+
+    private var scoreBadge: some View {
+        SpendHarnessScoreBadge(text: self.scoreText, band: self.rating.totalBand)
+    }
+
+    private var detailsIcon: some View {
+        Image(systemName: "info.circle")
+            .font(.subheadline)
+            .foregroundStyle(self.style.color(for: self.rating.totalBand))
+            .accessibilityHidden(true)
+    }
+
+    private var dimensionBadges: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 5) {
+                ForEach(Array(self.rating.items.enumerated()), id: \.offset) { _, item in
+                    self.dimensionBadge(item)
+                }
+            }
+            .fixedSize(horizontal: true, vertical: false)
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 5) {
+                    ForEach(Array(self.rating.items.prefix(2).enumerated()), id: \.offset) { _, item in
+                        self.dimensionBadge(item)
+                    }
+                }
+                HStack(spacing: 5) {
+                    ForEach(Array(self.rating.items.suffix(2).enumerated()), id: \.offset) { _, item in
+                        self.dimensionBadge(item)
+                    }
+                }
+            }
         }
-        var dimensions = AttributedString(" · " + self.dimensionsText)
-        dimensions.foregroundColor = .secondary
-        return score + dimensions
+    }
+
+    private func dimensionBadge(_ item: SpendHarnessRating.Item) -> some View {
+        let color = item.points == nil ? Color.secondary : self.style.color(for: item.dimension)
+        let description = item.description ?? self.unratedText(item.dimension)
+        let title = item.dimension == .duration && item.description != nil
+            ? description : item.dimension.title + " " + description
+        return Label(title, systemImage: SpendHarnessRatingStyle.symbol(for: item.dimension))
+            .font(.caption.weight(.medium))
+            .foregroundStyle(color)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(color.opacity(self.style.fillOpacity), in: RoundedRectangle(cornerRadius: 5))
+            .fixedSize()
     }
 
     var observationsText: String {
