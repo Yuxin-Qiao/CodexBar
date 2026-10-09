@@ -1735,11 +1735,11 @@
 "spend_harness_cache" = "Caché";
 
 /* Plain-language experience rating. */
-"spend_harness_total_score" = "Experiencia %@/100";
-"spend_harness_pending_score" = "Puntuación pendiente · %@/4 evaluados";
-"spend_harness_response" = "Respuesta";
-"spend_harness_output" = "Salida";
-"spend_harness_duration" = "Espera";
+"spend_harness_total_score" = "Referencia de ejecución %@/100";
+"spend_harness_pending_score" = "Ejecución pendiente · %@/4 evaluados";
+"spend_harness_response" = "Primer token";
+"spend_harness_output" = "Salida por turno";
+"spend_harness_duration" = "Duración del turno";
 "spend_harness_samples" = "%@ turnos observados";
 "spend_harness_good" = "Bueno";
 "spend_harness_moderate" = "Se puede mejorar";
@@ -1750,12 +1750,12 @@
 "spend_harness_fast" = "Rápido";
 "spend_harness_average" = "Normal";
 "spend_harness_slow" = "Lento";
-"spend_harness_wait_short" = "Espera corta";
-"spend_harness_wait_moderate" = "Espera media";
-"spend_harness_wait_long" = "Espera larga";
+"spend_harness_wait_short" = "Turno corto";
+"spend_harness_wait_moderate" = "Turno medio";
+"spend_harness_wait_long" = "Turno largo";
 "spend_harness_score_rule" = "Reglas experimentales: caché 35 (objetivo 90%); respuesta 25 (máximo a ≤1 s, cero a ≥10 s); salida del turno 20 (máximo a ≥20 tok/s); espera 20 (máximo a ≤30 s, cero a ≥300 s). Escala lineal redondeada a enteros. Al menos cinco observaciones por dimensión y las cuatro para un total.";
-"spend_harness_no_rating" = "Aún sin puntuación";
-"spend_harness_no_rating_help" = "Los registros disponibles no contienen datos suficientes para puntuar la experiencia.";
+"spend_harness_no_rating" = "Ejecución · Sin datos";
+"spend_harness_no_rating_help" = "La referencia de ejecución requiere tiempos nativos completos de Codex. Los datos ausentes no reciben puntuación.";
 
 /* Clickable rating evidence. */
 "spend_harness_details_title" = "Base de la puntuación";
@@ -1768,3 +1768,12 @@
 "spend_harness_method" = "Los valores intermedios se interpolan y redondean. Cada dimensión requiere %@ observaciones válidas; las cuatro son necesarias para una puntuación total.";
 "spend_harness_experimental_help" = "Los pesos y umbrales deben calibrarse. La duración incluye razonamiento, herramientas y espera; salida y duración se solapan. Se aplican los filtros actuales de fecha y origen.";
 "spend_harness_rule_version" = "Regla %@";
+
+/* Runtime observations and unreviewed task outcomes. */
+"spend_harness_scope_help" = "Referencia experimental de ejecución; no evalúa la calidad de las tareas ni la capacidad del agente.";
+"spend_harness_task_help" = "Los resultados de las tareas no se han revisado. Los turnos completados no demuestran la aceptación de las tareas; no hay tasa de éxito disponible.";
+"spend_harness_output_definition" = "Tokens de salida totales / tiempo total de los turnos, incluidos razonamiento, herramientas y esperas. El recuento varía según el modelo; no es la velocidad de generación de texto.";
+"spend_harness_duration_definition" = "Mediana del tiempo de un turno completo, incluidos razonamiento, herramientas y esperas. Las tareas más exigentes pueden tardar más.";
+"spend_harness_output_high" = "Alto";
+"spend_harness_output_average" = "Medio";
+"spend_harness_output_low" = "Bajo";

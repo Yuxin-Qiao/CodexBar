@@ -1,6 +1,6 @@
 import CodexBarCore
 
-/// Experimental experience heuristics for observed turns, not task quality or request reliability.
+/// Experimental runtime heuristics for observed turns, not task quality or request reliability.
 struct SpendHarnessRating: Equatable, Sendable {
     enum Dimension: CaseIterable, Sendable {
         case cache, response, output, duration
@@ -51,9 +51,12 @@ struct SpendHarnessRating: Equatable, Sendable {
             case (.cache, .good): "spend_harness_reuse_high"
             case (.cache, .moderate): "spend_harness_reuse_moderate"
             case (.cache, .poor): "spend_harness_reuse_low"
-            case (.response, .good), (.output, .good): "spend_harness_fast"
-            case (.response, .moderate), (.output, .moderate): "spend_harness_average"
-            case (.response, .poor), (.output, .poor): "spend_harness_slow"
+            case (.response, .good): "spend_harness_fast"
+            case (.response, .moderate): "spend_harness_average"
+            case (.response, .poor): "spend_harness_slow"
+            case (.output, .good): "spend_harness_output_high"
+            case (.output, .moderate): "spend_harness_output_average"
+            case (.output, .poor): "spend_harness_output_low"
             case (.duration, .good): "spend_harness_wait_short"
             case (.duration, .moderate): "spend_harness_wait_moderate"
             case (.duration, .poor): "spend_harness_wait_long"

@@ -1740,11 +1740,11 @@
 "spend_harness_cache" = "Cache";
 
 /* Plain-language experience rating. */
-"spend_harness_total_score" = "Pengalaman %@/100";
-"spend_harness_pending_score" = "Skor menunggu · %@/4 dinilai";
-"spend_harness_response" = "Respons";
-"spend_harness_output" = "Keluaran";
-"spend_harness_duration" = "Tunggu";
+"spend_harness_total_score" = "Referensi kinerja runtime %@/100";
+"spend_harness_pending_score" = "Penilaian runtime tertunda · %@/4 dinilai";
+"spend_harness_response" = "Token pertama";
+"spend_harness_output" = "Keluaran giliran";
+"spend_harness_duration" = "Durasi giliran";
 "spend_harness_samples" = "%@ giliran diamati";
 "spend_harness_good" = "Baik";
 "spend_harness_moderate" = "Bisa ditingkatkan";
@@ -1755,12 +1755,12 @@
 "spend_harness_fast" = "Cepat";
 "spend_harness_average" = "Sedang";
 "spend_harness_slow" = "Lambat";
-"spend_harness_wait_short" = "Tunggu singkat";
-"spend_harness_wait_moderate" = "Tunggu sedang";
-"spend_harness_wait_long" = "Tunggu lama";
+"spend_harness_wait_short" = "Giliran singkat";
+"spend_harness_wait_moderate" = "Giliran sedang";
+"spend_harness_wait_long" = "Giliran lama";
 "spend_harness_score_rule" = "Aturan eksperimen: cache 35 (target 90%); respons 25 (penuh pada ≤1 dtk, nol pada ≥10 dtk); keluaran giliran 20 (penuh pada ≥20 tok/s); tunggu 20 (penuh pada ≤30 dtk, nol pada ≥300 dtk). Skala linear dibulatkan ke bilangan bulat. Minimal lima observasi per dimensi dan keempatnya untuk total.";
-"spend_harness_no_rating" = "Belum ada nilai";
-"spend_harness_no_rating_help" = "Catatan yang tersedia belum memuat cukup data untuk menghitung nilai pengalaman.";
+"spend_harness_no_rating" = "Runtime · Tidak ada data";
+"spend_harness_no_rating_help" = "Referensi runtime memerlukan waktu giliran native Codex yang lengkap. Data yang hilang tidak diberi skor.";
 
 /* Clickable rating evidence. */
 "spend_harness_details_title" = "Dasar penilaian";
@@ -1773,3 +1773,12 @@
 "spend_harness_method" = "Nilai antara diskalakan linear dan dibulatkan. Setiap dimensi memerlukan %@ pengamatan valid; keempatnya diperlukan untuk nilai total.";
 "spend_harness_experimental_help" = "Bobot dan ambang perlu dikalibrasi. Waktu mencakup penalaran, alat, dan menunggu; keluaran dan durasi saling tumpang tindih. Filter tanggal dan sumber saat ini berlaku.";
 "spend_harness_rule_version" = "Aturan %@";
+
+/* Runtime observations and unreviewed task outcomes. */
+"spend_harness_scope_help" = "Referensi runtime eksperimental; tidak menilai kualitas tugas atau kemampuan agen.";
+"spend_harness_task_help" = "Hasil tugas belum ditinjau. Giliran yang selesai tidak membuktikan tugas diterima; tingkat keberhasilan tugas belum tersedia.";
+"spend_harness_output_definition" = "Total token keluaran / total waktu giliran, termasuk penalaran, alat, dan waktu tunggu. Hitungan token berbeda antar model; ini bukan kecepatan pembuatan teks.";
+"spend_harness_duration_definition" = "Median waktu giliran lengkap, termasuk penalaran, alat, dan waktu tunggu. Tugas yang lebih sulit dapat memerlukan waktu lebih lama.";
+"spend_harness_output_high" = "Tinggi";
+"spend_harness_output_average" = "Sedang";
+"spend_harness_output_low" = "Rendah";

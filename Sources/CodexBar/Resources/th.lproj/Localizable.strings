@@ -1741,11 +1741,11 @@
 "spend_harness_cache" = "แคช";
 
 /* Plain-language experience rating. */
-"spend_harness_total_score" = "ประสบการณ์ %@/100";
-"spend_harness_pending_score" = "รอคะแนน · ประเมิน %@/4 ด้าน";
-"spend_harness_response" = "ตอบสนอง";
-"spend_harness_output" = "เอาต์พุต";
-"spend_harness_duration" = "การรอ";
+"spend_harness_total_score" = "ค่าการทำงานอ้างอิง %@/100";
+"spend_harness_pending_score" = "รอประเมินการทำงาน · ประเมินแล้ว %@/4";
+"spend_harness_response" = "โทเคนแรก";
+"spend_harness_output" = "เอาต์พุตต่อรอบ";
+"spend_harness_duration" = "ระยะเวลารอบ";
 "spend_harness_samples" = "สังเกต %@ รอบ";
 "spend_harness_good" = "ดี";
 "spend_harness_moderate" = "ยังปรับปรุงได้";
@@ -1756,12 +1756,12 @@
 "spend_harness_fast" = "เร็ว";
 "spend_harness_average" = "ปานกลาง";
 "spend_harness_slow" = "ช้า";
-"spend_harness_wait_short" = "รอสั้น";
-"spend_harness_wait_moderate" = "รอปานกลาง";
-"spend_harness_wait_long" = "รอนาน";
+"spend_harness_wait_short" = "รอบสั้น";
+"spend_harness_wait_moderate" = "รอบปานกลาง";
+"spend_harness_wait_long" = "รอบนาน";
 "spend_harness_score_rule" = "กฎทดลอง: แคช 35 (เป้าหมาย 90%); ตอบสนอง 25 (เต็มเมื่อ ≤1 วินาที ศูนย์เมื่อ ≥10 วินาที); เอาต์พุตทั้งรอบ 20 (เต็มเมื่อ ≥20 tok/s); รอ 20 (เต็มเมื่อ ≤30 วินาที ศูนย์เมื่อ ≥300 วินาที) คิดแบบเชิงเส้นและปัดเป็นจำนวนเต็ม ต้องมีอย่างน้อยห้าข้อมูลต่อด้านและครบสี่ด้านจึงรวมคะแนน";
-"spend_harness_no_rating" = "ยังไม่มีคะแนน";
-"spend_harness_no_rating_help" = "บันทึกที่มีอยู่ยังมีข้อมูลไม่เพียงพอสำหรับคำนวณคะแนนประสบการณ์ใช้งาน";
+"spend_harness_no_rating" = "การทำงาน · ไม่มีข้อมูล";
+"spend_harness_no_rating_help" = "ค่าอ้างอิงต้องใช้เวลารอบแบบเนทีฟ Codex ที่ครบถ้วน ข้อมูลที่ขาดหายจะไม่ถูกให้คะแนน";
 
 /* Clickable rating evidence. */
 "spend_harness_details_title" = "เกณฑ์การให้คะแนน";
@@ -1774,3 +1774,12 @@
 "spend_harness_method" = "ค่าระหว่างเกณฑ์คำนวณแบบเชิงเส้นและปัดเป็นจำนวนเต็ม แต่ละด้านต้องมีข้อมูลที่ใช้ได้ %@ รายการ และต้องครบทั้งสี่ด้านจึงมีคะแนนรวม";
 "spend_harness_experimental_help" = "น้ำหนักและเกณฑ์ยังต้องปรับเทียบ เวลารวมการคิด เครื่องมือ และการรอ ผลลัพธ์และระยะเวลาซ้อนทับกัน ใช้ตัวกรองวันที่และแหล่งข้อมูลปัจจุบัน";
 "spend_harness_rule_version" = "กฎ %@";
+
+/* Runtime observations and unreviewed task outcomes. */
+"spend_harness_scope_help" = "ค่าอ้างอิงการทำงานแบบทดลอง ไม่ได้ประเมินคุณภาพงานหรือความสามารถของเอเจนต์";
+"spend_harness_task_help" = "ยังไม่ได้ตรวจสอบผลลัพธ์ของงาน การจบรอบไม่ได้ยืนยันว่างานผ่านการยอมรับ จึงยังไม่มีอัตราความสำเร็จของงาน";
+"spend_harness_output_definition" = "โทเคนเอาต์พุตทั้งหมด / เวลารอบทั้งหมด รวมการให้เหตุผล เครื่องมือ และการรอ วิธีนับโทเคนต่างกันตามโมเดล นี่ไม่ใช่ความเร็วในการสร้างข้อความ";
+"spend_harness_duration_definition" = "ค่ามัธยฐานของเวลารอบที่สมบูรณ์ รวมการให้เหตุผล เครื่องมือ และการรอ งานที่ซับซ้อนกว่าอาจใช้เวลานานกว่า";
+"spend_harness_output_high" = "สูง";
+"spend_harness_output_average" = "ปานกลาง";
+"spend_harness_output_low" = "ต่ำ";

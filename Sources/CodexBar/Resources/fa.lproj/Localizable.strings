@@ -1741,11 +1741,11 @@
 "spend_harness_cache" = "حافظهٔ نهان";
 
 /* Plain-language experience rating. */
-"spend_harness_total_score" = "تجربه %@/۱۰۰";
-"spend_harness_pending_score" = "امتیاز در انتظار · %@/۴ بُعد";
-"spend_harness_response" = "پاسخ";
-"spend_harness_output" = "خروجی";
-"spend_harness_duration" = "انتظار";
+"spend_harness_total_score" = "مرجع اجرا %@/100";
+"spend_harness_pending_score" = "ارزیابی اجرا در انتظار · %@/4 ارزیابی‌شده";
+"spend_harness_response" = "اولین توکن";
+"spend_harness_output" = "خروجی نوبت";
+"spend_harness_duration" = "زمان نوبت";
 "spend_harness_samples" = "%@ نوبت مشاهده‌شده";
 "spend_harness_good" = "خوب";
 "spend_harness_moderate" = "قابل بهبود";
@@ -1756,12 +1756,12 @@
 "spend_harness_fast" = "سریع";
 "spend_harness_average" = "متوسط";
 "spend_harness_slow" = "کند";
-"spend_harness_wait_short" = "انتظار کوتاه";
-"spend_harness_wait_moderate" = "انتظار متوسط";
-"spend_harness_wait_long" = "انتظار طولانی";
+"spend_harness_wait_short" = "نوبت کوتاه";
+"spend_harness_wait_moderate" = "نوبت متوسط";
+"spend_harness_wait_long" = "نوبت طولانی";
 "spend_harness_score_rule" = "قواعد آزمایشی: حافظهٔ نهان 35 (هدف 90%)؛ پاسخ 25 (کامل در ≤1 ثانیه، صفر در ≥10 ثانیه)؛ خروجی نوبت 20 (کامل در ≥20 tok/s)؛ انتظار 20 (کامل در ≤30 ثانیه، صفر در ≥300 ثانیه). مقیاس خطی با گردکردن به عدد صحیح. دست‌کم پنج مشاهده برای هر بُعد و هر چهار بُعد برای مجموع لازم است.";
-"spend_harness_no_rating" = "هنوز امتیازی وجود ندارد";
-"spend_harness_no_rating_help" = "سوابق موجود داده‌های کافی برای محاسبه امتیاز تجربه ندارند.";
+"spend_harness_no_rating" = "اجرا · بدون داده";
+"spend_harness_no_rating_help" = "مرجع اجرا به زمان‌بندی کامل بومی Codex نیاز دارد. به داده‌های مفقود امتیازی داده نمی‌شود.";
 
 /* Clickable rating evidence. */
 "spend_harness_details_title" = "مبنای امتیاز";
@@ -1774,3 +1774,12 @@
 "spend_harness_method" = "مقادیر میانی خطی محاسبه و گرد می‌شوند. هر بُعد به %@ مشاهدهٔ معتبر نیاز دارد و برای مجموع هر چهار بُعد لازم است.";
 "spend_harness_experimental_help" = "وزن‌ها و آستانه‌ها به تنظیم نیاز دارند. زمان شامل استدلال، ابزار و انتظار است؛ خروجی و مدت همپوشانی دارند. فیلترهای تاریخ و منبع فعلی اعمال می‌شوند.";
 "spend_harness_rule_version" = "قاعده %@";
+
+/* Runtime observations and unreviewed task outcomes. */
+"spend_harness_scope_help" = "مرجع اجرای آزمایشی؛ کیفیت وظیفه یا توانایی عامل را ارزیابی نمی‌کند.";
+"spend_harness_task_help" = "نتایج وظایف بررسی نشده‌اند. پایان نوبت‌ها اثبات پذیرش وظایف نیست؛ بنابراین نرخ موفقیت وظایف در دسترس نیست.";
+"spend_harness_output_definition" = "مجموع توکن‌های خروجی / مجموع زمان نوبت‌ها، شامل استدلال، ابزارها و انتظار. شمارش توکن‌ها بین مدل‌ها متفاوت است؛ این سرعت تولید متن نیست.";
+"spend_harness_duration_definition" = "میانه زمان یک نوبت کامل، شامل استدلال، ابزارها و انتظار. وظایف دشوارتر ممکن است زمان بیشتری بگیرند.";
+"spend_harness_output_high" = "زیاد";
+"spend_harness_output_average" = "متوسط";
+"spend_harness_output_low" = "کم";

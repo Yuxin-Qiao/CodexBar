@@ -1739,11 +1739,11 @@
 "spend_harness_cache" = "Önbellek";
 
 /* Plain-language experience rating. */
-"spend_harness_total_score" = "Deneyim %@/100";
-"spend_harness_pending_score" = "Puan bekleniyor · %@/4 değerlendirildi";
-"spend_harness_response" = "Yanıt";
-"spend_harness_output" = "Çıktı";
-"spend_harness_duration" = "Bekleme";
+"spend_harness_total_score" = "Çalışma referansı %@/100";
+"spend_harness_pending_score" = "Çalışma beklemede · %@/4 değerlendirildi";
+"spend_harness_response" = "İlk token";
+"spend_harness_output" = "Tur çıktısı";
+"spend_harness_duration" = "Tur süresi";
 "spend_harness_samples" = "%@ tur gözlemlendi";
 "spend_harness_good" = "İyi";
 "spend_harness_moderate" = "İyileştirilebilir";
@@ -1754,12 +1754,12 @@
 "spend_harness_fast" = "Hızlı";
 "spend_harness_average" = "Orta";
 "spend_harness_slow" = "Yavaş";
-"spend_harness_wait_short" = "Kısa bekleme";
-"spend_harness_wait_moderate" = "Orta bekleme";
-"spend_harness_wait_long" = "Uzun bekleme";
+"spend_harness_wait_short" = "Kısa tur";
+"spend_harness_wait_moderate" = "Orta tur";
+"spend_harness_wait_long" = "Uzun tur";
 "spend_harness_score_rule" = "Deneysel kurallar: önbellek 35 (hedef 90%); yanıt 25 (≤1 sn tam, ≥10 sn sıfır); tur çıktısı 20 (≥20 tok/s tam); bekleme 20 (≤30 sn tam, ≥300 sn sıfır). Doğrusal ölçek ve tam sayıya yuvarlama. Boyut başına en az beş gözlem, toplam için dört boyut da gerekir.";
-"spend_harness_no_rating" = "Henüz puan yok";
-"spend_harness_no_rating_help" = "Mevcut kayıtlar, kullanım deneyimini puanlamak için yeterli veri içermiyor.";
+"spend_harness_no_rating" = "Çalışma · Veri yok";
+"spend_harness_no_rating_help" = "Çalışma referansı için eksiksiz yerel Codex zaman verileri gerekir. Eksik verilere puan verilmez.";
 
 /* Clickable rating evidence. */
 "spend_harness_details_title" = "Puanın dayanağı";
@@ -1772,3 +1772,12 @@
 "spend_harness_method" = "Ara değerler doğrusal ölçeklenir ve yuvarlanır. Her boyut %@ geçerli gözlem gerektirir; toplam için dördü de gereklidir.";
 "spend_harness_experimental_help" = "Ağırlıklar ve eşikler kalibre edilmelidir. Tur süresi düşünme, araç ve beklemeyi içerir; çıktı ve süre örtüşür. Geçerli tarih ve kaynak filtreleri uygulanır.";
 "spend_harness_rule_version" = "Kural %@";
+
+/* Runtime observations and unreviewed task outcomes. */
+"spend_harness_scope_help" = "Deneysel çalışma referansı; görev kalitesini veya ajan yeteneğini değerlendirmez.";
+"spend_harness_task_help" = "Görev sonuçları incelenmedi. Tamamlanan turlar görevlerin kabul edildiğini kanıtlamaz; görev başarı oranı mevcut değildir.";
+"spend_harness_output_definition" = "Toplam çıktı tokenları / toplam tur süresi; akıl yürütme, araçlar ve bekleme dahil. Token sayımı modele göre değişir; bu, metin üretim hızı değildir.";
+"spend_harness_duration_definition" = "Akıl yürütme, araçlar ve bekleme dahil tam bir turun medyan süresi. Daha zor görevler daha uzun sürebilir.";
+"spend_harness_output_high" = "Yüksek";
+"spend_harness_output_average" = "Orta";
+"spend_harness_output_low" = "Düşük";

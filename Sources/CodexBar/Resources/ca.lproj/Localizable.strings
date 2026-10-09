@@ -1740,11 +1740,11 @@
 "spend_harness_cache" = "Memòria cau";
 
 /* Plain-language experience rating. */
-"spend_harness_total_score" = "Experiència %@/100";
-"spend_harness_pending_score" = "Puntuació pendent · %@/4 avaluats";
-"spend_harness_response" = "Resposta";
-"spend_harness_output" = "Sortida";
-"spend_harness_duration" = "Espera";
+"spend_harness_total_score" = "Referència d’execució %@/100";
+"spend_harness_pending_score" = "Execució pendent · %@/4 avaluats";
+"spend_harness_response" = "Primer token";
+"spend_harness_output" = "Sortida per torn";
+"spend_harness_duration" = "Durada del torn";
 "spend_harness_samples" = "%@ torns observats";
 "spend_harness_good" = "Bo";
 "spend_harness_moderate" = "Es pot millorar";
@@ -1755,12 +1755,12 @@
 "spend_harness_fast" = "Ràpid";
 "spend_harness_average" = "Normal";
 "spend_harness_slow" = "Lent";
-"spend_harness_wait_short" = "Espera curta";
-"spend_harness_wait_moderate" = "Espera mitjana";
-"spend_harness_wait_long" = "Espera llarga";
+"spend_harness_wait_short" = "Torn curt";
+"spend_harness_wait_moderate" = "Torn mitjà";
+"spend_harness_wait_long" = "Torn llarg";
 "spend_harness_score_rule" = "Regles experimentals: memòria cau 35 (objectiu 90%); resposta 25 (màxim a ≤1 s, zero a ≥10 s); sortida del torn 20 (màxim a ≥20 tok/s); espera 20 (màxim a ≤30 s, zero a ≥300 s). Escala lineal arrodonida a enters. Almenys cinc observacions per dimensió i les quatre per al total.";
-"spend_harness_no_rating" = "Encara sense puntuació";
-"spend_harness_no_rating_help" = "Els registres disponibles no contenen prou dades per puntuar l’experiència.";
+"spend_harness_no_rating" = "Execució · Sense dades";
+"spend_harness_no_rating_help" = "La referència d’execució requereix temps natius complets de Codex. Les dades absents no reben puntuació.";
 
 /* Clickable rating evidence. */
 "spend_harness_details_title" = "Criteris de puntuació";
@@ -1773,3 +1773,12 @@
 "spend_harness_method" = "Els valors intermedis s’interpolen i s’arrodoneixen. Cada dimensió requereix %@ observacions vàlides; calen les quatre per al total.";
 "spend_harness_experimental_help" = "Cal calibrar els pesos i llindars. El temps inclou raonament, eines i espera; sortida i durada se solapen. S’apliquen els filtres actuals de data i origen.";
 "spend_harness_rule_version" = "Regla %@";
+
+/* Runtime observations and unreviewed task outcomes. */
+"spend_harness_scope_help" = "Referència experimental d’execució; no avalua la qualitat de les tasques ni la capacitat de l’agent.";
+"spend_harness_task_help" = "Els resultats de les tasques no s’han revisat. Els torns completats no demostren l’acceptació de les tasques; no hi ha taxa d’èxit disponible.";
+"spend_harness_output_definition" = "Tokens de sortida totals / temps total dels torns, incloent raonament, eines i esperes. El recompte varia segons el model; no és la velocitat de generació de text.";
+"spend_harness_duration_definition" = "Mediana del temps d’un torn complet, incloent raonament, eines i esperes. Les tasques més exigents poden trigar més.";
+"spend_harness_output_high" = "Alt";
+"spend_harness_output_average" = "Mitjà";
+"spend_harness_output_low" = "Baix";

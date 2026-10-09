@@ -1740,11 +1740,11 @@
 "spend_harness_cache" = "Cache";
 
 /* Plain-language experience rating. */
-"spend_harness_total_score" = "Experience %@/100";
-"spend_harness_pending_score" = "Score pending · %@/4 rated";
-"spend_harness_response" = "Response";
-"spend_harness_output" = "Output";
-"spend_harness_duration" = "Wait";
+"spend_harness_total_score" = "Runtime reference %@/100";
+"spend_harness_pending_score" = "Runtime pending · %@/4 rated";
+"spend_harness_response" = "First token";
+"spend_harness_output" = "Turn output";
+"spend_harness_duration" = "Turn time";
 "spend_harness_samples" = "%@ turns observed";
 "spend_harness_good" = "Good";
 "spend_harness_moderate" = "Room to improve";
@@ -1755,12 +1755,12 @@
 "spend_harness_fast" = "Fast";
 "spend_harness_average" = "Average";
 "spend_harness_slow" = "Slow";
-"spend_harness_wait_short" = "Short wait";
-"spend_harness_wait_moderate" = "Moderate wait";
-"spend_harness_wait_long" = "Long wait";
+"spend_harness_wait_short" = "Short turn";
+"spend_harness_wait_moderate" = "Moderate turn";
+"spend_harness_wait_long" = "Long turn";
 "spend_harness_score_rule" = "Experimental rules: cache 35 (90% target); response 25 (full at ≤1 s, zero at ≥10 s); whole-turn output 20 (full at ≥20 tok/s); wait 20 (full at ≤30 s, zero at ≥300 s). Values scale linearly and round to integer points. At least five observations per dimension; all four are needed for a total.";
-"spend_harness_no_rating" = "No rating yet";
-"spend_harness_no_rating_help" = "The available records do not contain enough data for an experience score.";
+"spend_harness_no_rating" = "Runtime · No data";
+"spend_harness_no_rating_help" = "A runtime reference needs complete native Codex timing. Missing data receives no score.";
 
 /* Clickable rating evidence. */
 "spend_harness_details_title" = "Rating basis";
@@ -1773,3 +1773,12 @@
 "spend_harness_method" = "Points scale linearly and round to integers. Each dimension needs %@ valid observations; all four are required for a total.";
 "spend_harness_experimental_help" = "Weights and thresholds need calibration. Turn time includes reasoning, tools and waiting; output and duration overlap. Current date and source filters apply.";
 "spend_harness_rule_version" = "Rule %@";
+
+/* Runtime observations and unreviewed task outcomes. */
+"spend_harness_scope_help" = "Experimental runtime reference; this does not rate task quality or agent capability.";
+"spend_harness_task_help" = "Task outcomes have not been reviewed. Completed turns do not prove task acceptance, so no task success rate is available.";
+"spend_harness_output_definition" = "Total output tokens / total turn time, including reasoning, tools and waits. Token counts vary by model; this is not text generation speed.";
+"spend_harness_duration_definition" = "Median time for a complete turn, including reasoning, tools and waits. More demanding tasks may take longer.";
+"spend_harness_output_high" = "High";
+"spend_harness_output_average" = "Medium";
+"spend_harness_output_low" = "Low";

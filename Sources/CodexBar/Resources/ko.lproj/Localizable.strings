@@ -1706,11 +1706,11 @@
 "spend_harness_cache" = "캐시";
 
 /* Plain-language experience rating. */
-"spend_harness_total_score" = "체감 %@/100";
-"spend_harness_pending_score" = "점수 관찰 중 · %@/4 항목";
-"spend_harness_response" = "응답";
-"spend_harness_output" = "출력";
-"spend_harness_duration" = "대기";
+"spend_harness_total_score" = "실행 참고 %@/100";
+"spend_harness_pending_score" = "실행 관찰 중 · %@/4개 평가";
+"spend_harness_response" = "첫 토큰";
+"spend_harness_output" = "턴 출력";
+"spend_harness_duration" = "턴 시간";
 "spend_harness_samples" = "%@턴 관찰";
 "spend_harness_good" = "양호";
 "spend_harness_moderate" = "개선 여지 있음";
@@ -1721,12 +1721,12 @@
 "spend_harness_fast" = "빠름";
 "spend_harness_average" = "보통";
 "spend_harness_slow" = "느림";
-"spend_harness_wait_short" = "대기 짧음";
-"spend_harness_wait_moderate" = "대기 보통";
-"spend_harness_wait_long" = "대기 김";
+"spend_harness_wait_short" = "짧은 턴";
+"spend_harness_wait_moderate" = "보통 턴";
+"spend_harness_wait_long" = "긴 턴";
 "spend_harness_score_rule" = "실험 규칙: 캐시 35점(목표 90%), 응답 25점(≤1초 만점, ≥10초 0점), 전체 턴 출력 20점(≥20 tok/s 만점), 대기 20점(≤30초 만점, ≥300초 0점). 중간값은 선형으로 계산하고 정수로 반올림합니다. 항목별 최소 5개 관측이 필요하며 총점에는 네 항목이 모두 필요합니다.";
-"spend_harness_no_rating" = "아직 평가 없음";
-"spend_harness_no_rating_help" = "사용 가능한 기록에 이용 경험을 평가할 만큼 충분한 데이터가 없습니다.";
+"spend_harness_no_rating" = "실행 · 데이터 없음";
+"spend_harness_no_rating_help" = "실행 참고 점수에는 네이티브 Codex의 완전한 턴 시간 기록이 필요합니다. 누락된 데이터에는 점수를 부여하지 않습니다.";
 
 /* Clickable rating evidence. */
 "spend_harness_details_title" = "평가 근거";
@@ -1739,3 +1739,12 @@
 "spend_harness_method" = "중간값은 선형 계산 후 정수로 반올림합니다. 항목마다 유효 관측 %@개가 필요하며, 네 항목이 모두 있어야 총점을 계산합니다.";
 "spend_harness_experimental_help" = "가중치와 기준값은 조정이 필요합니다. 전체 회차에는 추론·도구·대기가 포함되어 출력과 소요 시간이 겹칩니다. 현재 날짜와 출처 필터를 적용합니다.";
 "spend_harness_rule_version" = "규칙 %@";
+
+/* Runtime observations and unreviewed task outcomes. */
+"spend_harness_scope_help" = "실험적 실행 참고 점수이며, 작업 품질이나 에이전트 능력을 평가하지 않습니다.";
+"spend_harness_task_help" = "작업 결과는 아직 검토되지 않았습니다. 턴 완료가 작업 합격을 증명하지 않으므로 작업 성공률은 없습니다.";
+"spend_harness_output_definition" = "총 출력 토큰 / 총 턴 시간이며 추론, 도구 및 대기를 포함합니다. 토큰 계산 방식은 모델마다 다르며 텍스트 생성 속도가 아닙니다.";
+"spend_harness_duration_definition" = "추론, 도구 및 대기를 포함한 전체 턴 시간의 중앙값입니다. 복잡한 작업은 더 오래 걸릴 수 있습니다.";
+"spend_harness_output_high" = "높음";
+"spend_harness_output_average" = "중간";
+"spend_harness_output_low" = "낮음";

@@ -1751,11 +1751,11 @@
 "spend_harness_cache" = "缓存";
 
 /* Plain-language experience rating. */
-"spend_harness_total_score" = "体验%@分";
-"spend_harness_pending_score" = "评分观察中 · 已测%@/4项";
-"spend_harness_response" = "响应";
-"spend_harness_output" = "输出";
-"spend_harness_duration" = "等待";
+"spend_harness_total_score" = "运行参考%@分";
+"spend_harness_pending_score" = "运行观察中 · 已测%@/4项";
+"spend_harness_response" = "首响";
+"spend_harness_output" = "整轮输出";
+"spend_harness_duration" = "回合耗时";
 "spend_harness_samples" = "%@轮数据";
 "spend_harness_good" = "表现良好";
 "spend_harness_moderate" = "有优化空间";
@@ -1766,12 +1766,12 @@
 "spend_harness_fast" = "快";
 "spend_harness_average" = "一般";
 "spend_harness_slow" = "慢";
-"spend_harness_wait_short" = "等待短";
-"spend_harness_wait_moderate" = "等待一般";
-"spend_harness_wait_long" = "等待长";
+"spend_harness_wait_short" = "耗时短";
+"spend_harness_wait_moderate" = "耗时一般";
+"spend_harness_wait_long" = "耗时长";
 "spend_harness_score_rule" = "实验规则：缓存35分（目标90%）；响应25分（≤1秒满分，≥10秒零分）；整轮输出20分（≥20 tok/s满分）；等待20分（≤30秒满分，≥300秒零分）。中间值线性计分并取整。每项至少五个有效样本，四项齐全才有总分。";
-"spend_harness_no_rating" = "暂无评分";
-"spend_harness_no_rating_help" = "当前记录缺少计算体验分所需的数据。";
+"spend_harness_no_rating" = "运行参考 · 暂无数据";
+"spend_harness_no_rating_help" = "运行参考需要原生 Codex 的完整回合计时。缺少数据不计零分。";
 
 /* Clickable rating evidence. */
 "spend_harness_details_title" = "评分依据";
@@ -1784,3 +1784,12 @@
 "spend_harness_method" = "中间值线性计分并取整。每项至少%@个有效样本，四项齐全才有总分。";
 "spend_harness_experimental_help" = "权重和阈值仍需校准。整轮时间包含推理、工具与等待，输出和耗时存在重叠。沿用当前日期和来源筛选。";
 "spend_harness_rule_version" = "规则 %@";
+
+/* Runtime observations and unreviewed task outcomes. */
+"spend_harness_scope_help" = "实验性运行参考，不代表任务质量或 agent 能力。";
+"spend_harness_task_help" = "任务结果尚未验收。回合完成不等于任务达标，因此没有任务成功率。";
+"spend_harness_output_definition" = "总输出 token / 总回合时间，含推理、工具与等待。模型计数方式有差异，不等于文字生成速度。";
+"spend_harness_duration_definition" = "完整回合耗时的中位数，包含推理、工具与等待。复杂任务也可能耗时更长。";
+"spend_harness_output_high" = "高";
+"spend_harness_output_average" = "中";
+"spend_harness_output_low" = "低";

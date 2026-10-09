@@ -1768,11 +1768,11 @@
 "spend_harness_cache" = "快取";
 
 /* Plain-language experience rating. */
-"spend_harness_total_score" = "體驗%@分";
-"spend_harness_pending_score" = "評分觀察中 · 已測%@/4項";
-"spend_harness_response" = "回應";
-"spend_harness_output" = "輸出";
-"spend_harness_duration" = "等待";
+"spend_harness_total_score" = "執行參考%@分";
+"spend_harness_pending_score" = "執行觀察中 · 已測%@/4項";
+"spend_harness_response" = "首響";
+"spend_harness_output" = "整輪輸出";
+"spend_harness_duration" = "回合耗時";
 "spend_harness_samples" = "%@輪資料";
 "spend_harness_good" = "表現良好";
 "spend_harness_moderate" = "有改善空間";
@@ -1783,12 +1783,12 @@
 "spend_harness_fast" = "快";
 "spend_harness_average" = "一般";
 "spend_harness_slow" = "慢";
-"spend_harness_wait_short" = "等待短";
-"spend_harness_wait_moderate" = "等待一般";
-"spend_harness_wait_long" = "等待長";
+"spend_harness_wait_short" = "耗時短";
+"spend_harness_wait_moderate" = "耗時一般";
+"spend_harness_wait_long" = "耗時長";
 "spend_harness_score_rule" = "實驗規則：快取35分（目標90%）；回應25分（≤1秒滿分，≥10秒零分）；整輪輸出20分（≥20 tok/s滿分）；等待20分（≤30秒滿分，≥300秒零分）。中間值線性計分並取整。每項至少五個有效樣本，四項齊全才有總分。";
-"spend_harness_no_rating" = "暫無評分";
-"spend_harness_no_rating_help" = "目前紀錄缺少計算體驗分所需的資料。";
+"spend_harness_no_rating" = "執行參考 · 暫無資料";
+"spend_harness_no_rating_help" = "執行參考需要原生 Codex 的完整回合計時。缺少資料不計零分。";
 
 /* Clickable rating evidence. */
 "spend_harness_details_title" = "評分依據";
@@ -1801,3 +1801,12 @@
 "spend_harness_method" = "中間值線性計分並取整。每項至少%@個有效樣本，四項齊全才有總分。";
 "spend_harness_experimental_help" = "權重和閾值仍需校準。整輪時間包含推理、工具與等待，輸出和耗時存在重疊。沿用目前日期和來源篩選。";
 "spend_harness_rule_version" = "規則 %@";
+
+/* Runtime observations and unreviewed task outcomes. */
+"spend_harness_scope_help" = "實驗性執行參考，不代表任務品質或 agent 能力。";
+"spend_harness_task_help" = "任務結果尚未驗收。回合完成不等於任務達標，因此沒有任務成功率。";
+"spend_harness_output_definition" = "總輸出 token / 總回合時間，含推理、工具與等待。模型計數方式有差異，不等於文字生成速度。";
+"spend_harness_duration_definition" = "完整回合耗時的中位數，包含推理、工具與等待。複雜任務也可能耗時更長。";
+"spend_harness_output_high" = "高";
+"spend_harness_output_average" = "中";
+"spend_harness_output_low" = "低";

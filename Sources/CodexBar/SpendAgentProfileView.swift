@@ -67,10 +67,12 @@ struct SpendHarnessPerformanceText: View {
     }
 
     var scoreText: String {
-        if let points = self.rating.totalPoints, let band = self.rating.totalBand {
-            return L("spend_harness_total_score", codexBarLocalizedInteger(points)) + " · " + band.title
+        if let points = self.rating.totalPoints {
+            return L("spend_harness_total_score", codexBarLocalizedInteger(points)) + " · " +
+                L("spend_harness_experimental")
         }
-        return L("spend_harness_pending_score", codexBarLocalizedInteger(self.rating.ratedDimensionCount))
+        return L("spend_harness_pending_score", codexBarLocalizedInteger(self.rating.ratedDimensionCount)) + " · " +
+            L("spend_harness_experimental")
     }
 
     var dimensionsText: String {
@@ -136,6 +138,12 @@ struct SpendHarnessPerformanceText: View {
                     }
                 }
             }
+            .fixedSize(horizontal: true, vertical: false)
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(Array(self.rating.items.enumerated()), id: \.offset) { _, item in
+                    self.dimensionBadge(item)
+                }
+            }
         }
     }
 
@@ -159,6 +167,7 @@ struct SpendHarnessPerformanceText: View {
             L("spend_harness_response") + " " + metrics[0].value,
             metrics[2].label + " " + metrics[2].value,
             L("spend_harness_samples", codexBarLocalizedInteger(self.performance.sampleCount)),
+            L("Task performance") + " " + L("Not evaluated"),
         ]
         if self.historyScanIsPartial { components.append(L("Partial history")) }
         return components.joined(separator: " · ")
@@ -176,7 +185,7 @@ struct SpendHarnessPerformanceText: View {
                 codexBarLocalizedInteger(self.cacheSampleCount),
                 codexBarLocalizedInteger(self.performance.sampleCount)),
             metrics[0].label + " " + metrics[0].value,
-            metrics[1].value,
+            metrics[1].label + " " + metrics[1].value,
             metrics[2].label + " " + metrics[2].value,
             L("spend_performance_turn_count", codexBarLocalizedInteger(self.performance.sampleCount)),
         ]
@@ -186,6 +195,8 @@ struct SpendHarnessPerformanceText: View {
 
     var evidenceText: String {
         var lines = [
+            L("spend_harness_scope_help"),
+            L("spend_harness_task_help"),
             L("Native Codex timing is currently supported."),
             L("Completed timed turns only. Failures and task outcomes are not recorded."),
             L("spend_turn_performance_help"),
@@ -212,5 +223,31 @@ struct SpendHarnessPerformanceText: View {
 
     private static func number(_ value: Double) -> String {
         value.formatted(.number.locale(codexBarLocalizedLocale()).precision(.fractionLength(1)))
+    }
+}
+
+/// Missing timing is an unknown state with the same explanation entry point as a measured score.
+struct SpendHarnessNoRatingText: View {
+    @Environment(\.spendDashboardIsProjecting) private var isProjecting
+    @State private var showsRatingDetails = false
+
+    var body: some View {
+        Button {
+            self.showsRatingDetails = true
+        } label: {
+            Label(L("spend_harness_no_rating"), systemImage: "info.circle")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+        .disabled(self.isProjecting)
+        .help(L("spend_harness_no_rating_help"))
+        .accessibilityHint(L("spend_harness_open_details"))
+        .popover(isPresented: self.$showsRatingDetails, arrowEdge: .bottom) {
+            SpendHarnessRatingUnavailableDetailsView()
+        }
+        .onChange(of: self.isProjecting) { _, projecting in
+            if projecting { self.showsRatingDetails = false }
+        }
     }
 }

@@ -1736,11 +1736,11 @@
 "spend_harness_cache" = "Cache";
 
 /* Plain-language experience rating. */
-"spend_harness_total_score" = "Expérience %@/100";
-"spend_harness_pending_score" = "Score en attente · %@/4 évalués";
-"spend_harness_response" = "Réponse";
-"spend_harness_output" = "Sortie";
-"spend_harness_duration" = "Attente";
+"spend_harness_total_score" = "Repère d’exécution %@/100";
+"spend_harness_pending_score" = "Exécution en attente · %@/4 évalués";
+"spend_harness_response" = "Premier token";
+"spend_harness_output" = "Sortie du tour";
+"spend_harness_duration" = "Durée du tour";
 "spend_harness_samples" = "%@ tours observés";
 "spend_harness_good" = "Bon";
 "spend_harness_moderate" = "Peut être amélioré";
@@ -1751,12 +1751,12 @@
 "spend_harness_fast" = "Rapide";
 "spend_harness_average" = "Moyen";
 "spend_harness_slow" = "Lent";
-"spend_harness_wait_short" = "Attente courte";
-"spend_harness_wait_moderate" = "Attente moyenne";
-"spend_harness_wait_long" = "Attente longue";
+"spend_harness_wait_short" = "Tour court";
+"spend_harness_wait_moderate" = "Tour moyen";
+"spend_harness_wait_long" = "Tour long";
 "spend_harness_score_rule" = "Règles expérimentales : cache 35 (cible 90 %) ; réponse 25 (maximum à ≤1 s, zéro à ≥10 s) ; sortie du tour 20 (maximum à ≥20 tok/s) ; attente 20 (maximum à ≤30 s, zéro à ≥300 s). Échelle linéaire arrondie à l’entier. Au moins cinq observations par dimension ; les quatre sont requises pour le total.";
-"spend_harness_no_rating" = "Pas encore de note";
-"spend_harness_no_rating_help" = "Les données disponibles ne suffisent pas pour attribuer une note à l’expérience.";
+"spend_harness_no_rating" = "Exécution · Aucune donnée";
+"spend_harness_no_rating_help" = "Un repère d’exécution nécessite des mesures natives Codex complètes. Les données manquantes ne reçoivent aucun score.";
 
 /* Clickable rating evidence. */
 "spend_harness_details_title" = "Base de la note";
@@ -1769,3 +1769,12 @@
 "spend_harness_method" = "Les valeurs sont interpolées puis arrondies. Chaque dimension exige %@ observations valides ; les quatre sont nécessaires pour une note globale.";
 "spend_harness_experimental_help" = "Poids et seuils restent à calibrer. La durée inclut raisonnement, outils et attente ; débit et durée se recoupent. Les filtres de dates et de sources actuels s’appliquent.";
 "spend_harness_rule_version" = "Règle %@";
+
+/* Runtime observations and unreviewed task outcomes. */
+"spend_harness_scope_help" = "Repère d’exécution expérimental ; ne mesure ni la qualité des tâches ni les capacités de l’agent.";
+"spend_harness_task_help" = "Les résultats des tâches n’ont pas été évalués. Un tour terminé ne prouve pas l’acceptation d’une tâche ; aucun taux de réussite n’est disponible.";
+"spend_harness_output_definition" = "Total des tokens de sortie / durée totale des tours, raisonnement, outils et attente inclus. Le comptage varie selon le modèle ; ce n’est pas la vitesse de génération du texte.";
+"spend_harness_duration_definition" = "Durée médiane d’un tour complet, raisonnement, outils et attente inclus. Les tâches plus exigeantes peuvent prendre plus de temps.";
+"spend_harness_output_high" = "Élevé";
+"spend_harness_output_average" = "Moyen";
+"spend_harness_output_low" = "Faible";

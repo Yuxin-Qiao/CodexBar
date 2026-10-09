@@ -1736,11 +1736,11 @@
 "spend_harness_cache" = "Cache";
 
 /* Plain-language experience rating. */
-"spend_harness_total_score" = "Ervaring %@/100";
-"spend_harness_pending_score" = "Score volgt · %@/4 beoordeeld";
-"spend_harness_response" = "Reactie";
-"spend_harness_output" = "Uitvoer";
-"spend_harness_duration" = "Wachttijd";
+"spend_harness_total_score" = "Uitvoeringsreferentie %@/100";
+"spend_harness_pending_score" = "Uitvoering in afwachting · %@/4 beoordeeld";
+"spend_harness_response" = "Eerste token";
+"spend_harness_output" = "Turn-uitvoer";
+"spend_harness_duration" = "Turn-duur";
 "spend_harness_samples" = "%@ beurten waargenomen";
 "spend_harness_good" = "Goed";
 "spend_harness_moderate" = "Kan beter";
@@ -1751,12 +1751,12 @@
 "spend_harness_fast" = "Snel";
 "spend_harness_average" = "Gemiddeld";
 "spend_harness_slow" = "Traag";
-"spend_harness_wait_short" = "Korte wachttijd";
-"spend_harness_wait_moderate" = "Gemiddelde wachttijd";
-"spend_harness_wait_long" = "Lange wachttijd";
+"spend_harness_wait_short" = "Korte turn";
+"spend_harness_wait_moderate" = "Gemiddelde turn";
+"spend_harness_wait_long" = "Lange turn";
 "spend_harness_score_rule" = "Experimentele regels: cache 35 (doel 90%); reactie 25 (vol bij ≤1 s, nul bij ≥10 s); beurtuitvoer 20 (vol bij ≥20 tok/s); wachten 20 (vol bij ≤30 s, nul bij ≥300 s). Lineair geschaald en afgerond op hele punten. Minstens vijf observaties per onderdeel; alle vier voor het totaal.";
-"spend_harness_no_rating" = "Nog geen beoordeling";
-"spend_harness_no_rating_help" = "De beschikbare gegevens zijn onvoldoende voor een ervaringsscore.";
+"spend_harness_no_rating" = "Uitvoering · Geen data";
+"spend_harness_no_rating_help" = "Een uitvoeringsreferentie vereist volledige native Codex-tijdmetingen. Ontbrekende data krijgen geen score.";
 
 /* Clickable rating evidence. */
 "spend_harness_details_title" = "Onderbouwing van de score";
@@ -1769,3 +1769,12 @@
 "spend_harness_method" = "Tussenwaarden worden lineair geschaald en afgerond. Elke dimensie vereist %@ geldige waarnemingen; alle vier zijn nodig voor een totaalscore.";
 "spend_harness_experimental_help" = "Gewichten en drempels moeten worden gekalibreerd. De beurtduur omvat denken, hulpmiddelen en wachten; uitvoer en duur overlappen. De huidige datum- en bronfilters gelden.";
 "spend_harness_rule_version" = "Regel %@";
+
+/* Runtime observations and unreviewed task outcomes. */
+"spend_harness_scope_help" = "Experimentele uitvoeringsreferentie; beoordeelt geen taakkwaliteit of agentcapaciteit.";
+"spend_harness_task_help" = "Taakresultaten zijn niet beoordeeld. Afgeronde turns bewijzen geen taakacceptatie; er is daarom geen taaksuccespercentage beschikbaar.";
+"spend_harness_output_definition" = "Totaal uitvoertokens / totale turn-tijd, inclusief redeneren, tools en wachten. Tokentellingen verschillen per model; dit is geen tekstgeneratiesnelheid.";
+"spend_harness_duration_definition" = "Mediane tijd van een volledige turn, inclusief redeneren, tools en wachten. Zwaardere taken kunnen langer duren.";
+"spend_harness_output_high" = "Hoog";
+"spend_harness_output_average" = "Gemiddeld";
+"spend_harness_output_low" = "Laag";

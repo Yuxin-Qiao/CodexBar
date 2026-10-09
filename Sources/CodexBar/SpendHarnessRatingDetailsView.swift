@@ -45,6 +45,15 @@ struct SpendHarnessRatingEvidence {
             codexBarLocalizedInteger(self.performance.sampleCount))
     }
 
+    func definition(_ dimension: SpendHarnessRating.Dimension) -> String {
+        switch dimension {
+        case .cache: L("spend_performance_cache_help")
+        case .response: L("Model first token may be reasoning, before visible answer text.")
+        case .output: L("spend_harness_output_definition")
+        case .duration: L("spend_harness_duration_definition")
+        }
+    }
+
     func rule(_ dimension: SpendHarnessRating.Dimension) -> String {
         let maximum = codexBarLocalizedInteger(dimension.maximumPoints)
         return switch dimension {
@@ -89,7 +98,6 @@ struct SpendHarnessRatingDetailsView: View {
     let performance: CostUsageTurnPerformanceSummary
     let cacheSampleCount: Int
     let historyScanIsPartial: Bool
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.colorSchemeContrast) private var contrast
 
@@ -107,25 +115,7 @@ struct SpendHarnessRatingDetailsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text(L("spend_harness_details_title")).font(.headline)
-                Text(L("spend_harness_experimental"))
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(.primary.opacity(0.05), in: Capsule())
-                Spacer()
-                Button(L("Close"), systemImage: "xmark") { self.dismiss() }
-                    .font(.caption.weight(.semibold))
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                    .padding(5)
-                    .background(.primary.opacity(0.05), in: Circle())
-                    .keyboardShortcut(.cancelAction)
-                    .help(L("Close"))
-            }
+            SpendHarnessRatingDetailsHeader()
             self.summary
             ScrollView {
                 VStack(alignment: .leading, spacing: 9) {
@@ -149,38 +139,41 @@ struct SpendHarnessRatingDetailsView: View {
 
     private var summary: some View {
         let color = self.style.color(for: self.rating.totalBand)
-        return HStack(spacing: 14) {
-            ZStack {
-                Circle().stroke(color.opacity(0.16), lineWidth: 5)
-                if let points = self.rating.totalPoints {
-                    Circle()
-                        .trim(from: 0, to: Double(points) / 100)
-                        .stroke(color, style: StrokeStyle(lineWidth: 5, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                    VStack(spacing: 0) {
-                        Text(codexBarLocalizedInteger(points)).font(.title.weight(.bold))
-                        Text("/" + codexBarLocalizedInteger(100)).font(.caption2)
+        return VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle().stroke(color.opacity(0.16), lineWidth: 5)
+                    if let points = self.rating.totalPoints {
+                        Circle()
+                            .trim(from: 0, to: Double(points) / 100)
+                            .stroke(color, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                        VStack(spacing: 0) {
+                            Text(codexBarLocalizedInteger(points)).font(.title.weight(.bold))
+                            Text("/" + codexBarLocalizedInteger(100)).font(.caption2)
+                        }
+                    } else {
+                        Image(systemName: "ellipsis").font(.title2.weight(.semibold))
                     }
-                } else {
-                    Image(systemName: "ellipsis").font(.title2.weight(.semibold))
                 }
+                .foregroundStyle(color)
+                .frame(width: 66, height: 66)
+                .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(SpendHarnessPerformanceText(
+                        performance: self.performance,
+                        cacheSampleCount: self.cacheSampleCount,
+                        historyScanIsPartial: self.historyScanIsPartial).scoreText)
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(color)
+                    Label(
+                        L("spend_harness_samples", codexBarLocalizedInteger(self.performance.sampleCount)),
+                        systemImage: "chart.bar.xaxis")
+                        .foregroundStyle(.primary.opacity(0.72))
+                }
+                Spacer(minLength: 0)
             }
-            .foregroundStyle(color)
-            .frame(width: 66, height: 66)
-            .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 6) {
-                Text(SpendHarnessPerformanceText(
-                    performance: self.performance,
-                    cacheSampleCount: self.cacheSampleCount,
-                    historyScanIsPartial: self.historyScanIsPartial).scoreText)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(color)
-                Label(
-                    L("spend_harness_samples", codexBarLocalizedInteger(self.performance.sampleCount)),
-                    systemImage: "chart.bar.xaxis")
-                    .foregroundStyle(.primary.opacity(0.72))
-            }
-            Spacer(minLength: 0)
+            SpendHarnessRatingScopeView()
         }
         .padding(12)
         .background(color.opacity(self.style.fillOpacity), in: RoundedRectangle(cornerRadius: 12))
@@ -237,6 +230,9 @@ struct SpendHarnessRatingDetailsView: View {
             Text(self.evidence.rule(item.dimension))
                 .foregroundStyle(.primary.opacity(0.72))
                 .fixedSize(horizontal: false, vertical: true)
+            Text(self.evidence.definition(item.dimension))
+                .foregroundStyle(.primary.opacity(0.72))
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(10)
         .background(color.opacity(self.style.fillOpacity * 0.65), in: RoundedRectangle(cornerRadius: 10))
@@ -252,6 +248,8 @@ struct SpendHarnessRatingDetailsView: View {
             Text(L("spend_harness_method", codexBarLocalizedInteger(SpendHarnessRating.minimumSamples)))
             Text(L("Native Codex timing is currently supported."))
             Text(L("Completed timed turns only. Failures and task outcomes are not recorded."))
+            Text(L("spend_harness_task_help"))
+            Text(L("spend_turn_performance_help"))
             Text(L("spend_harness_experimental_help"))
             if self.historyScanIsPartial { Text(L("Partial history")) }
             Text(L("spend_harness_rule_version", SpendHarnessRating.ruleVersion))
@@ -260,5 +258,68 @@ struct SpendHarnessRatingDetailsView: View {
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+private struct SpendHarnessRatingDetailsHeader: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        HStack {
+            Text(L("spend_harness_details_title")).font(.headline)
+            Spacer()
+            Button(L("Close"), systemImage: "xmark") { self.dismiss() }
+                .font(.caption.weight(.semibold))
+                .labelStyle(.iconOnly)
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .padding(5)
+                .background(.primary.opacity(0.05), in: Circle())
+                .keyboardShortcut(.cancelAction)
+                .help(L("Close"))
+        }
+    }
+}
+
+private struct SpendHarnessRatingScopeView: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L("spend_harness_scope_help"))
+                .fixedSize(horizontal: false, vertical: true)
+            Label(L("Task performance") + " · " + L("Not evaluated"), systemImage: "checklist")
+                .fontWeight(.medium)
+                .help(L("spend_harness_task_help"))
+        }
+        .foregroundStyle(.primary.opacity(0.72))
+        .accessibilityElement(children: .combine)
+    }
+}
+
+struct SpendHarnessRatingUnavailableDetailsView: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SpendHarnessRatingDetailsHeader()
+            Label(L("spend_harness_no_rating"), systemImage: "ellipsis.circle")
+                .font(.title3.weight(.semibold))
+            SpendHarnessRatingScopeView()
+            Divider()
+            ForEach(SpendHarnessRating.Dimension.allCases, id: \.self) { dimension in
+                HStack {
+                    Label(dimension.title, systemImage: SpendHarnessRatingStyle.symbol(for: dimension))
+                    Spacer()
+                    Text(L("Unavailable"))
+                }
+                .foregroundStyle(.secondary)
+            }
+            Text(L("spend_harness_no_rating_help"))
+            Text(L("spend_harness_task_help"))
+        }
+        .font(.caption)
+        .textSelection(.enabled)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(16)
+        .frame(width: 440, alignment: .leading)
+        .background(.background)
+        .accessibilityIdentifier("spend-harness-rating-unavailable")
     }
 }

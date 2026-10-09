@@ -76,6 +76,6 @@ struct SpendHarnessScoreBadge: View {
             .padding(.vertical, 4)
             .background(color.opacity(style.fillOpacity), in: Capsule())
             .overlay(Capsule().strokeBorder(color.opacity(style.borderOpacity), lineWidth: 1))
-            .fixedSize()
+            .fixedSize(horizontal: false, vertical: true)
     }
 }

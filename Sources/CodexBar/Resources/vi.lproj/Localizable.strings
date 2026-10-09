@@ -1738,11 +1738,11 @@
 "spend_harness_cache" = "Bộ nhớ đệm";
 
 /* Plain-language experience rating. */
-"spend_harness_total_score" = "Trải nghiệm %@/100";
-"spend_harness_pending_score" = "Đang chờ điểm · %@/4 đã chấm";
-"spend_harness_response" = "Phản hồi";
-"spend_harness_output" = "Đầu ra";
-"spend_harness_duration" = "Chờ";
+"spend_harness_total_score" = "Tham chiếu vận hành %@/100";
+"spend_harness_pending_score" = "Chờ đánh giá vận hành · %@/4 đã đánh giá";
+"spend_harness_response" = "Token đầu tiên";
+"spend_harness_output" = "Đầu ra mỗi lượt";
+"spend_harness_duration" = "Thời gian mỗi lượt";
 "spend_harness_samples" = "Đã quan sát %@ lượt";
 "spend_harness_good" = "Tốt";
 "spend_harness_moderate" = "Có thể cải thiện";
@@ -1753,12 +1753,12 @@
 "spend_harness_fast" = "Nhanh";
 "spend_harness_average" = "Bình thường";
 "spend_harness_slow" = "Chậm";
-"spend_harness_wait_short" = "Chờ ngắn";
-"spend_harness_wait_moderate" = "Chờ vừa";
-"spend_harness_wait_long" = "Chờ lâu";
+"spend_harness_wait_short" = "Lượt ngắn";
+"spend_harness_wait_moderate" = "Lượt vừa";
+"spend_harness_wait_long" = "Lượt dài";
 "spend_harness_score_rule" = "Quy tắc thử nghiệm: bộ nhớ đệm 35 (mục tiêu 90%); phản hồi 25 (tối đa khi ≤1 giây, không điểm khi ≥10 giây); đầu ra toàn lượt 20 (tối đa khi ≥20 tok/s); chờ 20 (tối đa khi ≤30 giây, không điểm khi ≥300 giây). Thang tuyến tính làm tròn số nguyên. Mỗi mục cần ít nhất năm quan sát và tổng điểm cần đủ bốn mục.";
-"spend_harness_no_rating" = "Chưa có điểm";
-"spend_harness_no_rating_help" = "Các bản ghi hiện có chưa chứa đủ dữ liệu để tính điểm trải nghiệm.";
+"spend_harness_no_rating" = "Vận hành · Không có dữ liệu";
+"spend_harness_no_rating_help" = "Tham chiếu vận hành cần thời gian lượt gốc Codex đầy đủ. Dữ liệu thiếu không được chấm điểm.";
 
 /* Clickable rating evidence. */
 "spend_harness_details_title" = "Cơ sở chấm điểm";
@@ -1771,3 +1771,12 @@
 "spend_harness_method" = "Giá trị giữa các mốc được nội suy tuyến tính và làm tròn. Mỗi mục cần %@ quan sát hợp lệ; phải đủ cả bốn để có tổng điểm.";
 "spend_harness_experimental_help" = "Trọng số và ngưỡng cần hiệu chỉnh. Thời gian gồm suy luận, công cụ và chờ; đầu ra và thời lượng chồng lấp. Áp dụng bộ lọc ngày và nguồn hiện tại.";
 "spend_harness_rule_version" = "Quy tắc %@";
+
+/* Runtime observations and unreviewed task outcomes. */
+"spend_harness_scope_help" = "Tham chiếu vận hành thử nghiệm; không đánh giá chất lượng nhiệm vụ hay năng lực agent.";
+"spend_harness_task_help" = "Kết quả nhiệm vụ chưa được đánh giá. Lượt hoàn tất không chứng minh nhiệm vụ đạt yêu cầu; chưa có tỷ lệ thành công.";
+"spend_harness_output_definition" = "Tổng token đầu ra / tổng thời gian lượt, gồm suy luận, công cụ và chờ đợi. Cách đếm token khác nhau giữa các mô hình; đây không phải tốc độ tạo văn bản.";
+"spend_harness_duration_definition" = "Trung vị thời gian của một lượt đầy đủ, gồm suy luận, công cụ và chờ đợi. Nhiệm vụ khó hơn có thể mất nhiều thời gian hơn.";
+"spend_harness_output_high" = "Cao";
+"spend_harness_output_average" = "Vừa";
+"spend_harness_output_low" = "Thấp";

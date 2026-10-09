@@ -1737,11 +1737,11 @@
 "spend_harness_cache" = "キャッシュ";
 
 /* Plain-language experience rating. */
-"spend_harness_total_score" = "体験 %@/100";
-"spend_harness_pending_score" = "評価待ち · %@/4 項目";
-"spend_harness_response" = "応答";
-"spend_harness_output" = "出力";
-"spend_harness_duration" = "待ち時間";
+"spend_harness_total_score" = "実行の参考値 %@/100";
+"spend_harness_pending_score" = "実行評価待ち · %@/4項目";
+"spend_harness_response" = "最初のトークン";
+"spend_harness_output" = "ターン出力";
+"spend_harness_duration" = "ターン時間";
 "spend_harness_samples" = "%@ターンを観測";
 "spend_harness_good" = "良好";
 "spend_harness_moderate" = "改善の余地あり";
@@ -1752,12 +1752,12 @@
 "spend_harness_fast" = "速い";
 "spend_harness_average" = "普通";
 "spend_harness_slow" = "遅い";
-"spend_harness_wait_short" = "待ち時間が短い";
-"spend_harness_wait_moderate" = "待ち時間は普通";
-"spend_harness_wait_long" = "待ち時間が長い";
+"spend_harness_wait_short" = "短いターン";
+"spend_harness_wait_moderate" = "標準のターン";
+"spend_harness_wait_long" = "長いターン";
 "spend_harness_score_rule" = "実験ルール：キャッシュ35点（目標90%）、応答25点（≤1秒で満点、≥10秒で0）、ターン全体の出力20点（≥20 tok/sで満点）、待ち時間20点（≤30秒で満点、≥300秒で0）。線形に配点し整数へ丸めます。各項目に5件以上の観測が必要で、総合点には全4項目が必要です。";
-"spend_harness_no_rating" = "まだ評価できません";
-"spend_harness_no_rating_help" = "利用可能な記録には、体験を評価するための十分なデータがありません。";
+"spend_harness_no_rating" = "実行 · データなし";
+"spend_harness_no_rating_help" = "実行の参考値には、ネイティブ Codex の完全なターン計時が必要です。データがない場合は採点しません。";
 
 /* Clickable rating evidence. */
 "spend_harness_details_title" = "評価の根拠";
@@ -1770,3 +1770,12 @@
 "spend_harness_method" = "中間値は線形配点し整数に丸めます。各項目に%@件以上の有効な観測が必要で、4項目すべてで総合点を算出します。";
 "spend_harness_experimental_help" = "重みと閾値は要調整です。ターン時間には推論・ツール・待機が含まれ、出力と所要時間は重複します。現在の日付・ソースの絞り込みを適用します。";
 "spend_harness_rule_version" = "ルール %@";
+
+/* Runtime observations and unreviewed task outcomes. */
+"spend_harness_scope_help" = "実験的な実行の参考値です。タスクの品質やエージェントの能力を評価するものではありません。";
+"spend_harness_task_help" = "タスクの結果は未評価です。ターン完了はタスクの合格を証明しないため、タスク成功率はありません。";
+"spend_harness_output_definition" = "総出力トークン数 / 総ターン時間。推論、ツール、待機を含みます。トークンの数え方はモデルごとに異なり、文章生成速度ではありません。";
+"spend_harness_duration_definition" = "推論、ツール、待機を含む完全なターン時間の中央値です。難しいタスクほど時間がかかる場合があります。";
+"spend_harness_output_high" = "高";
+"spend_harness_output_average" = "中";
+"spend_harness_output_low" = "低";

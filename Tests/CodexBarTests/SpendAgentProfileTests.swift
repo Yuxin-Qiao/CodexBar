@@ -303,25 +303,29 @@ struct SpendAgentProfileTests {
             cacheSampleCount: 5,
             historyScanIsPartial: true)
         CodexBarLocalizationOverride.$appLanguage.withValue("en") {
-            #expect(text.scoreText == "Experience 96/100 · Good")
-            #expect(text.dimensionsText == "Cache High reuse · Response Fast · Output Fast · Short wait")
-            #expect(text.componentScoresText == "Cache 31/35 (High reuse) · Response 25/25 (Fast) · " +
-                "Output 20/20 (Fast) · Wait 20/20 (Short wait)")
+            #expect(text.scoreText == "Runtime reference 96/100 · Experimental")
+            #expect(text.dimensionsText == "Cache High reuse · First token Fast · Turn output High · Short turn")
+            #expect(text.componentScoresText == "Cache 31/35 (High reuse) · First token 25/25 (Fast) · " +
+                "Turn output 20/20 (High) · Turn time 20/20 (Short turn)")
             #expect(text.evidenceText.contains(text.componentScoresText))
             #expect(text.rawMetricsText.contains("80.0%"))
             #expect(text.rawMetricsText.contains("Cache: 5/8 turns"))
             #expect(text.evidenceText.contains(text.rawMetricsText))
             #expect(!text.observationsText.contains("tok/s"))
             #expect(text.observationsText.contains("Partial history"))
+            #expect(text.observationsText.contains("Task performance Not evaluated"))
+            #expect(text.evidenceText.contains("this does not rate task quality"))
+            #expect(text.evidenceText.contains("no task success rate is available"))
         }
         CodexBarLocalizationOverride.$appLanguage.withValue("zh-Hans") {
-            #expect(text.scoreText == "体验96分 · 表现良好")
-            #expect(text.dimensionsText == "缓存 复用好 · 响应 快 · 输出 快 · 等待短")
-            #expect(text.componentScoresText == "缓存 31/35 (复用好) · 响应 25/25 (快) · " +
-                "输出 20/20 (快) · 等待 20/20 (等待短)")
+            #expect(text.scoreText == "运行参考96分 · 实验性")
+            #expect(text.dimensionsText == "缓存 复用好 · 首响 快 · 整轮输出 高 · 耗时短")
+            #expect(text.componentScoresText == "缓存 31/35 (复用好) · 首响 25/25 (快) · " +
+                "整轮输出 20/20 (高) · 回合耗时 20/20 (耗时短)")
             #expect(text.rawMetricsText.contains("缓存数据：5/8 个回合"))
             #expect(text.observationsText.contains("8轮数据"))
             #expect(text.observationsText.contains("历史记录不完整"))
+            #expect(text.observationsText.contains("任务表现 尚未评价"))
         }
     }
 
@@ -343,6 +347,10 @@ struct SpendAgentProfileTests {
             #expect(evidence.rule(.output) == "20 tok/s or more earns all 20 points; " +
                 "lower whole-turn output is scored proportionally.")
             #expect(evidence.rule(.duration) == "30 s or less earns all 20 points; 300 s or more earns zero.")
+            #expect(evidence.definition(.response).contains("may be reasoning"))
+            #expect(evidence.definition(.output).contains("Total output tokens / total turn time"))
+            #expect(evidence.definition(.output).contains("Token counts vary by model"))
+            #expect(evidence.definition(.duration).contains("More demanding tasks may take longer"))
         }
         CodexBarLocalizationOverride.$appLanguage.withValue("zh-Hans") {
             #expect(evidence.observation(.cache) == "80% · 有效数据 5/8 轮")
@@ -366,8 +374,14 @@ struct SpendAgentProfileTests {
                 #expect(evidence.status(rating.items[1]) == (measuredCount == 0 ? "Unavailable" : "Observing"))
                 #expect(evidence.observation(.cache).contains("\(measuredCount)/5"))
                 #expect(evidence.observation(.response).contains("\(measuredCount)/5"))
-                #expect(evidence.status(rating.items[2]) == "Fast")
+                #expect(evidence.status(rating.items[2]) == "High")
                 #expect(rating.totalPoints == nil)
+                let text = SpendHarnessPerformanceText(
+                    performance: performance,
+                    cacheSampleCount: measuredCount,
+                    historyScanIsPartial: false)
+                #expect(text.scoreText == "Runtime pending · 2/4 rated · Experimental")
+                #expect(text.observationsText.contains("Not evaluated"))
             }
         }
     }
@@ -506,6 +520,22 @@ struct SpendAgentProfileTests {
                             historyScanIsPartial: false),
                         root: root,
                         name: "rating-details-\(language)-\(dark ? "dark" : "light")",
+                        width: 480,
+                        dark: dark)
+                    try Self.render(
+                        SpendHarnessRatingUnavailableDetailsView(),
+                        root: root,
+                        name: "rating-unavailable-\(language)-\(dark ? "dark" : "light")",
+                        width: 480,
+                        dark: dark)
+                    let pendingPerformance = try #require(CostUsageTurnPerformanceSummary(samples: [missing, missing]))
+                    try Self.render(
+                        SpendHarnessRatingDetailsView(
+                            performance: pendingPerformance,
+                            cacheSampleCount: 0,
+                            historyScanIsPartial: true),
+                        root: root,
+                        name: "rating-pending-\(language)-\(dark ? "dark" : "light")",
                         width: 480,
                         dark: dark)
                     for width in [360.0, 520.0, 980.0] {

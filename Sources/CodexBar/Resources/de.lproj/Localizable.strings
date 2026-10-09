@@ -1737,11 +1737,11 @@
 "spend_harness_cache" = "Cache";
 
 /* Plain-language experience rating. */
-"spend_harness_total_score" = "Erlebnis %@/100";
-"spend_harness_pending_score" = "Bewertung ausstehend · %@/4 erfasst";
-"spend_harness_response" = "Antwort";
-"spend_harness_output" = "Ausgabe";
-"spend_harness_duration" = "Wartezeit";
+"spend_harness_total_score" = "Laufzeitreferenz %@/100";
+"spend_harness_pending_score" = "Laufzeit ausstehend · %@/4 bewertet";
+"spend_harness_response" = "Erstes Token";
+"spend_harness_output" = "Turn-Ausgabe";
+"spend_harness_duration" = "Turn-Dauer";
 "spend_harness_samples" = "%@ Runden beobachtet";
 "spend_harness_good" = "Gut";
 "spend_harness_moderate" = "Verbesserung möglich";
@@ -1752,12 +1752,12 @@
 "spend_harness_fast" = "Schnell";
 "spend_harness_average" = "Durchschnittlich";
 "spend_harness_slow" = "Langsam";
-"spend_harness_wait_short" = "Kurze Wartezeit";
-"spend_harness_wait_moderate" = "Mittlere Wartezeit";
-"spend_harness_wait_long" = "Lange Wartezeit";
+"spend_harness_wait_short" = "Kurzer Turn";
+"spend_harness_wait_moderate" = "Mittlerer Turn";
+"spend_harness_wait_long" = "Langer Turn";
 "spend_harness_score_rule" = "Experimentelle Regeln: Cache 35 (Ziel 90%); Antwort 25 (voll bei ≤1 s, null bei ≥10 s); Rundenausgabe 20 (voll bei ≥20 tok/s); Wartezeit 20 (voll bei ≤30 s, null bei ≥300 s). Linear skaliert und auf ganze Punkte gerundet. Mindestens fünf Beobachtungen je Bereich; alle vier für den Gesamtwert.";
-"spend_harness_no_rating" = "Noch keine Bewertung";
-"spend_harness_no_rating_help" = "Die verfügbaren Aufzeichnungen enthalten nicht genug Daten für eine Bewertung der Nutzungserfahrung.";
+"spend_harness_no_rating" = "Laufzeit · Keine Daten";
+"spend_harness_no_rating_help" = "Eine Laufzeitreferenz benötigt vollständige native Codex-Zeitdaten. Fehlende Daten erhalten keine Punktzahl.";
 
 /* Clickable rating evidence. */
 "spend_harness_details_title" = "Bewertungsgrundlage";
@@ -1770,3 +1770,12 @@
 "spend_harness_method" = "Zwischenwerte werden linear skaliert und gerundet. Jede Dimension braucht %@ gültige Beobachtungen; für eine Gesamtnote sind alle vier nötig.";
 "spend_harness_experimental_help" = "Gewichte und Schwellen müssen kalibriert werden. Rundenzeit enthält Denken, Werkzeuge und Warten; Ausgabe und Dauer überschneiden sich. Aktuelle Datums- und Quellenfilter gelten.";
 "spend_harness_rule_version" = "Regel %@";
+
+/* Runtime observations and unreviewed task outcomes. */
+"spend_harness_scope_help" = "Experimentelle Laufzeitreferenz; keine Bewertung der Aufgabenqualität oder Agentenfähigkeit.";
+"spend_harness_task_help" = "Aufgabenergebnisse wurden nicht geprüft. Abgeschlossene Turns belegen keine Aufgabenabnahme; eine Erfolgsquote ist daher nicht verfügbar.";
+"spend_harness_output_definition" = "Gesamte Ausgabetokens / gesamte Turn-Zeit einschließlich Schlussfolgern, Tools und Warten. Tokenzählungen variieren je Modell; dies ist keine Texterzeugungsgeschwindigkeit.";
+"spend_harness_duration_definition" = "Median der vollständigen Turn-Dauer einschließlich Schlussfolgern, Tools und Warten. Anspruchsvollere Aufgaben können länger dauern.";
+"spend_harness_output_high" = "Hoch";
+"spend_harness_output_average" = "Mittel";
+"spend_harness_output_low" = "Niedrig";

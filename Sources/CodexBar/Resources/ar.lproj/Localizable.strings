@@ -1741,11 +1741,11 @@
 "spend_harness_cache" = "التخزين المؤقت";
 
 /* Plain-language experience rating. */
-"spend_harness_total_score" = "التجربة %@/١٠٠";
-"spend_harness_pending_score" = "التقييم قيد الرصد · %@/٤ جوانب";
-"spend_harness_response" = "الاستجابة";
-"spend_harness_output" = "الإخراج";
-"spend_harness_duration" = "الانتظار";
+"spend_harness_total_score" = "مرجع التشغيل %@/100";
+"spend_harness_pending_score" = "تقييم التشغيل قيد الانتظار · %@/4 مُقيّمة";
+"spend_harness_response" = "أول رمز";
+"spend_harness_output" = "مخرجات الجولة";
+"spend_harness_duration" = "مدة الجولة";
 "spend_harness_samples" = "رصد %@ جولات";
 "spend_harness_good" = "جيد";
 "spend_harness_moderate" = "يمكن تحسينه";
@@ -1756,12 +1756,12 @@
 "spend_harness_fast" = "سريع";
 "spend_harness_average" = "متوسط";
 "spend_harness_slow" = "بطيء";
-"spend_harness_wait_short" = "انتظار قصير";
-"spend_harness_wait_moderate" = "انتظار متوسط";
-"spend_harness_wait_long" = "انتظار طويل";
+"spend_harness_wait_short" = "جولة قصيرة";
+"spend_harness_wait_moderate" = "جولة متوسطة";
+"spend_harness_wait_long" = "جولة طويلة";
 "spend_harness_score_rule" = "قواعد تجريبية: التخزين المؤقت 35 (هدف 90%)؛ الاستجابة 25 (كاملة عند ≤1 ث، صفر عند ≥10 ث)؛ إخراج الجولة 20 (كاملة عند ≥20 tok/s)؛ الانتظار 20 (كاملة عند ≤30 ث، صفر عند ≥300 ث). مقياس خطي مقرب لأعداد صحيحة. خمس ملاحظات لكل جانب على الأقل، والجوانب الأربعة مطلوبة للمجموع.";
-"spend_harness_no_rating" = "لا يوجد تقييم بعد";
-"spend_harness_no_rating_help" = "لا تحتوي السجلات المتاحة على بيانات كافية لحساب تقييم التجربة.";
+"spend_harness_no_rating" = "التشغيل · لا توجد بيانات";
+"spend_harness_no_rating_help" = "يتطلب مرجع التشغيل بيانات توقيت أصلية كاملة من Codex. لا تُمنح البيانات المفقودة أي درجة.";
 
 /* Clickable rating evidence. */
 "spend_harness_details_title" = "أساس التقييم";
@@ -1774,3 +1774,12 @@
 "spend_harness_method" = "تُحسب القيم الوسيطة خطيًا وتُقرّب إلى أعداد صحيحة. يلزم %@ رصدًا صالحًا لكل بُعد، والأبعاد الأربعة مطلوبة للمجموع.";
 "spend_harness_experimental_help" = "الأوزان والحدود تحتاج إلى معايرة. زمن الجولة يشمل التفكير والأدوات والانتظار؛ ويتداخل الناتج والمدة. تُطبق عوامل تصفية التاريخ والمصدر الحالية.";
 "spend_harness_rule_version" = "القاعدة %@";
+
+/* Runtime observations and unreviewed task outcomes. */
+"spend_harness_scope_help" = "مرجع تشغيل تجريبي؛ لا يقيّم جودة المهام أو قدرات الوكيل.";
+"spend_harness_task_help" = "لم تُراجع نتائج المهام. اكتمال الجولات لا يثبت قبول المهام، لذا لا تتوفر نسبة نجاح للمهام.";
+"spend_harness_output_definition" = "إجمالي رموز المخرجات / إجمالي وقت الجولات، بما يشمل الاستدلال والأدوات والانتظار. يختلف عدّ الرموز حسب النموذج؛ وهذه ليست سرعة توليد النص.";
+"spend_harness_duration_definition" = "وسيط مدة الجولة الكاملة، بما يشمل الاستدلال والأدوات والانتظار. قد تستغرق المهام الأكثر تعقيدًا وقتًا أطول.";
+"spend_harness_output_high" = "مرتفع";
+"spend_harness_output_average" = "متوسط";
+"spend_harness_output_low" = "منخفض";

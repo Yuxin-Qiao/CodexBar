@@ -1737,11 +1737,11 @@
 "spend_harness_cache" = "Кеш";
 
 /* Plain-language experience rating. */
-"spend_harness_total_score" = "Враження %@/100";
-"spend_harness_pending_score" = "Оцінювання триває · %@/4 оцінено";
-"spend_harness_response" = "Відповідь";
-"spend_harness_output" = "Вивід";
-"spend_harness_duration" = "Очікування";
+"spend_harness_total_score" = "Орієнтир роботи %@/100";
+"spend_harness_pending_score" = "Оцінка роботи очікується · %@/4 оцінено";
+"spend_harness_response" = "Перший токен";
+"spend_harness_output" = "Вивід за хід";
+"spend_harness_duration" = "Час ходу";
 "spend_harness_samples" = "Спостережено %@ ходів";
 "spend_harness_good" = "Добре";
 "spend_harness_moderate" = "Можна покращити";
@@ -1752,12 +1752,12 @@
 "spend_harness_fast" = "Швидко";
 "spend_harness_average" = "Звичайно";
 "spend_harness_slow" = "Повільно";
-"spend_harness_wait_short" = "Коротке очікування";
-"spend_harness_wait_moderate" = "Середнє очікування";
-"spend_harness_wait_long" = "Довге очікування";
+"spend_harness_wait_short" = "Короткий хід";
+"spend_harness_wait_moderate" = "Середній хід";
+"spend_harness_wait_long" = "Довгий хід";
 "spend_harness_score_rule" = "Експериментальні правила: кеш 35 (ціль 90%); відповідь 25 (максимум за ≤1 с, нуль за ≥10 с); вивід за хід 20 (максимум за ≥20 tok/s); очікування 20 (максимум за ≤30 с, нуль за ≥300 с). Лінійна шкала з округленням до цілого. Щонайменше п’ять спостережень на показник; для суми потрібні всі чотири.";
-"spend_harness_no_rating" = "Оцінки ще немає";
-"spend_harness_no_rating_help" = "У наявних записах недостатньо даних для оцінки досвіду користування.";
+"spend_harness_no_rating" = "Робота · Немає даних";
+"spend_harness_no_rating_help" = "Орієнтир роботи потребує повних власних даних часу Codex. Відсутнім даним бали не присвоюються.";
 
 /* Clickable rating evidence. */
 "spend_harness_details_title" = "Підстава оцінки";
@@ -1770,3 +1770,12 @@
 "spend_harness_method" = "Проміжні значення масштабуються лінійно й округлюються. Для кожного показника потрібні %@ дійсних спостережень; для загальної оцінки потрібні всі чотири.";
 "spend_harness_experimental_help" = "Ваги та пороги потребують калібрування. Час включає міркування, інструменти й очікування; вихід і тривалість перетинаються. Діють поточні фільтри дат і джерел.";
 "spend_harness_rule_version" = "Правило %@";
+
+/* Runtime observations and unreviewed task outcomes. */
+"spend_harness_scope_help" = "Експериментальний орієнтир роботи; не оцінює якість завдань або здібності агента.";
+"spend_harness_task_help" = "Результати завдань не перевірено. Завершені ходи не доводять прийняття завдань; частка успішних завдань недоступна.";
+"spend_harness_output_definition" = "Усі токени виводу / загальний час ходів, включно з міркуваннями, інструментами та очікуванням. Підрахунок токенів залежить від моделі; це не швидкість генерації тексту.";
+"spend_harness_duration_definition" = "Медіанний час повного ходу, включно з міркуваннями, інструментами та очікуванням. Складніші завдання можуть тривати довше.";
+"spend_harness_output_high" = "Високий";
+"spend_harness_output_average" = "Середній";
+"spend_harness_output_low" = "Низький";

@@ -1736,11 +1736,11 @@
 "spend_harness_cache" = "Cache";
 
 /* Plain-language experience rating. */
-"spend_harness_total_score" = "Upplevelse %@/100";
-"spend_harness_pending_score" = "Poäng inväntas · %@/4 bedömda";
-"spend_harness_response" = "Svar";
-"spend_harness_output" = "Utdata";
-"spend_harness_duration" = "Väntan";
+"spend_harness_total_score" = "Körningsreferens %@/100";
+"spend_harness_pending_score" = "Körning väntar · %@/4 bedömda";
+"spend_harness_response" = "Första token";
+"spend_harness_output" = "Turens utdata";
+"spend_harness_duration" = "Turens längd";
 "spend_harness_samples" = "%@ turer observerade";
 "spend_harness_good" = "Bra";
 "spend_harness_moderate" = "Kan förbättras";
@@ -1751,12 +1751,12 @@
 "spend_harness_fast" = "Snabb";
 "spend_harness_average" = "Medel";
 "spend_harness_slow" = "Långsam";
-"spend_harness_wait_short" = "Kort väntan";
-"spend_harness_wait_moderate" = "Måttlig väntan";
-"spend_harness_wait_long" = "Lång väntan";
+"spend_harness_wait_short" = "Kort tur";
+"spend_harness_wait_moderate" = "Medellång tur";
+"spend_harness_wait_long" = "Lång tur";
 "spend_harness_score_rule" = "Experimentella regler: cache 35 (mål 90%); svar 25 (fullt vid ≤1 s, noll vid ≥10 s); turutdata 20 (fullt vid ≥20 tok/s); väntan 20 (fullt vid ≤30 s, noll vid ≥300 s). Linjär skala avrundad till heltal. Minst fem observationer per del; alla fyra behövs för totalen.";
-"spend_harness_no_rating" = "Inget betyg ännu";
-"spend_harness_no_rating_help" = "Tillgängliga uppgifter räcker inte för att betygsätta användarupplevelsen.";
+"spend_harness_no_rating" = "Körning · Inga data";
+"spend_harness_no_rating_help" = "En körningsreferens kräver fullständiga inbyggda Codex-tidmätningar. Saknade data får ingen poäng.";
 
 /* Clickable rating evidence. */
 "spend_harness_details_title" = "Underlag för betyget";
@@ -1769,3 +1769,12 @@
 "spend_harness_method" = "Mellanvärden skalas linjärt och avrundas. Varje dimension kräver %@ giltiga observationer; alla fyra behövs för totalpoängen.";
 "spend_harness_experimental_help" = "Vikter och trösklar behöver kalibreras. Turtiden omfattar resonemang, verktyg och väntan; utdata och varaktighet överlappar. Aktuella datum- och källfilter gäller.";
 "spend_harness_rule_version" = "Regel %@";
+
+/* Runtime observations and unreviewed task outcomes. */
+"spend_harness_scope_help" = "Experimentell körningsreferens; bedömer inte uppgiftskvalitet eller agentförmåga.";
+"spend_harness_task_help" = "Uppgiftsresultaten har inte granskats. Avslutade turer bevisar inte att uppgifter godkänts; ingen framgångsandel finns därför.";
+"spend_harness_output_definition" = "Totala utdatatoken / total turtid, inklusive resonemang, verktyg och väntan. Tokenräkningen varierar mellan modeller; detta är inte textgenereringshastighet.";
+"spend_harness_duration_definition" = "Mediantid för en fullständig tur, inklusive resonemang, verktyg och väntan. Mer krävande uppgifter kan ta längre tid.";
+"spend_harness_output_high" = "Hög";
+"spend_harness_output_average" = "Medel";
+"spend_harness_output_low" = "Låg";
