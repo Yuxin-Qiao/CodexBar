@@ -1,0 +1,67 @@
+name: Final cache change full serial test proof
+
+on:
+  push:
+    branches: [ci/cache-benchmark]
+    paths: [.github/workflows/cache-final-test-proof.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  full-test:
+    if: ${{ github.repository == 'Yuxin-Qiao/CodexBar' }}
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: Yuxin-Qiao/CodexBar
+          ref: 36278a21e92fbfb537bb4dc98c6a844fdd584d24
+      - name: Select Xcode 26.6
+        run: |
+          set -euo pipefail
+          sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+          echo "DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer" >> "$GITHUB_ENV"
+      - name: Identify the exact production build context
+        id: context
+        run: python3 Scripts/ci_swiftpm_cache.py context --lane macos26-arm64
+      - name: Restore frozen experiment dependencies
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .build
+          key: cache-experiment-37871366393-xcode26.6-1b736048dab146887ec901227c36b2a6bc2efabdf05990123d908f50e9b5123e
+      - name: Verify cache fallback and snapshot current production inputs
+        env:
+          BUILD_CONTEXT: ${{ steps.context.outputs.context }}
+        run: |
+          set -euo pipefail
+          python3 Scripts/test_ci_swiftpm_cache.py
+          python3 Scripts/ci_swiftpm_cache.py restore --context "$BUILD_CONTEXT" --clean-fallback
+          python3 Scripts/ci_swiftpm_cache.py snapshot --context "$BUILD_CONTEXT"
+      - name: Run complete serial make test without filters or shards
+        timeout-minutes: 75
+        run: |
+          set -euo pipefail
+          touch "$RUNNER_TEMP/codexbar-tests-started"
+          mkdir -p "$RUNNER_TEMP/serial-proof"
+          git rev-parse HEAD > "$RUNNER_TEMP/serial-proof/production-head.txt"
+          CODEXBAR_TEST_GROUP_SIZE=8 \
+            CODEXBAR_TEST_SUITE_TIMEOUT=120 \
+            CODEXBAR_TEST_RETRY_NON_TIMEOUT_FAILURES=0 \
+            make test 2>&1 | tee "$RUNNER_TEMP/serial-proof/make-test.log"
+      - name: Verify no tracked input changed during the run
+        run: git diff --exit-code HEAD --
+      - name: Collect test crash reports on failure
+        if: ${{ failure() }}
+        run: |
+          if [[ -f "$RUNNER_TEMP/codexbar-tests-started" ]]; then
+            python3 Scripts/swift_test_diagnostics.py --since "$RUNNER_TEMP/codexbar-tests-started"
+          fi
+      - name: Retain the full suite and exact production revision
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: final-production-full-serial-tests
+          path: ${{ runner.temp }}/serial-proof
+          retention-days: 14
