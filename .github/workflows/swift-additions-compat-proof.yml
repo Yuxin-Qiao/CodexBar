@@ -1,0 +1,44 @@
+name: Verified source addition compatibility proof
+on:
+  push:
+    branches: [ci/swift-additions-compat-proof]
+    paths:
+      - .github/workflows/swift-additions-compat-proof.yml
+      - Scripts/cache_addition_project_proof.py
+      - Scripts/cache_addition_boundaries.py
+permissions:
+  contents: read
+jobs:
+  paired:
+    if: github.repository == 'Yuxin-Qiao/CodexBar'
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - name: Select exact Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer
+          echo "DEVELOPER_DIR=/Applications/Xcode_26.3.app/Contents/Developer" >> "$GITHUB_ENV"
+          xcodebuild -version
+          swift --version
+      - name: Cache regressions for compatibility lane
+        run: python3 Scripts/test_ci_swiftpm_cache.py
+      - name: Compile and verify all thirteen cache boundary scenarios
+        run: python3 Scripts/cache_addition_boundaries.py
+      - name: Same-root project paired build and complete tests
+        env:
+          CACHE_LANE: macos15-arm64
+        run: python3 Scripts/cache_addition_project_proof.py
+      - name: Retain bounded proof outputs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: source-addition-proof-macos15-arm64
+          path: |
+            ${{ runner.temp }}/addition-evidence/*.log
+            ${{ runner.temp }}/addition-evidence/metrics.json
+            ${{ runner.temp }}/addition-boundary-evidence/*.json
+            ${{ runner.temp }}/addition-boundary-evidence/*.log
+          retention-days: 14
