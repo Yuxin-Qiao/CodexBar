@@ -1,13 +1,32 @@
 # Changelog
 
-## 0.73.1 — Unreleased
+## 0.74.1 — Unreleased
+
+### Changed
+
+- Usage & Spend: show cached-input reuse and first-token/cache sample coverage in the session performance strip, keeping missing cache records distinct from measured zero reuse (#4413). Thanks @Yuxin-Qiao!
+
+### Fixed
+
+- Menu bar: stop the blank Settings placeholder window from appearing on launch (regression in 0.74.0) (#4415). Thanks @tcurdt, @ChuJiannn11 and @kcharlan!
+- Packaging: preserve the selected macOS SDK in app and helper binaries so newer macOS versions use current native UI metrics, while retaining macOS 14 support (#4403). Thanks @Yuxin-Qiao!
+
+## 0.74.0 — 2026-10-10
+
+### Highlights
+
+- Providers: Ollama API keys read the documented balance endpoint (monthly allowance, its reset and purchased credits) and browser mode parses credit wallets; Langdock adds Chrome and Safari profiles; cursor-agent logins work on Linux; bundled plugins add Cosmic AI, Aerostack, Sail Research, Sofya, Tavily, Exa, Linkup, TinyApi, Qwen Cloud Team plans and X API developer credits; Notion AI imports Edge sessions and recovers large workspaces; JetBrains AI shows top-up credits.
+- Menu bar: optionally follow the frontmost Codex, Claude, Cursor or Antigravity app in the merged icon, color icons by provider, flip the pace sign so reserve reads as positive, and scroll overflowing Overview menus with a coarse wheel; the empty Settings placeholder no longer leaves a Dock icon on macOS 27.
+- Codex accounts: saved accounts show their own cached usage and refresh individually in Settings, the CLI discovers token and managed accounts through read-only endpoints, explicitly selected managed accounts resolve fresh credentials, managed homes shared by two accounts survive removal, first-refresh errors surface after credential rotation, and commented-out endpoint overrides no longer shadow the real one.
+- Usage & Spend: inspect native Codex tool operations plus session throughput, first-token latency and duration; Hour-mode day navigation and annual token activity updates are far cheaper; the Codex history catch-up clears as soon as a refresh completes the cache; Claude history writes use copy-on-write clones on APFS; date inspection stays inside recorded buckets.
+- Claude: an external Claude Code sign-in now turns the stale "credentials not found" error into Refresh guidance without any background Keychain read, tall inline /usage panels keep the session row, Plan Usage history survives external OAuth token rotations, Enterprise monthly Extra usage stays visible in Compact Overview, plan renewal dates show in the menu and CLI, and insights-only CLI reports keep the original PTY error.
+- Linux, widgets and updates: `codexbar serve` stops leaking procfs read buffers and RPC pipes and returns freed glibc heap to the OS; Linux gains an opt-in compact Quick View and `serve --all-accounts`; a new CodexBar Accounts widget shows up to four (medium) or eight (large) account quotas with a "+N more" row, and widgets show minute-only live dates and localized percentages; all 23 languages are complete; Homebrew installs get update notifications and one-click upgrades for both the official cask and steipete/tap; Omarchy gains optional labels and per-model caps.
 
 ### Added
 
+- Widgets: add a quota-only Accounts overview with four rows on medium, eight on large, lowest remaining quota first, and a single overflow count including accounts beyond the snapshot cap (Fixes #3144). Thanks @nicosuave for the request and @aledeul for #3938!
 - Ollama: read `/api/balance` in API-key mode to show included monthly usage, its reset, and purchased credit balances without browser cookies (#4399). Thanks @patiencing for the report!
-
 - Cursor: read cursor-agent logins on Linux when desktop authentication is unavailable or rejected, preserving existing session choices and read-only credential access (#4397). Thanks @T0mSIlver!
-
 - Langdock: support explicitly selected Chrome and Safari profiles alongside Edge, preserving session checks and existing Edge selections (#4390). Thanks @dYn36!
 - Added a menu bar Pace sign option to show reserve as positive while keeping the current default, pace colors, and conditional rules unchanged. Thanks @LPFchan! (#4394)
 - Widgets: show minute-only live dates on macOS 15+ and place localized quota percentages beside reset references, with stacked headlines on narrow tiles (#4361). Thanks @brzvsk!
@@ -25,7 +44,6 @@
 - Menu bar: optionally follow the frontmost Codex, Claude, Cursor, or Antigravity app in the collapsed merged icon, preserving menu and account selection (#3961, #780). Thanks @gamithasam and @matthewlloyd!
 - CLI: discover saved token and managed Codex accounts through read-only `/accounts` endpoints, with stable provider-scoped IDs, privacy-aware labels, and no usage refresh or credential export (#4326). Thanks @zieglar!
 - Menu bar: add an opt-in Color by provider toggle across existing icon styles and stacked rows, with monochrome contrast and menu-tracking fallbacks (#4321). Thanks @aronchick!
-
 - Usage & Spend: inspect native Codex tool operations within a session, including recorded durations, nonzero exits, tool errors, slow-operation filters, and on-demand command/result previews (#4363). Thanks @Yuxin-Qiao!
 - Qwen Cloud: show Team Token Plan credit usage, remaining credits, seats, and cycle resets through a bundled plugin, with Individual usage retained when no active Team plan is available (#3711). Thanks @tavioto!
 - X API: track prepaid and free developer-console credits with a bundled plugin, Chrome/manual cookies, and negative balances in Balance layouts (#4127). Thanks @marklights54-byte!
@@ -35,6 +53,7 @@
 
 ### Fixed
 
+- Claude: replace stale missing-credential errors after an external login with credential-change timing and explicit Refresh guidance, without reading Keychain secrets in the background (#3395). Thanks @PoroGramr!
 - Claude: reduce history-cache writes on clone-capable macOS volumes while preserving atomic replacement, report contents, and full-write fallback (#4396). Thanks @Chipagosfinest!
 - Claude: retain session, weekly, and model-specific quotas when tall inline CLI usage panels exceed the former 50-row terminal (#4392). Thanks @T0mSIlver!
 - Overview: let coarse mouse wheels scroll menus that exceed the visible height while keeping row navigation for fitted menus (#4398). Thanks @Chipagosfinest!
@@ -52,7 +71,6 @@
 - Usage & Spend: clear a sleeping Codex history catch-up activity when a refresh confirms that all account caches have completed, without another scan or undoing a user stop, and recheck account coverage when a refresh arrives during the completion check (#4379). Thanks @Yuxin-Qiao!
 - Codex: ignore commented-out usage endpoint overrides, so disabled proxies cannot shadow active configuration or the default endpoint (#4330). Thanks @lishouxian!
 - Usage & Spend: keep date inspection inside recorded chart buckets, wrap scoped source legends, and retain recorded zero-dollar sources and amounts (#4329). Thanks @Yuxin-Qiao!
-
 - Menu bar: keep the empty Settings placeholder from creating a persistent Dock icon at launch on macOS 27, and share its guarded dismissal path. (#4101)
 - OpenCode Go: show the most constrained five-hour, weekly, or monthly quota in the automatic menu-bar percentage and switcher before it runs out. (#3349)
 - Claude: preserve Plan Usage history across external OAuth token rotations and reunite saved fragments with verified account/profile bindings, while keeping other accounts and unverified history separate (#4322). Thanks @urda!
