@@ -45,6 +45,8 @@ check_package_resolved() {
 
 check_package_product_paths() {
   "${ROOT_DIR}/Scripts/test_package_product_paths.sh"
+  /bin/bash "${ROOT_DIR}/Scripts/test_package_macos_sdk.sh"
+  python3 "${ROOT_DIR}/Scripts/test_check_macos_sdk.py"
 }
 
 check_package_strip() {

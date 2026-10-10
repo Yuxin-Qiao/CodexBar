@@ -95,7 +95,12 @@ esac
 # Load version info
 source "$ROOT/version.env"
 source "$ROOT/Scripts/package_product_paths.sh"
+source "$ROOT/Scripts/package_macos_sdk.sh"
 source "$ROOT/Scripts/sparkle_signing_paths.sh"
+
+# Keep the deployment target aligned with Package.swift and Info.plist while
+# recording the actual SDK, which controls AppKit/SwiftUI compatibility behavior.
+codexbar_configure_macos_sdk 14.0
 
 # Clean build only when explicitly requested (slower).
 if [[ "${CODEXBAR_FORCE_CLEAN:-0}" == "1" ]]; then
@@ -188,7 +193,7 @@ PY
 
 KEYBOARD_SHORTCUTS_UTIL="$ROOT/.build/checkouts/KeyboardShortcuts/Sources/KeyboardShortcuts/Utilities.swift"
 if [[ ! -f "$KEYBOARD_SHORTCUTS_UTIL" ]]; then
-  swift build -c "$CONF" --arch "${ARCH_LIST[0]}"
+  codexbar_build_macos_products -c "$CONF" --arch "${ARCH_LIST[0]}"
 fi
 patch_keyboard_shortcuts
 
@@ -235,6 +240,10 @@ stage_build_products() {
       echo "ERROR: ${product} does not contain required architecture: ${arch}" >&2
       return 1
     fi
+    if ! python3 "$ROOT/Scripts/check_macos_sdk.py" "$product" \
+      "$CODEXBAR_MACOS_MINIMUM_VERSION" "$CODEXBAR_MACOS_SDK_VERSION"; then
+      return 1
+    fi
     cp "$product" "$stage_dir/$name"
   done
   if [[ -d "$bin_dir/CodexBar.dSYM" ]]; then
@@ -243,7 +252,7 @@ stage_build_products() {
 }
 
 for ARCH in "${ARCH_LIST[@]}"; do
-  swift build -c "$CONF" --arch "$ARCH"
+  codexbar_build_macos_products -c "$CONF" --arch "$ARCH"
   stage_build_products "$ARCH"
 done
 

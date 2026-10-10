@@ -43,6 +43,7 @@ Uses Xcode’s `ictool` + transparent padding + iconset → Icon.icns.
 ```
 What it does:
 - `swift build -c release --arch arm64` and `swift build -c release --arch x86_64`
+- Explicitly selects the macOS SDK and passes its version separately from the macOS 14 deployment target to the linker. Before staging, every app/CLI/watchdog slice must report that SDK and minimum in `LC_BUILD_VERSION`. SwiftBuild can otherwise write the deployment target into the SDK field, enabling legacy AppKit/SwiftUI appearance on newer systems even though compilation used the current SDK.
 - Packages `CodexBar.app` with Info.plist and Icon.icns
 - Embeds Sparkle.framework, Updater, Autoupdate, XPCs
 - Codesigns **everything** with runtime + timestamp (deep) and adds rpath
