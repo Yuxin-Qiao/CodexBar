@@ -1,0 +1,73 @@
+name: macOS SDK packaging and full test proof
+on:
+  push:
+    branches: [ci/macos-sdk-validation]
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Select newest installed Xcode
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, re
+          apps = list(pathlib.Path('/Applications').glob('Xcode_*.app'))
+          def version(p):
+              return tuple(int(n) for n in re.findall(r'\d+', p.name))
+          selected = max(apps, key=version)
+          path = str(selected / 'Contents/Developer')
+          os.system('sudo xcode-select -s ' + path)
+          with open(os.environ['GITHUB_ENV'], 'a') as f:
+              f.write('DEVELOPER_DIR=' + path + '\n')
+          print('Installed:', [p.name for p in apps], 'Selected:', selected.name)
+          PY
+      - name: Package universal release with ad hoc signing
+        env:
+          ARCHES: arm64 x86_64
+          CODEXBAR_SIGNING: adhoc
+        run: |
+          set -euo pipefail
+          sw_vers
+          xcodebuild -version
+          xcrun --sdk macosx --show-sdk-version
+          ./Scripts/package_app.sh release 2>&1 | tee package-proof.log
+          for product in CodexBar.app/Contents/MacOS/CodexBar CodexBar.app/Contents/Helpers/CodexBarCLI CodexBar.app/Contents/Helpers/CodexBarClaudeWatchdog; do
+            python3 Scripts/check_macos_sdk.py "$product" 14.0 "$(xcrun --sdk macosx --show-sdk-version)"
+          done
+          git diff --exit-code HEAD --
+          ditto -c -k --sequesterRsrc --keepParent CodexBar.app CodexBar-sdk-proof.zip
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: macos-sdk-package-proof
+          retention-days: 7
+          path: |
+            CodexBar-sdk-proof.zip
+            package-proof.log
+            .build/xcode-widget-extension-release/xcodebuild.log
+  full-tests:
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Select Xcode 26.6
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+          echo DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer >> "$GITHUB_ENV"
+      - name: Full discovered test inventory
+        env:
+          CODEXBAR_TEST_GROUP_SIZE: 8
+          CODEXBAR_TEST_SUITE_TIMEOUT: 120
+          CODEXBAR_TEST_RETRY_NON_TIMEOUT_FAILURES: 0
+        run: |
+          set -euo pipefail
+          ./Scripts/test.sh --direct-workers 2 2>&1 | tee full-tests-proof.log
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: macos-sdk-full-test-proof
+          retention-days: 7
+          path: full-tests-proof.log
