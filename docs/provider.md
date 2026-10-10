@@ -66,6 +66,15 @@ diagnose classification, validation, and missing-credential messaging; a missing
 credential behavior. Typed settings-section registrations optionally expose cookie settings and a CLI credential
 contribution, so the app, CLI, and plugin cookie broker consume the same provider-owned settings shape.
 
+### Sidebar browsing metadata
+
+`ProviderDescriptor.catalog` supplies optional `ProviderCatalogPresentation` metadata. Add a `ProviderFamily`
+only when related first-party services should appear together in the sidebar; the default keeps a provider
+independent. Plugin-backed first-party specs expose the same `catalog` property. `searchAliases` adds common
+service spellings without changing display labels or persisted IDs. Shared family names and company aliases
+belong to `ProviderFamily`; each descriptor declares its own membership. A new unrelated provider needs no
+catalog change. These relationships affect browsing only, never credentials, account identity, quota, or fetches.
+
 ### Provider architecture gatekeeper threat model
 
 `ProviderArchitectureGatekeeperTests` is a drift tripwire against honest architecture mistakes by future contributors

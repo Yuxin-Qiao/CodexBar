@@ -31,6 +31,7 @@ public enum QwenCloudProviderDescriptor {
 
         return ProviderDescriptor(
             id: .qwencloud,
+            catalog: .init(family: .alibabaServices),
             settingsSection: .init(QwenCloudProviderSettingsKey.self, cookieSettings: QwenCloudProviderSettings.self),
             credentials: self.credentials,
             metadata: ProviderMetadata(

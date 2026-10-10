@@ -6,6 +6,7 @@ public enum GeminiProviderDescriptor {
     static func makeDescriptor() -> ProviderDescriptor {
         ProviderDescriptor(
             id: .gemini,
+            catalog: .init(family: .google),
             menuBarMetrics: ProviderMenuBarMetricCapabilities(
                 supported: [.automatic, .primary, .secondary, .average]),
             metadata: ProviderMetadata(

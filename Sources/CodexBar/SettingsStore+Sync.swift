@@ -59,6 +59,7 @@ extension SettingsStore {
             providerChangelogLinksEnabled: self.providerChangelogLinksEnabled,
             preferredCurrencyCode: self.preferredCurrencyCode,
             providersSortedAlphabetically: self.providersSortedAlphabetically,
+            providerListSortMode: self.providerListSortMode.rawValue,
             refreshFrequency: self.refreshFrequency.rawValue,
             refreshAllProvidersOnMenuOpen: self.refreshAllProvidersOnMenuOpen)
     }
@@ -99,7 +100,11 @@ extension SettingsStore {
         self.showOptionalCreditsAndExtraUsage = preferences.showOptionalCreditsAndExtraUsage
         self.providerChangelogLinksEnabled = preferences.providerChangelogLinksEnabled
         self.preferredCurrencyCode = preferences.preferredCurrencyCode
-        self.providersSortedAlphabetically = preferences.providersSortedAlphabetically
+        if let raw = preferences.providerListSortMode {
+            if let mode = ProviderListSortMode(rawValue: raw) { self.providerListSortMode = mode }
+        } else if self.defaultsState.providerListSortModeRaw.flatMap(ProviderListSortMode.init(rawValue:)) == nil {
+            self.providersSortedAlphabetically = preferences.providersSortedAlphabetically
+        }
         if let refreshFrequency = RefreshFrequency(rawValue: preferences.refreshFrequency) {
             self.refreshFrequency = refreshFrequency
         }

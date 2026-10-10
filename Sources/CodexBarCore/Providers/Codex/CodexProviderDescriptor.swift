@@ -24,6 +24,7 @@ public enum CodexProviderDescriptor {
     static func makeDescriptor() -> ProviderDescriptor {
         ProviderDescriptor(
             id: .codex,
+            catalog: .init(family: .openAI),
             menuBarMetrics: ProviderMenuBarMetricCapabilities(
                 supported: [.automatic, .primary, .secondary, .primaryAndSecondary, .extraUsage]),
             settingsSection: .init(CodexProviderSettingsKey.self),

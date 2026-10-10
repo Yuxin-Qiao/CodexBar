@@ -2506,3 +2506,16 @@
 "Pace sign" = "Tecken för förbrukningstakt";
 "Ahead of pace is +" = "Över förbrukningstakten är +";
 "Reserve is +" = "Reserv är +";
+
+"Provider order updated" = "Leverantörsordningen uppdaterad";
+"Undo" = "Ångra";
+"Clear filters" = "Rensa filter";
+"Change provider order" = "Ändra leverantörsordning";
+"Use your custom provider order" = "Använd din egen leverantörsordning";
+"Provider sorting" = "Sortera leverantörer";
+"Custom order" = "Egen ordning";
+"By name (enabled first)" = "Efter namn (aktiverade först)";
+"Group by company" = "Gruppera efter företag";
+"Only enabled providers" = "Endast aktiverade leverantörer";
+"Restore default order" = "Återställ standardordning";
+"Also restores the provider order in the menu bar. Can be undone." = "Återställer även leverantörsordningen i menyraden. Kan ångras.";

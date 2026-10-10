@@ -2510,3 +2510,16 @@
 "Pace sign" = "Kullanım hızı işareti";
 "Ahead of pace is +" = "Hızın üzerinde kullanım +";
 "Reserve is +" = "Rezerv +";
+
+"Provider order updated" = "Sağlayıcı sırası güncellendi";
+"Undo" = "Geri al";
+"Clear filters" = "Filtreleri temizle";
+"Change provider order" = "Sağlayıcı sırasını değiştir";
+"Use your custom provider order" = "Özel sağlayıcı sıranızı kullanın";
+"Provider sorting" = "Sağlayıcı sıralaması";
+"Custom order" = "Özel sıra";
+"By name (enabled first)" = "Ada göre (etkinler önce)";
+"Group by company" = "Şirkete göre grupla";
+"Only enabled providers" = "Yalnızca etkin sağlayıcılar";
+"Restore default order" = "Varsayılan sırayı geri yükle";
+"Also restores the provider order in the menu bar. Can be undone." = "Menü çubuğundaki sağlayıcı sırasını da geri yükler. Geri alınabilir.";

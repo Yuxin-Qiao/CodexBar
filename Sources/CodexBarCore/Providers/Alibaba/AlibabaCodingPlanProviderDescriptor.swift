@@ -31,6 +31,7 @@ public enum AlibabaCodingPlanProviderDescriptor {
 
         return ProviderDescriptor(
             id: .alibaba,
+            catalog: .init(family: .alibabaServices),
             settingsSection: .init(
                 AlibabaCodingPlanProviderSettingsKey.self,
                 cookieSettings: { settings in

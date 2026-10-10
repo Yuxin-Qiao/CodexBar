@@ -2511,3 +2511,16 @@
 "Pace sign" = "Signe del ritme";
 "Ahead of pace is +" = "Per sobre del ritme és +";
 "Reserve is +" = "La reserva és +";
+
+"Provider order updated" = "Ordre dels proveïdors actualitzat";
+"Undo" = "Desfer";
+"Clear filters" = "Esborrar filtres";
+"Change provider order" = "Canviar l’ordre dels proveïdors";
+"Use your custom provider order" = "Utilitzar l’ordre personalitzat";
+"Provider sorting" = "Ordenació dels proveïdors";
+"Custom order" = "Ordre personalitzat";
+"By name (enabled first)" = "Per nom (actius primer)";
+"Group by company" = "Agrupar per empresa";
+"Only enabled providers" = "Només proveïdors actius";
+"Restore default order" = "Restablir l’ordre per defecte";
+"Also restores the provider order in the menu bar. Can be undone." = "També restableix l’ordre dels proveïdors a la barra de menús. Es pot desfer.";

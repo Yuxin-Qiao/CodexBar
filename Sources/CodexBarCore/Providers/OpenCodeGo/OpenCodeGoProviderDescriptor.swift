@@ -29,6 +29,7 @@ public enum OpenCodeGoProviderDescriptor {
     static func makeDescriptor() -> ProviderDescriptor {
         ProviderDescriptor(
             id: .opencodego,
+            catalog: .init(family: .openCode),
             menuBarMetrics: ProviderMenuBarMetricCapabilities(
                 supported: [.automatic, .primary, .secondary, .tertiary]),
             settingsSection: .init(

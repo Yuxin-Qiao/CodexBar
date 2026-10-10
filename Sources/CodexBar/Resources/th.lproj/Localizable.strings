@@ -2511,3 +2511,16 @@
 "Pace sign" = "เครื่องหมายอัตราการใช้งาน";
 "Ahead of pace is +" = "ใช้เร็วกว่าที่ควรเป็นคือ +";
 "Reserve is +" = "โควตาสำรองคือ +";
+
+"Provider order updated" = "อัปเดตลำดับผู้ให้บริการแล้ว";
+"Undo" = "เลิกทำ";
+"Clear filters" = "ล้างตัวกรอง";
+"Change provider order" = "เปลี่ยนลำดับผู้ให้บริการ";
+"Use your custom provider order" = "ใช้ลำดับผู้ให้บริการที่กำหนดเอง";
+"Provider sorting" = "การเรียงผู้ให้บริการ";
+"Custom order" = "ลำดับที่กำหนดเอง";
+"By name (enabled first)" = "ตามชื่อ (ที่เปิดใช้ก่อน)";
+"Group by company" = "จัดกลุ่มตามบริษัท";
+"Only enabled providers" = "เฉพาะผู้ให้บริการที่เปิดใช้";
+"Restore default order" = "คืนค่าลำดับเริ่มต้น";
+"Also restores the provider order in the menu bar. Can be undone." = "คืนค่าลำดับผู้ให้บริการในแถบเมนูด้วย สามารถเลิกทำได้";

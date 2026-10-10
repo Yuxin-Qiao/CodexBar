@@ -2510,3 +2510,16 @@
 "Pace sign" = "Znak tempa zużycia";
 "Ahead of pace is +" = "Powyżej tempa to +";
 "Reserve is +" = "Rezerwa to +";
+
+"Provider order updated" = "Zaktualizowano kolejność dostawców";
+"Undo" = "Cofnij";
+"Clear filters" = "Wyczyść filtry";
+"Change provider order" = "Zmień kolejność dostawców";
+"Use your custom provider order" = "Użyj własnej kolejności dostawców";
+"Provider sorting" = "Sortowanie dostawców";
+"Custom order" = "Własna kolejność";
+"By name (enabled first)" = "Według nazwy (aktywni najpierw)";
+"Group by company" = "Grupuj według firmy";
+"Only enabled providers" = "Tylko aktywni dostawcy";
+"Restore default order" = "Przywróć domyślną kolejność";
+"Also restores the provider order in the menu bar. Can be undone." = "Przywraca również kolejność dostawców na pasku menu. Można cofnąć.";

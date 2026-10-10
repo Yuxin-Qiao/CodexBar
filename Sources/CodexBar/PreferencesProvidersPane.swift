@@ -159,14 +159,15 @@ struct ProvidersPane: View {
         guard !trimmedQuery.isEmpty else { return providers }
 
         return providers.filter { provider in
-            displayName(provider).localizedCaseInsensitiveContains(trimmedQuery)
-                || provider.rawValue.localizedCaseInsensitiveContains(trimmedQuery)
+            ProviderBrowserCatalog.matches(provider, query: trimmedQuery, displayName: displayName(provider))
         }
     }
 
     func moveProviders(fromOffsets: IndexSet, toOffset: Int) {
-        guard !self.settings.providersSortedAlphabetically else { return }
-        self.settings.moveProvider(fromOffsets: fromOffsets, toOffset: toOffset)
+        self.settings.moveVisibleProviders(
+            self.settings.orderedFirstPartyProviders().map(\.instanceID),
+            fromOffsets: fromOffsets,
+            toOffset: toOffset)
     }
 
     private func triggerRefresh(for provider: UsageProvider) {

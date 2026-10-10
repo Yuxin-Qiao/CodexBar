@@ -9,6 +9,17 @@ read_when:
 
 ## Settings
 - Menu → Highlight menu cards on hover is on by default. Turn it off to keep normal text and usage-bar colors on provider cards, Overview cards, and Refresh while hovering. Keyboard selection stays visible; clicks and submenus are unchanged. The choice persists locally across restarts.
+- The provider sidebar preserves the existing saved order and one-click alphabetical toggle. Its adjacent menu
+  offers Custom order, By name (enabled first), Group by company, a local Only enabled providers filter, and
+  Restore default order. Company grouping keeps related services together without moving enabled services
+  out of their group; standalone services retain their own rows. Search matches service names, CLI aliases,
+  company names, and company aliases in every mode.
+- Browsing modes and filters never rewrite provider configuration or menu bar order. Dragging is available only
+  in the unfiltered custom view and retains hidden plugin slots. Restore default order resets built-in service
+  slots to the catalog order, preserving provider configuration and plugins. A one-step Undo action (also
+  available through the native undo command) reverses the last sidebar order change without rolling back later
+  credential edits. External order changes invalidate undo. Existing alphabetical preferences migrate unchanged;
+  the new sort mode supports iCloud sync and portable transfer, while the enabled-only filter remains local.
 - App copy, credential-expiry alerts, share cards, number formatting, and layout direction follow the selected app language. Widgets use the system language independently; all 23 supported languages have complete app catalogs and generated widget catalogs. After editing app translations or widget lookup keys, run `node Scripts/sync-widget-locales.mjs`; `make check` verifies key coverage, format arguments, plural branches, and generated resources.
 - Notifications → Reset notifications is off by default and uses confirmed session and weekly resets, independently of confetti. Alerts name the provider and window; account labels appear only when Hide personal info is off. The existing macOS notification permission and Focus/Do Not Disturb settings control delivery; this toggle adds no startup permission request.
 - Reset alerts and session-restored alerts share account-scoped reset receipts. Switching accounts establishes a fresh session-notification baseline. Known reset boundaries are persisted per provider, account, and window, preventing repeated banners after refreshes or restarts; a different account or a newly advanced boundary can notify independently. Without reset metadata, the existing detector requires a new usage cycle before notifying again; a new depleted episode can still produce a restored notice. Returning timestamps identify an already-announced cycle without replaying it, and previously announced boundaries stay deduplicated. The reset toggle supports portable preference export/import and remains local unless explicitly transferred.

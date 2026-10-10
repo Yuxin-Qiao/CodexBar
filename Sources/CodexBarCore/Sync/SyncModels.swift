@@ -303,6 +303,7 @@ public struct SyncedPreferences: Codable, Sendable {
     public var providerChangelogLinksEnabled: Bool
     public var preferredCurrencyCode: String
     public var providersSortedAlphabetically: Bool
+    public var providerListSortMode: String?
     public var refreshFrequency: String
     public var refreshAllProvidersOnMenuOpen: Bool
 
@@ -337,6 +338,7 @@ public struct SyncedPreferences: Codable, Sendable {
         providerChangelogLinksEnabled: Bool,
         preferredCurrencyCode: String,
         providersSortedAlphabetically: Bool,
+        providerListSortMode: String? = nil,
         refreshFrequency: String,
         refreshAllProvidersOnMenuOpen: Bool)
     {
@@ -370,6 +372,7 @@ public struct SyncedPreferences: Codable, Sendable {
         self.providerChangelogLinksEnabled = providerChangelogLinksEnabled
         self.preferredCurrencyCode = preferredCurrencyCode
         self.providersSortedAlphabetically = providersSortedAlphabetically
+        self.providerListSortMode = providerListSortMode
         self.refreshFrequency = refreshFrequency
         self.refreshAllProvidersOnMenuOpen = refreshAllProvidersOnMenuOpen
     }

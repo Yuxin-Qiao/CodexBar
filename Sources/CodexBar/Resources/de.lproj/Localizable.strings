@@ -2505,3 +2505,16 @@
 "Pace sign" = "Vorzeichen des Nutzungstempos";
 "Ahead of pace is +" = "Über dem Solltempo ist +";
 "Reserve is +" = "Reserve ist +";
+
+"Provider order updated" = "Anbieterreihenfolge aktualisiert";
+"Undo" = "Rückgängig";
+"Clear filters" = "Filter löschen";
+"Change provider order" = "Anbieterreihenfolge ändern";
+"Use your custom provider order" = "Eigene Anbieterreihenfolge verwenden";
+"Provider sorting" = "Anbietersortierung";
+"Custom order" = "Eigene Reihenfolge";
+"By name (enabled first)" = "Nach Name (aktivierte zuerst)";
+"Group by company" = "Nach Unternehmen gruppieren";
+"Only enabled providers" = "Nur aktivierte Anbieter";
+"Restore default order" = "Standardreihenfolge wiederherstellen";
+"Also restores the provider order in the menu bar. Can be undone." = "Stellt auch die Anbieterreihenfolge in der Menüleiste wieder her. Kann rückgängig gemacht werden.";

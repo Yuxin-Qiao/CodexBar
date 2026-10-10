@@ -14,6 +14,7 @@ public enum AntigravityProviderDescriptor {
     static func makeDescriptor() -> ProviderDescriptor {
         ProviderDescriptor(
             id: .antigravity,
+            catalog: .init(family: .google),
             menuBarMetrics: ProviderMenuBarMetricCapabilities(
                 supported: [.automatic, .primary, .secondary],
                 namedExtras: [

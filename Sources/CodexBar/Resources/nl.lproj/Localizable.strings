@@ -2506,3 +2506,16 @@
 "Pace sign" = "Teken van gebruikstempo";
 "Ahead of pace is +" = "Boven het tempo is +";
 "Reserve is +" = "Reserve krijgt +";
+
+"Provider order updated" = "Volgorde van aanbieders bijgewerkt";
+"Undo" = "Ongedaan maken";
+"Clear filters" = "Filters wissen";
+"Change provider order" = "Volgorde van aanbieders wijzigen";
+"Use your custom provider order" = "Eigen volgorde van aanbieders gebruiken";
+"Provider sorting" = "Aanbieders sorteren";
+"Custom order" = "Eigen volgorde";
+"By name (enabled first)" = "Op naam (ingeschakelde eerst)";
+"Group by company" = "Groeperen op bedrijf";
+"Only enabled providers" = "Alleen ingeschakelde aanbieders";
+"Restore default order" = "Standaardvolgorde herstellen";
+"Also restores the provider order in the menu bar. Can be undone." = "Herstelt ook de volgorde van aanbieders in de menubalk. Kan ongedaan worden gemaakt.";

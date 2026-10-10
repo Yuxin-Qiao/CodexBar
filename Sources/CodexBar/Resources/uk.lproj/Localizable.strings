@@ -2507,3 +2507,16 @@
 "Pace sign" = "Знак темпу витрат";
 "Ahead of pace is +" = "Випередження темпу — +";
 "Reserve is +" = "Запас — +";
+
+"Provider order updated" = "Порядок провайдерів оновлено";
+"Undo" = "Скасувати";
+"Clear filters" = "Очистити фільтри";
+"Change provider order" = "Змінити порядок провайдерів";
+"Use your custom provider order" = "Використовувати власний порядок провайдерів";
+"Provider sorting" = "Сортування провайдерів";
+"Custom order" = "Власний порядок";
+"By name (enabled first)" = "За назвою (активні першими)";
+"Group by company" = "Групувати за компанією";
+"Only enabled providers" = "Лише активні провайдери";
+"Restore default order" = "Відновити типовий порядок";
+"Also restores the provider order in the menu bar. Can be undone." = "Також відновлює порядок провайдерів у рядку меню. Дію можна скасувати.";
