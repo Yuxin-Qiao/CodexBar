@@ -2,6 +2,8 @@
 
 ## 0.74.1 — Unreleased
 
+- Usage & Spend: show cached-input reuse and first-token/cache sample coverage in the session performance strip, keeping missing cache records distinct from measured zero reuse (#4413). Thanks @Yuxin-Qiao!
+
 ## 0.74.0 — 2026-10-10
 
 ### Highlights

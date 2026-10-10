@@ -175,7 +175,7 @@ struct SpendSessionPerformanceTests {
             let metrics = spendSessionPerformanceMetrics(summary)
             #expect(metrics.map(\.value) == ["0.1 s", "166.7 tok/s", "1.5 s", "0.0%"])
             #expect(metrics[0].note == "First-token samples: 1 / 2")
-            #expect(metrics[3].note == "1 / 2 turns with cache data")
+            #expect(metrics.first(where: { $0.id == "cached-input" })?.note == "1 / 2 turns with cache data")
             #expect(!spendSessionPerformanceDetailMetrics(summary).contains { $0.id == "cached-input" })
         }
     }
