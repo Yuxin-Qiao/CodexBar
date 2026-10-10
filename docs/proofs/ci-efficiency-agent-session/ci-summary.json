@@ -1,0 +1,87 @@
+{
+  "headSha": "1ea3f1af7c59205fc45a22a879da1071e3a8ba31",
+  "event": "pull_request",
+  "status": "completed",
+  "conclusion": "success",
+  "attempt": 1,
+  "url": "https://github.com/steipete/CodexBar/actions/runs/38022055294",
+  "startedAt": "2026-10-10T03:51:58Z",
+  "updatedAt": "2026-10-10T04:37:44Z",
+  "jobs": [
+    {
+      "job_id": 114124966196,
+      "name": "lint",
+      "conclusion": "success",
+      "created_at": "2026-10-10T03:51:59Z",
+      "started_at": "2026-10-10T03:52:01Z",
+      "completed_at": "2026-10-10T03:54:02Z",
+      "queue_seconds": 2.0,
+      "execution_seconds": 121.0
+    },
+    {
+      "job_id": 114124966340,
+      "name": "changes",
+      "conclusion": "success",
+      "created_at": "2026-10-10T03:51:59Z",
+      "started_at": "2026-10-10T03:52:02Z",
+      "completed_at": "2026-10-10T03:52:19Z",
+      "queue_seconds": 3.0,
+      "execution_seconds": 17.0
+    },
+    {
+      "job_id": 114125028461,
+      "name": "build-linux-cli (linux-arm64, ubuntu-24.04-arm)",
+      "conclusion": "success",
+      "created_at": "2026-10-10T03:52:19Z",
+      "started_at": "2026-10-10T03:52:24Z",
+      "completed_at": "2026-10-10T04:05:13Z",
+      "queue_seconds": 5.0,
+      "execution_seconds": 769.0
+    },
+    {
+      "job_id": 114125028480,
+      "name": "swift-test-macos",
+      "conclusion": "success",
+      "created_at": "2026-10-10T03:52:19Z",
+      "started_at": "2026-10-10T03:52:29Z",
+      "completed_at": "2026-10-10T04:37:34Z",
+      "queue_seconds": 10.0,
+      "execution_seconds": 2705.0
+    },
+    {
+      "job_id": 114125028488,
+      "name": "swift-build-macos-compatibility",
+      "conclusion": "success",
+      "created_at": "2026-10-10T03:52:19Z",
+      "started_at": "2026-10-10T03:52:28Z",
+      "completed_at": "2026-10-10T04:13:52Z",
+      "queue_seconds": 9.0,
+      "execution_seconds": 1284.0
+    },
+    {
+      "job_id": 114125028492,
+      "name": "build-linux-cli (linux-x64, ubuntu-24.04)",
+      "conclusion": "success",
+      "created_at": "2026-10-10T03:52:19Z",
+      "started_at": "2026-10-10T03:52:22Z",
+      "completed_at": "2026-10-10T04:04:29Z",
+      "queue_seconds": 3.0,
+      "execution_seconds": 727.0
+    },
+    {
+      "job_id": 114133008336,
+      "name": "lint-build-test",
+      "conclusion": "success",
+      "created_at": "2026-10-10T04:37:34Z",
+      "started_at": "2026-10-10T04:37:36Z",
+      "completed_at": "2026-10-10T04:37:44Z",
+      "queue_seconds": 2.0,
+      "execution_seconds": 8.0
+    }
+  ],
+  "notes": [
+    "Queue is job created_at to started_at; execution is started_at to completed_at.",
+    "Skipped musl and cache-pruning jobs are not counted as successful executions.",
+    "CI data is the existing completed run; this agent session did not start or rerun it."
+  ]
+}

@@ -1,0 +1,9 @@
+swift-test-macos	UNKNOWN STEP	2026-10-10T03:55:04.7159220Z {"changed": 0, "cleaned": true, "fallback": "build input paths changed", "missing": 4, "removed": 0, "restored": 0, "unavailable": 0, "verified_symlinks": 0}
+swift-test-macos	UNKNOWN STEP	2026-10-10T03:55:06.2390250Z echo "Hosted tests run the complete inventory with two verified direct workers."
+swift-test-macos	UNKNOWN STEP	2026-10-10T03:55:06.3287670Z Hosted tests run the complete inventory with two verified direct workers.
+swift-test-macos	UNKNOWN STEP	2026-10-10T04:36:59.1378170Z - Workers: 2
+swift-test-macos	UNKNOWN STEP	2026-10-10T04:36:59.1378640Z - Group size: 8
+swift-test-macos	UNKNOWN STEP	2026-10-10T04:36:59.1379100Z - Discovered selections: 1651
+swift-test-macos	UNKNOWN STEP	2026-10-10T04:36:59.1380630Z - First-pass successful groups: 216
+swift-test-macos	UNKNOWN STEP	2026-10-10T04:36:59.1384580Z - Discovery seconds: 1476.4
+swift-build-macos-compatibility	UNKNOWN STEP	2026-10-10T03:53:26.6590490Z {"changed": 0, "cleaned": true, "fallback": "build input paths changed", "missing": 4, "removed": 0, "restored": 0, "unavailable": 0, "verified_symlinks": 0}

@@ -1,0 +1,16 @@
+{
+  "pr": "https://github.com/steipete/CodexBar/pull/4404",
+  "head": "1ea3f1af7c59205fc45a22a879da1071e3a8ba31",
+  "base": "08f42ab067044e911366e2c4fc2433850b3dafe9",
+  "agent": "codex-cli 0.161.0",
+  "task": "Actual developer handoff assessment of the existing PR, with local validation permitted and publication delegated to the parent agent.",
+  "original_terminal_stream_sha256": "7e8946640b147bca29c40e7ad45c35798af0b50ef110838c4b2b68dd81b620ce",
+  "command_count": 20,
+  "command_failures": 0,
+  "private_memory_commands_omitted": 3,
+  "long_outputs_excerpted": 8,
+  "source_stream_completed": true,
+  "agent_process_exit_code": 0,
+  "privacy": "Public derivative: local/runner paths and emails normalized; private memory commands, session identifiers, and usage metadata omitted. Public GitHub commit/run/job identifiers are retained for verification. Long tool outputs explicitly mark truncation. No model analysis is included.",
+  "scope": "One real reporting task with completed CI. This is not a controlled before/after prompt study, a new local full-suite run, or a guarantee of future agent behavior."
+}
