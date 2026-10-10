@@ -505,9 +505,12 @@ enum SpendDashboardSource {
                         .self)
                     { group in
                         var pendingCount = 0
+                        var results: [(Int, String, SpendDashboardModel.ProviderInput?)] = []
                         for (index, account) in pendingAccounts.enumerated() {
                             if pendingCount >= 3 {
-                                _ = try await group.next()
+                                if let result = try await group.next() {
+                                    results.append(result)
+                                }
                                 pendingCount -= 1
                             }
                             group.addTask {
@@ -547,7 +550,6 @@ enum SpendDashboardSource {
                             }
                             pendingCount += 1
                         }
-                        var results: [(Int, String, SpendDashboardModel.ProviderInput?)] = []
                         for try await result in group {
                             results.append(result)
                         }
