@@ -16,30 +16,26 @@ extension StatusItemController {
     /// content follows the user's input instead of jumping only the highlighted row.
     @discardableResult
     func handleOverviewScrollWheel(_ event: NSEvent, menu: NSMenu) -> Bool {
-        guard self.menuHasOverviewRows(menu) else {
+        // Only the root overview list translates coarse scrolling into highlight movement;
+        // row submenus (e.g. scrollable charts) and precise input stay with AppKit.
+        guard menu.items.contains(where: self.isOverviewRow),
+              self.openMenus.count <= 1,
+              !event.hasPreciseScrollingDeltas
+        else {
             self.overviewScrollAccumulatedDelta = 0
             return false
         }
-        // Leave the wheel alone while a row submenu is open (e.g. scrollable charts);
-        // only the root overview list translates scrolling into highlight movement.
-        guard self.openMenus.count <= 1 else {
-            self.overviewScrollAccumulatedDelta = 0
-            return false
-        }
-        guard !event.hasPreciseScrollingDeltas else {
-            self.overviewScrollAccumulatedDelta = 0
-            return false
-        }
-        // AppKit owns scrolling once the root menu is taller than its viewport. Consuming a
-        // non-precise wheel event here would replace document movement with highlight navigation,
-        // leaving the native edge scroller as the only reliable way to reach offscreen rows.
-        if let scrollView = Self.attachedMenuScrollView(in: menu),
-           let geometry = Self.menuViewportGeometry(in: scrollView),
-           geometry.clipSize.height > 0,
-           geometry.documentSize.height - geometry.clipSize.height > 0.5
-        {
-            self.overviewScrollAccumulatedDelta = 0
-            return false
+        // Highlighting a custom row does not reveal it. Let AppKit move overflowing content,
+        // using settled geometry from this presentation rather than a cached menu size.
+        if let scrollView = Self.attachedMenuScrollView(in: menu) {
+            scrollView.layoutSubtreeIfNeeded()
+            if let geometry = Self.menuViewportGeometry(in: scrollView),
+               geometry.clipSize.height > 0,
+               geometry.documentSize.height - geometry.clipSize.height > 0.5
+            {
+                self.overviewScrollAccumulatedDelta = 0
+                return false
+            }
         }
         // Precise trackpad/Magic Mouse scrolling already returned above, so this only guards
         // non-precise devices that still report a momentum phase: swallow that flick tail so the
@@ -71,10 +67,8 @@ extension StatusItemController {
         return true
     }
 
-    func menuHasOverviewRows(_ menu: NSMenu) -> Bool {
-        menu.items.contains { item in
-            (item.representedObject as? String)?.hasPrefix(Self.overviewRowIdentifierPrefix) == true
-        }
+    private func isOverviewRow(_ item: NSMenuItem) -> Bool {
+        (item.representedObject as? String)?.hasPrefix(Self.overviewRowIdentifierPrefix) == true
     }
 
     func resetOverviewScrollAccumulation() {
@@ -115,9 +109,7 @@ extension StatusItemController {
     }
 
     func overviewScrollTargetItem(in menu: NSMenu, step: OverviewScrollStep) -> NSMenuItem? {
-        let rows = menu.items.filter { item in
-            (item.representedObject as? String)?.hasPrefix(Self.overviewRowIdentifierPrefix) == true
-        }
+        let rows = menu.items.filter(self.isOverviewRow)
         guard !rows.isEmpty else { return nil }
 
         guard let current = self.highlightedMenuItems[ObjectIdentifier(menu)],
@@ -126,12 +118,8 @@ extension StatusItemController {
             return step == .down ? rows.first : rows.last
         }
 
-        let targetIndex: Int = switch step {
-        case .up:
-            max(0, currentIndex - 1)
-        case .down:
-            min(rows.count - 1, currentIndex + 1)
-        }
+        let offset = step == .up ? -1 : 1
+        let targetIndex = min(rows.count - 1, max(0, currentIndex + offset))
         return rows[targetIndex]
     }
 }

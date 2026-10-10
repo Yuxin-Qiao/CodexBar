@@ -1,6 +1,7 @@
 import AppKit
 import CodexBarCore
 import Foundation
+import SwiftUI
 import Testing
 @testable import CodexBar
 
@@ -37,14 +38,24 @@ private final class OverviewScrollEvent: NSEvent {
     }
 }
 
+private final class DeferredOverviewScrollView: NSScrollView {
+    var pendingDocumentHeight: CGFloat?
+
+    override func layout() {
+        super.layout()
+        if let height = self.pendingDocumentHeight, let documentView {
+            self.pendingDocumentHeight = nil
+            documentView.setFrameSize(NSSize(width: documentView.frame.width, height: height))
+        }
+    }
+}
+
 @MainActor
+@Suite(.serialized)
 struct StatusMenuOverviewScrollTests {
-    private func makeController(suiteName: String) throws -> StatusItemController {
+    private func makeController(suiteName: String, renderCards: Bool = false) throws -> StatusItemController {
         let suite = "\(suiteName)-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        // Scroll navigation needs neither saved app-group data nor legacy account migration.
-        defaults.set(AppGroupSupport.migrationVersion, forKey: AppGroupSupport.migrationVersionKey)
-        defaults.set(true, forKey: "codexbar.legacySecretsMigrationCompleted")
+        let defaults = InMemoryUserDefaults()
         let configStore = testConfigStore(suiteName: suite)
         try configStore.save(CodexBarConfig(providers: UsageProvider.allCases.map {
             ProviderConfig(id: $0.instanceID, enabled: false)
@@ -73,7 +84,7 @@ struct StatusMenuOverviewScrollTests {
             updater: DisabledUpdaterController(),
             preferencesSelection: PreferencesSelection(),
             statusBar: .system,
-            menuCardRenderingEnabled: false,
+            menuCardRenderingEnabled: renderCards,
             menuRefreshEnabled: false,
             observeProviderConfigNotifications: false)
     }
@@ -102,9 +113,11 @@ struct StatusMenuOverviewScrollTests {
     private func attachMenuViewport(
         to menu: NSMenu,
         horizontalOverflow: Bool = false,
-        verticalOverflow: Bool = false) -> NSScrollView
+        verticalOverflow: Bool = false,
+        itemIndex: Int = 0,
+        viewport: NSScrollView? = nil) -> NSScrollView
     {
-        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 200, height: 100))
+        let scrollView = viewport ?? NSScrollView(frame: NSRect(x: 0, y: 0, width: 200, height: 100))
         let clipSize = scrollView.contentView.bounds.size
         let documentView = NSView(frame: NSRect(
             origin: .zero,
@@ -113,8 +126,8 @@ struct StatusMenuOverviewScrollTests {
                 height: clipSize.height + (verticalOverflow ? 400 : 0))))
         scrollView.documentView = documentView
 
-        let hostedItemView = NSView(frame: NSRect(x: 0, y: 0, width: 20, height: 20))
-        menu.items[0].view = hostedItemView
+        let hostedItemView = menu.items[itemIndex].view ?? NSView(frame: NSRect(x: 0, y: 0, width: 20, height: 20))
+        menu.items[itemIndex].view = hostedItemView
         documentView.addSubview(hostedItemView)
         return scrollView
     }
@@ -339,6 +352,167 @@ struct StatusMenuOverviewScrollTests {
         #expect(!controller.handleOverviewScrollWheel(overflowNotch, menu: menu))
         #expect(controller.overviewScrollAccumulatedDelta == 0)
         #expect(steps.isEmpty)
+    }
+
+    @Test
+    func `pending viewport layout settles before coarse wheel routing`() throws {
+        let controller = try self.makeController(suiteName: "OverviewScroll-PendingLayout")
+        defer { controller.releaseStatusItemsForTesting() }
+        let menu = self.makeOverviewMenu()
+        let viewport = DeferredOverviewScrollView(frame: NSRect(x: 0, y: 0, width: 200, height: 100))
+        let scrollView = self.attachMenuViewport(to: menu, viewport: viewport)
+        viewport.pendingDocumentHeight = 500
+        viewport.needsLayout = true
+
+        var steps: [OverviewScrollStep] = []
+        controller.overviewScrollNavigationHandlerForTesting = { steps.append($0) }
+        #expect(!controller.handleOverviewScrollWheel(self.makeScrollEvent(deltaY: -1, precise: false), menu: menu))
+        #expect(steps.isEmpty)
+        #expect(scrollView.documentView?.frame.height == 500)
+    }
+
+    @Test
+    func `precise input bypasses pending viewport layout`() throws {
+        let controller = try self.makeController(suiteName: "OverviewScroll-PreciseLayout")
+        defer { controller.releaseStatusItemsForTesting() }
+        let menu = self.makeOverviewMenu()
+        let viewport = DeferredOverviewScrollView(frame: NSRect(x: 0, y: 0, width: 200, height: 100))
+        let scrollView = self.attachMenuViewport(to: menu, viewport: viewport)
+        viewport.pendingDocumentHeight = 500
+        viewport.needsLayout = true
+        controller.overviewScrollAccumulatedDelta = -0.5
+
+        #expect(!controller.handleOverviewScrollWheel(self.makeScrollEvent(deltaY: -1, precise: true), menu: menu))
+        #expect(viewport.pendingDocumentHeight == 500)
+        #expect(controller.overviewScrollAccumulatedDelta == 0)
+        #expect(StatusItemController.attachedMenuScrollView(in: menu) === scrollView)
+    }
+
+    @Test
+    func `zero height viewport falls back until usable geometry arrives`() throws {
+        let controller = try self.makeController(suiteName: "OverviewScroll-ZeroHeight")
+        defer { controller.releaseStatusItemsForTesting() }
+        let menu = self.makeOverviewMenu()
+        let scrollView = self.attachMenuViewport(to: menu, verticalOverflow: true)
+        let viewportSize = scrollView.frame.size
+        scrollView.setFrameSize(NSSize(width: viewportSize.width, height: 0))
+        scrollView.layoutSubtreeIfNeeded()
+        #expect(scrollView.contentView.bounds.height == 0)
+
+        var steps: [OverviewScrollStep] = []
+        controller.overviewScrollNavigationHandlerForTesting = { steps.append($0) }
+        let partialNotch = self.makeScrollEvent(deltaY: -0.5, precise: false)
+        #expect(controller.handleOverviewScrollWheel(partialNotch, menu: menu))
+        #expect(controller.overviewScrollAccumulatedDelta == -0.5)
+        scrollView.setFrameSize(viewportSize)
+        #expect(!controller.handleOverviewScrollWheel(partialNotch, menu: menu))
+        #expect(controller.overviewScrollAccumulatedDelta == 0)
+        #expect(steps.isEmpty)
+    }
+
+    @Test
+    func `momentum tail is swallowed without highlight movement after menu refits`() throws {
+        let controller = try self.makeController(suiteName: "OverviewScroll-RefitMomentum")
+        defer { controller.releaseStatusItemsForTesting() }
+        let menu = self.makeOverviewMenu()
+        let scrollView = self.attachMenuViewport(to: menu, verticalOverflow: true)
+        var steps: [OverviewScrollStep] = []
+        controller.overviewScrollNavigationHandlerForTesting = { steps.append($0) }
+
+        let beginning = self.makeScrollEvent(deltaY: -1, precise: false, momentumPhase: .began)
+        #expect(!controller.handleOverviewScrollWheel(beginning, menu: menu))
+        scrollView.documentView?.setFrameSize(scrollView.contentView.bounds.size)
+        for phase: NSEvent.Phase in [.changed, .ended, .cancelled] {
+            let tail = self.makeScrollEvent(deltaY: -1, precise: false, momentumPhase: phase)
+            #expect(controller.handleOverviewScrollWheel(tail, menu: menu))
+        }
+        #expect(steps.isEmpty)
+        #expect(controller.overviewScrollAccumulatedDelta == 0)
+        #expect(controller.handleOverviewScrollWheel(self.makeScrollEvent(deltaY: -0.5, precise: false), menu: menu))
+        #expect(steps.isEmpty)
+    }
+
+    @Test
+    func `reopened menu uses its replacement viewport size`() throws {
+        let controller = try self.makeController(suiteName: "OverviewScroll-Reopen")
+        defer { controller.releaseStatusItemsForTesting() }
+        let menu = self.makeOverviewMenu()
+        let oldViewport = self.attachMenuViewport(to: menu, verticalOverflow: true)
+        let wheel = self.makeScrollEvent(deltaY: -1, precise: false)
+        var steps: [OverviewScrollStep] = []
+        controller.overviewScrollNavigationHandlerForTesting = { steps.append($0) }
+        #expect(!controller.handleOverviewScrollWheel(wheel, menu: menu))
+
+        let fittedViewport = self.attachMenuViewport(to: menu)
+        #expect(oldViewport !== fittedViewport)
+        #expect(controller.handleOverviewScrollWheel(wheel, menu: menu))
+        #expect(steps == [.down])
+        menu.items[0].view?.removeFromSuperview()
+        #expect(StatusItemController.attachedMenuScrollView(in: menu) == nil)
+        #expect(controller.handleOverviewScrollWheel(wheel, menu: menu))
+        #expect(steps == [.down, .down])
+    }
+
+    @Test(arguments: [false, true])
+    func `overflow routing through detached switcher still records user scrolling`(precise: Bool) throws {
+        let controller = try self.makeController(suiteName: "OverviewScroll-Switcher")
+        defer { controller.releaseStatusItemsForTesting() }
+        let menu = self.makeOverviewMenu()
+        let switcherItem = NSMenuItem()
+        switcherItem.isEnabled = false
+        switcherItem.view = ProviderSwitcherView(
+            providers: [.codex, .claude],
+            selected: .overview,
+            includesOverview: true,
+            width: 320,
+            showsIcons: false,
+            iconProvider: { _ in NSImage() },
+            weeklyRemainingProvider: { _ in nil },
+            onSelect: { _ in })
+        menu.insertItem(switcherItem, at: 0)
+        menu.insertItem(.separator(), at: 1)
+        let scrollView = self.attachMenuViewport(to: menu, verticalOverflow: true, itemIndex: 2)
+        let menuID = ObjectIdentifier(menu)
+        controller.openMenus[menuID] = menu
+        let generation = controller.menuSession.beginTrackingSession(menuID)
+        defer { controller.openMenus.removeAll() }
+
+        let wheel = self.makeScrollEvent(deltaY: -1, precise: precise)
+        #expect(!controller.handleMenuTrackingShortcutEvent(wheel, menu: menu))
+        #expect(controller.menuSession.menuInteractionGeneration(for: menuID) == generation + 1)
+        #expect(StatusItemController.attachedMenuScrollView(in: menu) === scrollView)
+        #expect(switcherItem.view?.enclosingScrollView == nil)
+    }
+
+    @Test
+    func `custom provider highlight skips disabled sections without revealing a detached row`() throws {
+        let controller = try self.makeController(suiteName: "OverviewScroll-CustomRows", renderCards: true)
+        defer { controller.releaseStatusItemsForTesting() }
+        let menu = NSMenu()
+        let first = controller.makeMenuCardItem(
+            Text("First provider"), id: "overviewRow-claude", width: 200, usesGPUSelection: true, onClick: {})
+        let last = controller.makeMenuCardItem(
+            Text("Last provider"), id: "overviewRow-codex", width: 200, usesGPUSelection: true, onClick: {})
+        menu.addItem(first)
+        for index in 0..<3 {
+            let section = controller.makeMenuCardItem(Text("Section"), id: "section-\(index)", width: 200)
+            #expect(!section.isEnabled)
+            menu.addItem(section)
+        }
+        menu.addItem(last)
+        let scrollView = self.attachMenuViewport(to: menu, verticalOverflow: true)
+        let lastView = try #require(last.view as? MenuRowContainerView)
+        let origin = scrollView.contentView.bounds.origin
+        #expect(first.isEnabled && last.isEnabled)
+        #expect(first is MenuCardMenuItem && last is MenuCardMenuItem)
+        #expect(lastView.window == nil)
+        controller.menu(menu, willHighlight: first)
+        #expect(controller.overviewScrollTargetItem(in: menu, step: .down) === last)
+        controller.menu(menu, willHighlight: last)
+        #expect(lastView.isHighlightedForTesting)
+        #expect(!last.isHighlighted)
+        #expect(scrollView.contentView.bounds.origin == origin)
+        #expect(lastView.window == nil)
     }
 
     @Test
