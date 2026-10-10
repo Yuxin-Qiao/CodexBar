@@ -243,6 +243,66 @@ def read_metadata(root_fd, metadata, context):
     return files
 
 
+def verified_swift_additions(root, tracked, files, added):
+    """Conservative manifest-derived subset; unknown source roles remain cold."""
+    if not added or any(not name.endswith('.swift') or tracked[name] not in {'100644', '100755'}
+                        or any(part.startswith('.') for part in relative_path(name)) for name in added):
+        return False
+    try:
+        dumped = subprocess.run(['swift', 'package', 'dump-package'], cwd=root,
+                                capture_output=True, text=True, check=True, timeout=30).stdout
+        if len(dumped) > 4 * 1024 * 1024:
+            return False
+        manifest = json.loads(dumped)
+        targets = []
+        def inside(path, prefix):
+            return path == prefix or path.startswith(prefix + '/')
+        for target in manifest['targets']:
+            default = ('Tests/' if target['type'] == 'test' else 'Sources/') + target['name']
+            prefix = target.get('path') or default
+            relative_path(prefix)
+            excluded = []
+            for name in target.get('exclude', []):
+                relative_path(name)
+                excluded.append(prefix + '/' + name)
+            for resource in target.get('resources', []):
+                name = resource['path']
+                relative_path(name)
+                excluded.append(prefix + '/' + name)
+            targets.append((target, prefix, excluded))
+        def candidates(path):
+            return [(target, prefix) for target, prefix, excluded in targets
+                    if inside(path, prefix) and not any(inside(path, item) for item in excluded)]
+        for name in added:
+            owners = candidates(name)
+            if len(owners) != 1:
+                return False
+            target, prefix = owners[0]
+            # SwiftPM ignores/handles directory containers such as .xcassets and
+            # .docc specially even without a manifest resource annotation.
+            nested = PurePosixPath(name).relative_to(PurePosixPath(prefix))
+            if any('.' in part for part in nested.parts[:-1]):
+                return False
+            # Conservatively leave explicit source lists, C targets,
+            # empty/new targets and ambiguous layouts on the existing fallback path.
+            if (target['type'] not in {'regular', 'executable', 'test'}
+                    or target.get('sources') is not None or target.get('publicHeadersPath') is not None
+                    or target.get('pluginUsages')
+                    or any(setting['tool'] in {'c', 'cxx'} for setting in target.get('settings', []))):
+                return False
+            existing = [path for path, record in files.items()
+                        if record['git_mode'] in {'100644', '100755'}
+                        and any(owner_prefix == prefix for _, owner_prefix in candidates(path))]
+            if not any(path.endswith('.swift') for path in existing):
+                return False
+            if any(Path(path).suffix.lower() in {'.c', '.m', '.mm', '.cpp', '.cc', '.cxx', '.h', '.s'}
+                   for path in existing):
+                return False
+        return True
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+        return False
+
+
 def restore(root, metadata, context):
     root = Path(root).resolve()
     root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
@@ -259,11 +319,26 @@ def restore(root, metadata, context):
                     or name.startswith(BUILD_INPUT_PREFIXES)}
 
         cached_inputs, current_inputs = build_inputs(files), build_inputs(tracked)
-        if cached_inputs != current_inputs:
+        added_inputs = current_inputs - cached_inputs
+        if (cached_inputs - current_inputs
+                or (added_inputs and not verified_swift_additions(root, tracked, files, added_inputs))):
             # SwiftPM can leave removed .process resources in an old bundle.
             # Reuse checkouts, but clean products when the input graph changes.
             return {**result, "missing": len(current_inputs - cached_inputs),
                     "removed": len(cached_inputs - current_inputs), "fallback": "build input paths changed"}
+
+        # Validate every added regular file, including ancestors, before any mtime writes.
+        try:
+            for name in sorted(added_inputs):
+                fd = open_input(root_fd, name)
+                try:
+                    input_record(fd, tracked[name])
+                finally:
+                    os.close(fd)
+        except (OSError, ValueError):
+            return {**result, "unavailable": 1, "fallback": "added Swift source could not be verified"}
+        if added_inputs:
+            result["source_additions"] = len(added_inputs)
 
         # Equal target sizes/mtimes can hide a retargeted link from SwiftPM.
         # Check every package symlink and type transition before restoring any mtimes.
@@ -271,6 +346,8 @@ def restore(root, metadata, context):
                             if mode in {"100644", "100755"}
                             and files.get(name, {}).get("git_mode") in {"100644", "100755"}}
         for name in sorted(current_inputs):
+            if name in added_inputs:
+                continue
             if "120000" not in {tracked[name], files[name]["git_mode"]}:
                 continue
             if tracked[name] != files[name]["git_mode"]:
@@ -289,6 +366,17 @@ def restore(root, metadata, context):
             cached = files.get(name)
             if cached is None:
                 result["missing"] += 1
+                if name in added_inputs:
+                    try:
+                        fd = open_input(root_fd, name)
+                        try:
+                            input_record(fd, git_mode)
+                            current_stat = os.fstat(fd)
+                            os.utime(fd, ns=(current_stat.st_atime_ns, max(time.time_ns(), current_stat.st_mtime_ns)))
+                        finally:
+                            os.close(fd)
+                    except (OSError, ValueError):
+                        result["unavailable"] += 1
                 continue
             try:
                 fd = open_input(root_fd, name)

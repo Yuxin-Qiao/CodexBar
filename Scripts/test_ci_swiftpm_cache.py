@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import copy
 import hashlib
 import json
 import os
@@ -83,6 +84,52 @@ class SwiftPMCacheTests(unittest.TestCase):
         self.assertFalse((self.root / "Sources/Main.swift").exists())
         self.assertEqual(path.stat().st_mtime_ns, new_ns)
         self.assertEqual(untracked.stat().st_mtime_ns, untracked_ns)
+
+    def test_verified_source_addition_keeps_old_inputs_and_marks_backdated_source_fresh(self):
+        added = self.write("Sources/Added.swift", "new source\n", 1_000_000_000)
+        self.git("add", "Sources/Added.swift")
+        with patch.object(cache, "verified_swift_additions", return_value=True):
+            result = self.result()
+        self.assertNotIn("fallback", result)
+        self.assertEqual(result["source_additions"], 1)
+        self.assertEqual(result["restored"], len(self.names))
+        self.assertGreater(added.stat().st_mtime_ns, self.original_ns)
+
+    def test_source_addition_with_resource_edit_retains_changed_resource_timestamp(self):
+        self.write("Sources/Added.swift", "new source\n")
+        self.git("add", "Sources/Added.swift")
+        resource = self.write("Tests/Resources/fixture.md", "modified\n", self.original_ns)
+        with patch.object(cache, "verified_swift_additions", return_value=True):
+            result = self.result()
+        self.assertNotIn("fallback", result)
+        self.assertEqual(result["changed"], 1)
+        self.assertGreater(resource.stat().st_mtime_ns, self.original_ns)
+
+    def test_source_addition_preverification_rejects_replaced_symlink_before_old_mtime_writes(self):
+        added = self.write("Sources/Added.swift", "new source\n")
+        self.git("add", "Sources/Added.swift")
+        added.unlink()
+        added.symlink_to("Main.swift")
+        original = self.write("Sources/Main.swift", "original\n")
+        fresh_ns = original.stat().st_mtime_ns
+        with patch.object(cache, "verified_swift_additions", return_value=True):
+            result = self.result()
+        self.assertIn("fallback", result)
+        self.assertEqual(result["restored"], 0)
+        self.assertEqual(original.stat().st_mtime_ns, fresh_ns)
+
+    def test_source_addition_does_not_bypass_stable_untracked_link_target_guard(self):
+        self.write("Sources/Untracked.swift", "original\n")
+        link = self.root / "Sources/Linked.swift"
+        link.symlink_to("Untracked.swift")
+        self.git("add", "Sources/Linked.swift")
+        cache.snapshot(self.root, cache.DEFAULT_METADATA, "test-context")
+        self.write("Sources/Added.swift", "new source\n")
+        self.git("add", "Sources/Added.swift")
+        with patch.object(cache, "verified_swift_additions", return_value=True):
+            result = self.result()
+        self.assertIn("fallback", result)
+        self.assertEqual(result["restored"], 0)
 
     def test_removed_resource_requires_clean_before_any_timestamp_is_restored(self):
         source = self.write("Sources/Main.swift", "original\n")
@@ -422,6 +469,106 @@ class SwiftPMCacheTests(unittest.TestCase):
                     self.write(name, "context-input\n")
             with patch.object(cache.platform, "machine", return_value="x86_64"):
                 self.assertNotEqual(baseline["context"], cache.build_context(self.root, "macos26-arm64")["context"])
+
+
+class ManifestAdditionTests(unittest.TestCase):
+    def setUp(self):
+        self.target = {'name': 'Proof', 'type': 'regular', 'path': 'Sources/Proof',
+                       'exclude': ['Excluded'], 'resources': [{'path': 'DataFiles', 'rule': {'copy': {}}}],
+                       'settings': []}
+        self.targets = [self.target]
+        self.files = {'Sources/Proof/Value.swift': {'git_mode': '100644'}}
+        self.added = 'Sources/Proof/Added.swift'
+        self.mode = '100644'
+
+    def eligible(self):
+        tracked = {path: record['git_mode'] for path, record in self.files.items()}
+        tracked[self.added] = self.mode
+        result = subprocess.CompletedProcess([], 0, stdout=json.dumps({'targets': self.targets}))
+        with patch.object(cache.subprocess, 'run', return_value=result):
+            return cache.verified_swift_additions(Path('.'), tracked, self.files, {self.added})
+
+    def test_regular_swift_source(self):
+        self.assertTrue(self.eligible())
+
+    def test_default_source_target_root(self):
+        del self.target['path']
+        self.assertTrue(self.eligible())
+
+    def test_default_test_target_root(self):
+        self.target.update(type='test', path='Tests/Proof')
+        self.added = 'Tests/Proof/Added.swift'
+        self.files = {'Tests/Proof/ExistingTests.swift': {'git_mode': '100644'}}
+        del self.target['path']
+        self.assertTrue(self.eligible())
+
+    def test_swift_extension_resource_outside_resources_directory(self):
+        self.added = 'Sources/Proof/DataFiles/Payload.swift'
+        self.assertFalse(self.eligible())
+
+    def test_excluded_swift_source(self):
+        self.added = 'Sources/Proof/Excluded/Added.swift'
+        self.assertFalse(self.eligible())
+
+    def test_implicit_asset_container_rejected(self):
+        self.added = 'Sources/Proof/Artwork.xcassets/Payload.swift'
+        self.assertFalse(self.eligible())
+
+    def test_localization_container_rejected(self):
+        self.added = 'Sources/Proof/en.lproj/Payload.swift'
+        self.assertFalse(self.eligible())
+
+    def test_build_tool_plugins_conservatively_rejected(self):
+        self.target['pluginUsages'] = [{'plugin': ['Generate', 'ToolPackage']}]
+        self.assertFalse(self.eligible())
+
+    def test_new_symlink(self):
+        self.mode = '120000'
+        self.assertFalse(self.eligible())
+
+    def test_explicit_source_lists_conservatively_rejected(self):
+        self.target['sources'] = ['Value.swift', 'Added.swift']
+        self.assertFalse(self.eligible())
+
+    def test_c_settings_rejected(self):
+        self.target['settings'] = [{'tool': 'c', 'kind': {}}]
+        self.assertFalse(self.eligible())
+
+    def test_existing_c_source_rejected(self):
+        self.files['Sources/Proof/Old.c'] = {'git_mode': '100644'}
+        self.assertFalse(self.eligible())
+
+    def test_empty_or_new_target_rejected(self):
+        self.files = {}
+        self.assertFalse(self.eligible())
+
+    def test_plugin_target_rejected(self):
+        self.target['type'] = 'plugin'
+        self.assertFalse(self.eligible())
+
+    def test_hidden_file_rejected(self):
+        self.added = 'Sources/Proof/.Hidden.swift'
+        self.assertFalse(self.eligible())
+
+    def test_ambiguous_ownership_rejected(self):
+        sibling = copy.deepcopy(self.target)
+        sibling['name'] = 'Ambiguous'
+        self.targets.append(sibling)
+        self.assertFalse(self.eligible())
+
+    def test_excluded_parent_resolves_nested_target(self):
+        parent = {'name': 'Parent', 'type': 'test', 'path': 'Sources', 'exclude': ['Proof']}
+        self.targets.append(parent)
+        self.assertTrue(self.eligible())
+
+    def test_noncanonical_manifest_path_rejected(self):
+        self.target['path'] = 'Sources/../Sources/Proof'
+        self.assertFalse(self.eligible())
+
+    def test_noncanonical_resource_path_rejected(self):
+        self.target['resources'][0]['path'] = '../DataFiles'
+        self.assertFalse(self.eligible())
+
 
 
 if __name__ == "__main__":
