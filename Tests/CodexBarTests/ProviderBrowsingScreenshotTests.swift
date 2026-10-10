@@ -29,6 +29,20 @@ final class ProviderBrowsingScreenshotTests: XCTestCase {
             environmentBase: [:])
         for language in ["en", "zh-Hans"] {
             try CodexBarLocalizationOverride.$appLanguage.withValue(language) {
+                // The upstream row and direct List composition provide a capture reference for selection.
+                let reference = List(selection: .constant(SettingsPane.provider(.codex))) {
+                    SettingsSidebarProviderRow(provider: .codex, store: store, isEnabled: .constant(true))
+                        .tag(SettingsPane.provider(.codex))
+                }
+                .listStyle(.sidebar)
+                .frame(width: 230, height: 100)
+                .environment(\.colorScheme, .light)
+                .background(Color(nsColor: .windowBackgroundColor))
+                let referenceHosting = NSHostingView(rootView: reference)
+                referenceHosting.appearance = NSAppearance(named: .aqua)
+                let referencePNG = try XCTUnwrap(
+                    MenuLayoutScreenshotRenderTests.pngDataWithWindow(hosting: referenceHosting))
+                try referencePNG.write(to: directory.appendingPathComponent("selection-reference-\(language).png"))
                 for mode in ProviderListSortMode.allCases {
                     settings.providerListSortMode = mode
                     settings.providersEnabledOnly = false
@@ -74,7 +88,9 @@ final class ProviderBrowsingScreenshotTests: XCTestCase {
         name: String) throws
     {
         let view = SettingsSidebarView(
-            settings: settings, store: store, selection: .constant(.provider(.codex)))
+            settings: settings,
+            store: store,
+            selection: .constant(.provider(settings.providersEnabledOnly ? .azureopenai : .codex)))
             .frame(width: width, height: 900)
             .environment(\.colorScheme, .light)
             .background(Color(nsColor: .windowBackgroundColor))

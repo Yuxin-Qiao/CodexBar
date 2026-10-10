@@ -179,6 +179,44 @@ struct ProviderBrowsingTests {
     }
 
     @Test
+    func `native undo keeps only the latest order action and clears stale menu commands`() {
+        let settings = self.store()
+        let manager = UndoManager()
+        manager.groupsByEvent = false
+        let initial = settings.orderedFirstPartyProviders().map(\.instanceID)
+        #expect(settings.moveVisibleProviders(initial, fromOffsets: [0], toOffset: 3))
+        let afterFirst = settings.configSnapshot.providers.map(\.id)
+        manager.beginUndoGrouping()
+        settings.registerProviderOrderUndo(in: manager)
+        manager.endUndoGrouping()
+        #expect(manager.canUndo)
+        #expect(settings.moveVisibleProviders(
+            settings.orderedFirstPartyProviders().map(\.instanceID), fromOffsets: [0], toOffset: 3))
+        manager.beginUndoGrouping()
+        settings.registerProviderOrderUndo(in: manager)
+        manager.endUndoGrouping()
+        manager.undo()
+        #expect(settings.configSnapshot.providers.map(\.id) == afterFirst)
+        #expect(!manager.canUndo)
+        #expect(!settings.canUndoProviderOrderChange)
+
+        #expect(settings.restoreDefaultProviderOrder())
+        manager.beginUndoGrouping()
+        settings.registerProviderOrderUndo(in: manager)
+        manager.endUndoGrouping()
+        #expect(settings.undoProviderOrderChange())
+        #expect(!manager.canUndo)
+
+        #expect(settings.restoreDefaultProviderOrder())
+        manager.beginUndoGrouping()
+        settings.registerProviderOrderUndo(in: manager)
+        manager.endUndoGrouping()
+        settings.setProviderOrder(initial.reversed())
+        #expect(!manager.canUndo)
+        #expect(!settings.canUndoProviderOrderChange)
+    }
+
+    @Test
     func `automatic or filtered views reject reorder`() {
         let settings = self.store()
         let visible = settings.orderedFirstPartyProviders().map(\.instanceID)

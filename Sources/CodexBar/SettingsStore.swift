@@ -276,6 +276,7 @@ final class SettingsStore {
     var costUsageSettingsRevision: UInt64 = 0
     var providerOrder: [ProviderInstanceID] = []
     var providerOrderUndo: ProviderOrderUndo?
+    @ObservationIgnored weak var providerOrderUndoManager: UndoManager?
     var providerEnablement: [ProviderInstanceID: Bool] = [:]
     @ObservationIgnored var providerEnablementRevisions: [ProviderInstanceID: UInt64] = [:]
     @ObservationIgnored var providerConfigRevisions: [ProviderInstanceID: UInt64] = [:]
@@ -979,7 +980,7 @@ extension SettingsStore {
 
     func updateProviderState(config: CodexBarConfig) {
         if let undo = self.providerOrderUndo, config.providers.map(\.id) != undo.after {
-            self.providerOrderUndo = nil
+            self.clearProviderOrderUndo()
         }
         let rawOrder = config.providers.map(\.id.rawValue)
         self.providerOrder = Self.effectiveProviderOrder(raw: rawOrder)

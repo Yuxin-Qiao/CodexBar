@@ -131,11 +131,7 @@ struct SettingsSidebarView: View {
     }
 
     private func registerOrderUndo() {
-        guard let actionID = self.settings.providerOrderUndo?.id else { return }
-        self.undoManager?.registerUndo(withTarget: self.settings) { settings in
-            MainActor.assumeIsolated { settings.undoProviderOrderChange(matching: actionID) }
-        }
-        self.undoManager?.setActionName(L("Change provider order"))
+        self.settings.registerProviderOrderUndo(in: self.undoManager)
     }
 
     private var selectionBinding: Binding<SettingsPane?> {
