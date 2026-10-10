@@ -4,6 +4,7 @@
 
 ### Added
 
+- Widgets: add a quota-only Accounts overview with four rows on medium, eight on large, lowest remaining quota first, and a single overflow count including accounts beyond the snapshot cap (Fixes #3144). Thanks @nicosuave for the request and @aledeul for #3938!
 - Ollama: read `/api/balance` in API-key mode to show included monthly usage, its reset, and purchased credit balances without browser cookies (#4399). Thanks @patiencing for the report!
 
 - Cursor: read cursor-agent logins on Linux when desktop authentication is unavailable or rejected, preserving existing session choices and read-only credential access (#4397). Thanks @T0mSIlver!
