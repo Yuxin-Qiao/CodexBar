@@ -1,0 +1,54 @@
+name: Verified source addition paired proof
+on:
+  push:
+    branches: [ci/swift-additions-proof]
+    paths:
+      - .github/workflows/swift-additions-proof.yml
+      - Scripts/cache_addition_project_proof.py
+      - Scripts/cache_addition_boundaries.py
+permissions:
+  contents: read
+jobs:
+  paired:
+    if: github.repository == 'Yuxin-Qiao/CodexBar'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-26
+            xcode: '26.6'
+            lane: macos26-arm64
+          - runner: macos-15
+            xcode: '26.3'
+            lane: macos15-arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - name: Select exact Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode }}.app/Contents/Developer
+          echo "DEVELOPER_DIR=/Applications/Xcode_${{ matrix.xcode }}.app/Contents/Developer" >> "$GITHUB_ENV"
+          xcodebuild -version
+          swift --version
+      - name: Required lint and cache regressions
+        run: make check
+      - name: Compile and verify all thirteen cache boundary scenarios
+        run: python3 Scripts/cache_addition_boundaries.py
+      - name: Same-root project paired build and complete tests
+        env:
+          CACHE_LANE: ${{ matrix.lane }}
+        run: python3 Scripts/cache_addition_project_proof.py
+      - name: Retain bounded proof outputs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: source-addition-proof-${{ matrix.lane }}
+          path: |
+            ${{ runner.temp }}/addition-evidence/*.log
+            ${{ runner.temp }}/addition-evidence/metrics.json
+            ${{ runner.temp }}/addition-boundary-evidence/*.json
+            ${{ runner.temp }}/addition-boundary-evidence/*.log
+          retention-days: 14
