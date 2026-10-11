@@ -155,33 +155,37 @@ struct AntigravityScopedPrintFetchTests {
 
     @Test
     func `selected auto account uses the scoped report when legacy fails`() async throws {
-        let strategy = AntigravityCLIHTTPSFetchStrategy()
-        let expected = strategy.makeResult(
-            usage: self.makeUsage(email: "scoped@example.com"), sourceLabel: "cli")
-        let result = try await AntigravityCLIHTTPSFetchStrategy.fetchWithReportFallback(
-            context: self.makeContext(selected: true, env: self.accountEnv(email: "scoped@example.com")),
-            legacyFetch: { throw AntigravityStatusProbeError.timedOut },
-            reportFetch: {
-                Issue.record("Ambient identity-free print stays suppressed for selected accounts")
-                throw AntigravityStatusProbeError.notRunning
-            },
-            scopedReportFetch: { expected })
-        #expect(result.usage.identity?.accountEmail == "scoped@example.com")
-    }
-
-    @Test
-    func `scoped failure preserves the original error and never runs ambient print`() async {
-        await #expect(throws: AntigravityStatusProbeError.timedOut) {
-            try await AntigravityCLIHTTPSFetchStrategy.fetchWithReportFallback(
+        try await ProviderInteractionContext.$current.withValue(.userInitiated) {
+            let strategy = AntigravityCLIHTTPSFetchStrategy()
+            let expected = strategy.makeResult(
+                usage: self.makeUsage(email: "scoped@example.com"), sourceLabel: "cli")
+            let result = try await AntigravityCLIHTTPSFetchStrategy.fetchWithReportFallback(
                 context: self.makeContext(selected: true, env: self.accountEnv(email: "scoped@example.com")),
                 legacyFetch: { throw AntigravityStatusProbeError.timedOut },
                 reportFetch: {
                     Issue.record("Ambient identity-free print stays suppressed for selected accounts")
                     throw AntigravityStatusProbeError.notRunning
                 },
-                scopedReportFetch: {
-                    throw AntigravityStatusProbeError.cliReportFailed(.executableNotFound)
-                })
+                scopedReportFetch: { expected })
+            #expect(result.usage.identity?.accountEmail == "scoped@example.com")
+        }
+    }
+
+    @Test
+    func `scoped failure preserves the original error and never runs ambient print`() async {
+        await ProviderInteractionContext.$current.withValue(.userInitiated) {
+            await #expect(throws: AntigravityStatusProbeError.timedOut) {
+                try await AntigravityCLIHTTPSFetchStrategy.fetchWithReportFallback(
+                    context: self.makeContext(selected: true, env: self.accountEnv(email: "scoped@example.com")),
+                    legacyFetch: { throw AntigravityStatusProbeError.timedOut },
+                    reportFetch: {
+                        Issue.record("Ambient identity-free print stays suppressed for selected accounts")
+                        throw AntigravityStatusProbeError.notRunning
+                    },
+                    scopedReportFetch: {
+                        throw AntigravityStatusProbeError.cliReportFailed(.executableNotFound)
+                    })
+            }
         }
     }
 
@@ -204,33 +208,37 @@ struct AntigravityScopedPrintFetchTests {
 
     @Test
     func `unselected auto fetch still uses the ambient print report`() async throws {
-        let strategy = AntigravityCLIHTTPSFetchStrategy()
-        let expected = strategy.makeResult(usage: self.makeUsage(email: nil), sourceLabel: "cli")
-        let result = try await AntigravityCLIHTTPSFetchStrategy.fetchWithReportFallback(
-            context: self.makeContext(),
-            legacyFetch: { throw AntigravityStatusProbeError.timedOut },
-            reportFetch: { expected },
-            scopedReportFetch: {
-                Issue.record("Scoped fetch is reserved for selected or injected accounts")
-                throw AntigravityStatusProbeError.notRunning
-            })
-        #expect(result.usage.identity?.accountEmail == nil)
+        try await ProviderInteractionContext.$current.withValue(.userInitiated) {
+            let strategy = AntigravityCLIHTTPSFetchStrategy()
+            let expected = strategy.makeResult(usage: self.makeUsage(email: nil), sourceLabel: "cli")
+            let result = try await AntigravityCLIHTTPSFetchStrategy.fetchWithReportFallback(
+                context: self.makeContext(),
+                legacyFetch: { throw AntigravityStatusProbeError.timedOut },
+                reportFetch: { expected },
+                scopedReportFetch: {
+                    Issue.record("Scoped fetch is reserved for selected or injected accounts")
+                    throw AntigravityStatusProbeError.notRunning
+                })
+            #expect(result.usage.identity?.accountEmail == nil)
+        }
     }
 
     @Test
     func `explicit cli mode never reaches the scoped fetch`() async throws {
-        let strategy = AntigravityCLIHTTPSFetchStrategy()
-        let expected = strategy.makeResult(usage: self.makeUsage(email: nil), sourceLabel: "cli")
-        let result = try await AntigravityCLIHTTPSFetchStrategy.fetchWithReportFallback(
-            context: self.makeContext(
-                sourceMode: .cli, selected: true, env: self.accountEnv(email: "scoped@example.com")),
-            legacyFetch: { throw AntigravityStatusProbeError.timedOut },
-            reportFetch: { expected },
-            scopedReportFetch: {
-                Issue.record("Explicit cli mode stays bound to the ambient login")
-                throw AntigravityStatusProbeError.notRunning
-            })
-        #expect(result.usage.identity?.accountEmail == nil)
+        try await ProviderInteractionContext.$current.withValue(.userInitiated) {
+            let strategy = AntigravityCLIHTTPSFetchStrategy()
+            let expected = strategy.makeResult(usage: self.makeUsage(email: nil), sourceLabel: "cli")
+            let result = try await AntigravityCLIHTTPSFetchStrategy.fetchWithReportFallback(
+                context: self.makeContext(
+                    sourceMode: .cli, selected: true, env: self.accountEnv(email: "scoped@example.com")),
+                legacyFetch: { throw AntigravityStatusProbeError.timedOut },
+                reportFetch: { expected },
+                scopedReportFetch: {
+                    Issue.record("Explicit cli mode stays bound to the ambient login")
+                    throw AntigravityStatusProbeError.notRunning
+                })
+            #expect(result.usage.identity?.accountEmail == nil)
+        }
     }
 
     // MARK: - Scoped subprocess (macOS only)

@@ -583,6 +583,9 @@ struct AntigravityCLIHTTPSFetchStrategy: ProviderFetchStrategy {
         } catch {
             try Task.checkCancellation()
             if error is CancellationError { throw error }
+            guard ProviderInteractionContext.current == .userInitiated else {
+                throw AntigravityStatusProbeError.backgroundCLIReportUnavailable
+            }
             // Identity-free reports must not replace a selected or injected OAuth account's fallback.
             guard context.sourceMode != .auto || (context.selectedTokenAccountID == nil &&
                 context.env[AntigravityOAuthCredentialsStore.environmentCredentialsKey] == nil)
@@ -1081,7 +1084,7 @@ struct AntigravityOfflineFetchStrategy: ProviderFetchStrategy {
                 }
                 return "the usage request failed"
             // These cases contain only fixed text and typed CLI failure categories.
-            case .notRunning, .missingCSRFToken, .timedOut, .authenticationRequired,
+            case .notRunning, .missingCSRFToken, .timedOut, .authenticationRequired, .backgroundCLIReportUnavailable,
                  .cliReportFailed:
                 return probeError.localizedDescription
             case .accountMismatch:

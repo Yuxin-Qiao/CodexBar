@@ -133,49 +133,57 @@ extension AntigravityCLIHTTPSFetchStrategyTests {
 
     @Test(arguments: [ProviderSourceMode.auto, .cli])
     func `unselected fetch falls back to identity free print`(mode: ProviderSourceMode) async throws {
-        let expected = AntigravityCLIHTTPSFetchStrategy().makeResult(
-            usage: self.makeUsage(accountEmail: nil), sourceLabel: "cli")
-        let result = try await AntigravityCLIHTTPSFetchStrategy.fetchWithReportFallback(
-            context: self.makeFetchContext(sourceMode: mode),
-            legacyFetch: { throw AntigravityStatusProbeError.apiError("usage endpoint unavailable") },
-            reportFetch: { expected })
-        #expect(result.usage.identity?.accountEmail == nil)
-        #expect(result.sourceLabel == "cli")
+        try await ProviderInteractionContext.$current.withValue(.userInitiated) {
+            let expected = AntigravityCLIHTTPSFetchStrategy().makeResult(
+                usage: self.makeUsage(accountEmail: nil), sourceLabel: "cli")
+            let result = try await AntigravityCLIHTTPSFetchStrategy.fetchWithReportFallback(
+                context: self.makeFetchContext(sourceMode: mode),
+                legacyFetch: { throw AntigravityStatusProbeError.apiError("usage endpoint unavailable") },
+                reportFetch: { expected })
+            #expect(result.usage.identity?.accountEmail == nil)
+            #expect(result.sourceLabel == "cli")
+        }
     }
 
     @Test
     func `selected and injected auto accounts never use identity free print`() async {
-        let injectedKey = AntigravityOAuthCredentialsStore.environmentCredentialsKey
-        let contexts = [
-            self.makeFetchContext(selectedTokenAccountID: UUID(), env: self.accountEnv(email: "selected@example.com")),
-            self.makeFetchContext(env: self.accountEnv(email: "injected@example.com")),
-            self.makeFetchContext(env: [injectedKey: "malformed"]),
-            self.makeFetchContext(env: [injectedKey: ""]),
-        ]
-        for context in contexts {
-            await #expect(throws: AntigravityStatusProbeError.timedOut) {
-                try await AntigravityCLIHTTPSFetchStrategy.fetchWithReportFallback(
-                    context: context,
-                    legacyFetch: { throw AntigravityStatusProbeError.timedOut },
-                    reportFetch: {
-                        Issue.record("Print cannot prove the requested OAuth account")
-                        throw AntigravityStatusProbeError.notRunning
-                    })
+        await ProviderInteractionContext.$current.withValue(.userInitiated) {
+            let injectedKey = AntigravityOAuthCredentialsStore.environmentCredentialsKey
+            let contexts = [
+                self.makeFetchContext(
+                    selectedTokenAccountID: UUID(),
+                    env: self.accountEnv(email: "selected@example.com")),
+                self.makeFetchContext(env: self.accountEnv(email: "injected@example.com")),
+                self.makeFetchContext(env: [injectedKey: "malformed"]),
+                self.makeFetchContext(env: [injectedKey: ""]),
+            ]
+            for context in contexts {
+                await #expect(throws: AntigravityStatusProbeError.timedOut) {
+                    try await AntigravityCLIHTTPSFetchStrategy.fetchWithReportFallback(
+                        context: context,
+                        legacyFetch: { throw AntigravityStatusProbeError.timedOut },
+                        reportFetch: {
+                            Issue.record("Print cannot prove the requested OAuth account")
+                            throw AntigravityStatusProbeError.notRunning
+                        })
+                }
             }
         }
     }
 
     @Test
     func `explicit CLI mode retains its source authority`() async throws {
-        let context = self.makeFetchContext(
-            sourceMode: .cli, selectedTokenAccountID: UUID(), env: self.accountEnv(email: "selected@example.com"))
-        let expected = AntigravityCLIHTTPSFetchStrategy().makeResult(
-            usage: self.makeUsage(accountEmail: nil), sourceLabel: "cli")
-        let result = try await AntigravityCLIHTTPSFetchStrategy.fetchWithReportFallback(
-            context: context,
-            legacyFetch: { throw AntigravityStatusProbeError.timedOut },
-            reportFetch: { expected })
-        #expect(result.usage.identity?.accountEmail == nil)
+        try await ProviderInteractionContext.$current.withValue(.userInitiated) {
+            let context = self.makeFetchContext(
+                sourceMode: .cli, selectedTokenAccountID: UUID(), env: self.accountEnv(email: "selected@example.com"))
+            let expected = AntigravityCLIHTTPSFetchStrategy().makeResult(
+                usage: self.makeUsage(accountEmail: nil), sourceLabel: "cli")
+            let result = try await AntigravityCLIHTTPSFetchStrategy.fetchWithReportFallback(
+                context: context,
+                legacyFetch: { throw AntigravityStatusProbeError.timedOut },
+                reportFetch: { expected })
+            #expect(result.usage.identity?.accountEmail == nil)
+        }
     }
 
     @Test
@@ -226,7 +234,8 @@ extension AntigravityCLIHTTPSFetchStrategyTests {
                 #expect(error.localizedDescription == Self.backgroundReportMessage)
             }
         }
-        #expect(await attempts.count == 0)
+        let recordedAttempts = await attempts.count
+        #expect(recordedAttempts == 0)
         #expect(Self.versionCallCount(in: fixture.directory) == 0)
     }
 
@@ -466,22 +475,24 @@ extension AntigravityCLIHTTPSFetchStrategyTests {
 
     @Test
     func `CSRF gated CLI fetch reaches the print report without spawning`() async throws {
-        let report = try Self.reportJSON()
-        let fixture = try Self.printExecutable("""
-        if [ "${1:-}" != -p ]; then exit 9; fi
-        /bin/cat <<'REPORT'
-        \(report)
-        REPORT
-        """, version: "1.2.2")
-        defer { try? FileManager.default.removeItem(at: fixture.directory) }
-        let result = try await AntigravityCLIHTTPSFetchStrategy().fetch(
-            self.makeFetchContext(sourceMode: .cli, env: fixture.environment),
-            warmDependencies: Self.noWarmSession(),
-            spawnFetch: { _, _, _, _ in
-                Issue.record("A CSRF-gated CLI must not touch the managed session")
-                throw AntigravityStatusProbeError.timedOut
-            })
-        #expect(abs((result.usage.primary?.usedPercent ?? -1) - 40) < 0.001)
+        try await ProviderInteractionContext.$current.withValue(.userInitiated) {
+            let report = try Self.reportJSON()
+            let fixture = try Self.printExecutable("""
+            if [ "${1:-}" != -p ]; then exit 9; fi
+            /bin/cat <<'REPORT'
+            \(report)
+            REPORT
+            """, version: "1.2.2")
+            defer { try? FileManager.default.removeItem(at: fixture.directory) }
+            let result = try await AntigravityCLIHTTPSFetchStrategy().fetch(
+                self.makeFetchContext(sourceMode: .cli, env: fixture.environment),
+                warmDependencies: Self.noWarmSession(),
+                spawnFetch: { _, _, _, _ in
+                    Issue.record("A CSRF-gated CLI must not touch the managed session")
+                    throw AntigravityStatusProbeError.timedOut
+                })
+            #expect(abs((result.usage.primary?.usedPercent ?? -1) - 40) < 0.001)
+        }
     }
 
     @Test(arguments: ["", "1.2.1"])
@@ -505,45 +516,49 @@ extension AntigravityCLIHTTPSFetchStrategyTests {
 
     @Test
     func `CSRF gated CLI fetch resolves the agy version once`() async throws {
-        let report = try Self.reportJSON()
-        let fixture = try Self.printExecutable("""
-        if [ "${1:-}" != -p ]; then exit 9; fi
-        /bin/cat <<'REPORT'
-        \(report)
-        REPORT
-        """, version: "1.2.2")
-        defer { try? FileManager.default.removeItem(at: fixture.directory) }
-        let context = self.makeFetchContext(sourceMode: .cli, env: fixture.environment)
-        for _ in 0..<2 {
-            _ = try await AntigravityCLIHTTPSFetchStrategy().fetch(
-                context,
-                warmDependencies: Self.noWarmSession(),
-                spawnFetch: { _, _, _, _ in throw AntigravityStatusProbeError.timedOut })
+        try await ProviderInteractionContext.$current.withValue(.userInitiated) {
+            let report = try Self.reportJSON()
+            let fixture = try Self.printExecutable("""
+            if [ "${1:-}" != -p ]; then exit 9; fi
+            /bin/cat <<'REPORT'
+            \(report)
+            REPORT
+            """, version: "1.2.2")
+            defer { try? FileManager.default.removeItem(at: fixture.directory) }
+            let context = self.makeFetchContext(sourceMode: .cli, env: fixture.environment)
+            for _ in 0..<2 {
+                _ = try await AntigravityCLIHTTPSFetchStrategy().fetch(
+                    context,
+                    warmDependencies: Self.noWarmSession(),
+                    spawnFetch: { _, _, _, _ in throw AntigravityStatusProbeError.timedOut })
+            }
+            // One run per fetch: shared within a fetch, never across fetches.
+            #expect(Self.versionCallCount(in: fixture.directory) == 2)
         }
-        // One run per fetch: shared within a fetch, never across fetches.
-        #expect(Self.versionCallCount(in: fixture.directory) == 2)
     }
 
     @Test
     func `unknown agy version is resolved once and still fails the print guard`() async throws {
-        let fixture = try Self.printExecutable("touch \"$HOME/unexpected-print\"; exit 9", version: "")
-        defer { try? FileManager.default.removeItem(at: fixture.directory) }
-        let spawns = SpawnCounter()
-        await #expect(throws: AntigravityStatusProbeError
-            .parseFailed("CLI usage reports require agy 1.1.11 or later"))
-        {
-            try await AntigravityCLIHTTPSFetchStrategy().fetch(
-                self.makeFetchContext(sourceMode: .cli, env: fixture.environment),
-                warmDependencies: Self.noWarmSession(),
-                spawnFetch: { _, _, _, _ in
-                    await spawns.record()
-                    throw AntigravityStatusProbeError.apiError("spawn failed")
-                })
+        try await ProviderInteractionContext.$current.withValue(.userInitiated) {
+            let fixture = try Self.printExecutable("touch \"$HOME/unexpected-print\"; exit 9", version: "")
+            defer { try? FileManager.default.removeItem(at: fixture.directory) }
+            let spawns = SpawnCounter()
+            await #expect(throws: AntigravityStatusProbeError
+                .parseFailed("CLI usage reports require agy 1.1.11 or later"))
+            {
+                try await AntigravityCLIHTTPSFetchStrategy().fetch(
+                    self.makeFetchContext(sourceMode: .cli, env: fixture.environment),
+                    warmDependencies: Self.noWarmSession(),
+                    spawnFetch: { _, _, _, _ in
+                        await spawns.record()
+                        throw AntigravityStatusProbeError.apiError("spawn failed")
+                    })
+            }
+            #expect(await spawns.count == 1)
+            #expect(Self.versionCallCount(in: fixture.directory) == 1)
+            #expect(!FileManager.default
+                .fileExists(atPath: fixture.directory.appendingPathComponent("unexpected-print").path))
         }
-        #expect(await spawns.count == 1)
-        #expect(Self.versionCallCount(in: fixture.directory) == 1)
-        #expect(!FileManager.default
-            .fileExists(atPath: fixture.directory.appendingPathComponent("unexpected-print").path))
     }
 
     @Test
@@ -603,28 +618,30 @@ extension AntigravityCLIHTTPSFetchStrategyTests {
 
     @Test(arguments: [false, true])
     func `CSRF skip cannot enable identity free reports for scoped Auto accounts`(selected: Bool) async throws {
-        let fixture = try Self.printExecutable("echo invoked > \"$HOME/printed\"; exit 19")
-        defer { try? FileManager.default.removeItem(at: fixture.directory) }
-        var environment = fixture.environment
-        if !selected {
-            environment.merge(self.accountEnv(email: "fixture@example.com")) { _, new in new }
+        try await ProviderInteractionContext.$current.withValue(.userInitiated) {
+            let fixture = try Self.printExecutable("echo invoked > \"$HOME/printed\"; exit 19")
+            defer { try? FileManager.default.removeItem(at: fixture.directory) }
+            var environment = fixture.environment
+            if !selected {
+                environment.merge(self.accountEnv(email: "fixture@example.com")) { _, new in new }
+            }
+            let context = self.makeFetchContext(
+                sourceMode: .auto,
+                selectedTokenAccountID: selected ? UUID() : nil,
+                env: environment)
+            await #expect(throws: AntigravityStatusProbeError
+                .apiError("agy 1.2.2 or later requires a local CSRF token"))
+            {
+                try await AntigravityCLIHTTPSFetchStrategy().fetch(
+                    context,
+                    warmDependencies: Self.noWarmSession(),
+                    spawnFetch: { _, _, _, _ in
+                        Issue.record("A CSRF-gated CLI must not touch the managed session")
+                        throw AntigravityStatusProbeError.timedOut
+                    })
+            }
+            #expect(!FileManager.default.fileExists(atPath: fixture.directory.appendingPathComponent("printed").path))
         }
-        let context = self.makeFetchContext(
-            sourceMode: .auto,
-            selectedTokenAccountID: selected ? UUID() : nil,
-            env: environment)
-        await #expect(throws: AntigravityStatusProbeError
-            .apiError("agy 1.2.2 or later requires a local CSRF token"))
-        {
-            try await AntigravityCLIHTTPSFetchStrategy().fetch(
-                context,
-                warmDependencies: Self.noWarmSession(),
-                spawnFetch: { _, _, _, _ in
-                    Issue.record("A CSRF-gated CLI must not touch the managed session")
-                    throw AntigravityStatusProbeError.timedOut
-                })
-        }
-        #expect(!FileManager.default.fileExists(atPath: fixture.directory.appendingPathComponent("printed").path))
     }
 
     @Test

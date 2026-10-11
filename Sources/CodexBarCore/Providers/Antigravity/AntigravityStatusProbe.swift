@@ -776,6 +776,7 @@ public enum AntigravityStatusProbeError: LocalizedError, Sendable, Equatable {
     case cliReportFailed(AntigravityCLIPrintFailure)
     case timedOut
     case authenticationRequired
+    case backgroundCLIReportUnavailable
     case accountMismatch(expected: String?, found: String?)
 
     public var errorDescription: String? {
@@ -796,6 +797,9 @@ public enum AntigravityStatusProbeError: LocalizedError, Sendable, Equatable {
             "Antigravity quota request timed out."
         case .authenticationRequired:
             "Antigravity CLI is signed out. Run agy in a terminal to sign in, then retry."
+        case .backgroundCLIReportUnavailable:
+            "Background Antigravity CLI usage reports are unavailable because agy may start an interactive login. "
+                + "Refresh manually in CodexBar or launch Antigravity and retry."
         case let .accountMismatch(expected, found):
             Self.accountMismatchDescription(expected: expected, found: found)
         }

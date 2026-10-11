@@ -987,6 +987,7 @@ struct AntigravityCLIHTTPSFetchStrategyTests {
 extension AntigravityCLIHTTPSFetchStrategyTests {
     @Test(arguments: [AntigravityStatusProbeError.notRunning, .missingCSRFToken], [
         AntigravityStatusProbeError.authenticationRequired,
+        .backgroundCLIReportUnavailable,
         .apiError("quota request rejected"),
         .timedOut,
         .parseFailed("missing quota fields"),
@@ -1047,14 +1048,14 @@ extension AntigravityCLIHTTPSFetchStrategyTests {
         #expect((detected as? AntigravityStatusProbeError) == current)
     }
 
-    @Test
-    func `signed out CLI still allows a usable IDE fallback`() async throws {
+    @Test(arguments: [AntigravityStatusProbeError.authenticationRequired, .backgroundCLIReportUnavailable])
+    func `unavailable CLI still allows a usable IDE fallback`(cliError: AntigravityStatusProbeError) async throws {
         let pipeline = ProviderFetchPipeline(
             resolveStrategies: { _ in
                 [
                     AntigravityFallbackFixtureStrategy(
                         id: "antigravity.cli-https",
-                        error: .authenticationRequired),
+                        error: cliError),
                     AntigravityFallbackFixtureStrategy(id: "antigravity.ide-local", error: nil),
                 ]
             },
@@ -1165,8 +1166,20 @@ extension AntigravityCLIHTTPSFetchStrategyTests {
         #expect(outcome.attempts.map(\.outcome) == [.failed, .succeeded])
     }
 
-    @Test
-    func `offline fallback explains the masked live failure`() async throws {
+    @Test(arguments: [
+        (
+            AntigravityStatusProbeError.cliReportFailed(.exited(code: 1, reason: .eligibilityNetwork)),
+            "Antigravity CLI usage report failed: agy exited 1; "
+                + "the eligibility check failed on a network request (check network or proxy settings)"),
+        (
+            AntigravityStatusProbeError.backgroundCLIReportUnavailable,
+            "Background Antigravity CLI usage reports are unavailable because agy may start an interactive login. "
+                + "Refresh manually in CodexBar or launch Antigravity and retry."),
+    ])
+    func `offline fallback explains the masked live failure`(
+        cliError: AntigravityStatusProbeError,
+        expectedReason: String) async throws
+    {
         let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tmp) }
@@ -1176,8 +1189,6 @@ extension AntigravityCLIHTTPSFetchStrategyTests {
 
         // Mirror the production chain: earlier probes fail as `.notRunning`,
         // so the diagnostic must survive `resolveFallbackError` precedence.
-        let cliError = AntigravityStatusProbeError.cliReportFailed(
-            .exited(code: 1, reason: .eligibilityNetwork))
         let pipeline = ProviderFetchPipeline(
             resolveStrategies: { _ in
                 [
@@ -1195,9 +1206,7 @@ extension AntigravityCLIHTTPSFetchStrategyTests {
 
         let result = try outcome.result.get()
         #expect(result.sourceLabel == "offline")
-        #expect(result.diagnostic == "Live Antigravity usage is unavailable; showing offline data. "
-            + "Antigravity CLI usage report failed: agy exited 1; "
-            + "the eligibility check failed on a network request (check network or proxy settings)")
+        #expect(result.diagnostic == "Live Antigravity usage is unavailable; showing offline data. " + expectedReason)
     }
 
     @Test

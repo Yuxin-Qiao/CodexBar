@@ -36,12 +36,12 @@ executable reports 1.2.2 or later, CodexBar still spends its bounded warm-reuse 
 managed session or wait for its readiness deadline. Unknown versions keep the managed spawn.
 The legacy gate and ambient or account-scoped print fallback share one `agy --version` result per refresh,
 including unknown versions and probe failures. Each later refresh probes again; successful warm reuse needs
-no version subprocess. On the CSRF-gated fallback, CLI launches drop from three to two: one version check
+no version subprocess. On the user-initiated CSRF-gated fallback, CLI launches drop from three to two: one version check
 and one usage report, without caching across accounts or refreshes.
 
-For `agy` 1.2.2 and later, a failed legacy HTTPS fetch can fall back to
+For `agy` 1.2.2 and later, a user-initiated failed legacy HTTPS fetch can fall back to
 `agy -p /usage --output-format json`. CodexBar checks that the same executable reports version 1.1.11
-or later before using print mode; [Google introduced non-interactive usage reports in 1.1.11](https://antigravity.google/changelog).
+or later before using print mode; [Google introduced structured usage reports in 1.1.11](https://antigravity.google/changelog).
 It requires a successful `usage` command report with known,
 enabled quota buckets, bounds the command to 90 seconds and its output to 1 MiB, and terminates the command
 on cancellation. It runs in a private empty directory and does not send a model prompt or parse TUI output.
@@ -55,11 +55,21 @@ The report contains no account or plan identity: explicit CLI mode remains autho
 the ambient print fallback only without a selected token account or explicitly injected OAuth credentials. Successful
 HTTPS results retain their verified identity. Failed command diagnostics do not include raw stderr.
 
-On macOS, Auto can also run the print command for a selected or injected Google account. CodexBar writes
+Background refresh does not start either ambient or account-scoped print reports. `agy` 1.3.3 can
+start interactive OAuth and open a browser when silent token refresh fails, even with null stdin and
+`--print-timeout`. The report command has no verified non-interactive authentication guarantee.
+CodexBar returns a safe refresh error before starting the report, while keeping existing local-session,
+OAuth, and offline fallback. This also applies to CLI usage and long-lived background hosts.
+Manual **Refresh** in CodexBar still permits print recovery and may trigger authentication.
+CLI-only setups that depend on print recovery need manual refresh or a running Antigravity session
+for quota retrieval. A saved grant or an unexpired token alone does not make print mode safe for
+background use.
+
+On macOS, user-initiated Auto refresh can also run the print command for a selected or injected Google account. CodexBar writes
 its credentials into a temporary `0700` home with a `0600` token file, then runs `agy` with only PATH,
 locale, temporary-directory, and proxy settings inherited. `SSH_TTY` selects agy's file-token storage,
 keeping the ambient CLI login and Keychain untouched. Credentials without an ID token are supported;
-`agy` can refresh an expired grant in that temporary home without starting a login.
+`agy` can silently refresh an expired grant in that temporary home, but can start a login if refresh fails.
 
 Before attributing usage, CodexBar checks the effective access token through Google's userinfo endpoint
 and rejects a different or unverifiable account, including conflicting refreshed ID-token claims.
