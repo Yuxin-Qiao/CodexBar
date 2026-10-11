@@ -191,6 +191,72 @@ extension AntigravityCLIHTTPSFetchStrategyTests {
         }
     }
 
+    @Test(arguments: [ProviderRuntime.app, .cli], [false, true])
+    func `background refresh never starts ambient or scoped print`(
+        runtime: ProviderRuntime,
+        scoped: Bool) async throws
+    {
+        let fixture = try Self.printExecutable("exit 19", version: "1.3.3")
+        defer { try? FileManager.default.removeItem(at: fixture.directory) }
+        var environment = fixture.environment
+        if scoped {
+            environment.merge(self.accountEnv(email: "selected@example.com")) { _, new in new }
+        }
+        let context = self.makeFetchContext(
+            runtime: runtime,
+            selectedTokenAccountID: scoped ? UUID() : nil,
+            env: environment)
+        let attempts = SpawnCounter()
+        await ProviderInteractionContext.$current.withValue(.background) {
+            do {
+                _ = try await AntigravityCLIHTTPSFetchStrategy.fetchWithReportFallback(
+                    context: context,
+                    legacyFetch: { throw AntigravityStatusProbeError.timedOut },
+                    reportFetch: {
+                        await attempts.record()
+                        return try await AntigravityCLIHTTPSFetchStrategy().fetchPrintUsage(
+                            binary: fixture.binary.path, environment: fixture.environment)
+                    },
+                    scopedReportFetch: {
+                        await attempts.record()
+                        throw AntigravityStatusProbeError.authenticationRequired
+                    })
+                Issue.record("Background refresh must fail before a print subprocess can authenticate")
+            } catch {
+                #expect(error.localizedDescription == Self.backgroundReportMessage)
+            }
+        }
+        #expect(await attempts.count == 0)
+        #expect(Self.versionCallCount(in: fixture.directory) == 0)
+    }
+
+    @Test(arguments: [ProviderSourceMode.auto, .cli])
+    func `background CLI fetch never launches print after the CSRF gate`(mode: ProviderSourceMode) async throws {
+        let fixture = try Self.printExecutable("touch \"$HOME/unexpected-auth\"; exit 19", version: "1.3.3")
+        defer { try? FileManager.default.removeItem(at: fixture.directory) }
+        await ProviderInteractionContext.$current.withValue(.background) {
+            do {
+                _ = try await AntigravityCLIHTTPSFetchStrategy().fetch(
+                    self.makeFetchContext(sourceMode: mode, env: fixture.environment),
+                    warmDependencies: Self.noWarmSession(),
+                    spawnFetch: { _, _, _, _ in
+                        Issue.record("A CSRF-gated CLI must not start a managed session")
+                        throw AntigravityStatusProbeError.notRunning
+                    })
+                Issue.record("Expected a safe background refresh error")
+            } catch {
+                #expect(error.localizedDescription == Self.backgroundReportMessage)
+            }
+        }
+        #expect(Self.versionCallCount(in: fixture.directory) == 1)
+        #expect(!FileManager.default.fileExists(
+            atPath: fixture.directory.appendingPathComponent("unexpected-auth").path))
+    }
+
+    private static let backgroundReportMessage =
+        "Background Antigravity CLI usage reports are unavailable because agy may start an interactive login. "
+            + "Refresh manually in CodexBar or launch Antigravity and retry."
+
     @Test(arguments: ["1.1.11", "1.2.2", "2.0.0"])
     func `print subprocess uses the pinned executable and supported command`(version: String) async throws {
         let report = try Self.reportJSON()
