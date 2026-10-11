@@ -283,6 +283,45 @@ struct ProviderBrowsingTests {
     }
 
     @Test
+    func `successive legacy cloud sorting changes remain compatible`() throws {
+        let settings = self.store()
+        let configBefore = try settings.configSnapshot.encodedData()
+        var legacy = settings.syncedPreferences
+        legacy.providerListSortMode = nil
+        for alphabetical in [true, false, true, false] {
+            legacy.providersSortedAlphabetically = alphabetical
+            settings.applySyncedPreferences(legacy)
+            #expect(settings.providerListSortMode == (alphabetical ? .alphabetical : .custom))
+        }
+        settings.providerListSortMode = .family
+        for alphabetical in [true, false] {
+            legacy.providersSortedAlphabetically = alphabetical
+            settings.applySyncedPreferences(legacy)
+            #expect(settings.providerListSortMode == .family)
+        }
+        #expect(try settings.configSnapshot.encodedData() == configBefore)
+    }
+
+    @Test(arguments: [ProviderListSortMode.custom, .alphabetical])
+    func `portable compatible modes use the legacy sorting key`(mode: ProviderListSortMode) throws {
+        let defaults = InMemoryUserDefaults()
+        let settings = self.store(defaults: defaults)
+        settings.providerListSortMode = mode
+        let cliDocument = try PreferencesDocument(defaults: defaults)
+        let appDocument = try settings.exportPreferences()
+        for document in [appDocument, cliDocument] {
+            let encoded = try document.encoded()
+            let portable = try PreferencesDocument(data: encoded)
+            #expect(try portable.value("providerListSortMode", as: String.self) == nil)
+            #expect(try portable.value("providersSortedAlphabetically", as: Bool.self) == (mode == .alphabetical))
+            let target = self.store()
+            target.providerListSortMode = .family
+            try target.importPreferences(portable)
+            #expect(target.providerListSortMode == mode)
+        }
+    }
+
+    @Test
     func `old or unknown cloud modes do not clear an established new choice`() throws {
         let settings = self.store()
         var legacy = settings.syncedPreferences

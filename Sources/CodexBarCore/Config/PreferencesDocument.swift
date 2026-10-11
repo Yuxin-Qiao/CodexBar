@@ -64,9 +64,17 @@ public struct PreferencesDocument: Codable, Sendable {
 
     public func encoded() throws -> Data {
         try self.validate()
+        var portable = self
+        // Keep representable sorting modes importable by older clients' strict key allowlist.
+        if case let .string(raw)? = portable.preferences["providerListSortMode"],
+           let mode = ProviderListSortMode(rawValue: raw), mode != .family
+        {
+            portable.preferences["providersSortedAlphabetically"] = .bool(mode == .alphabetical)
+            portable.preferences.removeValue(forKey: "providerListSortMode")
+        }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        return try encoder.encode(self)
+        return try encoder.encode(portable)
     }
 
     public func value<T: Decodable>(_ key: String, as _: T.Type = T.self) throws -> T? {

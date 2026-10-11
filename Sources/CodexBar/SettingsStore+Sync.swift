@@ -102,7 +102,7 @@ extension SettingsStore {
         self.preferredCurrencyCode = preferences.preferredCurrencyCode
         if let raw = preferences.providerListSortMode {
             if let mode = ProviderListSortMode(rawValue: raw) { self.providerListSortMode = mode }
-        } else if self.defaultsState.providerListSortModeRaw.flatMap(ProviderListSortMode.init(rawValue:)) == nil {
+        } else if self.providerListSortMode != .family {
             self.providersSortedAlphabetically = preferences.providersSortedAlphabetically
         }
         if let refreshFrequency = RefreshFrequency(rawValue: preferences.refreshFrequency) {
