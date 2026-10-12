@@ -9,13 +9,20 @@ extension CostUsageFetcher {
         assignedSessionIDs: Set<String>)
         -> (projects: [CostUsageProjectBreakdown], sessions: [CostUsageSessionBreakdown])
     {
-        guard let metadata else { return (projects, sessions) }
         var result = (projects: projects, sessions: sessions)
         for index in projects.indices {
             let memberships = projects[index].sources.compactMap { $0.path.flatMap { projectSessionIDs[$0] } }
             guard !memberships.isEmpty, memberships.count == projects[index].sources.count,
                   memberships.allSatisfy({ !$0.isEmpty }) else { continue }
             let sessionIDs = memberships.reduce(into: Set<String>()) { $0.formUnion($1) }
+            // A retained classification is useful while metadata is unreadable, but a current
+            // project assignment always vetoes it. A successfully read marker set can also remove it.
+            if !sessionIDs.isDisjoint(with: assignedSessionIDs) {
+                result.projects[index].isProjectless = false
+                continue
+            }
+            guard let metadata else { continue }
+            result.projects[index].isProjectless = false
             guard sessionIDs.allSatisfy({ metadata.contains($0, assignedSessionIDs: assignedSessionIDs) })
             else { continue }
             result.projects[index].isProjectless = true
@@ -27,6 +34,7 @@ extension CostUsageFetcher {
                 result.projects[index].name = sessionIDs.count == 1 ? "Independent chat" : "Independent chats"
             }
         }
+        guard let metadata else { return result }
         for index in sessions.indices where metadata.contains(
             sessions[index].sessionID, assignedSessionIDs: assignedSessionIDs)
         {

@@ -2506,3 +2506,11 @@
 "Pace sign" = "Tecken för förbrukningstakt";
 "Ahead of pace is +" = "Över förbrukningstakten är +";
 "Reserve is +" = "Reserv är +";
+
+/* Usage & Spend detail availability */
+"Loading details…" = "Läser in detaljer…";
+"Details unavailable. Refresh to try again." = "Detaljer är inte tillgängliga. Uppdatera för att försöka igen.";
+"No records in this time range." = "Inga poster i denna tidsperiod.";
+"Showing the last available details." = "Visar de senast tillgängliga detaljerna.";
+
+"Local Codex details; excluded from combined totals." = "Local Codex details; excluded from combined totals.";

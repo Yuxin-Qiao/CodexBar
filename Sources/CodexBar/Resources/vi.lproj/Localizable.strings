@@ -2508,3 +2508,11 @@
 "Pace sign" = "Dấu nhịp sử dụng";
 "Ahead of pace is +" = "Vượt nhịp là +";
 "Reserve is +" = "Dự trữ là +";
+
+/* Usage & Spend detail availability */
+"Loading details…" = "Đang tải chi tiết…";
+"Details unavailable. Refresh to try again." = "Không thể tải chi tiết. Hãy làm mới để thử lại.";
+"No records in this time range." = "Không có bản ghi trong khoảng thời gian này.";
+"Showing the last available details." = "Đang hiển thị chi tiết có sẵn gần nhất.";
+
+"Local Codex details; excluded from combined totals." = "Local Codex details; excluded from combined totals.";

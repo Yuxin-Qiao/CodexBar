@@ -2510,3 +2510,11 @@
 "Pace sign" = "Kullanım hızı işareti";
 "Ahead of pace is +" = "Hızın üzerinde kullanım +";
 "Reserve is +" = "Rezerv +";
+
+/* Usage & Spend detail availability */
+"Loading details…" = "Ayrıntılar yükleniyor…";
+"Details unavailable. Refresh to try again." = "Ayrıntılar kullanılamıyor. Yeniden denemek için yenileyin.";
+"No records in this time range." = "Bu zaman aralığında kayıt yok.";
+"Showing the last available details." = "Son kullanılabilir ayrıntılar gösteriliyor.";
+
+"Local Codex details; excluded from combined totals." = "Local Codex details; excluded from combined totals.";

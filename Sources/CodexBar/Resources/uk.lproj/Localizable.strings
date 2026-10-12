@@ -2507,3 +2507,11 @@
 "Pace sign" = "Знак темпу витрат";
 "Ahead of pace is +" = "Випередження темпу — +";
 "Reserve is +" = "Запас — +";
+
+/* Usage & Spend detail availability */
+"Loading details…" = "Завантаження подробиць…";
+"Details unavailable. Refresh to try again." = "Подробиці недоступні. Оновіть, щоб спробувати ще раз.";
+"No records in this time range." = "За цей період немає записів.";
+"Showing the last available details." = "Показано останні доступні подробиці.";
+
+"Local Codex details; excluded from combined totals." = "Local Codex details; excluded from combined totals.";

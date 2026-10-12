@@ -2485,3 +2485,11 @@
 "Pace sign" = "使用節奏符號";
 "Ahead of pace is +" = "超出節奏為 +";
 "Reserve is +" = "餘量為 +";
+
+/* Usage & Spend detail availability */
+"Loading details…" = "正在讀取明細…";
+"Details unavailable. Refresh to try again." = "暫時無法讀取明細，請重新整理後再試。";
+"No records in this time range." = "此時間範圍沒有記錄。";
+"Showing the last available details." = "正在顯示上次可用的明細。";
+
+"Local Codex details; excluded from combined totals." = "本機 Codex 明細；不計入合併總額。";

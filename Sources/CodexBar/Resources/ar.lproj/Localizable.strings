@@ -2511,3 +2511,11 @@
 "Pace sign" = "إشارة وتيرة الاستخدام";
 "Ahead of pace is +" = "تجاوز الوتيرة هو +";
 "Reserve is +" = "الاحتياطي هو +";
+
+/* Usage & Spend detail availability */
+"Loading details…" = "جارٍ تحميل التفاصيل…";
+"Details unavailable. Refresh to try again." = "التفاصيل غير متاحة. حدّث لإعادة المحاولة.";
+"No records in this time range." = "لا توجد سجلات في هذه الفترة.";
+"Showing the last available details." = "تُعرض آخر التفاصيل المتاحة.";
+
+"Local Codex details; excluded from combined totals." = "Local Codex details; excluded from combined totals.";

@@ -2508,3 +2508,11 @@
 "Pace sign" = "Знак темпа расхода";
 "Ahead of pace is +" = "Опережение темпа — +";
 "Reserve is +" = "Запас — +";
+
+/* Usage & Spend detail availability */
+"Loading details…" = "Загрузка подробностей…";
+"Details unavailable. Refresh to try again." = "Подробности недоступны. Обновите, чтобы повторить попытку.";
+"No records in this time range." = "За этот период нет записей.";
+"Showing the last available details." = "Показаны последние доступные подробности.";
+
+"Local Codex details; excluded from combined totals." = "Local Codex details; excluded from combined totals.";

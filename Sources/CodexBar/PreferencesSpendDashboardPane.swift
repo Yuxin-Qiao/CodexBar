@@ -121,6 +121,7 @@ struct SpendDashboardPane: View {
     @State private var isVisible = false
     @State private var userSelectedBackground = false
     @State private var isDataControlsExpanded = true
+    @State private var detailSelections: [String: SpendDashboardDetailSection] = [:]
 
     init(settings: SettingsStore, store: UsageStore) {
         self.settings = settings
@@ -188,6 +189,26 @@ struct SpendDashboardPane: View {
 
     private var controller: SpendDashboardController {
         self.store.sharedSpendDashboardController()
+    }
+
+    private var supportsCodexDetails: Bool {
+        spendDashboardSupportsCodexDetails(
+            sources: self.controller.publication.sources,
+            hiddenSourceIDs: Set(self.controller.configuration?.hiddenSourceIDs ?? []),
+            hideNativeCodexWhenOpenCodexPresent:
+            self.controller.configuration?.hideNativeCodexCostWhenOpenCodexPresent ?? false)
+    }
+
+    private func detailSelection(for currencyCode: String) -> Binding<SpendDashboardDetailSection> {
+        Binding(
+            get: { self.detailSelections[currencyCode] ?? .providers },
+            set: { self.detailSelections[currencyCode] = $0 })
+    }
+
+    private var hasFailedDetailSources: Bool {
+        self.supportsCodexDetails && spendDashboardDetailSourcesHaveFailed(
+            self.controller.publication.sources,
+            hiddenSourceIDs: Set(self.controller.configuration?.hiddenSourceIDs ?? []))
     }
 
     var header: some View {
@@ -398,6 +419,19 @@ struct SpendDashboardPane: View {
             }
         } else if self.controller.model.groups.isEmpty {
             let emptyState = SpendDashboardEmptyState.make(isRefreshing: self.controller.isRefreshing)
+            if self.supportsCodexDetails {
+                let preferredCurrency = self.controller.configuration?.preferredCurrencyCode ?? "auto"
+                let currencyCode = preferredCurrency == "auto" ? "USD" : preferredCurrency
+                SpendDashboardDetailPanel(
+                    group: spendDashboardEmptyDetailGroup(currencyCode: currencyCode),
+                    hidePersonalInfo: self.settings.hidePersonalInfo,
+                    supportsCodexDetails: true,
+                    isRefreshing: self.controller.isRefreshing,
+                    hasFailedSources: self.hasFailedDetailSources,
+                    hasRetainedDetails: false,
+                    onRetry: { self.store.refreshSpendDashboard(accounts: self.codexSpendScanRequests) },
+                    selection: self.detailSelection(for: currencyCode))
+            }
             SpendDashboardPanel {
                 ContentUnavailableView {
                     Label(emptyState.title, systemImage: "chart.bar.xaxis")
@@ -412,6 +446,16 @@ struct SpendDashboardPane: View {
                     group: group,
                     requestedDays: self.controller.model.requestedDays,
                     hidePersonalInfo: self.settings.hidePersonalInfo,
+                    detailSelection: self.detailSelection(for: group.id),
+                    supportsCodexDetails: self.supportsCodexDetails
+                        && (group.currencyCode == "USD"
+                            || self.controller.configuration?.preferredCurrencyCode != "auto"),
+                    isRefreshing: self.controller.isRefreshing,
+                    hasFailedSources: self.hasFailedDetailSources,
+                    hasRetainedDetails: group.providers.contains {
+                        self.controller.retainedDetailSourceIDs.contains($0.id)
+                    },
+                    onRetry: { self.store.refreshSpendDashboard(accounts: self.codexSpendScanRequests) },
                     onSelectDay: { self.controller.selectDay($0) },
                     onClearSelectedDay: {
                         self.controller.selectDay(nil)
@@ -564,16 +608,17 @@ enum SpendDashboardDetailSection: Hashable, Identifiable {
 func spendDashboardAvailableDetailSections(
     hasProjects: Bool,
     hasSessions: Bool,
-    hasChats: Bool = false) -> [SpendDashboardDetailSection]
+    hasChats: Bool = false,
+    supportsCodexDetails: Bool = false) -> [SpendDashboardDetailSection]
 {
     var sections: [SpendDashboardDetailSection] = [.providers]
-    if hasProjects {
+    if supportsCodexDetails || hasProjects {
         sections.append(.projects)
     }
-    if hasChats {
+    if supportsCodexDetails || hasChats {
         sections.append(.chats)
     }
-    if hasSessions {
+    if supportsCodexDetails || hasSessions {
         sections.append(.sessions)
     }
     return sections
@@ -626,6 +671,12 @@ struct SpendDashboardCurrencySection: View {
     let group: SpendDashboardModel.CurrencyGroup
     let requestedDays: Int
     let hidePersonalInfo: Bool
+    let externalDetailSelection: Binding<SpendDashboardDetailSection>?
+    let supportsCodexDetails: Bool
+    let isRefreshing: Bool
+    let hasFailedSources: Bool
+    let hasRetainedDetails: Bool
+    let onRetry: (() -> Void)?
     let onClearSelectedDay: (() -> Void)?
     let onSelectDay: ((Date) -> Void)?
     @State private var selectedDetailSection: SpendDashboardDetailSection
@@ -637,12 +688,24 @@ struct SpendDashboardCurrencySection: View {
         hidePersonalInfo: Bool = false,
         initialDetailSection: SpendDashboardDetailSection = .providers,
         initialTrendSection: SpendDashboardTrendSection? = nil,
+        detailSelection: Binding<SpendDashboardDetailSection>? = nil,
+        supportsCodexDetails: Bool = false,
+        isRefreshing: Bool = false,
+        hasFailedSources: Bool = false,
+        hasRetainedDetails: Bool = false,
+        onRetry: (() -> Void)? = nil,
         onSelectDay: ((Date) -> Void)? = nil,
         onClearSelectedDay: (() -> Void)? = nil)
     {
         self.group = group
         self.requestedDays = requestedDays
         self.hidePersonalInfo = hidePersonalInfo
+        self.externalDetailSelection = detailSelection
+        self.supportsCodexDetails = supportsCodexDetails
+        self.isRefreshing = isRefreshing
+        self.hasFailedSources = hasFailedSources
+        self.hasRetainedDetails = hasRetainedDetails
+        self.onRetry = onRetry
         self.onClearSelectedDay = onClearSelectedDay
         self.onSelectDay = onSelectDay
         self._selectedDetailSection = State(initialValue: initialDetailSection)
@@ -668,16 +731,16 @@ struct SpendDashboardCurrencySection: View {
             SpendDashboardDetailPanel(
                 group: self.group,
                 hidePersonalInfo: self.hidePersonalInfo,
-                selection: self.$selectedDetailSection)
+                supportsCodexDetails: self.supportsCodexDetails,
+                isRefreshing: self.isRefreshing,
+                hasFailedSources: self.hasFailedSources,
+                hasRetainedDetails: self.hasRetainedDetails,
+                onRetry: self.onRetry,
+                selection: self.externalDetailSelection ?? self.$selectedDetailSection)
             SpendDashboardTrendPanel(
                 group: self.group,
                 selection: self.$selectedTrendSection,
-                onSelectDay: self.onSelectDay.map { onSelectDay in
-                    { day in
-                        self.selectedDetailSection = .providers
-                        onSelectDay(day)
-                    }
-                },
+                onSelectDay: self.onSelectDay,
                 onClearSelectedDay: self.onClearSelectedDay)
             SpendDailyLedger(group: self.group)
         }
@@ -686,9 +749,14 @@ struct SpendDashboardCurrencySection: View {
     }
 }
 
-private struct SpendDashboardDetailPanel: View {
+struct SpendDashboardDetailPanel: View {
     let group: SpendDashboardModel.CurrencyGroup
     let hidePersonalInfo: Bool
+    let supportsCodexDetails: Bool
+    let isRefreshing: Bool
+    let hasFailedSources: Bool
+    let hasRetainedDetails: Bool
+    let onRetry: (() -> Void)?
     @Binding var selection: SpendDashboardDetailSection
 
     var body: some View {
@@ -708,6 +776,15 @@ private struct SpendDashboardDetailPanel: View {
                 }
 
                 self.detailContent
+                if self.activeSection != .providers {
+                    if self.group.detailsExcludedFromTotals {
+                        Text(L("Local Codex details; excluded from combined totals."))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    self.detailStatus
+                }
             }
         }
     }
@@ -716,7 +793,11 @@ private struct SpendDashboardDetailPanel: View {
         spendDashboardAvailableDetailSections(
             hasProjects: self.group.projects.contains { !$0.isProjectless },
             hasSessions: !self.group.sessions.isEmpty,
-            hasChats: self.group.projects.contains(where: \.isProjectless))
+            hasChats: self.group.projects.contains(where: \.isProjectless),
+            supportsCodexDetails: self.supportsCodexDetails || self.group.providers.contains {
+                // Provider-specific by design: native Codex histories provide project and session details.
+                $0.provider == .codex && $0.sourceKind == .native
+            })
     }
 
     private var activeSection: SpendDashboardDetailSection {
@@ -727,6 +808,48 @@ private struct SpendDashboardDetailPanel: View {
         Binding(
             get: { self.activeSection },
             set: { self.selection = $0 })
+    }
+
+    private var hasRows: Bool {
+        switch self.activeSection {
+        case .providers: true
+        case .projects: self.group.projects.contains { !$0.isProjectless }
+        case .chats: self.group.projects.contains(where: \.isProjectless)
+        case .sessions: !self.group.sessions.isEmpty
+        }
+    }
+
+    private var availability: CostUsageBreakdownAvailability {
+        self.activeSection == .sessions
+            ? self.group.sessionBreakdownAvailability : self.group.projectBreakdownAvailability
+    }
+
+    private var detailStatus: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let message = spendDashboardDetailMessage(
+                availability: self.availability,
+                hasRows: self.hasRows,
+                isRefreshing: self.isRefreshing,
+                hasFailedSources: self.hasFailedSources,
+                isStale: self.group.detailsAreStale || self.hasRetainedDetails)
+            {
+                Text(message)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("spend-dashboard-detail-status")
+            }
+            if let updatedAt = self.group.detailUpdatedAt {
+                Text(spendDashboardDetailUpdatedText(updatedAt, timeZone: self.group.timeZone))
+                    .foregroundStyle(.tertiary)
+            }
+            if !self.hasRows, !self.isRefreshing, self.availability != .complete, let onRetry {
+                Button(L("Refresh"), action: onRetry)
+                    .controlSize(.small)
+            }
+        }
+        .font(.caption)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, self.hasRows ? 0 : 16)
     }
 
     @ViewBuilder

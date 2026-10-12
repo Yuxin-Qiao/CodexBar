@@ -2506,3 +2506,11 @@
 "Pace sign" = "Teken van gebruikstempo";
 "Ahead of pace is +" = "Boven het tempo is +";
 "Reserve is +" = "Reserve krijgt +";
+
+/* Usage & Spend detail availability */
+"Loading details…" = "Details laden…";
+"Details unavailable. Refresh to try again." = "Details niet beschikbaar. Vernieuw om opnieuw te proberen.";
+"No records in this time range." = "Geen gegevens in deze periode.";
+"Showing the last available details." = "De laatst beschikbare details worden weergegeven.";
+
+"Local Codex details; excluded from combined totals." = "Local Codex details; excluded from combined totals.";

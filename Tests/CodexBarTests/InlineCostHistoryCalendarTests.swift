@@ -248,19 +248,29 @@ struct InlineCostHistoryCalendarTests {
     }
 
     @Test
-    func `native bounded scan keeps unknown dates until catch up completes`() async throws {
-        let (partial, covered) = try await InlineCostCalendarFixture.scannedSnapshots()
+    func `native bounded scan retains verified calendar until catch up completes`() async throws {
+        let (baseline, partial, covered) = try await InlineCostCalendarFixture.scannedSnapshots()
         let calendar = try InlineCostCalendarFixture.calendar("UTC")
         #expect(!partial.daily.isEmpty)
-        #expect(!partial.historyCoverageIsEstablished)
+        #expect(partial.historyCoverageIsEstablished)
+        #expect(partial.breakdownsAreStale)
+        #expect(partial.updatedAt == baseline.updatedAt)
+        #expect(partial.daily.map(\.date) == baseline.daily.map(\.date))
+        #expect(partial.daily.map(\.totalTokens) == baseline.daily.map(\.totalTokens))
+        #expect(partial.daily.map(\.costUSD) == baseline.daily.map(\.costUSD))
+        #expect(partial.last30DaysCostUSD == baseline.last30DaysCostUSD)
+        #expect(partial.last30DaysTokens == 2_000_000)
         let pendingPoints = try InlineCostCalendarFixture.model(partial, calendar: calendar).points
+        let baselinePoints = try InlineCostCalendarFixture.model(baseline, calendar: calendar).points
+        #expect(pendingPoints.map(\.value) == baselinePoints.map(\.value))
         #expect(pendingPoints.count == 4)
         #expect(pendingPoints[0].value != nil)
-        #expect(pendingPoints[1].value == nil)
+        #expect(pendingPoints[1].value == 0)
         #expect(pendingPoints[2].value == nil)
-        #expect(pendingPoints[3].value == nil)
+        #expect(pendingPoints[3].value == 0)
 
         #expect(covered.historyCoverageIsEstablished)
+        #expect(!covered.breakdownsAreStale)
         let points = try InlineCostCalendarFixture.model(covered, calendar: calendar).points
         #expect(points.map(\.id) == pendingPoints.map(\.id))
         #expect(points[0].value == pendingPoints[0].value)
@@ -340,7 +350,7 @@ enum InlineCostCalendarFixture {
     }
 
     static func scannedSnapshots(historyDays: Int = 4) async throws
-    -> (CostUsageTokenSnapshot, CostUsageTokenSnapshot) {
+    -> (CostUsageTokenSnapshot, CostUsageTokenSnapshot, CostUsageTokenSnapshot) {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }
         let calendar = try Self.calendar("UTC")
@@ -366,7 +376,7 @@ enum InlineCostCalendarFixture {
             codexTraceDatabaseURL: env.root.appendingPathComponent("missing.sqlite"))
         options.calendar = calendar
         options.refreshMinIntervalSeconds = 0
-        _ = try await CostUsageFetcher.loadTokenSnapshot(
+        let baseline = try await CostUsageFetcher.loadTokenSnapshot(
             provider: .codex,
             environment: [:],
             now: now,
@@ -395,7 +405,7 @@ enum InlineCostCalendarFixture {
             allowPricingRefresh: false,
             includePiSessions: false,
             scannerOptions: options)
-        return (partial, covered)
+        return (baseline, partial, covered)
     }
 }
 
@@ -418,7 +428,7 @@ final class InlineCostHistoryScreenshotTests: XCTestCase {
         }
         let calendar = try InlineCostCalendarFixture.calendar("UTC")
         for days in [1, 4, 30, 365] {
-            let (partial, covered) = try await InlineCostCalendarFixture.scannedSnapshots(historyDays: days)
+            let (_, partial, covered) = try await InlineCostCalendarFixture.scannedSnapshots(historyDays: days)
             if !partial.daily.isEmpty {
                 try models.append((
                     "native-\(days)-partial",

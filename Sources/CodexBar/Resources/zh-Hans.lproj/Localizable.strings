@@ -2500,3 +2500,11 @@
 "Pace sign" = "使用节奏符号";
 "Ahead of pace is +" = "超出节奏为 +";
 "Reserve is +" = "余量为 +";
+
+/* Usage & Spend detail availability */
+"Loading details…" = "正在读取明细…";
+"Details unavailable. Refresh to try again." = "明细暂时无法读取，请刷新重试。";
+"No records in this time range." = "此时间范围没有记录。";
+"Showing the last available details." = "正在显示上次可用的明细。";
+
+"Local Codex details; excluded from combined totals." = "本地 Codex 明细；不计入合并总额。";

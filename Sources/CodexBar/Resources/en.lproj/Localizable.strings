@@ -2511,3 +2511,11 @@
 "Pace sign" = "Pace sign";
 "Ahead of pace is +" = "Ahead of pace is +";
 "Reserve is +" = "Reserve is +";
+
+/* Usage & Spend detail availability */
+"Loading details…" = "Loading details…";
+"Details unavailable. Refresh to try again." = "Details unavailable. Refresh to try again.";
+"No records in this time range." = "No records in this time range.";
+"Showing the last available details." = "Showing the last available details.";
+
+"Local Codex details; excluded from combined totals." = "Local Codex details; excluded from combined totals.";

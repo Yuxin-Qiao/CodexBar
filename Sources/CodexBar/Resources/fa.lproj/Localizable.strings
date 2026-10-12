@@ -2511,3 +2511,11 @@
 "Pace sign" = "علامت آهنگ مصرف";
 "Ahead of pace is +" = "جلوتر از آهنگ مصرف یعنی +";
 "Reserve is +" = "ذخیره یعنی +";
+
+/* Usage & Spend detail availability */
+"Loading details…" = "در حال بارگذاری جزئیات…";
+"Details unavailable. Refresh to try again." = "جزئیات در دسترس نیست. برای تلاش دوباره، تازه‌سازی کنید.";
+"No records in this time range." = "در این بازهٔ زمانی رکوردی وجود ندارد.";
+"Showing the last available details." = "آخرین جزئیات موجود نمایش داده می‌شود.";
+
+"Local Codex details; excluded from combined totals." = "Local Codex details; excluded from combined totals.";

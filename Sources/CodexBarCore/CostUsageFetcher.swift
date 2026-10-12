@@ -792,6 +792,9 @@ public struct CostUsageFetcher: Sendable {
             costProvenance: .listPriceEstimate,
             projects: scanResult.inclusive.projects,
             sessions: scanResult.inclusive.sessions,
+            projectBreakdownAvailability: scanResult.inclusive.projectAvailability,
+            sessionBreakdownAvailability: scanResult.inclusive.sessionAvailability,
+            breakdownsAreStale: scanResult.inclusive.staleSnapshotUpdatedAt != nil,
             updatedAt: scanResult.inclusive.staleSnapshotUpdatedAt)
         // Provider-specific by design: native projections exist for the two transcript families.
         let accounting: PiSnapshotAccounting? = if let scope = scanResult.piScope {
@@ -804,6 +807,9 @@ public struct CostUsageFetcher: Sendable {
                 costProvenance: .listPriceEstimate,
                 projects: scanResult.native.projects,
                 sessions: scanResult.native.sessions,
+                projectBreakdownAvailability: scanResult.native.projectAvailability,
+                sessionBreakdownAvailability: scanResult.native.sessionAvailability,
+                breakdownsAreStale: scanResult.native.staleSnapshotUpdatedAt != nil,
                 updatedAt: scanResult.native.staleSnapshotUpdatedAt))
         } else if provider == .codex || provider == .claude {
             .nativeOnly
@@ -819,6 +825,8 @@ public struct CostUsageFetcher: Sendable {
         let sessions: [CostUsageSessionBreakdown]
         let staleSnapshotUpdatedAt: Date?
         let historyCoverageIsEstablished: Bool
+        let projectAvailability: CostUsageBreakdownAvailability
+        let sessionAvailability: CostUsageBreakdownAvailability
     }
 
     private struct LocalTokenScanResult: Sendable {
@@ -894,8 +902,12 @@ public struct CostUsageFetcher: Sendable {
             var sessions: [CostUsageSessionBreakdown] = []
             var piScanIsComplete = true
             var staleSnapshotUpdatedAt: Date?
+            var projectAvailability: CostUsageBreakdownAvailability = .notRequested
+            var sessionAvailability: CostUsageBreakdownAvailability = .notRequested
             var historyCoverageIsEstablished = provider != .codex
             if provider == .codex {
+                projectAvailability = .unavailable
+                sessionAvailability = .unavailable
                 let roots = CostUsageScanner.codexSessionsRoots(options: options.scanOptions)
                 let rootsFingerprint = CostUsageScanner.codexRootsFingerprint(options: options.scanOptions)
                 let range = CostUsageScanner.CostUsageDayRange(
@@ -908,15 +920,35 @@ public struct CostUsageFetcher: Sendable {
                    let previous = view.previousReport(range: range, rootsFingerprint: rootsFingerprint)
                 {
                     staleSnapshotUpdatedAt = previous.updatedAt
+                    daily = previous.report(in: range)
+                    let retained = previous.retainedBreakdowns(
+                        range: range, sessionsRoot: roots.first, environment: options.environment)
+                    projects = retained.projects
+                    sessions = retained.sessions
+                    projectAvailability = retained.projectAvailability
+                    sessionAvailability = retained.sessionAvailability
+                    historyCoverageIsEstablished = previous.updatedAt != nil
                 } else {
-                    let reports = view.reports(range: range, cacheRoot: options.scanOptions.cacheRoot, roots: roots)
+                    let projectsAreComplete = view.projectMetadataVersion == CostUsageScanner
+                        .codexProjectMetadataVersion
+                    let reports = view.reports(
+                        range: range,
+                        cacheRoot: options.scanOptions.cacheRoot,
+                        roots: roots,
+                        includeProjects: projectsAreComplete)
                     daily = reports.daily
+                    projectAvailability = historyCoverageIsEstablished && (projectsAreComplete || daily.data.isEmpty)
+                        ? .complete : .unavailable
+                    sessionAvailability = historyCoverageIsEstablished ? .complete : .unavailable
                     (projects, sessions) = Self.codexBreakdownsWithMetadata(
                         reports.sessions,
                         projects: reports.projects,
                         projectSessionIDs: view.projectSessionIDs(range: range),
                         sessionsRoot: roots.first,
-                        environment: options.environment)
+                        environment: options.environment,
+                        onClassificationAvailability: { available in
+                            if !available { projectAvailability = .unavailable }
+                        })
                 }
             }
             let native = LocalTokenScanReport(
@@ -924,7 +956,9 @@ public struct CostUsageFetcher: Sendable {
                 projects: projects,
                 sessions: sessions,
                 staleSnapshotUpdatedAt: staleSnapshotUpdatedAt,
-                historyCoverageIsEstablished: historyCoverageIsEstablished)
+                historyCoverageIsEstablished: historyCoverageIsEstablished,
+                projectAvailability: projectAvailability,
+                sessionAvailability: sessionAvailability)
             var piScope: String?
             if options.includePiSessions,
                provider == .claude || (provider == .codex && options.shouldMergePiUsage)
@@ -950,6 +984,7 @@ public struct CostUsageFetcher: Sendable {
                     if let project = Self.unknownProjectBreakdown(from: piScanResult.report) {
                         projects.append(project)
                         sessions = []
+                        sessionAvailability = .unavailable
                     }
                 }
                 // The scanner can restore a previous cache scope after an incomplete root
@@ -968,7 +1003,9 @@ public struct CostUsageFetcher: Sendable {
                     projects: projects,
                     sessions: sessions,
                     staleSnapshotUpdatedAt: staleSnapshotUpdatedAt,
-                    historyCoverageIsEstablished: native.historyCoverageIsEstablished && piScanIsComplete),
+                    historyCoverageIsEstablished: native.historyCoverageIsEstablished && piScanIsComplete,
+                    projectAvailability: piScanIsComplete ? projectAvailability : .unavailable,
+                    sessionAvailability: piScanIsComplete ? sessionAvailability : .unavailable),
                 native: native,
                 piScope: piScope)
         }
@@ -982,14 +1019,21 @@ public struct CostUsageFetcher: Sendable {
         sessionsRoot: URL?,
         environment: [String: String] = ProcessInfo.processInfo.environment,
         fileManager: FileManager = .default,
-        projectMetadataLookup: (URL, Set<String>, Set<String>) -> CodexThreadMetadataReader.ProjectMetadata = {
-            CodexThreadMetadataReader(databaseURL: $0).projectMetadata(for: $1, sessionIDs: $2)
+        preserveRetainedClassification: Bool = false,
+        onClassificationAvailability: ((Bool) -> Void)? = nil,
+        projectMetadataLookup: (URL, Set<String>, Set<String>) -> CodexThreadMetadataReader.ProjectMetadata? = {
+            CodexThreadMetadataReader(databaseURL: $0).availableProjectMetadata(for: $1, sessionIDs: $2)
         }) -> (projects: [CostUsageProjectBreakdown], sessions: [CostUsageSessionBreakdown])
     {
         var result = (projects: projects, sessions: sessions)
-        guard !projects.isEmpty || !sessions.isEmpty,
-              let sessionsRoot, sessionsRoot.lastPathComponent == "sessions"
-        else { return result }
+        guard !projects.isEmpty || !sessions.isEmpty else {
+            onClassificationAvailability?(true)
+            return result
+        }
+        guard let sessionsRoot, sessionsRoot.lastPathComponent == "sessions" else {
+            onClassificationAvailability?(false)
+            return result
+        }
         let home = sessionsRoot.deletingLastPathComponent()
         let projectlessMetadata = CodexProjectlessWorkspaceMetadata.load(codexHomeDirectory: home)
         var databasesByWorkingDirectory: [String?: URL] = [:]
@@ -1025,18 +1069,44 @@ public struct CostUsageFetcher: Sendable {
             memberIDsByDatabase[database, default: []].insert(session.sessionID)
             return database
         }
-        let metadataByDatabase = Dictionary(uniqueKeysWithValues: pathsByDatabase.map { database, paths in
-            let candidates = (memberIDsByDatabase[database] ?? []).intersection(projectlessMetadata?.threadIDs ?? [])
-            return (database, projectMetadataLookup(database, paths, candidates))
+        let retainedIDs = Set(projects.filter { preserveRetainedClassification && $0.isProjectless }
+            .flatMap { project in
+                project.sources.flatMap { projectSessionIDs[$0.path ?? ""] ?? [] }
+            })
+        let candidateIDs = (projectlessMetadata?.threadIDs ?? []).union(retainedIDs)
+        let metadataByDatabase = Dictionary(uniqueKeysWithValues: pathsByDatabase.compactMap { database, paths
+                -> (URL, CodexThreadMetadataReader.ProjectMetadata)? in
+            let candidates = (memberIDsByDatabase[database] ?? []).intersection(candidateIDs)
+            guard let metadata = projectMetadataLookup(database, paths, candidates) else { return nil }
+            return (database, metadata)
         })
         var assignedSessionIDs: Set<String> = []
+        for database in pathsByDatabase.keys where metadataByDatabase[database] == nil {
+            // Unverified fresh rows remain Projects. Previously verified chat ownership can
+            // survive a temporary database read failure until current ownership disproves it.
+            assignedSessionIDs.formUnion((memberIDsByDatabase[database] ?? []).subtracting(retainedIDs))
+        }
         for metadata in metadataByDatabase.values {
             assignedSessionIDs.formUnion(metadata.assignedSessionIDs)
             for path in metadata.ownedPaths {
                 assignedSessionIDs.formUnion(projectSessionIDs[path] ?? [])
             }
         }
+        onClassificationAvailability?(
+            metadataByDatabase.count == pathsByDatabase.count
+                && (projectlessMetadata != nil || Set(sessions.map(\.sessionID)).isSubset(of: assignedSessionIDs)))
         for index in projects.indices {
+            let members = projects[index].sources.reduce(into: Set<String>()) {
+                $0.formUnion(projectSessionIDs[$1.path ?? ""] ?? [])
+            }
+            if projects[index].isProjectless,
+               projectlessMetadata != nil || !members.isDisjoint(with: assignedSessionIDs)
+            {
+                result.projects[index].isProjectless = false
+                result.projects[index].name = projects[index].path.map {
+                    URL(fileURLWithPath: $0).lastPathComponent
+                } ?? CostUsageProjectBreakdown.unknownProjectName
+            }
             let lookups = projectLookups[index]
             guard !lookups.isEmpty, lookups.count == projects[index].sources.count else { continue }
             let names = lookups.compactMap { metadataByDatabase[$0.database]?.names[$0.path] }
@@ -1376,74 +1446,29 @@ public struct CostUsageFetcher: Sendable {
             let roots = CostUsageScanner.codexSessionsRoots(options: options)
             let rootsFingerprint = CostUsageScanner.codexRootsFingerprint(options: options)
             let cache = Self.codexReportView(options: options, range: range)
-            var reports: [CostUsageDailyReport] = []
-            var projects: [CostUsageProjectBreakdown] = []
-            var sessions: [CostUsageSessionBreakdown] = []
-            // Raw inputs for the derived result fields below: the native cache's own scan
-            // time, every constituent scan time, and whether a second source joined the merge.
-            var nativeScanAt: Date?
-            var scanTimes: [Date] = []
-            var piHistoryIsComplete = false
-            var staleSnapshotUpdatedAt: Date?
             let nativeHistoryCoverageIsEstablished = cache.historyCoverageIsEstablished(
                 range: range,
                 rootsFingerprint: rootsFingerprint)
-            // Final catch-up publication must not fall back to the report from before a new pending scan.
+            // A final catch-up publication must use the completed ledger.
             guard !requireCompleteHistory || nativeHistoryCoverageIsEstablished else { return nil }
-
-            if !nativeHistoryCoverageIsEstablished,
-               let previous = cache.previousReport(
-                   range: range,
-                   rootsFingerprint: rootsFingerprint)
-            {
-                reports.append(previous.report)
-                staleSnapshotUpdatedAt = previous.updatedAt
-                if let updatedAt = previous.updatedAt {
-                    scanTimes.append(updatedAt)
-                }
-            } else if cache.timeZoneIdentifier == range.calendar.timeZone.identifier,
-                      !cache.days.isEmpty,
-                      cache.roots == rootsFingerprint,
-                      !cache.windowExpandsCache(range)
-            {
-                let projections = cache.reports(
-                    range: range,
-                    cacheRoot: options.cacheRoot,
-                    roots: roots,
-                    includeBreakdowns: includeProjectAndSessionBreakdowns,
-                    includeProjects: cache.projectMetadataVersion == CostUsageScanner.codexProjectMetadataVersion)
-                let daily = projections.daily
-                if !daily.data.isEmpty {
-                    reports.append(daily)
-                    if cache.lastScanUnixMs > 0 {
-                        let scanAt = Date(timeIntervalSince1970: TimeInterval(cache.lastScanUnixMs) / 1000)
-                        nativeScanAt = scanAt
-                        scanTimes.append(scanAt)
-                    }
-                    if includeProjectAndSessionBreakdowns {
-                        sessions = projections.sessions
-                        projects = projections.projects
-                        (projects, sessions) = Self.codexBreakdownsWithMetadata(
-                            sessions,
-                            projects: projects,
-                            projectSessionIDs: cache.projectSessionIDs(range: range),
-                            sessionsRoot: roots.first,
-                            environment: environment)
-                    }
-                }
-            }
-
-            // A completed scan can legitimately have no rows (a fresh account or a quiet
-            // window). Keep that established-empty state across app restarts instead of
-            // collapsing it back to "unavailable" merely because the cache has no day map.
-            if reports.isEmpty, nativeHistoryCoverageIsEstablished {
-                reports.append(Self.establishedEmptyCodexDailyReport)
-                if cache.lastScanUnixMs > 0 {
-                    let scanAt = Date(timeIntervalSince1970: TimeInterval(cache.lastScanUnixMs) / 1000)
-                    nativeScanAt = scanAt
-                    scanTimes.append(scanAt)
-                }
-            }
+            let projection = Self.cachedCodexReportProjection(
+                cache: cache,
+                range: range,
+                roots: roots,
+                rootsFingerprint: rootsFingerprint,
+                cacheRoot: options.cacheRoot,
+                includeBreakdowns: includeProjectAndSessionBreakdowns,
+                environment: environment,
+                historyCoverageIsEstablished: nativeHistoryCoverageIsEstablished)
+            var reports = projection.reports
+            var projects = projection.projects
+            var sessions = projection.sessions
+            let projectAvailability = projection.projectAvailability
+            var sessionAvailability = projection.sessionAvailability
+            let nativeScanAt = projection.nativeScanAt
+            let staleSnapshotUpdatedAt = projection.staleSnapshotUpdatedAt
+            var scanTimes = [nativeScanAt, staleSnapshotUpdatedAt].compactMap(\.self)
+            var piHistoryIsComplete = false
 
             let nativeSnapshot: CostUsageTokenSnapshot? = reports.isEmpty ? nil : Self.tokenSnapshot(
                 from: CostUsageDailyReport.merged(reports, calendar: options.calendar),
@@ -1455,6 +1480,9 @@ public struct CostUsageFetcher: Sendable {
                 costProvenance: .listPriceEstimate,
                 projects: Self.mergedProjectBreakdowns(projects),
                 sessions: sessions,
+                projectBreakdownAvailability: projectAvailability,
+                sessionBreakdownAvailability: sessionAvailability,
+                breakdownsAreStale: staleSnapshotUpdatedAt != nil,
                 updatedAt: scanTimes.min())
             var accounting: PiSnapshotAccounting = .nativeOnly
 
@@ -1487,6 +1515,7 @@ public struct CostUsageFetcher: Sendable {
                     if let piProject = Self.unknownProjectBreakdown(from: piResult.report) {
                         projects.append(piProject)
                         sessions = []
+                        sessionAvailability = .unavailable
                     }
                 }
             }
@@ -1512,6 +1541,11 @@ public struct CostUsageFetcher: Sendable {
                     costProvenance: .listPriceEstimate,
                     projects: Self.mergedProjectBreakdowns(projects),
                     sessions: sessions,
+                    projectBreakdownAvailability: !piHistoryRequested || piHistoryIsComplete
+                        ? projectAvailability : .unavailable,
+                    sessionBreakdownAvailability: !piHistoryRequested || piHistoryIsComplete
+                        ? sessionAvailability : .unavailable,
+                    breakdownsAreStale: staleSnapshotUpdatedAt != nil,
                     updatedAt: scanTimes.min()),
                 accounting: accounting,
                 lastRefreshAt: piHistoryRequested || staleSnapshotUpdatedAt != nil ? nil : nativeScanAt,
@@ -1730,6 +1764,9 @@ public struct CostUsageFetcher: Sendable {
         historyLabel: String? = nil,
         projects: [CostUsageProjectBreakdown] = [],
         sessions: [CostUsageSessionBreakdown] = [],
+        projectBreakdownAvailability: CostUsageBreakdownAvailability = .notRequested,
+        sessionBreakdownAvailability: CostUsageBreakdownAvailability = .notRequested,
+        breakdownsAreStale: Bool = false,
         updatedAt: Date? = nil) -> CostUsageTokenSnapshot
     {
         let sessionEntry = useCurrentLocalDayForSession
@@ -1771,6 +1808,9 @@ public struct CostUsageFetcher: Sendable {
             daily: daily.data,
             projects: projects,
             sessions: sessions,
+            projectBreakdownAvailability: projectBreakdownAvailability,
+            sessionBreakdownAvailability: sessionBreakdownAvailability,
+            breakdownsAreStale: breakdownsAreStale,
             hourly: daily.hourly,
             quotaSlices: daily.quotaSlices,
             updatedAt: updatedAt ?? now)

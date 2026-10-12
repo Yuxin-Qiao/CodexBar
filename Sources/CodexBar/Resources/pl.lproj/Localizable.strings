@@ -2510,3 +2510,11 @@
 "Pace sign" = "Znak tempa zużycia";
 "Ahead of pace is +" = "Powyżej tempa to +";
 "Reserve is +" = "Rezerwa to +";
+
+/* Usage & Spend detail availability */
+"Loading details…" = "Wczytywanie szczegółów…";
+"Details unavailable. Refresh to try again." = "Szczegóły są niedostępne. Odśwież, aby spróbować ponownie.";
+"No records in this time range." = "Brak danych w tym okresie.";
+"Showing the last available details." = "Wyświetlane są ostatnie dostępne szczegóły.";
+
+"Local Codex details; excluded from combined totals." = "Local Codex details; excluded from combined totals.";

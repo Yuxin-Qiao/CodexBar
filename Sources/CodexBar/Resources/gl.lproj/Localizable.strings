@@ -2506,3 +2506,11 @@
 "Pace sign" = "Signo do ritmo";
 "Ahead of pace is +" = "Por riba do ritmo é +";
 "Reserve is +" = "A reserva é +";
+
+/* Usage & Spend detail availability */
+"Loading details…" = "Cargando detalles…";
+"Details unavailable. Refresh to try again." = "Detalles non dispoñibles. Actualiza para tentalo de novo.";
+"No records in this time range." = "Non hai rexistros neste período.";
+"Showing the last available details." = "Móstranse os últimos detalles dispoñibles.";
+
+"Local Codex details; excluded from combined totals." = "Local Codex details; excluded from combined totals.";

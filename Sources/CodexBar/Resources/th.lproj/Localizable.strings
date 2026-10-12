@@ -2511,3 +2511,11 @@
 "Pace sign" = "เครื่องหมายอัตราการใช้งาน";
 "Ahead of pace is +" = "ใช้เร็วกว่าที่ควรเป็นคือ +";
 "Reserve is +" = "โควตาสำรองคือ +";
+
+/* Usage & Spend detail availability */
+"Loading details…" = "กำลังโหลดรายละเอียด…";
+"Details unavailable. Refresh to try again." = "ไม่สามารถแสดงรายละเอียดได้ โปรดรีเฟรชเพื่อลองอีกครั้ง";
+"No records in this time range." = "ไม่มีบันทึกในช่วงเวลานี้";
+"Showing the last available details." = "กำลังแสดงรายละเอียดล่าสุดที่มีอยู่";
+
+"Local Codex details; excluded from combined totals." = "Local Codex details; excluded from combined totals.";

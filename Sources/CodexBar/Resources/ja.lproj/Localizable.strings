@@ -2507,3 +2507,11 @@
 "Pace sign" = "ペースの符号";
 "Ahead of pace is +" = "ペース超過を + で表示";
 "Reserve is +" = "余裕を + で表示";
+
+/* Usage & Spend detail availability */
+"Loading details…" = "詳細を読み込み中…";
+"Details unavailable. Refresh to try again." = "詳細を取得できません。更新して再試行してください。";
+"No records in this time range." = "この期間の記録はありません。";
+"Showing the last available details." = "前回取得した詳細を表示しています。";
+
+"Local Codex details; excluded from combined totals." = "Local Codex details; excluded from combined totals.";

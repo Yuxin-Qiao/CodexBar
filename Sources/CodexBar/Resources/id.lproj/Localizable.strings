@@ -2510,3 +2510,11 @@
 "Pace sign" = "Tanda laju penggunaan";
 "Ahead of pace is +" = "Di atas laju adalah +";
 "Reserve is +" = "Cadangan adalah +";
+
+/* Usage & Spend detail availability */
+"Loading details…" = "Memuat rincian…";
+"Details unavailable. Refresh to try again." = "Rincian tidak tersedia. Segarkan untuk mencoba lagi.";
+"No records in this time range." = "Tidak ada catatan dalam rentang waktu ini.";
+"Showing the last available details." = "Menampilkan rincian terakhir yang tersedia.";
+
+"Local Codex details; excluded from combined totals." = "Local Codex details; excluded from combined totals.";

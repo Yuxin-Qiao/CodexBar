@@ -279,6 +279,11 @@ struct SpendDashboardModel: Equatable, Sendable {
         let meteredCost: Double?
         let sessions: [SessionRow]
         let projects: [ProjectRow]
+        let projectBreakdownAvailability: CostUsageBreakdownAvailability
+        let sessionBreakdownAvailability: CostUsageBreakdownAvailability
+        let detailUpdatedAt: Date?
+        let detailsAreStale: Bool
+        let detailsExcludedFromTotals: Bool
         let selectedDay: Date?
         let hourlyPoints: [HourlyPoint]
         private let hourlyDaysMemo = SpendHourlyDaysMemo()
@@ -319,6 +324,11 @@ struct SpendDashboardModel: Equatable, Sendable {
             provenance: CostProvenance = .unknown,
             meteredCost: Double? = nil,
             sessions: [SessionRow] = [],
+            projectBreakdownAvailability: CostUsageBreakdownAvailability = .notRequested,
+            sessionBreakdownAvailability: CostUsageBreakdownAvailability = .notRequested,
+            detailUpdatedAt: Date? = nil,
+            detailsAreStale: Bool = false,
+            detailsExcludedFromTotals: Bool = false,
             selectedDay: Date? = nil,
             hourlyPoints: [HourlyPoint] = [],
             timeZone: TimeZone = .current)
@@ -340,6 +350,11 @@ struct SpendDashboardModel: Equatable, Sendable {
             self.meteredCost = meteredCost
             self.sessions = sessions
             self.projects = projects
+            self.projectBreakdownAvailability = projectBreakdownAvailability
+            self.sessionBreakdownAvailability = sessionBreakdownAvailability
+            self.detailUpdatedAt = detailUpdatedAt
+            self.detailsAreStale = detailsAreStale
+            self.detailsExcludedFromTotals = detailsExcludedFromTotals
             self.selectedDay = selectedDay
             self.hourlyPoints = hourlyPoints
             self.timeZone = timeZone
@@ -418,8 +433,12 @@ struct SpendDashboardModel: Equatable, Sendable {
             inputs,
             hiddenSourceIDs: hiddenSourceIDs,
             hideNativeCodexWhenOpenCodexPresent: hideNativeCodexWhenOpenCodexPresent)
+        let visibleInputIDs = Set(visibleInputs.map(\.id))
+        let detailOnlyInputs = inputs.filter {
+            !hiddenSourceIDs.contains($0.id) && !visibleInputIDs.contains($0.id)
+        }
         var conversionCache: [String: Double?] = [:]
-        let classifiedInputs = visibleInputs.compactMap { input -> ClassifiedInput? in
+        let classifiedInputs = (visibleInputs + detailOnlyInputs).compactMap { input -> ClassifiedInput? in
             guard let sourceCurrencyCode = Self.currencyCode(input.snapshot.currencyCode) else { return nil }
             let targetCurrencyCode = UsageFormatter.effectiveCurrencyCode(
                 preferred: preferredCurrencyCode,
@@ -451,10 +470,13 @@ struct SpendDashboardModel: Equatable, Sendable {
         let bounds = period.bounds(now: now, calendar: calculationCalendar, earliest: earliest)
         let days = period.days(now: now, calendar: calculationCalendar, earliest: earliest)
         let groups = Dictionary(grouping: classifiedInputs, by: { $0.currencyCode })
-            .map { currencyCode, inputs in
-                Self.buildCurrencyGroup(
+            .compactMap { currencyCode, inputs -> CurrencyGroup? in
+                let aggregateInputs = inputs.filter { visibleInputIDs.contains($0.input.id) }
+                guard !aggregateInputs.isEmpty else { return nil }
+                return Self.buildCurrencyGroup(
                     currencyCode: currencyCode,
-                    inputs: inputs,
+                    inputs: aggregateInputs,
+                    supplementalDetailInputs: inputs.filter { !visibleInputIDs.contains($0.input.id) },
                     days: days,
                     calendar: calculationCalendar,
                     bounds: bounds,
@@ -470,24 +492,6 @@ struct SpendDashboardModel: Equatable, Sendable {
                 now: now,
                 calendar: calculationCalendar),
             selectedDay: selectedDay.map { calculationCalendar.startOfDay(for: $0) })
-    }
-
-    static func visibleInputs(
-        _ inputs: [ProviderInput],
-        hiddenSourceIDs: Set<String>,
-        hideNativeCodexWhenOpenCodexPresent: Bool) -> [ProviderInput]
-    {
-        var filtered = inputs.filter { !hiddenSourceIDs.contains($0.id) }
-        // Provider-specific by design: only a canonical OpenCodex Codex row may replace native Codex rows.
-        let hasOpenCodex = filtered.contains {
-            $0.id == Self.openCodexSourceID &&
-                $0.provider == .codex &&
-                $0.sourceKind == .openCodex
-        }
-        if hideNativeCodexWhenOpenCodexPresent, hasOpenCodex {
-            filtered.removeAll { $0.sourceKind == .native && $0.provider == .codex }
-        }
-        return filtered
     }
 
     private struct ClassifiedInput {
@@ -570,6 +574,7 @@ struct SpendDashboardModel: Equatable, Sendable {
     private static func buildCurrencyGroup(
         currencyCode: String,
         inputs: [ClassifiedInput],
+        supplementalDetailInputs: [ClassifiedInput] = [],
         days: Int,
         calendar: Calendar,
         bounds: ClosedRange<Date>,
@@ -658,11 +663,26 @@ struct SpendDashboardModel: Equatable, Sendable {
             selectedDay: selectedDay,
             bounds: bounds,
             calendar: calendar)
+        // Detail-only rows retain their own accounting; they never enter aggregate summaries or charts.
+        let detailSummaries = summaries + supplementalDetailInputs.map { classified in
+            Self.inputSummary(
+                input: classified.input,
+                costMultiplier: classified.costMultiplier,
+                bounds: bounds,
+                calendar: calendar)
+        }
+        // Provider-specific by design: only native Codex publishes project and session availability.
+        let detailSnapshots = (inputs + supplementalDetailInputs)
+            .filter { $0.input.provider == .codex && $0.input.sourceKind == .native }
+            .map(\.input.snapshot)
         return CurrencyGroup(
             currencyCode: currencyCode,
             providers: providers,
             models: modelSummary.rows,
-            projects: Self.projectRows(summaries: summaries, bounds: bounds, calendar: calendar),
+            projects: Self.projectRows(
+                summaries: detailSummaries,
+                bounds: selectedDay.map { $0...$0 } ?? bounds,
+                calendar: calendar),
             dailyPoints: dailyPoints,
             dailySummaries: Self.dailySummaries(summaries: summaries, calendar: calendar),
             totalTokens: Self.knownIntSum(providers.map(\.totalTokens)),
@@ -676,10 +696,17 @@ struct SpendDashboardModel: Equatable, Sendable {
             provenance: provenance,
             meteredCost: hasMeteredCostAmount ? metered : nil,
             sessions: Self.sessionRows(
-                summaries: summaries,
+                summaries: detailSummaries,
                 bounds: bounds,
                 calendar: calendar,
                 selectedDay: selectedDay),
+            projectBreakdownAvailability: spendDashboardBreakdownAvailability(
+                detailSnapshots.map(\.projectBreakdownAvailability)),
+            sessionBreakdownAvailability: spendDashboardBreakdownAvailability(
+                detailSnapshots.map(\.sessionBreakdownAvailability)),
+            detailUpdatedAt: detailSnapshots.map(\.updatedAt).min(),
+            detailsAreStale: detailSnapshots.contains(where: \.breakdownsAreStale),
+            detailsExcludedFromTotals: !supplementalDetailInputs.isEmpty,
             selectedDay: selectedDay,
             hourlyPoints: hourlyPoints,
             timeZone: calendar.timeZone)

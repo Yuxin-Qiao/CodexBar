@@ -2511,3 +2511,11 @@
 "Pace sign" = "Signe del ritme";
 "Ahead of pace is +" = "Per sobre del ritme és +";
 "Reserve is +" = "La reserva és +";
+
+/* Usage & Spend detail availability */
+"Loading details…" = "S’estan carregant els detalls…";
+"Details unavailable. Refresh to try again." = "Detalls no disponibles. Actualitza per tornar-ho a provar.";
+"No records in this time range." = "No hi ha registres en aquest període.";
+"Showing the last available details." = "Es mostren els últims detalls disponibles.";
+
+"Local Codex details; excluded from combined totals." = "Local Codex details; excluded from combined totals.";

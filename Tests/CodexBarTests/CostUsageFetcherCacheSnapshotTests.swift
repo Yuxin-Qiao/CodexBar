@@ -356,7 +356,12 @@ struct CostUsageFetcherCacheSnapshotTests {
         let rootsFingerprint = CostUsageScanner.codexRootsFingerprint(options: options)
         let previous = try #require(pendingCache.codexPreviousReport)
 
-        #expect(!partial.historyCoverageIsEstablished)
+        #expect(partial.historyCoverageIsEstablished)
+        #expect(partial.breakdownsAreStale)
+        #expect(partial.updatedAt == previous.updatedAt)
+        #expect(partial.daily == previous.report.data)
+        #expect(partial.sessionBreakdownAvailability == .complete)
+        #expect(partial.sessions.map(\.sessionID) == ["active-tail"])
         #expect(partial.last30DaysTokens == 42)
         #expect(pendingCache.codexScanCatchUpPending == true)
         #expect(previous.report.data.map(\.date) == ["2026-04-08"])

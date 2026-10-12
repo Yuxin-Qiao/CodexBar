@@ -5907,17 +5907,13 @@ enum CostUsageScanner {
         } else {
             plan.priorityTurns
         }
-        let report = self.buildCodexReportFromCache(
+        return CostUsageCodexPreviousReport.capturing(
             cache: cache,
             range: range,
+            sessionRoots: Self.codexSessionsRoots(options: options),
             modelsDevCatalog: plan.modelsDevCatalog,
             modelsDevCacheRoot: options.cacheRoot,
             priorityTurns: priorityTurns)
-        return CostUsageCodexPreviousReport(
-            report: report,
-            cache: cache,
-            reportSinceKey: range.sinceKey,
-            reportUntilKey: range.untilKey)
     }
 
     static func codexPreviousReport(

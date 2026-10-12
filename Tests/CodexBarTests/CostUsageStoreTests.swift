@@ -955,6 +955,7 @@ extension CostUsageStoreTests {
 
 extension CostUsageStoreTests {
     @Test(arguments: [
+        "fc698834d6329beb", // Retained display breakdowns do not change rows or scan checkpoints.
         "f406dae284de4a55", // Current main before the Auto-review creator-account reparse.
         "379b799bb4b91683", // Current main before on-demand tool inspection.
         "7ce21041b7a36242", // Prior tool inspection build before upstream process cleanup.
@@ -1013,6 +1014,7 @@ extension CostUsageStoreTests {
         let fixture = try StoreFixture()
         defer { fixture.remove() }
         #expect(CostUsageStore.compatiblePredecessorParserHashes == [
+            "fc698834d6329beb",
             "f406dae284de4a55",
             "379b799bb4b91683",
             "7ce21041b7a36242",

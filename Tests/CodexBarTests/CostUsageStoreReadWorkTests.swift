@@ -84,11 +84,14 @@ struct CostUsageStoreReadWorkTests {
             last30DaysTokens: full.last30DaysTokens,
             last30DaysCostUSD: full.last30DaysCostUSD,
             historyDays: 1,
-            historyCoverageIsEstablished: coverage,
+            historyCoverageIsEstablished: coverage || retainedReport,
             costProvenance: .listPriceEstimate,
             daily: full.daily,
             projects: retainedReport ? [] : full.projects,
             sessions: retainedReport ? [] : full.sessions,
+            projectBreakdownAvailability: retainedReport ? .unavailable : full.projectBreakdownAvailability,
+            sessionBreakdownAvailability: retainedReport ? .unavailable : full.sessionBreakdownAvailability,
+            breakdownsAreStale: retainedReport,
             updatedAt: fixture.now.addingTimeInterval(retainedReport ? -60 : 0))
     }
 

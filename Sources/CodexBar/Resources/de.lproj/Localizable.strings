@@ -2505,3 +2505,11 @@
 "Pace sign" = "Vorzeichen des Nutzungstempos";
 "Ahead of pace is +" = "Über dem Solltempo ist +";
 "Reserve is +" = "Reserve ist +";
+
+/* Usage & Spend detail availability */
+"Loading details…" = "Details werden geladen…";
+"Details unavailable. Refresh to try again." = "Details nicht verfügbar. Zum erneuten Versuch aktualisieren.";
+"No records in this time range." = "Keine Einträge in diesem Zeitraum.";
+"Showing the last available details." = "Die zuletzt verfügbaren Details werden angezeigt.";
+
+"Local Codex details; excluded from combined totals." = "Local Codex details; excluded from combined totals.";

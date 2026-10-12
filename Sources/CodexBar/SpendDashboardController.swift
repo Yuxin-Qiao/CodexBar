@@ -770,6 +770,10 @@ enum SpendDashboardSource {
         encoder.append(snapshot.currencyCode)
         encoder.append(snapshot.historyDays)
         encoder.append(snapshot.historyCoverageIsEstablished)
+        encoder.append(snapshot.historyScanIsPartial)
+        encoder.append(snapshot.projectBreakdownAvailability.rawValue)
+        encoder.append(snapshot.sessionBreakdownAvailability.rawValue)
+        encoder.append(snapshot.breakdownsAreStale)
         encoder.append(snapshot.updatedAt.timeIntervalSinceReferenceDate)
         encoder.append(snapshot.last30DaysTokens)
         encoder.append(snapshot.last30DaysCostUSD)
@@ -807,6 +811,7 @@ enum SpendDashboardSource {
         encoder.append(snapshot.sessions.count)
         for project in snapshot.projects {
             encoder.append(project.name)
+            encoder.append(project.isProjectless)
             encoder.append(project.path ?? "")
             encoder.append(project.totalTokens)
             encoder.append(project.totalCostUSD)
@@ -1176,6 +1181,7 @@ final class SpendDashboardController {
     private(set) var publication = SpendDashboardPublication.empty
     private(set) var isRefreshing = false
     private(set) var failedSourceCount = 0
+    private(set) var retainedDetailSourceIDs: Set<String> = []
     private(set) var generation: UInt64 = 0
     private(set) var configuration: SpendDashboardConfiguration?
     private(set) var selectedPeriod: CostReportingPeriod
@@ -1291,6 +1297,7 @@ final class SpendDashboardController {
 
         if !invalidatedSourceIDs.isEmpty {
             self.loadedInputs.removeAll { invalidatedSourceIDs.contains($0.id) }
+            self.retainedDetailSourceIDs.subtract(invalidatedSourceIDs)
             self.failedSourceIDs.subtract(invalidatedSourceIDs)
             self.confirmedEmptySourceIDs.subtract(invalidatedSourceIDs)
             for sourceID in invalidatedSourceIDs {
@@ -1509,22 +1516,33 @@ final class SpendDashboardController {
             .union(result.invalidatedSourceIDs)
             .union(confirmedEmptySourceIDs)
         var incompleteCodexScopes: [String: SpendDashboardLoadedInputScope] = [:]
+        let nextInputsByID = Dictionary(uniqueKeysWithValues: nextInputs.map { ($0.id, $0) })
+        self.retainedDetailSourceIDs = []
         // Provider-specific by design: only Codex account histories publish bounded catch-up coverage.
         for input in nextInputs
-            where input.provider == .codex && !input.snapshot.historyCoverageIsEstablished
+            where input.provider == .codex && input
+            .sourceKind == .native && (input.snapshot.projectBreakdownAvailability != .complete
+                || input.snapshot.sessionBreakdownAvailability != .complete
+                || !input.snapshot.historyCoverageIsEstablished)
         {
             incompleteCodexScopes[input.id] = SpendDashboardLoadedInputScope(
                 configuration: request.configuration,
                 input: input)
         }
         if !incompleteCodexScopes.isEmpty {
-            let retainedInputs = self.loadedInputs.filter {
-                incompleteCodexScopes[$0.id] == self.loadedInputScopes[$0.id] &&
-                    !unsafeSourceIDs.contains($0.id) &&
-                    $0.provider == .codex &&
-                    $0.snapshot.historyCoverageIsEstablished
+            let retainedInputs = self.loadedInputs.filter { previous in
+                incompleteCodexScopes[previous.id] == self.loadedInputScopes[previous.id] &&
+                    !unsafeSourceIDs.contains(previous.id) &&
+                    // Provider-specific by design: only bounded native Codex refreshes retain complete detail inputs.
+                    previous.provider == .codex &&
+                    previous.sourceKind == .native &&
+                    previous.snapshot.historyCoverageIsEstablished &&
+                    nextInputsByID[previous.id].map { next in
+                        spendDashboardShouldRetainDetails(previous: previous.snapshot, next: next.snapshot)
+                    } == true
             }.map { Self.relabelCodexInput($0, displayNamesByID: codexDisplayNames) }
             let retainedSourceIDs = Set(retainedInputs.map(\.id))
+            self.retainedDetailSourceIDs = retainedSourceIDs
             nextInputs.removeAll { retainedSourceIDs.contains($0.id) }
             nextInputs.append(contentsOf: retainedInputs)
         }
@@ -1533,6 +1551,8 @@ final class SpendDashboardController {
             let retainedInputs = self.loadedInputs.filter {
                 result.failedSourceIDs.contains($0.id) &&
                     !unsafeSourceIDs.contains($0.id) &&
+                    self.loadedInputScopes[$0.id] == SpendDashboardLoadedInputScope(
+                        configuration: request.configuration, input: $0) &&
                     !freshIDs.contains($0.id)
             }.map { Self.relabelCodexInput($0, displayNamesByID: codexDisplayNames) }
             nextInputs.append(contentsOf: retainedInputs)
@@ -1674,6 +1694,7 @@ final class SpendDashboardController {
         self.loadTask = nil
         self.configuration = nil
         self.loadedInputs = []
+        self.retainedDetailSourceIDs = []
         self.failedSourceIDs = []
         self.confirmedEmptySourceIDs = []
         self.openCodexObservation = .disabled

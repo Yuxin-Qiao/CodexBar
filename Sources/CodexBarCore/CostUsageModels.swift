@@ -161,6 +161,13 @@ public struct CostUsageTimedEntry: Sendable, Equatable {
     }
 }
 
+/// An empty breakdown is only a known empty result after it has been read to completion.
+public enum CostUsageBreakdownAvailability: String, Sendable, Equatable, Codable {
+    case notRequested
+    case unavailable
+    case complete
+}
+
 public struct CostUsageTokenSnapshot: Sendable, Equatable {
     public let sessionTokens: Int?
     public let sessionCostUSD: Double?
@@ -190,6 +197,9 @@ public struct CostUsageTokenSnapshot: Sendable, Equatable {
     public let daily: [CostUsageDailyReport.Entry]
     public let projects: [CostUsageProjectBreakdown]
     public let sessions: [CostUsageSessionBreakdown]
+    public let projectBreakdownAvailability: CostUsageBreakdownAvailability
+    public let sessionBreakdownAvailability: CostUsageBreakdownAvailability
+    public let breakdownsAreStale: Bool
     /// Hour-aligned buckets for spend charts and legacy quota history.
     public let hourly: [CostUsageHourlyEntry]
     /// Exact event-time slices for quota-window projection. Empty for legacy/coarse providers.
@@ -215,6 +225,9 @@ public struct CostUsageTokenSnapshot: Sendable, Equatable {
         daily: [CostUsageDailyReport.Entry],
         projects: [CostUsageProjectBreakdown] = [],
         sessions: [CostUsageSessionBreakdown] = [],
+        projectBreakdownAvailability: CostUsageBreakdownAvailability = .notRequested,
+        sessionBreakdownAvailability: CostUsageBreakdownAvailability = .notRequested,
+        breakdownsAreStale: Bool = false,
         hourly: [CostUsageHourlyEntry] = [],
         quotaSlices: [CostUsageTimedEntry] = [],
         updatedAt: Date)
@@ -237,6 +250,9 @@ public struct CostUsageTokenSnapshot: Sendable, Equatable {
         self.daily = daily
         self.projects = projects
         self.sessions = sessions
+        self.projectBreakdownAvailability = projectBreakdownAvailability
+        self.sessionBreakdownAvailability = sessionBreakdownAvailability
+        self.breakdownsAreStale = breakdownsAreStale
         self.hourly = hourly
         self.quotaSlices = quotaSlices
         self.updatedAt = updatedAt
@@ -352,7 +368,7 @@ public struct CostUsageTokenSnapshot: Sendable, Equatable {
     }
 }
 
-public struct CostUsageProjectBreakdown: Sendable, Equatable {
+public struct CostUsageProjectBreakdown: Sendable, Equatable, Codable {
     public static let unknownProjectName = "Unknown project"
 
     public internal(set) var name: String
@@ -389,7 +405,7 @@ public struct CostUsageProjectBreakdown: Sendable, Equatable {
     }
 }
 
-public struct CostUsageProjectSourceBreakdown: Sendable, Equatable {
+public struct CostUsageProjectSourceBreakdown: Sendable, Equatable, Codable {
     public let name: String
     public let path: String?
     public let totalTokens: Int?
