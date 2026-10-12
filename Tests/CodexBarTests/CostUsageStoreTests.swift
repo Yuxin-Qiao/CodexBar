@@ -1116,7 +1116,6 @@ extension CostUsageStoreTests {
             pendingFilePaths: [file.path],
             legacyRecursivePendingRootPaths: [])
         let accumulator = Self.accumulator(path: file.path)
-        let metadata = Self.metadata()
         #expect(await predecessor.upsertFile(file))
         #expect(await predecessor.appendTokenSnapshots([token]))
         #expect(await predecessor.replaceUsageRows(path: file.path, rows: [usageRow]))
@@ -1127,7 +1126,7 @@ extension CostUsageStoreTests {
         #expect(await predecessor.setDiscoveryState(discovery))
         #expect(await predecessor.setLookbackState(lookback))
         #expect(await predecessor.upsertAccumulator(accumulator))
-        #expect(await predecessor.setMetadata(metadata))
+        #expect(await predecessor.setMetadata(Self.metadata()))
         let before = await predecessor.readSnapshot()
 
         try FileManager.default.removeItem(at: input)
