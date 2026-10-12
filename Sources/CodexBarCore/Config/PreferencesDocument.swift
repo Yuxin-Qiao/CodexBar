@@ -99,11 +99,11 @@ public struct PreferencesDocument: Codable, Sendable {
         if values["unifiedIconSource"] == nil, case let .bool(highest)? = values["menuBarShowsHighestUsage"] {
             values["unifiedIconSource"] = .string(highest ? "highestUsage" : "currentSelection")
         }
-        if values["providerListSortMode"] == nil,
-           case let .bool(alphabetical)? = values["providersSortedAlphabetically"]
-        {
-            values["providerListSortMode"] = .string(alphabetical
-                ? ProviderListSortMode.alphabetical.rawValue : ProviderListSortMode.custom.rawValue)
+        if case let .bool(alphabetical)? = values["providersSortedAlphabetically"] {
+            var raw: String?
+            if case let .string(s)? = values["providerListSortMode"] { raw = s }
+            let resolved = ProviderListSortMode.resolved(rawValue: raw, alphabetical: alphabetical)
+            values["providerListSortMode"] = .string(resolved.rawValue)
         }
         return values
     }

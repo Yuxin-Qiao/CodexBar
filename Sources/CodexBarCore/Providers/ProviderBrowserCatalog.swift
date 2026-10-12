@@ -6,7 +6,10 @@ public enum ProviderListSortMode: String, CaseIterable, Sendable {
     case family
 
     public static func resolved(rawValue: String?, alphabetical: Bool) -> Self {
-        rawValue.flatMap(Self.init(rawValue:)) ?? (alphabetical ? .alphabetical : .custom)
+        if let mode = rawValue.flatMap(Self.init(rawValue:)), mode == .family {
+            return .family
+        }
+        return alphabetical ? .alphabetical : .custom
     }
 }
 

@@ -102,6 +102,49 @@ struct ProviderBrowsingTests {
     }
 
     @Test
+    func `downgrade and re-upgrade reconcile stale raw mode with legacy boolean`() {
+        let defaults1 = InMemoryUserDefaults()
+        let settings1 = self.store(defaults: defaults1)
+        settings1.providerListSortMode = .custom
+        #expect(defaults1.string(forKey: "providerListSortMode") == "custom")
+        #expect(defaults1.bool(forKey: "providersSortedAlphabetically") == false)
+        defaults1.set(true, forKey: "providersSortedAlphabetically")
+        let upgraded1 = self.store(defaults: defaults1)
+        #expect(upgraded1.providerListSortMode == .alphabetical)
+
+        let defaults2 = InMemoryUserDefaults()
+        let settings2 = self.store(defaults: defaults2)
+        settings2.providerListSortMode = .alphabetical
+        #expect(defaults2.string(forKey: "providerListSortMode") == "alphabetical")
+        #expect(defaults2.bool(forKey: "providersSortedAlphabetically") == true)
+        defaults2.set(false, forKey: "providersSortedAlphabetically")
+        let upgraded2 = self.store(defaults: defaults2)
+        #expect(upgraded2.providerListSortMode == .custom)
+
+        let defaults3 = InMemoryUserDefaults()
+        let settings3 = self.store(defaults: defaults3)
+        settings3.providerListSortMode = .family
+        #expect(defaults3.string(forKey: "providerListSortMode") == "family")
+        defaults3.set(true, forKey: "providersSortedAlphabetically")
+        let upgraded3 = self.store(defaults: defaults3)
+        #expect(upgraded3.providerListSortMode == .family)
+    }
+
+    @Test
+    func `ProviderListSortMode resolved logic reconciles raw mode and boolean`() {
+        #expect(ProviderListSortMode.resolved(rawValue: "custom", alphabetical: true) == .alphabetical)
+        #expect(ProviderListSortMode.resolved(rawValue: "custom", alphabetical: false) == .custom)
+        #expect(ProviderListSortMode.resolved(rawValue: "alphabetical", alphabetical: false) == .custom)
+        #expect(ProviderListSortMode.resolved(rawValue: "alphabetical", alphabetical: true) == .alphabetical)
+        #expect(ProviderListSortMode.resolved(rawValue: "family", alphabetical: true) == .family)
+        #expect(ProviderListSortMode.resolved(rawValue: "family", alphabetical: false) == .family)
+        #expect(ProviderListSortMode.resolved(rawValue: nil, alphabetical: true) == .alphabetical)
+        #expect(ProviderListSortMode.resolved(rawValue: nil, alphabetical: false) == .custom)
+        #expect(ProviderListSortMode.resolved(rawValue: "unknown", alphabetical: true) == .alphabetical)
+        #expect(ProviderListSortMode.resolved(rawValue: "unknown", alphabetical: false) == .custom)
+    }
+
+    @Test
     func `browsing changes do not rewrite config or background work state`() throws {
         let settings = self.store()
         let before = try settings.configSnapshot.encodedData()
