@@ -2522,11 +2522,7 @@
 "Undo" = "Отменить";
 "Clear filters" = "Сбросить фильтры";
 "Change provider order" = "Изменить порядок провайдеров";
-"Use your custom provider order" = "Использовать свой порядок провайдеров";
 "Provider sorting" = "Сортировка провайдеров";
-"Custom order" = "Свой порядок";
-"By name (enabled first)" = "По имени (активные первыми)";
-"Group by company" = "Группировать по компании";
 "Only enabled providers" = "Только активные провайдеры";
 "Restore default order" = "Восстановить исходный порядок";
 "Also restores the provider order in the menu bar. Can be undone." = "Также восстанавливает порядок провайдеров в строке меню. Действие можно отменить.";

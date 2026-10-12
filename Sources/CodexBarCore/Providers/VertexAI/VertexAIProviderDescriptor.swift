@@ -6,7 +6,6 @@ public enum VertexAIProviderDescriptor {
     static func makeDescriptor() -> ProviderDescriptor {
         ProviderDescriptor(
             id: .vertexai,
-            catalog: .init(family: .google),
             metadata: ProviderMetadata(
                 id: .vertexai,
                 displayName: "Vertex AI",

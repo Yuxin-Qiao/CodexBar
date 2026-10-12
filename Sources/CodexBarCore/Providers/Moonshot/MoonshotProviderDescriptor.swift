@@ -31,7 +31,6 @@ public enum MoonshotProviderDescriptor {
     static func makeDescriptor() -> ProviderDescriptor {
         ProviderDescriptor(
             id: .moonshot,
-            catalog: .init(family: .moonshotServices),
             settingsSection: .init(MoonshotProviderSettingsKey.self, credentialSettings: { context in
                 let region = context.config?.sanitizedRegion.flatMap(MoonshotRegion.init(rawValue:))
                     ?? (context.config?.sanitizedRegion == nil ? nil : .international)

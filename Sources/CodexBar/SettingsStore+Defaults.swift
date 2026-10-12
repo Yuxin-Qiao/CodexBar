@@ -1070,8 +1070,11 @@ extension SettingsStore {
     /// top). Defaults to `false`. Purely a display preference — it never rewrites the stored manual
     /// order, so turning it on sorts the display without losing the user's hand-arranged sequence.
     var providersSortedAlphabetically: Bool {
-        get { self.providerListSortMode == .alphabetical }
-        set { self.providerListSortMode = newValue ? .alphabetical : .custom }
+        get { self.defaultsState.providersSortedAlphabetically }
+        set {
+            if newValue != self.providersSortedAlphabetically { self.providerOrderUndo?.restoreAlphabetical = nil }
+            self.setDefault(\.providersSortedAlphabetically, newValue, key: "providersSortedAlphabetically")
+        }
     }
 
     var appLanguage: String {

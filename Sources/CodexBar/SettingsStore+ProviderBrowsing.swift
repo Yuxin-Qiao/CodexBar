@@ -5,24 +5,10 @@ struct ProviderOrderUndo {
     let id = UUID()
     let before: [ProviderInstanceID]
     let after: [ProviderInstanceID]
-    var restoreMode: ProviderListSortMode?
+    var restoreAlphabetical: Bool?
 }
 
 extension SettingsStore {
-    var providerListSortMode: ProviderListSortMode {
-        get {
-            ProviderListSortMode.resolved(
-                rawValue: self.defaultsState.providerListSortModeRaw,
-                alphabetical: self.defaultsState.providersSortedAlphabetically)
-        }
-        set {
-            if newValue != self.providerListSortMode { self.providerOrderUndo?.restoreMode = nil }
-            self.setDefault(\.providerListSortModeRaw, newValue.rawValue, key: "providerListSortMode")
-            self.setDefault(
-                \.providersSortedAlphabetically, newValue == .alphabetical, key: "providersSortedAlphabetically")
-        }
-    }
-
     var providersEnabledOnly: Bool {
         get { self.defaultsState.providersEnabledOnly }
         set { self.setDefault(\.providersEnabledOnly, newValue, key: "providersEnabledOnly") }
@@ -39,7 +25,7 @@ extension SettingsStore {
         fromOffsets: IndexSet,
         toOffset: Int) -> Bool
     {
-        guard self.providerListSortMode == .custom, !self.providersEnabledOnly else { return false }
+        guard !self.providersSortedAlphabetically, !self.providersEnabledOnly else { return false }
         let before = self.configSnapshot.providers.map(\.id)
         guard let after = ProviderOrderMutation.moving(
             visibleOrder: visibleOrder, fromOffsets: fromOffsets, toOffset: toOffset, in: before),
@@ -47,7 +33,7 @@ extension SettingsStore {
         else { return false }
         self.setProviderOrder(after)
         self.providerOrderUndo = ProviderOrderUndo(
-            before: before, after: self.configSnapshot.providers.map(\.id), restoreMode: nil)
+            before: before, after: self.configSnapshot.providers.map(\.id), restoreAlphabetical: nil)
         return true
     }
 
@@ -56,14 +42,14 @@ extension SettingsStore {
         let before = self.configSnapshot.providers.map(\.id)
         let present = Set(before)
         let defaults = UsageProvider.allCases.map(\.instanceID).filter { present.contains($0) }
-        let mode = self.providerListSortMode
+        let alphabetical = self.providersSortedAlphabetically
         guard let after = ProviderOrderMutation.merging(visibleOrder: defaults, into: before),
-              after != before || mode != .custom
+              after != before || alphabetical
         else { return false }
         self.setProviderOrder(after)
-        self.providerListSortMode = .custom
+        self.providersSortedAlphabetically = false
         self.providerOrderUndo = ProviderOrderUndo(
-            before: before, after: self.configSnapshot.providers.map(\.id), restoreMode: mode)
+            before: before, after: self.configSnapshot.providers.map(\.id), restoreAlphabetical: alphabetical)
         return true
     }
 
@@ -93,7 +79,46 @@ extension SettingsStore {
         else { return false }
         self.clearProviderOrderUndo()
         self.setProviderOrder(undo.before)
-        if let mode = undo.restoreMode { self.providerListSortMode = mode }
+        if let alphabetical = undo.restoreAlphabetical { self.providersSortedAlphabetically = alphabetical }
         return true
+    }
+}
+
+enum ProviderOrderMutation {
+    /// Replace only the displayed providers' slots, retaining every hidden provider and its position.
+    static func merging(
+        visibleOrder: [ProviderInstanceID],
+        into fullOrder: [ProviderInstanceID]) -> [ProviderInstanceID]?
+    {
+        let visible = Set(visibleOrder)
+        guard visible.count == visibleOrder.count,
+              Set(fullOrder).count == fullOrder.count,
+              fullOrder.filter({ visible.contains($0) }).count == visibleOrder.count
+        else { return nil }
+        var index = 0
+        return fullOrder.map { id in
+            guard visible.contains(id) else { return id }
+            defer { index += 1 }
+            return visibleOrder[index]
+        }
+    }
+
+    static func moving(
+        visibleOrder: [ProviderInstanceID],
+        fromOffsets: IndexSet,
+        toOffset: Int,
+        in fullOrder: [ProviderInstanceID]) -> [ProviderInstanceID]?
+    {
+        let visible = Set(visibleOrder)
+        guard !fromOffsets.isEmpty,
+              fromOffsets.allSatisfy({ visibleOrder.indices.contains($0) }),
+              (0...visibleOrder.count).contains(toOffset),
+              fullOrder.filter({ visible.contains($0) }) == visibleOrder
+        else { return nil }
+        let moved = fromOffsets.map { visibleOrder[$0] }
+        var result = visibleOrder.enumerated().filter { !fromOffsets.contains($0.offset) }.map(\.element)
+        let destination = toOffset - fromOffsets.count(where: { $0 < toOffset })
+        result.insert(contentsOf: moved, at: destination)
+        return self.merging(visibleOrder: result, into: fullOrder)
     }
 }

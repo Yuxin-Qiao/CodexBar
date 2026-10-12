@@ -5,7 +5,6 @@ public enum XAIProviderDescriptor {
     public static let spec = PluginProviderSpec(
         id: .xai,
         displayName: "xAI",
-        catalog: .init(family: .xaiServices),
         sessionLabel: "Spend",
         weeklyLabel: "Spend",
         debugLogUnavailableMessage: "xAI debug log not yet implemented",

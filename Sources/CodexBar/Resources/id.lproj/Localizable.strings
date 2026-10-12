@@ -2524,11 +2524,7 @@
 "Undo" = "Urungkan";
 "Clear filters" = "Hapus filter";
 "Change provider order" = "Ubah urutan penyedia";
-"Use your custom provider order" = "Gunakan urutan penyedia kustom";
 "Provider sorting" = "Pengurutan penyedia";
-"Custom order" = "Urutan kustom";
-"By name (enabled first)" = "Menurut nama (aktif dahulu)";
-"Group by company" = "Kelompokkan menurut perusahaan";
 "Only enabled providers" = "Hanya penyedia aktif";
 "Restore default order" = "Pulihkan urutan bawaan";
 "Also restores the provider order in the menu bar. Can be undone." = "Juga memulihkan urutan penyedia di bar menu. Dapat diurungkan.";

@@ -2525,11 +2525,7 @@
 "Undo" = "Undo";
 "Clear filters" = "Clear filters";
 "Change provider order" = "Change provider order";
-"Use your custom provider order" = "Use your custom provider order";
 "Provider sorting" = "Provider sorting";
-"Custom order" = "Custom order";
-"By name (enabled first)" = "By name (enabled first)";
-"Group by company" = "Group by company";
 "Only enabled providers" = "Only enabled providers";
 "Restore default order" = "Restore default order";
 "Also restores the provider order in the menu bar. Can be undone." = "Also restores the provider order in the menu bar. Can be undone.";

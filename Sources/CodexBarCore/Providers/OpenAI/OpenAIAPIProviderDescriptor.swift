@@ -19,7 +19,6 @@ public enum OpenAIAPIProviderDescriptor {
     static func makeDescriptor() -> ProviderDescriptor {
         ProviderDescriptor(
             id: .openai,
-            catalog: .init(family: .openAI),
             credentials: self.credentials,
             pluginResultPolicy: ProviderPluginResultPolicy(cardMapper: mapPluginCard),
             config: ProviderConfigCapabilities(workspaceIDValidationOrder: 1),

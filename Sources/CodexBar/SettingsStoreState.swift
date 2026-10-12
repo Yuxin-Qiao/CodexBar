@@ -96,7 +96,6 @@ struct SettingsDefaultsState {
     var selectedMenuProviderRaw: String?
     var providerDetectionCompleted: Bool
     var providersSortedAlphabetically: Bool
-    var providerListSortModeRaw: String?
     var providersEnabledOnly: Bool
     var appLanguageRaw: String?
     var terminalAppRaw: String?

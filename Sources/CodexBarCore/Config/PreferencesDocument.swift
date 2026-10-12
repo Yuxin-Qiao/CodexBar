@@ -43,7 +43,6 @@ public struct PreferencesDocument: Codable, Sendable {
         "workdayTickAppearance": ["hidden", "subtle", "highContrast"],
         "mergedOverviewLayout": ["detailed", "compact"],
         "unifiedIconSource": ["currentSelection", "highestUsage", "frontmostApp"],
-        "providerListSortMode": ProviderListSortMode.allCases.map(\.rawValue),
     ]
     private static let thresholdKeys = Set([
         "quotaWarningThresholds", "quotaWarningSessionThresholds", "quotaWarningWeeklyThresholds",
@@ -64,17 +63,9 @@ public struct PreferencesDocument: Codable, Sendable {
 
     public func encoded() throws -> Data {
         try self.validate()
-        var portable = self
-        // Keep representable sorting modes importable by older clients' strict key allowlist.
-        if case let .string(raw)? = portable.preferences["providerListSortMode"],
-           let mode = ProviderListSortMode(rawValue: raw), mode != .family
-        {
-            portable.preferences["providersSortedAlphabetically"] = .bool(mode == .alphabetical)
-            portable.preferences.removeValue(forKey: "providerListSortMode")
-        }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        return try encoder.encode(portable)
+        return try encoder.encode(self)
     }
 
     public func value<T: Decodable>(_ key: String, as _: T.Type = T.self) throws -> T? {
@@ -99,12 +90,6 @@ public struct PreferencesDocument: Codable, Sendable {
         if values["unifiedIconSource"] == nil, case let .bool(highest)? = values["menuBarShowsHighestUsage"] {
             values["unifiedIconSource"] = .string(highest ? "highestUsage" : "currentSelection")
         }
-        if case let .bool(alphabetical)? = values["providersSortedAlphabetically"] {
-            var raw: String?
-            if case let .string(s)? = values["providerListSortMode"] { raw = s }
-            let resolved = ProviderListSortMode.resolved(rawValue: raw, alphabetical: alphabetical)
-            values["providerListSortMode"] = .string(resolved.rawValue)
-        }
         return values
     }
 
@@ -127,7 +112,6 @@ public struct PreferencesDocument: Codable, Sendable {
         // Optional fields omitted by the encoder still belong to the sync projection.
         let keys = Set(values.keys).union([
             "weeklyProgressWorkDays", "paceVisible", "workdayTickAppearance", "unifiedIconSource",
-            "providerListSortMode",
         ])
         values.merge(self.importingPreferences.filter { keys.contains($0.key) }) { _, new in new }
         return try JSONDecoder().decode(SyncedPreferences.self, from: JSONEncoder().encode(values))

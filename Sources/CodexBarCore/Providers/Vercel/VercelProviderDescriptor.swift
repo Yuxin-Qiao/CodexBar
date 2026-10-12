@@ -5,7 +5,6 @@ public enum VercelProviderDescriptor {
     public static let spec = PluginProviderSpec(
         id: .vercel,
         displayName: "Vercel AI Gateway",
-        catalog: .init(family: .vercelServices),
         sessionLabel: "Balance",
         weeklyLabel: "Balance",
         toggleTitle: "Show Vercel AI Gateway balance",

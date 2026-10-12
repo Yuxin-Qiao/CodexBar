@@ -679,7 +679,6 @@ extension SettingsStore {
             providerDetectionCompleted: userDefaults.object(forKey: "providerDetectionCompleted") as? Bool ?? false,
             providersSortedAlphabetically: userDefaults.object(
                 forKey: "providersSortedAlphabetically") as? Bool ?? false,
-            providerListSortModeRaw: userDefaults.string(forKey: "providerListSortMode"),
             providersEnabledOnly: userDefaults.bool(forKey: "providersEnabledOnly"),
             appLanguageRaw: userDefaults.string(forKey: "appLanguage"),
             terminalAppRaw: userDefaults.string(forKey: "terminalApp"),

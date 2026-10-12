@@ -2521,11 +2521,7 @@
 "Undo" = "取り消す";
 "Clear filters" = "フィルターを解除";
 "Change provider order" = "プロバイダーの順序を変更";
-"Use your custom provider order" = "カスタムのプロバイダー順序を使用";
 "Provider sorting" = "プロバイダーの並べ替え";
-"Custom order" = "カスタム順序";
-"By name (enabled first)" = "名前順（有効なものを優先）";
-"Group by company" = "企業別にグループ化";
 "Only enabled providers" = "有効なプロバイダーのみ";
 "Restore default order" = "既定の順序に戻す";
 "Also restores the provider order in the menu bar. Can be undone." = "メニューバーのプロバイダー順序も戻します。取り消し可能です。";

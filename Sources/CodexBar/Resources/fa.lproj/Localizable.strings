@@ -2525,11 +2525,7 @@
 "Undo" = "واگرد";
 "Clear filters" = "پاک کردن فیلترها";
 "Change provider order" = "تغییر ترتیب ارائه‌دهندگان";
-"Use your custom provider order" = "استفاده از ترتیب سفارشی ارائه‌دهندگان";
 "Provider sorting" = "مرتب‌سازی ارائه‌دهندگان";
-"Custom order" = "ترتیب سفارشی";
-"By name (enabled first)" = "بر اساس نام (فعال‌ها ابتدا)";
-"Group by company" = "گروه‌بندی بر اساس شرکت";
 "Only enabled providers" = "فقط ارائه‌دهندگان فعال";
 "Restore default order" = "بازیابی ترتیب پیش‌فرض";
 "Also restores the provider order in the menu bar. Can be undone." = "ترتیب ارائه‌دهندگان در نوار منو را نیز بازیابی می‌کند. قابل واگرد است.";

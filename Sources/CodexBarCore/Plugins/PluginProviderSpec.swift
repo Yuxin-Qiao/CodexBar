@@ -26,7 +26,6 @@ public struct PluginProviderSpec: Sendable {
     public let id: UsageProvider
     public let displayName: String
     public var shortDisplayName: String?
-    public var catalog = ProviderCatalogPresentation()
     public let sessionLabel: String
     public let weeklyLabel: String
     public var opusLabel: String?
@@ -131,7 +130,6 @@ public struct PluginProviderSpec: Sendable {
             })
         return ProviderDescriptor(
             id: self.id,
-            catalog: self.catalog,
             menuBarMetrics: self.menuBarMetrics,
             settingsSection: self.settingsSection ?? self.webSource?.settingsSection,
             credentials: credentials ?? self.makeCredentials(),

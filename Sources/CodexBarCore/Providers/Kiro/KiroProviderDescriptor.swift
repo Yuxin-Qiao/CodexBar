@@ -6,7 +6,6 @@ public enum KiroProviderDescriptor {
     static func makeDescriptor() -> ProviderDescriptor {
         ProviderDescriptor(
             id: .kiro,
-            catalog: .init(family: .aws),
             metadata: ProviderMetadata(
                 id: .kiro,
                 displayName: "Kiro",

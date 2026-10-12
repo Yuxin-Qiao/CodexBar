@@ -155,11 +155,19 @@ struct ProvidersPane: View {
         query: String,
         displayName: (UsageProvider) -> String) -> [UsageProvider]
     {
-        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedQuery.isEmpty else { return providers }
-
+        let words = query.split(whereSeparator: \.isWhitespace).map(String.init)
+        guard !words.isEmpty else { return providers }
         return providers.filter { provider in
-            ProviderBrowserCatalog.matches(provider, query: trimmedQuery, displayName: displayName(provider))
+            let descriptor = ProviderDescriptorRegistry.descriptor(for: provider)
+            let fields = [
+                displayName(provider),
+                descriptor.metadata.shortDisplayName,
+                provider.rawValue,
+                descriptor.cli.name,
+            ] + descriptor.cli.aliases
+            return words.allSatisfy { word in
+                fields.contains { $0.range(of: word, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
+            }
         }
     }
 

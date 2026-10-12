@@ -16,7 +16,7 @@ struct SettingsSidebarView: View {
             HStack(spacing: 6) {
                 SettingsSidebarSearchField(searchText: self.$searchText)
                 SettingsSidebarSortToggle(
-                    mode: self.$settings.providerListSortMode,
+                    isOn: self.$settings.providersSortedAlphabetically,
                     enabledOnly: self.$settings.providersEnabledOnly,
                     onRestore: self.restoreProviderOrder)
             }
@@ -66,32 +66,17 @@ struct SettingsSidebarView: View {
     }
 
     private var providersSection: some View {
-        let sections = self.providerSections
-        let visibleProviders = sections.flatMap(\.providers)
+        let visibleProviders = self.filteredProviders
         return Section {
-            if self.settings.providerListSortMode == .family {
-                ForEach(sections) { section in
-                    if let title = section.title {
-                        Text(title)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .accessibilityAddTraits(.isHeader)
-                    }
-                    ForEach(section.providers, id: \.self) { provider in
-                        self.providerRow(provider)
-                    }
-                }
-            } else {
-                ForEach(visibleProviders, id: \.self) { provider in
-                    self.providerRow(provider)
-                }
-                .onMove { fromOffsets, toOffset in
-                    guard self.canReorderProviders else { return }
-                    if self.settings.moveVisibleProviders(
-                        visibleProviders.map(\.instanceID), fromOffsets: fromOffsets, toOffset: toOffset)
-                    {
-                        self.registerOrderUndo()
-                    }
+            ForEach(visibleProviders, id: \.self) { provider in
+                self.providerRow(provider)
+            }
+            .onMove { fromOffsets, toOffset in
+                guard self.canReorderProviders else { return }
+                if self.settings.moveVisibleProviders(
+                    visibleProviders.map(\.instanceID), fromOffsets: fromOffsets, toOffset: toOffset)
+                {
+                    self.registerOrderUndo()
                 }
             }
 
@@ -145,18 +130,22 @@ struct SettingsSidebarView: View {
     }
 
     private var orderedProviders: [UsageProvider] {
-        self.settings.orderedFirstPartyProviders()
-    }
-
-    private var providerSections: [ProviderBrowserCatalog.Section] {
-        let enabled = Set(self.orderedProviders.filter { provider in
+        guard self.settings.providersSortedAlphabetically else {
+            return self.settings.orderedProviders().compactMap(\.firstPartyProvider)
+        }
+        return CodexBarConfig.alphabeticalProviderOrder(enablement: { provider in
             self.settings.isProviderEnabled(provider: provider, metadata: self.store.metadata(for: provider))
         })
-        return ProviderBrowserCatalog.sections(
-            providers: self.orderedProviders,
-            mode: self.settings.providerListSortMode,
-            enabled: enabled,
-            filter: .init(query: self.searchText, enabledOnly: self.settings.providersEnabledOnly),
+    }
+
+    private var filteredProviders: [UsageProvider] {
+        let providers = self.orderedProviders.filter { provider in
+            !self.settings.providersEnabledOnly
+                || self.settings.isProviderEnabled(provider: provider, metadata: self.store.metadata(for: provider))
+        }
+        return ProvidersPane.filteredProviders(
+            providers,
+            query: self.searchText,
             displayName: { self.store.metadata(for: $0).displayName })
     }
 
@@ -167,7 +156,7 @@ struct SettingsSidebarView: View {
     }
 
     private var canReorderProviders: Bool {
-        self.settings.providerListSortMode == .custom && !self.settings.providersEnabledOnly
+        !self.settings.providersSortedAlphabetically && !self.settings.providersEnabledOnly
             && self.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
@@ -335,37 +324,29 @@ private struct SettingsSidebarSearchField: View {
 }
 
 private struct SettingsSidebarSortToggle: View {
-    @Binding var mode: ProviderListSortMode
+    @Binding var isOn: Bool
     @Binding var enabledOnly: Bool
     let onRestore: () -> Void
 
     var body: some View {
         HStack(spacing: 0) {
             Button {
-                self.mode = self.mode == .custom ? .alphabetical : .custom
+                self.isOn.toggle()
             } label: {
                 Image(systemName: "arrow.up.arrow.down")
                     .font(.callout)
-                    .foregroundStyle(self.mode != .custom ? Color.accentColor : Color.secondary)
+                    .foregroundStyle(self.isOn ? Color.accentColor : Color.secondary)
                     .frame(width: 24, height: 24)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(self.mode == .custom
-                ? L("Sort providers alphabetically (enabled first)")
-                : L("Use your custom provider order"))
-            .accessibilityLabel(self.mode == .custom
-                ? L("Sort providers alphabetically")
-                : L("Use your custom provider order"))
-            .accessibilityAddTraits(self.mode != .custom ? .isSelected : [])
+            .help(self.isOn
+                ? L("Sorted alphabetically (enabled first) — click to use your custom order")
+                : L("Sort providers alphabetically (enabled first)"))
+            .accessibilityLabel(L("Sort providers alphabetically"))
+            .accessibilityAddTraits(self.isOn ? .isSelected : [])
 
             Menu {
-                Picker(L("Provider sorting"), selection: self.$mode) {
-                    Text(L("Custom order")).tag(ProviderListSortMode.custom)
-                    Text(L("By name (enabled first)")).tag(ProviderListSortMode.alphabetical)
-                    Text(L("Group by company")).tag(ProviderListSortMode.family)
-                }
-                Divider()
                 Toggle(L("Only enabled providers"), isOn: self.$enabledOnly)
                 Divider()
                 Button(L("Restore default order"), action: self.onRestore)

@@ -2521,11 +2521,7 @@
 "Undo" = "Desfazer";
 "Clear filters" = "Limpar filtros";
 "Change provider order" = "Alterar ordem dos provedores";
-"Use your custom provider order" = "Usar sua ordem personalizada";
 "Provider sorting" = "Ordenação dos provedores";
-"Custom order" = "Ordem personalizada";
-"By name (enabled first)" = "Por nome (ativos primeiro)";
-"Group by company" = "Agrupar por empresa";
 "Only enabled providers" = "Somente provedores ativos";
 "Restore default order" = "Restaurar ordem padrão";
 "Also restores the provider order in the menu bar. Can be undone." = "Também restaura a ordem dos provedores na barra de menus. Pode ser desfeito.";

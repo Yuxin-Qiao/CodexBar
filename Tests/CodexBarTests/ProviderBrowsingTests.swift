@@ -13,60 +13,6 @@ struct ProviderBrowsingTests {
         testSettingsStore(suiteName: "ProviderBrowsingTests", userDefaults: defaults, config: config)
     }
 
-    private func sections(
-        mode: ProviderListSortMode,
-        enabled: Set<UsageProvider> = [],
-        query: String = "",
-        enabledOnly: Bool = false) -> [ProviderBrowserCatalog.Section]
-    {
-        ProviderBrowserCatalog.sections(
-            providers: UsageProvider.allCases,
-            mode: mode,
-            enabled: enabled,
-            filter: .init(query: query, enabledOnly: enabledOnly),
-            displayName: { ProviderDescriptorRegistry.descriptor(for: $0).metadata.displayName })
-    }
-
-    @Test
-    func `custom and alphabetic projections preserve existing behavior`() {
-        let enabled: Set<UsageProvider> = [.codex, .kimi, .cursor]
-        #expect(self.sections(mode: .custom).flatMap(\.providers) == UsageProvider.allCases)
-        #expect(self.sections(mode: .alphabetical, enabled: enabled).flatMap(\.providers)
-            == CodexBarConfig.alphabeticalProviderOrder(enablement: enabled.contains))
-    }
-
-    @Test
-    func `families keep enabled and disabled services together with no duplicates`() {
-        let sections = self.sections(mode: .family, enabled: [.kimi, .codex, .antigravity])
-        let providers = sections.flatMap(\.providers)
-        #expect(providers.count == UsageProvider.allCases.count)
-        #expect(Set(providers) == Set(UsageProvider.allCases))
-        #expect(Set(sections.first { $0.id == "family:company-moonshot" }?.providers ?? []) == [.kimi, .moonshot])
-        #expect(Set(sections.first { $0.id == "family:company-google" }?.providers ?? [])
-            == [.gemini, .antigravity, .vertexai])
-        #expect(sections.first { $0.id == "provider:azureopenai" }?.title == nil)
-        #expect(sections.first { $0.id == "provider:xkiro" }?.providers == [.xkiro])
-        #expect(sections.first { $0.id == "provider:museai" }?.providers == [.museai])
-        #expect(self.sections(mode: .family).flatMap(\.providers) == providers)
-    }
-
-    @Test(arguments: ["Google", "谷歌", "  google  "])
-    func `company search finds related services in any mode`(query: String) {
-        for mode in ProviderListSortMode.allCases {
-            #expect(Set(self.sections(mode: mode, query: query).flatMap(\.providers))
-                == [.antigravity, .gemini, .vertexai])
-        }
-    }
-
-    @Test
-    func `search combines company words accents and enabled filter`() {
-        #expect(self.sections(mode: .family, query: "google gemíni").flatMap(\.providers) == [.gemini])
-        let filtered = self.sections(mode: .family, enabled: [.kimi], query: "月之暗面", enabledOnly: true)
-        #expect(filtered.first?.title == "Kimi / Moonshot")
-        #expect(filtered.flatMap(\.providers) == [.kimi])
-        #expect(self.sections(mode: .custom, query: "does-not-exist").isEmpty)
-    }
-
     @Test
     func `visible move preserves hidden slots and rejects stale or invalid positions`() throws {
         let plugin = try #require(ProviderInstanceID(rawValue: "synthetic-plugin"))
@@ -86,77 +32,6 @@ struct ProviderBrowsingTests {
         #expect(ProviderOrderMutation.merging(visibleOrder: [.moonshot], into: full) == nil)
     }
 
-    @Test(arguments: [false, true])
-    func `legacy defaults keep their current order mode and survive restart`(alphabetical: Bool) {
-        let defaults = InMemoryUserDefaults()
-        defaults.set(alphabetical, forKey: "providersSortedAlphabetically")
-        let settings = self.store(defaults: defaults)
-        #expect(settings.providerListSortMode == (alphabetical ? .alphabetical : .custom))
-        settings.providerListSortMode = .family
-        settings.providersEnabledOnly = true
-        let restarted = self.store(defaults: defaults)
-        #expect(restarted.providerListSortMode == .family)
-        #expect(restarted.providersEnabledOnly)
-        restarted.providersSortedAlphabetically = true
-        #expect(restarted.providerListSortMode == .alphabetical)
-    }
-
-    @Test
-    func `downgrade and re-upgrade reconcile stale raw mode with legacy boolean`() {
-        let defaults1 = InMemoryUserDefaults()
-        let settings1 = self.store(defaults: defaults1)
-        settings1.providerListSortMode = .custom
-        #expect(defaults1.string(forKey: "providerListSortMode") == "custom")
-        #expect(defaults1.bool(forKey: "providersSortedAlphabetically") == false)
-        defaults1.set(true, forKey: "providersSortedAlphabetically")
-        let upgraded1 = self.store(defaults: defaults1)
-        #expect(upgraded1.providerListSortMode == .alphabetical)
-
-        let defaults2 = InMemoryUserDefaults()
-        let settings2 = self.store(defaults: defaults2)
-        settings2.providerListSortMode = .alphabetical
-        #expect(defaults2.string(forKey: "providerListSortMode") == "alphabetical")
-        #expect(defaults2.bool(forKey: "providersSortedAlphabetically") == true)
-        defaults2.set(false, forKey: "providersSortedAlphabetically")
-        let upgraded2 = self.store(defaults: defaults2)
-        #expect(upgraded2.providerListSortMode == .custom)
-
-        let defaults3 = InMemoryUserDefaults()
-        let settings3 = self.store(defaults: defaults3)
-        settings3.providerListSortMode = .family
-        #expect(defaults3.string(forKey: "providerListSortMode") == "family")
-        defaults3.set(true, forKey: "providersSortedAlphabetically")
-        let upgraded3 = self.store(defaults: defaults3)
-        #expect(upgraded3.providerListSortMode == .family)
-    }
-
-    @Test
-    func `ProviderListSortMode resolved logic reconciles raw mode and boolean`() {
-        #expect(ProviderListSortMode.resolved(rawValue: "custom", alphabetical: true) == .alphabetical)
-        #expect(ProviderListSortMode.resolved(rawValue: "custom", alphabetical: false) == .custom)
-        #expect(ProviderListSortMode.resolved(rawValue: "alphabetical", alphabetical: false) == .custom)
-        #expect(ProviderListSortMode.resolved(rawValue: "alphabetical", alphabetical: true) == .alphabetical)
-        #expect(ProviderListSortMode.resolved(rawValue: "family", alphabetical: true) == .family)
-        #expect(ProviderListSortMode.resolved(rawValue: "family", alphabetical: false) == .family)
-        #expect(ProviderListSortMode.resolved(rawValue: nil, alphabetical: true) == .alphabetical)
-        #expect(ProviderListSortMode.resolved(rawValue: nil, alphabetical: false) == .custom)
-        #expect(ProviderListSortMode.resolved(rawValue: "unknown", alphabetical: true) == .alphabetical)
-        #expect(ProviderListSortMode.resolved(rawValue: "unknown", alphabetical: false) == .custom)
-    }
-
-    @Test
-    func `browsing changes do not rewrite config or background work state`() throws {
-        let settings = self.store()
-        let before = try settings.configSnapshot.encodedData()
-        let revision = settings.backgroundWorkSettingsRevision
-        for mode in ProviderListSortMode.allCases {
-            settings.providerListSortMode = mode
-        }
-        settings.providersEnabledOnly = true
-        #expect(try settings.configSnapshot.encodedData() == before)
-        #expect(settings.backgroundWorkSettingsRevision == revision)
-    }
-
     @Test
     func `move and restore preserve provider values and undo only order`() throws {
         let settings = self.store(config: CodexBarConfig(providers: [
@@ -169,9 +44,9 @@ struct ProviderBrowsingTests {
         let beforeByID = Dictionary(uniqueKeysWithValues: settings.configSnapshot.providers.map {
             ($0.id, try? encoder.encode($0))
         })
-        settings.providerListSortMode = .family
+        settings.providersSortedAlphabetically = true
         #expect(settings.restoreDefaultProviderOrder())
-        #expect(settings.providerListSortMode == .custom)
+        #expect(!settings.providersSortedAlphabetically)
         #expect(settings.configSnapshot.providers.map(\.id) == UsageProvider.allCases.map(\.instanceID))
         for entry in settings.configSnapshot.providers {
             #expect(try encoder.encode(entry) == beforeByID[entry.id])
@@ -180,10 +55,10 @@ struct ProviderBrowsingTests {
         #expect(settings.undoProviderOrderChange())
         #expect(settings.configSnapshot.providers.map(\.id) == original)
         #expect(settings.configSnapshot.providerConfig(for: .gemini)?.apiKey == "synthetic-updated-key")
-        #expect(settings.providerListSortMode == .family)
+        #expect(settings.providersSortedAlphabetically)
         #expect(!settings.canUndoProviderOrderChange)
 
-        settings.providerListSortMode = .custom
+        settings.providersSortedAlphabetically = false
         let visible = settings.orderedFirstPartyProviders().map(\.instanceID)
         #expect(settings.moveVisibleProviders(visible, fromOffsets: [0], toOffset: visible.count))
         #expect(settings.undoProviderOrderChange())
@@ -195,12 +70,12 @@ struct ProviderBrowsingTests {
         let settings = self.store()
         let initial = settings.orderedFirstPartyProviders().map(\.instanceID)
         #expect(settings.moveVisibleProviders(initial, fromOffsets: [0], toOffset: 3))
-        settings.providerListSortMode = .family
+        settings.providersSortedAlphabetically = true
         #expect(settings.restoreDefaultProviderOrder())
-        settings.providerListSortMode = .alphabetical
+        settings.providersSortedAlphabetically = true
         #expect(settings.undoProviderOrderChange())
-        #expect(settings.providerListSortMode == .alphabetical)
-        settings.providerListSortMode = .custom
+        #expect(settings.providersSortedAlphabetically)
+        settings.providersSortedAlphabetically = false
         #expect(settings.restoreDefaultProviderOrder())
         settings.setProviderOrder(initial.reversed())
         #expect(!settings.undoProviderOrderChange())
@@ -263,9 +138,9 @@ struct ProviderBrowsingTests {
     func `automatic or filtered views reject reorder`() {
         let settings = self.store()
         let visible = settings.orderedFirstPartyProviders().map(\.instanceID)
-        settings.providerListSortMode = .family
+        settings.providersSortedAlphabetically = true
         #expect(!settings.moveVisibleProviders(visible, fromOffsets: [0], toOffset: 2))
-        settings.providerListSortMode = .custom
+        settings.providersSortedAlphabetically = false
         settings.providersEnabledOnly = true
         #expect(!settings.moveVisibleProviders(visible, fromOffsets: [0], toOffset: 2))
     }
@@ -290,98 +165,38 @@ struct ProviderBrowsingTests {
     }
 
     @Test
-    func `portable mode round trips while filters remain local and old imports override it`() throws {
-        let settings = self.store()
-        settings.providerListSortMode = .family
-        settings.providersEnabledOnly = true
-        let document = try PreferencesDocument(data: settings.exportPreferences().encoded())
-        #expect(try document.value("providerListSortMode", as: String.self) == "family")
-        #expect(try document.value("providersEnabledOnly", as: Bool.self) == nil)
-        let target = self.store()
-        try target.importPreferences(document)
-        #expect(target.providerListSortMode == .family)
-        #expect(!target.providersEnabledOnly)
-        var legacy = PreferencesDocument()
-        try legacy.set("providersSortedAlphabetically", true)
-        try target.importPreferences(legacy)
-        #expect(target.providerListSortMode == .alphabetical)
-    }
-
-    @Test
-    func `queued legacy import overrides a new mode`() throws {
+    func `enabled filter persists locally without exporting or rewriting provider configuration`() throws {
         let defaults = InMemoryUserDefaults()
         let settings = self.store(defaults: defaults)
-        var current = PreferencesDocument()
-        try current.set("providerListSortMode", "family")
-        var legacy = PreferencesDocument()
-        try legacy.set("providersSortedAlphabetically", false)
-        try current.queueImport(in: defaults)
-        try legacy.queueImport(in: defaults)
-        settings.consumePendingPreferencesImport()
-        #expect(settings.providerListSortMode == .custom)
-        try legacy.queueImport(in: defaults)
-        try current.queueImport(in: defaults)
-        settings.consumePendingPreferencesImport()
-        #expect(settings.providerListSortMode == .family)
+        let before = try settings.configSnapshot.encodedData()
+        let revision = settings.backgroundWorkSettingsRevision
+        #expect(!settings.providersEnabledOnly)
+        settings.providersEnabledOnly = true
+        settings.providersSortedAlphabetically = true
+        #expect(try settings.configSnapshot.encodedData() == before)
+        #expect(settings.backgroundWorkSettingsRevision == revision)
+        #expect(self.store(defaults: defaults).providersEnabledOnly)
+        let portable = try PreferencesDocument(data: settings.exportPreferences().encoded())
+        #expect(try portable.value("providersEnabledOnly", as: Bool.self) == nil)
+        #expect(try portable.value("providersSortedAlphabetically", as: Bool.self) == true)
+        #expect(try portable.value("providerListSortMode", as: String.self) == nil)
     }
 
     @Test
-    func `successive legacy cloud sorting changes remain compatible`() throws {
+    func `legacy cloud sorting and portable exports retain the existing Boolean contract`() throws {
         let settings = self.store()
         let configBefore = try settings.configSnapshot.encodedData()
-        var legacy = settings.syncedPreferences
-        legacy.providerListSortMode = nil
-        for alphabetical in [true, false, true, false] {
-            legacy.providersSortedAlphabetically = alphabetical
-            settings.applySyncedPreferences(legacy)
-            #expect(settings.providerListSortMode == (alphabetical ? .alphabetical : .custom))
-        }
-        settings.providerListSortMode = .family
-        for alphabetical in [true, false] {
-            legacy.providersSortedAlphabetically = alphabetical
-            settings.applySyncedPreferences(legacy)
-            #expect(settings.providerListSortMode == .family)
+        var preferences = settings.syncedPreferences
+        for alphabetical in [true, false, true] {
+            preferences.providersSortedAlphabetically = alphabetical
+            settings.applySyncedPreferences(preferences)
+            #expect(settings.providersSortedAlphabetically == alphabetical)
+            let portable = try PreferencesDocument(data: settings.exportPreferences().encoded())
+            let target = self.store()
+            target.providersSortedAlphabetically = !alphabetical
+            try target.importPreferences(portable)
+            #expect(target.providersSortedAlphabetically == alphabetical)
         }
         #expect(try settings.configSnapshot.encodedData() == configBefore)
-    }
-
-    @Test(arguments: [ProviderListSortMode.custom, .alphabetical])
-    func `portable compatible modes use the legacy sorting key`(mode: ProviderListSortMode) throws {
-        let defaults = InMemoryUserDefaults()
-        let settings = self.store(defaults: defaults)
-        settings.providerListSortMode = mode
-        let cliDocument = try PreferencesDocument(defaults: defaults)
-        let appDocument = try settings.exportPreferences()
-        for document in [appDocument, cliDocument] {
-            let encoded = try document.encoded()
-            let portable = try PreferencesDocument(data: encoded)
-            #expect(try portable.value("providerListSortMode", as: String.self) == nil)
-            #expect(try portable.value("providersSortedAlphabetically", as: Bool.self) == (mode == .alphabetical))
-            let target = self.store()
-            target.providerListSortMode = .family
-            try target.importPreferences(portable)
-            #expect(target.providerListSortMode == mode)
-        }
-    }
-
-    @Test
-    func `old or unknown cloud modes do not clear an established new choice`() throws {
-        let settings = self.store()
-        var legacy = settings.syncedPreferences
-        legacy.providerListSortMode = nil
-        legacy.providersSortedAlphabetically = true
-        let oldData = try JSONEncoder().encode(legacy)
-        #expect(try JSONDecoder().decode(SyncedPreferences.self, from: oldData).providerListSortMode == nil)
-        settings.applySyncedPreferences(legacy)
-        #expect(settings.providerListSortMode == .alphabetical)
-        settings.providerListSortMode = .family
-        settings.applySyncedPreferences(legacy)
-        #expect(settings.providerListSortMode == .family)
-        legacy.providerListSortMode = "future-mode"
-        settings.applySyncedPreferences(legacy)
-        #expect(settings.providerListSortMode == .family)
-        var invalid = PreferencesDocument()
-        try invalid.set("providerListSortMode", "future-mode")
-        #expect(throws: (any Error).self) { try invalid.validate() }
     }
 }

@@ -41,7 +41,6 @@ public enum AlibabaTokenPlanProviderDescriptor {
         // Provider-specific by design: The Alibaba folder co-locates the distinct Alibaba Token Plan descriptor.
         return ProviderDescriptor(
             id: .alibabatokenplan,
-            catalog: .init(family: .alibabaServices),
             settingsSection: .init(
                 AlibabaTokenPlanProviderSettingsKey.self,
                 cookieSettings: { settings in

@@ -36,7 +36,6 @@ public enum GrokProviderDescriptor {
     static func makeDescriptor() -> ProviderDescriptor {
         ProviderDescriptor(
             id: .grok,
-            catalog: .init(family: .xaiServices),
             settingsSection: .init(
                 GrokProviderSettingsKey.self,
                 cookieSettings: { settings in

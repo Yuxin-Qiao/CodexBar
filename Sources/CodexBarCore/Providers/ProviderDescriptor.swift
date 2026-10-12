@@ -324,7 +324,6 @@ public struct ProviderPaceCapability: Sendable {
 
 public struct ProviderDescriptor: Sendable {
     public let id: UsageProvider
-    public let catalog: ProviderCatalogPresentation
     public let metadata: ProviderMetadata
     public let branding: ProviderBranding
     public let tokenCost: ProviderTokenCostConfig
@@ -343,7 +342,6 @@ public struct ProviderDescriptor: Sendable {
 
     public init(
         id: UsageProvider,
-        catalog: ProviderCatalogPresentation = .init(),
         menuBarMetrics: ProviderMenuBarMetricCapabilities? = nil,
         settingsSection: ProviderSettingsSectionRegistration? = nil,
         credentials: ProviderCredentialAdapter? = nil,
@@ -361,7 +359,6 @@ public struct ProviderDescriptor: Sendable {
         configNormalizer: @escaping @Sendable (inout ProviderConfig) -> Void = { _ in })
     {
         self.id = id
-        self.catalog = catalog
         self.settingsSection = settingsSection ?? .empty(for: id.instanceID)
         self.metadata = metadata
         self.branding = branding

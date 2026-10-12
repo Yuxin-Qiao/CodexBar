@@ -24,7 +24,6 @@ public enum BedrockProviderDescriptor {
     static func makeDescriptor() -> ProviderDescriptor {
         ProviderDescriptor(
             id: .bedrock,
-            catalog: .init(family: .aws),
             credentials: self.credentials,
             metadata: ProviderMetadata(
                 id: .bedrock,

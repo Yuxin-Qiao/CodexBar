@@ -5,7 +5,6 @@ public enum V0ProviderDescriptor {
     public static let spec = PluginProviderSpec(
         id: .v0,
         displayName: "v0",
-        catalog: .init(family: .vercelServices),
         sessionLabel: "Billing",
         weeklyLabel: "Rate limit",
         creditsHint: "Billing and rate-limit data from the v0 Platform API",

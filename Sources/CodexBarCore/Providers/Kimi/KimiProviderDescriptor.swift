@@ -52,7 +52,6 @@ public enum KimiProviderDescriptor {
     static func makeDescriptor() -> ProviderDescriptor {
         ProviderDescriptor(
             id: .kimi,
-            catalog: .init(family: .moonshotServices),
             settingsSection: .init(
                 KimiProviderSettingsKey.self,
                 cookieSettings: {

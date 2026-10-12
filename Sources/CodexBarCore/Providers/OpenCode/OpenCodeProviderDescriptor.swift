@@ -23,7 +23,6 @@ public enum OpenCodeProviderDescriptor {
     static func makeDescriptor() -> ProviderDescriptor {
         ProviderDescriptor(
             id: .opencode,
-            catalog: .init(family: .openCode),
             settingsSection: .init(
                 OpenCodeProviderSettingsKey.self,
                 cookieSettings: { settings in
