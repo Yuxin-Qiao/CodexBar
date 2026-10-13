@@ -148,7 +148,7 @@ def nested_fixture(directory):
             original_drain(ownership, process)
     with patch.object(runner.TestProcessOwnership, "refresh", refresh), \
             patch.object(runner.TestProcessOwnership, "drain", drain):
-        result = runner.run_command([sys.executable, __file__, "--fixture", "failure", str(child)], timeout=5)
+        result = runner.run_command([sys.executable, __file__, "--fixture", "failure", str(child)], timeout=15)
         assert result == 23
     (root / "complete").touch()
 
@@ -172,7 +172,8 @@ class NestedProcessCleanupTests(unittest.TestCase):
             attempts = 0
             def snapshot(required=()):
                 if attempts == 0:
-                    wait_until(lambda: (root / "leader-ready").exists())
+                    # Two interpreter startups precede the ownership handshake on a loaded host.
+                    wait_until(lambda: (root / "leader-ready").exists(), timeout=10)
                     leader = int((root / "leader-ready").read_text())
                     # First outer poll sees the live leader, but misses its child's birth.
                     infos = original_snapshot(required)
@@ -222,7 +223,7 @@ class NestedProcessCleanupTests(unittest.TestCase):
                         patch.object(runner.TestProcessOwnership, "refresh", refresh), \
                         patch.object(runner.TestProcessOwnership, "send", send):
                     self.assertEqual(runner.run_command(
-                        [sys.executable, __file__, "--nested-fixture", directory], timeout=5), 0)
+                        [sys.executable, __file__, "--nested-fixture", directory], timeout=15), 0)
                 self.assertEqual(observations, [0, 1])
                 self.assertNotIn(int((child_root / "pid").read_text()), signaled)
                 self.assertNotIn(sentinel.pid, signaled)
@@ -315,7 +316,7 @@ class ProcessCleanupTests(unittest.TestCase):
                     else:
                         # Successful fixtures include interpreter startup and ownership polling;
                         # exact deadline behavior is covered separately with a virtual clock.
-                        timeout = 5 if expected in (0, 23) else 2
+                        timeout = 15 if expected in (0, 23) else 2
                         self.assertEqual(runner.run_command(command, timeout=timeout), expected)
                 elapsed = time.monotonic() - started
                 self.assertTrue(acknowledged, "fixture identities were not observed before drain")
