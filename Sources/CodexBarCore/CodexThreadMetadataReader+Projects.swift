@@ -10,25 +10,22 @@ extension CodexThreadMetadataReader {
 
     /// Names and ownership share one bounded snapshot; uncertainty keeps the Projects fallback.
     func projectMetadata(for paths: Set<String>, sessionIDs: Set<String> = []) -> ProjectMetadata {
-        self.availableProjectMetadata(for: paths, sessionIDs: sessionIDs) ?? ([:], paths, sessionIDs)
-    }
-
-    func availableProjectMetadata(for paths: Set<String>, sessionIDs: Set<String> = []) -> ProjectMetadata? {
-        guard !paths.isEmpty || !sessionIDs.isEmpty else { return ([:], [], []) }
+        let fallback: ProjectMetadata = ([:], paths, sessionIDs)
+        guard !paths.isEmpty || !sessionIDs.isEmpty else { return fallback }
         #if canImport(SQLite3) || canImport(CSQLite3)
         var handle: OpaquePointer?
         guard sqlite3_open_v2(self.databaseURL.path, &handle, SQLITE_OPEN_READONLY, nil) == SQLITE_OK,
               let database = handle
         else {
             if let handle { sqlite3_close(handle) }
-            return nil
+            return fallback
         }
         defer { sqlite3_close(database) }
         sqlite3_busy_timeout(database, 100)
         sqlite3_progress_handler(database, 100_000, { _ in 1 }, nil)
-        guard sqlite3_exec(database, "BEGIN", nil, nil, nil) == SQLITE_OK else { return nil }
+        guard sqlite3_exec(database, "BEGIN", nil, nil, nil) == SQLITE_OK else { return fallback }
         defer { sqlite3_exec(database, "ROLLBACK", nil, nil, nil) }
-        guard let roots = Self.projectRoots(database) else { return nil }
+        guard let roots = Self.projectRoots(database) else { return fallback }
         var names: [String: String] = [:]
         var ownedPaths: Set<String> = []
         for path in paths where (path as NSString).isAbsolutePath {
@@ -43,10 +40,9 @@ extension CodexThreadMetadataReader {
                   Set(closest.map(\.id)).count == 1 else { continue }
             names[path] = first.name
         }
-        guard let assignedSessionIDs = Self.assignedProjectSessionIDs(database, for: sessionIDs) else { return nil }
-        return (names, ownedPaths, assignedSessionIDs)
+        return (names, ownedPaths, Self.assignedProjectSessionIDs(database, for: sessionIDs) ?? sessionIDs)
         #else
-        return nil
+        return fallback
         #endif
     }
 

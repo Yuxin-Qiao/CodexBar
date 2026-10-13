@@ -264,39 +264,17 @@ struct CostUsageCodexPreviousReport: Codable, Equatable {
     var summary: Summary?
     var hourly: [HourlyEntry]?
     var quotaSlices: [QuotaSlice]?
-    var breakdowns: CostUsageCodexRetainedBreakdowns?
     var updatedAtUnixMs: Int64
     var scanSinceKey: String?
     var scanUntilKey: String?
     var timeZoneIdentifier: String?
     var roots: [String: Int64]?
 
-    private enum CodingKeys: String, CodingKey {
-        case data, summary, hourly, quotaSlices, breakdowns, updatedAtUnixMs
-        case scanSinceKey, scanUntilKey, timeZoneIdentifier, roots
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.data = try container.decode([Entry].self, forKey: .data)
-        self.summary = try container.decodeIfPresent(Summary.self, forKey: .summary)
-        self.hourly = try container.decodeIfPresent([HourlyEntry].self, forKey: .hourly)
-        self.quotaSlices = try container.decodeIfPresent([QuotaSlice].self, forKey: .quotaSlices)
-        // Optional display data must not make an otherwise compatible accounting report unreadable.
-        self.breakdowns = try? container.decodeIfPresent(CostUsageCodexRetainedBreakdowns.self, forKey: .breakdowns)
-        self.updatedAtUnixMs = try container.decode(Int64.self, forKey: .updatedAtUnixMs)
-        self.scanSinceKey = try container.decodeIfPresent(String.self, forKey: .scanSinceKey)
-        self.scanUntilKey = try container.decodeIfPresent(String.self, forKey: .scanUntilKey)
-        self.timeZoneIdentifier = try container.decodeIfPresent(String.self, forKey: .timeZoneIdentifier)
-        self.roots = try container.decodeIfPresent([String: Int64].self, forKey: .roots)
-    }
-
     init?(
         report: CostUsageDailyReport,
         cache: CostUsageCache,
         reportSinceKey: String,
-        reportUntilKey: String,
-        breakdowns: CostUsageCodexRetainedBreakdowns? = nil)
+        reportUntilKey: String)
     {
         guard !report.data.isEmpty else { return nil }
         self.data = report.data.map(Entry.init)
@@ -308,7 +286,6 @@ struct CostUsageCodexPreviousReport: Codable, Equatable {
         self.scanUntilKey = reportUntilKey
         self.timeZoneIdentifier = cache.timeZoneIdentifier
         self.roots = cache.roots
-        self.breakdowns = breakdowns
     }
 
     var report: CostUsageDailyReport {

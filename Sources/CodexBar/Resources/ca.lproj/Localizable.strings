@@ -1417,6 +1417,7 @@
 "menu_bar_layout_preset_icon_only" = "Només icona";
 "menu_bar_layout_preset_percent_reset" = "Percentatge i reinici";
 "menu_bar_layout_preset_compact_stacked" = "Apilat compacte";
+"menu_bar_layout_preset_bars_stacked" = "Barres de progrés apilades";
 "menu_bar_layout_preset_custom" = "Personalitzat";
 "menu_bar_layout_live_preview" = "Previsualització en directe";
 "menu_bar_layout_default_preview" = "Previsualització de la disposició per defecte";
@@ -1454,7 +1455,7 @@
 "menu_bar_layout_token_reset_at" = "Reinici a";
 "menu_bar_layout_token_runs_out" = "S'esgota";
 "menu_bar_layout_token_cost_today" = "Cost d'avui";
-"menu_bar_layout_token_cost_30d" = "Cost de 30 dies";
+"menu_bar_layout_token_cost_window" = "Cost (Finestra d'historial)";
 "menu_bar_layout_token_space" = "Espai";
 "menu_bar_layout_token_line_break" = "Salt de línia";
 "menu_bar_layout_token_separator_accessibility" = "Punt separador";
@@ -1472,7 +1473,6 @@
 "Reset time unavailable" = "Reinici a: No disponible";
 "Run-out estimate unavailable" = "S'esgota: No disponible";
 "Cost today unavailable" = "Cost d'avui: No disponible";
-"30-day cost unavailable" = "Cost de 30 dies: No disponible";
 "Resets" = "Reinicis";
 "codex_workspaces_title" = "Espais de treball";
 "codex_workspaces_estimated_local_logs" = "Estimat a partir dels registres locals de Codex";
@@ -1557,6 +1557,7 @@
 "5-hour usage" = "Ús de 5 hores";
 "7-day usage" = "Ús de 7 dies";
 "Total usage" = "Ús total";
+"claude_oauth_keychain_access_disabled" = "L’accés al Keychain està desactivat, de manera que CodexBar no pot llegir les dades d’inici de sessió de Claude.";
 "claude_oauth_keychain_access_revoked" = "L'accés al clauer de Claude s'ha revocat per la rotació del token de Claude Code. Feu clic a Actualitza per tornar a concedir l'accés, o canvieu l'origen d'ús de Claude a CLI/Web.";
 "claude_showing_last_known_usage" = "Es mostra l'últim ús conegut capturat %@.";
 "claude_limited_usage_detail" = "Detalls d’ús limitats";
@@ -2512,10 +2513,25 @@
 "Ahead of pace is +" = "Per sobre del ritme és +";
 "Reserve is +" = "La reserva és +";
 
-/* Usage & Spend detail availability */
-"Loading details…" = "S’estan carregant els detalls…";
-"Details unavailable. Refresh to try again." = "Detalls no disponibles. Actualitza per tornar-ho a provar.";
-"No records in this time range." = "No hi ha registres en aquest període.";
-"Showing the last available details." = "Es mostren els últims detalls disponibles.";
+/* fal provider credentials */
+"Key with billing read access (BILLING or READONLY preset). Or set FAL_KEY." = "Clau amb accés de lectura a la facturació (perfil BILLING o READONLY). O defineix FAL_KEY.";
 
+/* FLORA provider credentials */
+"Needs billing permission on the workspace. Or set FLORA_API_KEY." = "Cal permís de facturació a l'espai de treball. O defineix FLORA_API_KEY.";
+"Required. The ws_… ID of the workspace the key can bill. Or set FLORA_WORKSPACE_ID." = "Obligatori. L'ID ws_… de l'espai de treball que la clau pot facturar. O defineix FLORA_WORKSPACE_ID.";
+"ak_…" = "ak_…";
+"ws_…" = "ws_…";
+
+"Plan renewal / expiry" = "Renovació / venciment del pla";
+
+"Hidden by the global optional credits, spending & billing setting." = "Ocult per la configuració global de crèdits opcionals, despesa i facturació.";
+
+"Provider order updated" = "Ordre dels proveïdors actualitzat";
+"Undo" = "Desfer";
+"Clear filters" = "Esborrar filtres";
+"Change provider order" = "Canviar l’ordre dels proveïdors";
+"Provider sorting" = "Ordenació dels proveïdors";
+"Only enabled providers" = "Només proveïdors actius";
+"Restore default order" = "Restablir l’ordre per defecte";
+"Also restores the provider order in the menu bar. Can be undone." = "També restableix l’ordre dels proveïdors a la barra de menús. Es pot desfer.";
 "Local Codex details; excluded from combined totals." = "Local Codex details; excluded from combined totals.";

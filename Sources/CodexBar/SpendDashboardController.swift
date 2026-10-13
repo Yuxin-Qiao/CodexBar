@@ -45,6 +45,13 @@ struct SpendDashboardConfiguration: Equatable, Sendable {
         self.menuOwnershipFingerprint = menuOwnershipFingerprint
     }
 
+    var supportsCodexDetails: Bool {
+        self.costUsageEnabled && self.codexAccountIdentities.contains {
+            guard let separator = $0.lastIndex(of: "|") else { return false }
+            return !self.hiddenSourceIDs.contains("codex:\($0[..<separator])")
+        }
+    }
+
     var bucketCalendar: Calendar {
         CostUsageBucketTimeZone.calendar(identifier: self.bucketTimeZoneIdentifier)
     }
@@ -770,10 +777,7 @@ enum SpendDashboardSource {
         encoder.append(snapshot.currencyCode)
         encoder.append(snapshot.historyDays)
         encoder.append(snapshot.historyCoverageIsEstablished)
-        encoder.append(snapshot.historyScanIsPartial)
-        encoder.append(snapshot.projectBreakdownAvailability.rawValue)
-        encoder.append(snapshot.sessionBreakdownAvailability.rawValue)
-        encoder.append(snapshot.breakdownsAreStale)
+        encoder.append(snapshot.detailsAreComplete)
         encoder.append(snapshot.updatedAt.timeIntervalSinceReferenceDate)
         encoder.append(snapshot.last30DaysTokens)
         encoder.append(snapshot.last30DaysCostUSD)
@@ -1181,7 +1185,6 @@ final class SpendDashboardController {
     private(set) var publication = SpendDashboardPublication.empty
     private(set) var isRefreshing = false
     private(set) var failedSourceCount = 0
-    private(set) var retainedDetailSourceIDs: Set<String> = []
     private(set) var generation: UInt64 = 0
     private(set) var configuration: SpendDashboardConfiguration?
     private(set) var selectedPeriod: CostReportingPeriod
@@ -1297,7 +1300,6 @@ final class SpendDashboardController {
 
         if !invalidatedSourceIDs.isEmpty {
             self.loadedInputs.removeAll { invalidatedSourceIDs.contains($0.id) }
-            self.retainedDetailSourceIDs.subtract(invalidatedSourceIDs)
             self.failedSourceIDs.subtract(invalidatedSourceIDs)
             self.confirmedEmptySourceIDs.subtract(invalidatedSourceIDs)
             for sourceID in invalidatedSourceIDs {
@@ -1360,15 +1362,46 @@ final class SpendDashboardController {
         }
     }
 
+    private func retainingCompleteDetails(
+        _ inputs: [SpendDashboardModel.ProviderInput],
+        configuration: SpendDashboardConfiguration,
+        unsafeSourceIDs: Set<String>) -> [SpendDashboardModel.ProviderInput]
+    {
+        let previousByID = Dictionary(uniqueKeysWithValues: self.loadedInputs.map { ($0.id, $0) })
+        return inputs.map { incoming in
+            // Provider-specific by design: bounded native Codex reads publish details separately from totals.
+            guard incoming.provider == .codex, incoming.sourceKind == .native,
+                  !unsafeSourceIDs.contains(incoming.id),
+                  SpendDashboardLoadedInputScope(configuration: configuration, input: incoming)
+                  == self.loadedInputScopes[incoming.id],
+                  let previous = previousByID[incoming.id],
+                  previous.provider == incoming.provider, previous.sourceKind == incoming.sourceKind
+            else { return incoming }
+            var input = incoming
+            if !incoming.snapshot.historyCoverageIsEstablished, previous.snapshot.historyCoverageIsEstablished {
+                input.snapshot = previous.snapshot
+            }
+            let details = previous.retainedDetailSnapshot ?? previous.snapshot
+            if !incoming.snapshot.detailsAreComplete, details.detailsAreComplete {
+                input.retainedDetailSnapshot = details
+            }
+            return input
+        }
+    }
+
     private func applyCached(
         request: SpendDashboardLoadRequest,
         result: SpendDashboardLoadResult)
     {
-        let cachedIDs = Set(result.inputs.map(\.id))
+        let inputs = self.retainingCompleteDetails(
+            result.inputs,
+            configuration: request.configuration,
+            unsafeSourceIDs: result.invalidatedSourceIDs.union(request.confirmedEmptySourceIDs))
+        let cachedIDs = Set(inputs.map(\.id))
         self.loadedInputs.removeAll { cachedIDs.contains($0.id) }
-        self.loadedInputs.append(contentsOf: result.inputs)
+        self.loadedInputs.append(contentsOf: inputs)
         self.loadedInputs = Self.stableUniqueInputs(self.loadedInputs)
-        for input in result.inputs {
+        for input in inputs {
             self.loadedInputScopes[input.id] = SpendDashboardLoadedInputScope(
                 configuration: request.configuration,
                 input: input)
@@ -1515,37 +1548,8 @@ final class SpendDashboardController {
         let unsafeSourceIDs = invalidatedSourceIDs
             .union(result.invalidatedSourceIDs)
             .union(confirmedEmptySourceIDs)
-        var incompleteCodexScopes: [String: SpendDashboardLoadedInputScope] = [:]
-        let nextInputsByID = Dictionary(uniqueKeysWithValues: nextInputs.map { ($0.id, $0) })
-        self.retainedDetailSourceIDs = []
-        // Provider-specific by design: only Codex account histories publish bounded catch-up coverage.
-        for input in nextInputs
-            where input.provider == .codex && input
-            .sourceKind == .native && (input.snapshot.projectBreakdownAvailability != .complete
-                || input.snapshot.sessionBreakdownAvailability != .complete
-                || !input.snapshot.historyCoverageIsEstablished)
-        {
-            incompleteCodexScopes[input.id] = SpendDashboardLoadedInputScope(
-                configuration: request.configuration,
-                input: input)
-        }
-        if !incompleteCodexScopes.isEmpty {
-            let retainedInputs = self.loadedInputs.filter { previous in
-                incompleteCodexScopes[previous.id] == self.loadedInputScopes[previous.id] &&
-                    !unsafeSourceIDs.contains(previous.id) &&
-                    // Provider-specific by design: only bounded native Codex refreshes retain complete detail inputs.
-                    previous.provider == .codex &&
-                    previous.sourceKind == .native &&
-                    previous.snapshot.historyCoverageIsEstablished &&
-                    nextInputsByID[previous.id].map { next in
-                        spendDashboardShouldRetainDetails(previous: previous.snapshot, next: next.snapshot)
-                    } == true
-            }.map { Self.relabelCodexInput($0, displayNamesByID: codexDisplayNames) }
-            let retainedSourceIDs = Set(retainedInputs.map(\.id))
-            self.retainedDetailSourceIDs = retainedSourceIDs
-            nextInputs.removeAll { retainedSourceIDs.contains($0.id) }
-            nextInputs.append(contentsOf: retainedInputs)
-        }
+        nextInputs = self.retainingCompleteDetails(
+            nextInputs, configuration: request.configuration, unsafeSourceIDs: unsafeSourceIDs)
         if !result.failedSourceIDs.isEmpty {
             let freshIDs = Set(nextInputs.map(\.id))
             let retainedInputs = self.loadedInputs.filter {
@@ -1694,7 +1698,6 @@ final class SpendDashboardController {
         self.loadTask = nil
         self.configuration = nil
         self.loadedInputs = []
-        self.retainedDetailSourceIDs = []
         self.failedSourceIDs = []
         self.confirmedEmptySourceIDs = []
         self.openCodexObservation = .disabled
@@ -1856,15 +1859,9 @@ final class SpendDashboardController {
               let displayName = displayNamesByID[input.id],
               displayName != input.displayName
         else { return input }
-        return SpendDashboardModel.ProviderInput(
-            id: input.id,
-            provider: input.provider,
-            displayName: displayName,
-            modelProviderName: input.modelProviderName,
-            snapshot: input.snapshot,
-            tokenActivityCache: input.tokenActivityCache,
-            sourceKind: input.sourceKind,
-            accounting: input.accounting)
+        var relabeled = input
+        relabeled.displayName = displayName
+        return relabeled
     }
 
     private static func sameSourceOwnership(

@@ -53,7 +53,8 @@ struct ProvidersPane: View {
     }
 
     var body: some View {
-        let unfilteredModel = self.unfilteredMenuCardModel(for: self.provider)
+        let unfilteredModel = UsageMenuCardView.Model.make(self.store.menuCardInput(
+            for: self.provider, context: .settings))
         // Provider-specific by design: only Codex has managed OAuth account snapshots for this shared settings view.
         let overview = self.provider == .codex ? self.store.codexAccountUsageOverview { accountIDs in
             Task { @MainActor in
@@ -62,7 +63,9 @@ struct ProvidersPane: View {
                 }
             }
         } : nil
-        let usageItems = ((overview?.usageItems ?? []) + unfilteredModel.usageItemDescriptors(
+        let visibilityModel = UsageMenuCardView.Model.make(self.store.menuCardInput(
+            for: self.provider, context: .settings, optionalUsageOverride: true))
+        let usageItems = ((overview?.usageItems ?? []) + visibilityModel.usageItemDescriptors(
             includingHidden: self.settings.hiddenUsageItemIDs(for: self.provider),
             hidePersonalInfo: self.settings.hidePersonalInfo))
             .reduce(into: [ProviderUsageItemDescriptor]()) { items, item in
@@ -155,18 +158,27 @@ struct ProvidersPane: View {
         query: String,
         displayName: (UsageProvider) -> String) -> [UsageProvider]
     {
-        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedQuery.isEmpty else { return providers }
-
+        let words = query.split(whereSeparator: \.isWhitespace).map(String.init)
+        guard !words.isEmpty else { return providers }
         return providers.filter { provider in
-            displayName(provider).localizedCaseInsensitiveContains(trimmedQuery)
-                || provider.rawValue.localizedCaseInsensitiveContains(trimmedQuery)
+            let descriptor = ProviderDescriptorRegistry.descriptor(for: provider)
+            let fields = [
+                displayName(provider),
+                descriptor.metadata.shortDisplayName,
+                provider.rawValue,
+                descriptor.cli.name,
+            ] + descriptor.cli.aliases
+            return words.allSatisfy { word in
+                fields.contains { $0.range(of: word, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
+            }
         }
     }
 
     func moveProviders(fromOffsets: IndexSet, toOffset: Int) {
-        guard !self.settings.providersSortedAlphabetically else { return }
-        self.settings.moveProvider(fromOffsets: fromOffsets, toOffset: toOffset)
+        self.settings.moveVisibleProviders(
+            self.settings.orderedFirstPartyProviders().map(\.instanceID),
+            fromOffsets: fromOffsets,
+            toOffset: toOffset)
     }
 
     private func triggerRefresh(for provider: UsageProvider) {
@@ -542,10 +554,6 @@ struct ProvidersPane: View {
             runLoginFlow: {
                 await self.runProviderLoginFlow(provider)
             })
-    }
-
-    private func unfilteredMenuCardModel(for provider: UsageProvider) -> UsageMenuCardView.Model {
-        UsageMenuCardView.Model.make(self.store.menuCardInput(for: provider, context: .settings))
     }
 
     func openAIWebDiagnostic(for provider: UsageProvider) -> String? {

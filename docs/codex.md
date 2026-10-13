@@ -358,6 +358,12 @@ For a manual comparison with another development machine, run `codexbar cost --p
 Both hosts scan their own native Codex logs once and return separate summaries, retaining their own day boundaries,
 pricing provenance, missing values, and incomplete-request counts. Only bounded totals cross SSH. A remote error keeps
 the local result and returns a nonzero exit code. See [CLI host reporting](cli.md) for the versioned summary contract.
+
+For copied or resumed histories, `cost --provider codex --identified-only --format json --remote <ssh-host>`
+reports an **identified-request subtotal** over one UTC window. Strong native session/response identities are
+deduplicated; conflicting identities and legacy/unidentified usage are excluded and reported. Combined prices are
+unavailable (`costUSD: null`). This opt-in CLI mode does not change ordinary cost reports or account quota.
+
 - Menu source selection:
   - By default, a selected managed account keeps its own `CODEX_HOME` session history.
   - **Local session cost estimates** is a Codex-only opt-in that instead scans this Mac's ambient `$CODEX_HOME`
@@ -632,6 +638,12 @@ including from tooltips. Models, dates, tokens, costs, and ranks remain visible.
 this is display masking and does not remove metadata from local history or sanitize exports.
 
 ### Usage & Spend account rows
+
+Projects, Chats, and Sessions stay available for configured, visible native Codex accounts, including while a scan
+has no rows. When OpenCodex replaces combined totals, these tabs still show local Codex details without adding them
+to the combined totals. Bounded refreshes retain the last complete detail snapshot in memory for the same account,
+cache identity, history window, and bucket time zone; a completed empty scan clears the old rows. This retention
+does not add another persisted history format.
 
 Settings → Usage & Spend performs a separate fixed 30-day scan for every visible Codex account. Each request freezes
 the account source, exact Codex home, authentication fingerprint, and cache identity before scanning. A missing or

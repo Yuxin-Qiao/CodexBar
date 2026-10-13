@@ -1414,6 +1414,7 @@
 "menu_bar_layout_preset_icon_only" = "الأيقونة فقط";
 "menu_bar_layout_preset_percent_reset" = "النسبة وإعادة الضبط";
 "menu_bar_layout_preset_compact_stacked" = "مكدّس مضغوط";
+"menu_bar_layout_preset_bars_stacked" = "أشرطة التقدم المكدسة";
 "menu_bar_layout_preset_custom" = "العرف";
 "menu_bar_layout_live_preview" = "معاينة مباشرة";
 "menu_bar_layout_default_preview" = "معاينة التخطيط الافتراضي";
@@ -1451,7 +1452,7 @@
 "menu_bar_layout_token_reset_at" = "إعادة الضبط عند";
 "menu_bar_layout_token_runs_out" = "ينفد";
 "menu_bar_layout_token_cost_today" = "تكلفة اليوم";
-"menu_bar_layout_token_cost_30d" = "تكلفة 30 يوماً";
+"menu_bar_layout_token_cost_window" = "تكلفة (نافذة التاريخ)";
 "menu_bar_layout_token_space" = "مسافة";
 "menu_bar_layout_token_line_break" = "فاصل سطر";
 "menu_bar_layout_token_separator_accessibility" = "نقطة فاصلة";
@@ -1469,7 +1470,6 @@
 "Reset time unavailable" = "إعادة الضبط عند: غير متوفر";
 "Run-out estimate unavailable" = "ينفد: غير متوفر";
 "Cost today unavailable" = "تكلفة اليوم: غير متوفر";
-"30-day cost unavailable" = "تكلفة 30 يوماً: غير متوفر";
 "Resets" = "إعادات الضبط";
 "codex_workspaces_estimated_cost_short" = "التكلفة المقدّرة";
 "codex_workspaces_estimated_cost_value" = "مقدّر %@";
@@ -1554,6 +1554,7 @@
 "5-hour usage" = "الاستخدام خلال 5 ساعات";
 "7-day usage" = "الاستخدام خلال 7 أيام";
 "Total usage" = "إجمالي الاستخدام";
+"claude_oauth_keychain_access_disabled" = "الوصول إلى Keychain معطّل، لذا لا يستطيع CodexBar قراءة معلومات تسجيل الدخول إلى Claude.";
 "claude_oauth_keychain_access_revoked" = "تم إلغاء وصول CodexBar إلى سلسلة مفاتيح Claude بسبب تدوير الرمز المميز في Claude Code. انقر على «تحديث» لمنح الوصول مجددًا، أو بدّل مصدر استخدام Claude إلى CLI/Web.";
 "claude_showing_last_known_usage" = "يتم عرض آخر بيانات استخدام معروفة، تم التقاطها %@.";
 "claude_limited_usage_detail" = "تفاصيل الاستخدام محدودة";
@@ -2512,10 +2513,25 @@
 "Ahead of pace is +" = "تجاوز الوتيرة هو +";
 "Reserve is +" = "الاحتياطي هو +";
 
-/* Usage & Spend detail availability */
-"Loading details…" = "جارٍ تحميل التفاصيل…";
-"Details unavailable. Refresh to try again." = "التفاصيل غير متاحة. حدّث لإعادة المحاولة.";
-"No records in this time range." = "لا توجد سجلات في هذه الفترة.";
-"Showing the last available details." = "تُعرض آخر التفاصيل المتاحة.";
+/* fal provider credentials */
+"Key with billing read access (BILLING or READONLY preset). Or set FAL_KEY." = "مفتاح بصلاحية قراءة الفوترة (الإعداد المسبق BILLING أو READONLY). أو اضبط FAL_KEY.";
 
+/* FLORA provider credentials */
+"Needs billing permission on the workspace. Or set FLORA_API_KEY." = "يتطلب صلاحية الفوترة على مساحة العمل. أو اضبط FLORA_API_KEY.";
+"Required. The ws_… ID of the workspace the key can bill. Or set FLORA_WORKSPACE_ID." = "مطلوب. معرّف ws_… لمساحة العمل التي يمكن للمفتاح فوترتها. أو اضبط FLORA_WORKSPACE_ID.";
+"ak_…" = "ak_…";
+"ws_…" = "ws_…";
+
+"Plan renewal / expiry" = "تجديد الخطة / انتهاؤها";
+
+"Hidden by the global optional credits, spending & billing setting." = "مخفي بواسطة الإعداد العام للأرصدة الاختيارية والإنفاق والفوترة.";
+
+"Provider order updated" = "تم تحديث ترتيب المزوّدين";
+"Undo" = "تراجع";
+"Clear filters" = "مسح عوامل التصفية";
+"Change provider order" = "تغيير ترتيب المزوّدين";
+"Provider sorting" = "ترتيب المزوّدين";
+"Only enabled providers" = "المزوّدون المفعّلون فقط";
+"Restore default order" = "استعادة الترتيب الافتراضي";
+"Also restores the provider order in the menu bar. Can be undone." = "يستعيد أيضاً ترتيب المزوّدين في شريط القوائم. يمكن التراجع عن هذا الإجراء.";
 "Local Codex details; excluded from combined totals." = "Local Codex details; excluded from combined totals.";

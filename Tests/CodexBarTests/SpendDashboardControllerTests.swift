@@ -1056,29 +1056,25 @@ struct SpendDashboardControllerRevisionTests {
     }
 
     @Test
-    func `same amounts and timestamp still publish detail state and chat classification changes`() {
+    func `same amounts and timestamp still publish detail completeness and chat classification`() {
         let snapshots = [false, true].flatMap { isProjectless in
-            [CostUsageBreakdownAvailability.notRequested, .unavailable, .complete].flatMap { availability in
-                [false, true].map { isStale in
-                    CostUsageTokenSnapshot(
-                        sessionTokens: nil,
-                        sessionCostUSD: nil,
-                        last30DaysTokens: 10,
-                        last30DaysCostUSD: 1,
+            [false, true].map { complete in
+                CostUsageTokenSnapshot(
+                    sessionTokens: nil,
+                    sessionCostUSD: nil,
+                    last30DaysTokens: 10,
+                    last30DaysCostUSD: 1,
+                    daily: [],
+                    projects: [.init(
+                        name: "Synthetic workspace",
+                        path: "/synthetic/workspace",
+                        totalTokens: 10,
+                        totalCostUSD: 1,
                         daily: [],
-                        projects: [.init(
-                            name: "Synthetic workspace",
-                            path: "/synthetic/workspace",
-                            totalTokens: 10,
-                            totalCostUSD: 1,
-                            daily: [],
-                            modelBreakdowns: nil,
-                            isProjectless: isProjectless)],
-                        projectBreakdownAvailability: availability,
-                        sessionBreakdownAvailability: availability,
-                        breakdownsAreStale: isStale,
-                        updatedAt: Date(timeIntervalSince1970: 1_784_179_200))
-                }
+                        modelBreakdowns: nil,
+                        isProjectless: isProjectless)],
+                    detailsAreComplete: complete,
+                    updatedAt: Date(timeIntervalSince1970: 1_784_179_200))
             }
         }
         let revisions = snapshots.enumerated().map { index, snapshot in

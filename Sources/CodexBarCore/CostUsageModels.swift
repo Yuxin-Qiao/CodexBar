@@ -161,13 +161,6 @@ public struct CostUsageTimedEntry: Sendable, Equatable {
     }
 }
 
-/// An empty breakdown is only a known empty result after it has been read to completion.
-public enum CostUsageBreakdownAvailability: String, Sendable, Equatable, Codable {
-    case notRequested
-    case unavailable
-    case complete
-}
-
 public struct CostUsageTokenSnapshot: Sendable, Equatable {
     public let sessionTokens: Int?
     public let sessionCostUSD: Double?
@@ -195,11 +188,10 @@ public struct CostUsageTokenSnapshot: Sendable, Equatable {
     /// non-reversible fingerprint, not account identity, and is not emitted by CLI payloads.
     public let credentialScopeFingerprint: String?
     public let daily: [CostUsageDailyReport.Entry]
+    /// Whether this read produced the complete project and session projection, including a confirmed empty result.
+    public let detailsAreComplete: Bool
     public let projects: [CostUsageProjectBreakdown]
     public let sessions: [CostUsageSessionBreakdown]
-    public let projectBreakdownAvailability: CostUsageBreakdownAvailability
-    public let sessionBreakdownAvailability: CostUsageBreakdownAvailability
-    public let breakdownsAreStale: Bool
     /// Hour-aligned buckets for spend charts and legacy quota history.
     public let hourly: [CostUsageHourlyEntry]
     /// Exact event-time slices for quota-window projection. Empty for legacy/coarse providers.
@@ -225,9 +217,7 @@ public struct CostUsageTokenSnapshot: Sendable, Equatable {
         daily: [CostUsageDailyReport.Entry],
         projects: [CostUsageProjectBreakdown] = [],
         sessions: [CostUsageSessionBreakdown] = [],
-        projectBreakdownAvailability: CostUsageBreakdownAvailability = .notRequested,
-        sessionBreakdownAvailability: CostUsageBreakdownAvailability = .notRequested,
-        breakdownsAreStale: Bool = false,
+        detailsAreComplete: Bool = false,
         hourly: [CostUsageHourlyEntry] = [],
         quotaSlices: [CostUsageTimedEntry] = [],
         updatedAt: Date)
@@ -248,11 +238,9 @@ public struct CostUsageTokenSnapshot: Sendable, Equatable {
         self.costProvenance = costProvenance
         self.credentialScopeFingerprint = credentialScopeFingerprint
         self.daily = daily
+        self.detailsAreComplete = detailsAreComplete
         self.projects = projects
         self.sessions = sessions
-        self.projectBreakdownAvailability = projectBreakdownAvailability
-        self.sessionBreakdownAvailability = sessionBreakdownAvailability
-        self.breakdownsAreStale = breakdownsAreStale
         self.hourly = hourly
         self.quotaSlices = quotaSlices
         self.updatedAt = updatedAt
@@ -368,7 +356,7 @@ public struct CostUsageTokenSnapshot: Sendable, Equatable {
     }
 }
 
-public struct CostUsageProjectBreakdown: Sendable, Equatable, Codable {
+public struct CostUsageProjectBreakdown: Sendable, Equatable {
     public static let unknownProjectName = "Unknown project"
 
     public internal(set) var name: String
@@ -405,7 +393,7 @@ public struct CostUsageProjectBreakdown: Sendable, Equatable, Codable {
     }
 }
 
-public struct CostUsageProjectSourceBreakdown: Sendable, Equatable, Codable {
+public struct CostUsageProjectSourceBreakdown: Sendable, Equatable {
     public let name: String
     public let path: String?
     public let totalTokens: Int?
@@ -1240,7 +1228,7 @@ extension CostUsageDailyReport {
             totalCostUSD: totals.resolvedCostUSD())
     }
 
-    private static func sortedModelBreakdowns(_ breakdowns: [ModelBreakdown]) -> [ModelBreakdown] {
+    static func sortedModelBreakdowns(_ breakdowns: [ModelBreakdown]) -> [ModelBreakdown] {
         breakdowns.sorted { lhs, rhs in
             let lhsCost = lhs.costUSD ?? -1
             let rhsCost = rhs.costUSD ?? -1

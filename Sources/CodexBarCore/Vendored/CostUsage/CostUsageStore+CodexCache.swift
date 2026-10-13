@@ -1145,10 +1145,12 @@ extension CostUsageStore {
               let until = CostUsageScanner.parseDayKey(untilKey, calendar: calendar)
         else { return nil }
         let range = CostUsageScanner.CostUsageDayRange(since: since, until: until, calendar: calendar)
-        return CostUsageCodexPreviousReport.capturing(
+        let report = CostUsageScanner.buildCodexReportFromCache(cache: cache, range: range)
+        return CostUsageCodexPreviousReport(
+            report: report,
             cache: cache,
-            range: range,
-            sessionRoots: (cache.roots ?? [:]).keys.sorted().map { URL(fileURLWithPath: $0, isDirectory: true) })
+            reportSinceKey: sinceKey,
+            reportUntilKey: untilKey)
     }
 
     private static func fileAggregates(

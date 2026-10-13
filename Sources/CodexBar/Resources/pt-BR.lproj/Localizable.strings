@@ -1411,6 +1411,7 @@
 "menu_bar_layout_preset_icon_only" = "Somente ícone";
 "menu_bar_layout_preset_percent_reset" = "Percentual e redefinição";
 "menu_bar_layout_preset_compact_stacked" = "Empilhado compacto";
+"menu_bar_layout_preset_bars_stacked" = "Barras de progresso empilhadas";
 "menu_bar_layout_preset_custom" = "Personalizado";
 "menu_bar_layout_live_preview" = "Prévia ao vivo";
 "menu_bar_layout_default_preview" = "Prévia do layout padrão";
@@ -1448,7 +1449,7 @@
 "menu_bar_layout_token_reset_at" = "Redefine às";
 "menu_bar_layout_token_runs_out" = "Acaba";
 "menu_bar_layout_token_cost_today" = "Custo hoje";
-"menu_bar_layout_token_cost_30d" = "Custo em 30 dias";
+"menu_bar_layout_token_cost_window" = "Custo (Janela do histórico)";
 "menu_bar_layout_token_space" = "Espaço";
 "menu_bar_layout_token_line_break" = "Quebra de linha";
 "menu_bar_layout_token_separator_accessibility" = "Ponto separador";
@@ -1466,7 +1467,6 @@
 "Reset time unavailable" = "Redefine às: Indisponível";
 "Run-out estimate unavailable" = "Acaba: Indisponível";
 "Cost today unavailable" = "Custo hoje: Indisponível";
-"30-day cost unavailable" = "Custo em 30 dias: Indisponível";
 "Resets" = "Redefinições";
 "codex_workspaces_cost_unavailable" = "Custo indisponível";
 "codex_workspaces_elevated_usage" = "Uso elevado";
@@ -1551,6 +1551,7 @@
 "5-hour usage" = "Uso de 5 horas";
 "7-day usage" = "Uso de 7 dias";
 "Total usage" = "Uso total";
+"claude_oauth_keychain_access_disabled" = "O acesso ao Keychain está desativado, então o CodexBar não pode ler os dados de login do Claude.";
 "claude_oauth_keychain_access_revoked" = "O acesso às Chaves do Claude foi revogado pela rotação do token do Claude Code. Clique em Atualizar para conceder o acesso novamente ou altere a fonte de uso do Claude para CLI/Web.";
 "claude_showing_last_known_usage" = "Exibindo o último uso conhecido, capturado %@.";
 "claude_limited_usage_detail" = "Detalhes de uso limitados";
@@ -2508,10 +2509,25 @@
 "Ahead of pace is +" = "Acima do ritmo é +";
 "Reserve is +" = "A reserva é +";
 
-/* Usage & Spend detail availability */
-"Loading details…" = "Carregando detalhes…";
-"Details unavailable. Refresh to try again." = "Detalhes indisponíveis. Atualize para tentar novamente.";
-"No records in this time range." = "Não há registros neste período.";
-"Showing the last available details." = "Exibindo os últimos detalhes disponíveis.";
+/* fal provider credentials */
+"Key with billing read access (BILLING or READONLY preset). Or set FAL_KEY." = "Chave com acesso de leitura ao faturamento (predefinição BILLING ou READONLY). Ou defina FAL_KEY.";
 
+/* FLORA provider credentials */
+"Needs billing permission on the workspace. Or set FLORA_API_KEY." = "Requer permissão de faturamento no espaço de trabalho. Ou defina FLORA_API_KEY.";
+"Required. The ws_… ID of the workspace the key can bill. Or set FLORA_WORKSPACE_ID." = "Obrigatório. O ID ws_… do espaço de trabalho que a chave pode faturar. Ou defina FLORA_WORKSPACE_ID.";
+"ak_…" = "ak_…";
+"ws_…" = "ws_…";
+
+"Plan renewal / expiry" = "Renovação / expiração do plano";
+
+"Hidden by the global optional credits, spending & billing setting." = "Oculto pela configuração global de créditos opcionais, gastos e faturamento.";
+
+"Provider order updated" = "Ordem dos provedores atualizada";
+"Undo" = "Desfazer";
+"Clear filters" = "Limpar filtros";
+"Change provider order" = "Alterar ordem dos provedores";
+"Provider sorting" = "Ordenação dos provedores";
+"Only enabled providers" = "Somente provedores ativos";
+"Restore default order" = "Restaurar ordem padrão";
+"Also restores the provider order in the menu bar. Can be undone." = "Também restaura a ordem dos provedores na barra de menus. Pode ser desfeito.";
 "Local Codex details; excluded from combined totals." = "Local Codex details; excluded from combined totals.";

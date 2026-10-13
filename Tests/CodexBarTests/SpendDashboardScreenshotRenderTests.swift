@@ -10,58 +10,6 @@ import XCTest
 ///   CODEXBAR_SPEND_PROOF_DIR=.github/pr-proof swift test --filter SpendDashboardScreenshotRenderTests
 @MainActor
 final class SpendDashboardScreenshotRenderTests: XCTestCase {
-    func test_renderStableDetailStates() throws {
-        guard let path = ProcessInfo.processInfo.environment["CODEXBAR_SPEND_DETAIL_PROOF_DIR"] else {
-            throw XCTSkip("Set CODEXBAR_SPEND_DETAIL_PROOF_DIR for synthetic detail-state screenshots.")
-        }
-        let directory = URL(fileURLWithPath: path, isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        for scenario in ["loading", "unavailable", "empty", "retained"] {
-            let complete = scenario == "empty" || scenario == "retained"
-            let group = SpendDashboardModel.CurrencyGroup(
-                currencyCode: "USD",
-                providers: [],
-                models: [],
-                projects: scenario == "retained" ? [.init(
-                    rank: 1,
-                    provider: .codex,
-                    providerName: "Codex",
-                    sourceID: "synthetic",
-                    projectName: "Synthetic chat",
-                    path: "/synthetic/chat",
-                    totalTokens: 100,
-                    totalCost: 1,
-                    isProjectless: true)] : [],
-                dailyPoints: [],
-                totalTokens: nil,
-                totalCost: nil,
-                coveredDayCount: 0,
-                chartDomain: Date.distantPast...Date.distantPast,
-                modelHistoryCompleteness: .incomplete,
-                projectBreakdownAvailability: complete ? .complete : .unavailable,
-                sessionBreakdownAvailability: complete ? .complete : .unavailable,
-                detailUpdatedAt: scenario == "retained" ? Date(timeIntervalSince1970: 1_784_179_200) : nil,
-                detailsAreStale: scenario == "retained")
-            let data = try CodexBarLocalizationOverride.$appLanguage.withValue("zh-Hans") {
-                let view = AnyView(VStack(alignment: .leading, spacing: 16) {
-                    Text(L("Usage & Spend")).font(.title2.weight(.semibold))
-                    SpendDashboardDetailPanel(
-                        group: group,
-                        hidePersonalInfo: true,
-                        supportsCodexDetails: true,
-                        isRefreshing: scenario == "loading",
-                        hasFailedSources: scenario == "unavailable",
-                        hasRetainedDetails: false,
-                        onRetry: {},
-                        selection: .constant(.chats))
-                }.padding(24).frame(width: 760)
-                    .background(Color(nsColor: .windowBackgroundColor)))
-                return try XCTUnwrap(Self.pngData(for: view))
-            }
-            try data.write(to: directory.appendingPathComponent("\(scenario).png"))
-        }
-    }
-
     func test_renderPartialRequestLedger() throws {
         guard let path = ProcessInfo.processInfo.environment["CODEXBAR_REQUEST_LEDGER_PROOF_DIR"] else {
             throw XCTSkip("Set CODEXBAR_REQUEST_LEDGER_PROOF_DIR for synthetic request ledger proof")

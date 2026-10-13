@@ -372,8 +372,6 @@ extension ReadWorkFixture {
                     cache: full, range: self.range, modelsDevCacheRoot: self.env.cacheRoot)),
             sessions: CostUsageScanner.buildCodexSessionBreakdownsFromCache(
                 cache: full, range: self.range, modelsDevCacheRoot: self.env.cacheRoot, sessionRoots: roots),
-            projectBreakdownAvailability: .unavailable,
-            sessionBreakdownAvailability: self.incomplete ? .unavailable : .complete,
             updatedAt: self.now)
     }
 
