@@ -4,6 +4,8 @@
 
 ### Added
 
+- Command Code: use a configured API key for billing usage on macOS and Linux, with browser cookies when no key is set and explicit source selection (#4462, #4460). Thanks @Shrub24!
+
 - Menu bar: add graphical progress-bar tokens for selected usage windows and a stacked-bars preset, with readable layouts when returning to older app versions (#4436). Thanks @happut!
 - Settings: filter the provider list to enabled services, search CLI aliases, and restore the default order with Undo (#4440). Thanks @Yuxin-Qiao!
 - Kimi: discover the current China Desktop session from Local Storage for web usage and monthly membership enrichment, with session checks before each request (#4416, #3536). Thanks @OttoPrua!
@@ -19,10 +21,15 @@
 - Browser Local Storage imports pick the current record by LevelDB sequence, so a sign-out followed by a sign-in no longer hides the new session.
 - Browser imports: recognize Ego Lite through the shared catalog; Cursor account login continues to require a verified application identifier.
 - Menu bar: the Cost 30d layout item is now named Cost (History window), since it already shows the selected History window's total; saved layouts and conditional rules are unchanged (#4448). Thanks @benjschiller!
+- Cookie imports: 23 providers now find signed-in sessions in every supported browser instead of Chrome-only or other restricted lists; Keychain prompts stay bounded by the shared access gate (#4443). Thanks @lg!
 
 ### Fixed
 
 - Usage & Spend: retain every saved Codex account's result when refreshing more than three accounts (#4466). Thanks @Yuxin-Qiao!
+- Browser cookie imports: explain denied Files & Folders access instead of asking users who are already signed in to sign in again (#4482). Thanks @marklights54-byte!
+- Devin: use the official transparent hexagonal mark in the app, website, and CLI dashboard (#4458). Thanks @codertesla!
+- JetBrains AI: read current quota from newer JbaiQuota and Junie log records while preserving same-IDE freshness and XML fallback (#4457). Thanks @taihua!
+- Agent sessions: preserve macOS CLI sessions and their provider/source labels when prompts mention application paths (#4474). Thanks @Shenrui-Ma!
 
 - Menu bar: show a single leading provider icon at full size beside two text rows while preserving inline icons for merged providers and tinted layouts (#4454). Thanks @deinspanjer!
 - Menu cards: separate stale Claude usage notices from errors, render inline commands without backticks, align error copy controls, and clarify when Keychain access is disabled.
