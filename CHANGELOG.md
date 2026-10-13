@@ -20,6 +20,8 @@
 
 ### Fixed
 
+- Usage & Spend: retain every saved Codex account's result when refreshing more than three accounts (#4466). Thanks @Yuxin-Qiao!
+
 - Menu bar: show a single leading provider icon at full size beside two text rows while preserving inline icons for merged providers and tinted layouts (#4454). Thanks @deinspanjer!
 
 - OpenCode Go: cache unchanged local history scans with bounded memory and discover permitted browser sessions in Auto before falling back to marked estimates (#4410, #4445). Thanks @JackHo12 and @djbclark!

@@ -554,18 +554,14 @@ enum SpendDashboardSource {
                             results.append(result)
                         }
                         results.sort { $0.0 < $1.0 }
-                        for (_, sourceID, input) in results {
+                        for (index, sourceID, input) in results {
                             if let input {
                                 inputs.append(input)
                             } else {
                                 // Distinguish invalidated (auth changed) vs plain failure by re-checking.
-                                if !self.codexAuthFingerprintMatches(
-                                    pendingAccounts.first { sourceID == "codex:\($0.id)" }!)
-                                {
-                                    failedSourceIDs.insert(sourceID)
+                                failedSourceIDs.insert(sourceID)
+                                if !self.codexAuthFingerprintMatches(pendingAccounts[index]) {
                                     invalidatedSourceIDs.insert(sourceID)
-                                } else {
-                                    failedSourceIDs.insert(sourceID)
                                 }
                             }
                         }
