@@ -250,6 +250,94 @@ struct CursorAppAuthEncryptionTests {
         }
     }
 
+    @Test(arguments: ["Cursor Key", "Cursor"])
+    func `encrypted app database reaches usage fetch with JWT identity fallback`(account: String) async throws {
+        let root = CodexCredentialFixtures.root
+        let token = try makeCursorAppAuthToken(
+            subject: "auth0|encrypted-pipeline",
+            email: "encrypted-pipeline@example.test")
+        let databaseURL = root.appendingPathComponent("state.vscdb")
+        try Self.writeEncryptedFetchDatabase(Self.envelope(token), at: databaseURL)
+        let databaseBefore = try Data(contentsOf: databaseURL)
+        let expectedCookie = "WorkosCursorSessionToken=encrypted-pipeline%3A%3A" + token
+        let transport = ProviderHTTPTransportStub { request in
+            let url = try #require(request.url)
+            #expect(url.host == "cursor-encrypted.test")
+            #expect(request.value(forHTTPHeaderField: "Cookie") == expectedCookie)
+            #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
+            let body: String
+            let status: Int
+            switch url.path {
+            case "/api/usage-summary":
+                status = 200
+                body = """
+                {"membershipType":"pro","individualUsage":{"plan":{
+                  "used":1500,"limit":5000,"totalPercentUsed":30.0
+                }}}
+                """
+            case "/api/auth/me":
+                status = 503
+                body = "{}"
+            case "/api/dashboard/get-sand-usage-status":
+                status = 404
+                body = "{}"
+            case "/api/usage":
+                #expect(URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                    .queryItems?.first(where: { $0.name == "user" })?.value == "encrypted-pipeline")
+                status = 200
+                body = #"{"gpt-4":{"numRequests":12,"numRequestsTotal":17,"maxRequestUsage":100}}"#
+            default:
+                Issue.record("Unexpected encrypted-session request: \(url.path)")
+                throw URLError(.badURL)
+            }
+            let response = try #require(HTTPURLResponse(
+                url: url, statusCode: status, httpVersion: nil, headerFields: nil))
+            return (Data(body.utf8), response)
+        }
+        let store = CursorSessionStore(fileURL: root.appendingPathComponent("session.json"))
+        let probe = try CursorStatusProbe(
+            baseURL: #require(URL(string: "https://cursor-encrypted.test")),
+            browserDetection: BrowserDetection(
+                homeDirectory: root.path,
+                cacheTTL: 0,
+                now: Date.init,
+                fileExists: { _ in false },
+                directoryContents: { _ in nil },
+                applicationURLs: { _ in [] },
+                profileAccessIssue: { _ in nil }),
+            browserCookieImportOrder: [],
+            urlSession: transport,
+            appAuthStore: CursorAppAuthStore(dbPath: databaseURL.path),
+            sessionStore: store,
+            persistAppAuthSession: { await store.persistAppSession($0) },
+            conditionalMutationCoordinator: CookieHeaderCache.ConditionalMutationCoordinator())
+        let reads = LockIsolated<[String]>([])
+        let snapshot = try await Self.withEncryptedFetchKeychain(account: account, reads: reads, root: root) {
+            let result = try await probe.fetch(allowCachedSessions: false)
+            let cached = try #require(CookieHeaderCache.load(provider: .cursor))
+            #expect(cached.cookieHeader == expectedCookie)
+            #expect(cached.sourceLabel == "Cursor.app local auth")
+            return result
+        }
+        #expect(snapshot.planPercentUsed == 30)
+        #expect(snapshot.requestsUsed == 17)
+        #expect(snapshot.requestsLimit == 100)
+        #expect(snapshot.accountID == "auth0|encrypted-pipeline")
+        #expect(snapshot.accountEmail == "encrypted-pipeline@example.test")
+        #expect(reads.value == [account])
+        #expect(await transport.requests().compactMap { $0.url?.path }.sorted() == [
+            "/api/auth/me",
+            "/api/dashboard/get-sand-usage-status",
+            "/api/usage",
+            "/api/usage-summary",
+        ])
+        let persisted = await store.getCookies()
+        #expect(persisted.count == 1)
+        #expect(persisted.first?.value == "encrypted-pipeline%3A%3A" + token)
+        #expect(persisted.allSatisfy(CursorAppAuthSession.isPersistedCookie))
+        #expect(try Data(contentsOf: databaseURL) == databaseBefore)
+    }
+
     private static func expectNoUI(_ query: [String: Any]) {
         #expect((query[kSecUseAuthenticationContext as String] as? LAContext)?.interactionNotAllowed == true)
         #expect(query[kSecUseAuthenticationUI as String] as? String == KeychainNoUIQuery.uiFailPolicyForTesting())
@@ -368,5 +456,52 @@ struct CursorAppAuthEncryptionTests {
             SQLITE_OK)
         try #require(sqlite3_step(stmt) == SQLITE_DONE)
         return try operation(path)
+    }
+
+    private static func writeEncryptedFetchDatabase(_ envelope: String, at url: URL) throws {
+        var database: OpaquePointer?
+        try #require(sqlite3_open(url.path, &database) == SQLITE_OK)
+        defer { sqlite3_close(database) }
+        let sql = """
+        CREATE TABLE ItemTable(key TEXT PRIMARY KEY, value TEXT);
+        INSERT INTO ItemTable VALUES('cursorAuth/accessToken', '\(envelope)');
+        """
+        try #require(sqlite3_exec(database, sql, nil, nil, nil) == SQLITE_OK)
+    }
+
+    private static func withEncryptedFetchKeychain<T>(
+        account: String,
+        reads: LockIsolated<[String]>,
+        root: URL,
+        operation: () async throws -> T) async rethrows -> T
+    {
+        let lookup: @Sendable ([String: Any]) -> (OSStatus, Data?) = { query in
+            Self.expectNoUI(query)
+            #expect(query[kSecAttrService as String] as? String == "Cursor Safe Storage")
+            #expect(query[kSecAttrAccount as String] as? String == account)
+            #expect(query[kSecReturnData as String] as? Bool == true)
+            reads.setValue(reads.value + [query[kSecAttrAccount as String] as? String ?? ""])
+            return (errSecSuccess, Data(Self.password.utf8))
+        }
+        return try await KeychainCacheStore.withServiceOverrideForTesting("cursor-encrypted-fetch-\(UUID())") {
+            try await KeychainCacheStore.withImplicitTestStoreForTesting {
+                try await CookieHeaderCache.withLegacyBaseURLOverrideForTesting(root.appendingPathComponent("legacy")) {
+                    try await KeychainAccessGate.withTaskOverrideForTesting(false) {
+                        try await KeychainAccessPreflight
+                            .withCheckGenericPasswordOverrideForTesting { service, queried in
+                                #expect(service == "Cursor Safe Storage")
+                                #expect(["Cursor Key", "Cursor"].contains(queried ?? ""))
+                                return queried == account ? .allowed : .notFound
+                            } operation: {
+                                try await ChromiumSafeStorage.$readOverrideForTesting.withValue(lookup) {
+                                    try await ProviderInteractionContext.$current.withValue(
+                                        .background,
+                                        operation: operation)
+                                }
+                            }
+                    }
+                }
+            }
+        }
     }
 }
